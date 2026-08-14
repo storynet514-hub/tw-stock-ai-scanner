@@ -1,29 +1,60 @@
 # -*- coding: utf-8 -*-
 
 """
-台股 AI 選股 + ETF + 零股定投 + 動態風控
-正式全市場掃描版
-================================================
+台股 AI 選股・零股定投・動態風控資料引擎
+============================================================
 
-功能：
-1. 自動建立台股上市 / 上櫃個股股票池
-2. 自動加入主要 ETF
-3. 不再固定 25 檔
-4. 批次抓取 Yahoo Finance 歷史日線
-5. 計算：
-   - MA5 / MA10 / MA20 / MA60
-   - MACD
+V3 正式版
+
+主要功能：
+
+1. 台股個股 + ETF
+2. 技術指標
+   - MA5
+   - MA10
+   - MA20
+   - MA60
    - RSI
+   - MACD
    - KD
-   - 5日均量
-   - 成交量倍率
-   - MA20斜率
-6. 短線 AI 評分
-7. ETF / 個股分開排名
-8. 定投價格區間
-9. 動態停損 / 停利
-10. 30 / 60 / 90 日前瞻績效資料
-11. 輸出 Data/prices.json
+   - 成交量
+   - 20MA 斜率
+
+3. 短期選股條件
+   - MACD 黃金交叉
+   - KD 黃金交叉
+   - RSI > 50
+   - 成交量 > 5日均量 × 1.5
+   - 股價站上20MA
+   - 20MA向上
+
+4. 短線評分
+
+5. 零股定投
+   - 第一區
+   - 第二區
+   - 第三區
+   - 第四區
+
+6. 動態風控
+   - 停損
+   - 第一停利
+   - 第二停利
+
+7. 歷史勝率
+   - 30日
+   - 60日
+   - 90日
+
+8. 個股 / ETF 分類排名
+
+9. 輸出：
+   Data/prices.json
+
+資料來源：
+Yahoo Finance
+
+============================================================
 """
 
 import json
@@ -40,6 +71,7 @@ try:
     import yfinance as yf
 except ImportError:
     print("錯誤：找不到 yfinance")
+    print("請確認 requirements.txt 已加入 yfinance")
     sys.exit(1)
 
 
@@ -72,18 +104,237 @@ os.makedirs(
 
 
 # ============================================================
-# 掃描設定
+# 股票 / ETF 清單
+# ============================================================
+#
+# type：
+#
+# STOCK = 個股
+# ETF   = ETF
+#
+# 未來如果要增加標的，
+# 只需要在這裡增加即可。
+#
 # ============================================================
 
-SCAN_PERIOD = "1y"
+STOCKS = {
 
-BATCH_SIZE = 50
+    # --------------------------------------------------------
+    # 大型 / 核心
+    # --------------------------------------------------------
 
-BATCH_SLEEP = 1.5
+    "2330": {
+        "name": "台積電",
+        "type": "STOCK"
+    },
 
-MIN_HISTORY = 70
+    "2317": {
+        "name": "鴻海",
+        "type": "STOCK"
+    },
 
-VOLUME_MULTIPLIER = 1.5
+    "2454": {
+        "name": "聯發科",
+        "type": "STOCK"
+    },
+
+    "2303": {
+        "name": "聯電",
+        "type": "STOCK"
+    },
+
+    "2382": {
+        "name": "廣達",
+        "type": "STOCK"
+    },
+
+    "3231": {
+        "name": "緯創",
+        "type": "STOCK"
+    },
+
+    "6669": {
+        "name": "緯穎",
+        "type": "STOCK"
+    },
+
+    # --------------------------------------------------------
+    # AI / 半導體 / 電子
+    # --------------------------------------------------------
+
+    "3037": {
+        "name": "欣興",
+        "type": "STOCK"
+    },
+
+    "3044": {
+        "name": "健鼎",
+        "type": "STOCK"
+    },
+
+    "2449": {
+        "name": "京元電子",
+        "type": "STOCK"
+    },
+
+    "2301": {
+        "name": "光寶科",
+        "type": "STOCK"
+    },
+
+    "2376": {
+        "name": "技嘉",
+        "type": "STOCK"
+    },
+
+    "2421": {
+        "name": "建準",
+        "type": "STOCK"
+    },
+
+    "3324": {
+        "name": "雙鴻",
+        "type": "STOCK"
+    },
+
+    "3017": {
+        "name": "奇鋐",
+        "type": "STOCK"
+    },
+
+    "3450": {
+        "name": "聯鈞",
+        "type": "STOCK"
+    },
+
+    "3338": {
+        "name": "泰碩",
+        "type": "STOCK"
+    },
+
+    "6176": {
+        "name": "瑞儀",
+        "type": "STOCK"
+    },
+
+    "3042": {
+        "name": "晶技",
+        "type": "STOCK"
+    },
+
+    "6290": {
+        "name": "良維",
+        "type": "STOCK"
+    },
+
+    "3006": {
+        "name": "晶豪科",
+        "type": "STOCK"
+    },
+
+    "2426": {
+        "name": "鼎元",
+        "type": "STOCK"
+    },
+
+    "3490": {
+        "name": "單井",
+        "type": "STOCK"
+    },
+
+    "6125": {
+        "name": "廣運",
+        "type": "STOCK"
+    },
+
+    "2425": {
+        "name": "承啟",
+        "type": "STOCK"
+    },
+
+    # --------------------------------------------------------
+    # 其他
+    # --------------------------------------------------------
+
+    "3356": {
+        "name": "奇偶",
+        "type": "STOCK"
+    },
+
+    "6117": {
+        "name": "迎廣",
+        "type": "STOCK"
+    },
+
+    "3481": {
+        "name": "群創",
+        "type": "STOCK"
+    },
+
+    "2409": {
+        "name": "友達",
+        "type": "STOCK"
+    },
+
+    # ========================================================
+    # ETF
+    # ========================================================
+
+    "0050": {
+        "name": "元大台灣50",
+        "type": "ETF"
+    },
+
+    "0056": {
+        "name": "元大高股息",
+        "type": "ETF"
+    },
+
+    "00878": {
+        "name": "國泰永續高股息",
+        "type": "ETF"
+    },
+
+    "00919": {
+        "name": "群益台灣精選高息",
+        "type": "ETF"
+    },
+
+    "00713": {
+        "name": "元大台灣高息低波",
+        "type": "ETF"
+    },
+
+    "00929": {
+        "name": "復華台灣科技優息",
+        "type": "ETF"
+    },
+
+    "00940": {
+        "name": "元大台灣價值高息",
+        "type": "ETF"
+    },
+
+    "006208": {
+        "name": "富邦台50",
+        "type": "ETF"
+    },
+
+    "00679B": {
+        "name": "元大美債20年",
+        "type": "ETF"
+    },
+
+    "00830": {
+        "name": "國泰費城半導體",
+        "type": "ETF"
+    }
+}
+
+
+# ============================================================
+# 技術指標設定
+# ============================================================
 
 MACD_FAST = 12
 MACD_SLOW = 26
@@ -95,305 +346,36 @@ KD_PERIOD = 9
 KD_SMOOTH_K = 3
 KD_SMOOTH_D = 3
 
+MA5_PERIOD = 5
+MA10_PERIOD = 10
 MA20_PERIOD = 20
 MA60_PERIOD = 60
 
-FORWARD_DAYS = {
-    "30": 30,
-    "60": 60,
-    "90": 90
-}
+VOLUME_PERIOD = 5
+
+VOLUME_MULTIPLIER = 1.5
 
 
 # ============================================================
-# ETF 清單
-# ============================================================
-#
-# ETF 不需要把所有商品硬編碼。
-# 這裡放常見 / 流動性較高 ETF 作為正式基礎池。
-#
-# 後續可以繼續增加。
-#
+# 回測設定
 # ============================================================
 
-ETF_LIST = {
+BACKTEST_DAYS = [
+    30,
+    60,
+    90
+]
 
-    "0050": "元大台灣50",
-    "0051": "元大中型100",
-    "0052": "富邦科技",
-    "0053": "元大電子",
-    "0056": "元大高股息",
-    "0057": "富邦摩台",
-    "00631L": "元大台灣50正2",
-    "00632R": "元大台灣50反1",
-    "00633L": "富邦上証正2",
-    "00637L": "元大滬深300正2",
-    "00639": "富邦深100",
-    "00640L": "富邦日本正2",
-    "00641R": "富邦日本反1",
-    "00646": "元大S&P500",
-    "00647L": "元大S&P500正2",
-    "00648R": "元大S&P500反1",
-    "00650L": "復華日本正2",
-    "00651R": "復華日本反1",
-    "00652": "富邦印度",
-    "00657": "國泰日經225",
-    "00662": "富邦NASDAQ",
-    "00663L": "國泰臺灣加權正2",
-    "00664R": "國泰臺灣加權反1",
-    "00668": "國泰美國道瓊",
-    "00669R": "國泰美國道瓊反1",
-    "00670L": "富邦NASDAQ正2",
-    "00671R": "富邦NASDAQ反1",
-    "00673R": "元大S&P原油反1",
-    "00675L": "富邦臺灣加權正2",
-    "00676R": "富邦臺灣加權反1",
-    "00677U": "富邦VIX",
-    "00678": "群益NBI生技",
-    "00679B": "元大美債20年",
-    "00680L": "元大美債20正2",
-    "00681R": "元大美債20反1",
-    "00682U": "元大美元指數",
-    "00683L": "元大南方小麥正2",
-    "00685L": "群益臺灣加權正2",
-    "00686R": "群益臺灣加權反1",
-    "00687B": "國泰20年美債",
-    "00688L": "國泰20年美債正2",
-    "00689R": "國泰20年美債反1",
-    "00690": "兆豐藍籌30",
-    "00692": "富邦公司治理",
-    "00693U": "期元大S&P黃金",
-    "00694B": "富邦美債1-3",
-    "00695B": "富邦美債7-10",
-    "00696B": "富邦美債20年",
-    "00697B": "元大美債7-10",
-    "00698": "國泰永續高股息",
-    "00701": "國泰股利精選30",
-    "00702": "國泰標普低波高息",
-    "00703": "台新MSCI中國",
-    "00704L": "期元大金2N",
-    "00706L": "期元大S&P日圓正2",
-    "00707": "期元大S&P日圓反1",
-    "00708L": "期元大S&P黃金正2",
-    "00709": "富邦歐洲",
-    "00710B": "復華彭博非投等債",
-    "00711B": "復華彭博新興債",
-    "00712": "復華中國5G",
-    "00713": "元大台灣高息低波",
-    "00714": "群益台灣加權正2",
-    "00715": "期街口布蘭特正2",
-    "00717": "富邦美國特別股",
-    "00720B": "元大投資級公司債",
-    "00725B": "國泰投資級公司債",
-    "00727B": "國泰1-5年非投等債",
-    "00730": "富邦臺灣優質高息",
-    "00731": "復華富時高息低波",
-    "00733": "富邦臺灣中小",
-    "00735": "國泰臺韓科技",
-    "00736": "國泰新興市場",
-    "00737": "國泰AI+Robo",
-    "00739": "元大MSCI A股",
-    "00740B": "富邦全球投等債",
-    "00741B": "富邦全球非投等債",
-    "00752": "中信中國50",
-    "00753L": "中信中國50正2",
-    "00754B": "新光中國政金債",
-    "00757": "統一FANG+",
-    "00762": "元大全球AI",
-    "00770": "國泰北美科技",
-    "00771": "元大US高息特別股",
-    "00772": "中信高評級公司債",
-    "00775B": "新光投等債15年",
-    "00778B": "凱基優選高股息30",
-    "00830": "國泰費城半導體",
-    "00850": "元大臺灣ESG永續",
-    "00851": "台新全球AI",
-    "00852L": "國泰美國道瓊正2",
-    "00853B": "統一美債10年",
-    "00858": "永豐美國500大",
-    "00859B": "群益0-1年美債",
-    "00865B": "國泰US短期非投等債",
-    "00875": "國泰網路資安",
-    "00876": "元大全球5G",
-    "00878": "國泰永續高股息",
-    "00881": "國泰台灣5G+",
-    "00882": "中信中國高股息",
-    "00885": "富邦越南",
-    "00891": "中信小資高價30",
-    "00892": "富邦台灣半導體",
-    "00893": "國泰智能電動車",
-    "00894": "中信小資高價30",
-    "00895": "富邦臺灣公司治理",
-    "00896": "中信綠能及電動車",
-    "00897": "國泰智能電動車",
-    "00878": "國泰永續高股息",
-    "00900": "富邦特選高股息30",
-    "00901": "永豐智能車供應鏈",
-    "00902": "中信電池及儲能",
-    "00903": "富邦元宇宙",
-    "00904": "新光臺灣半導體30",
-    "00905": "FT臺灣Smart",
-    "00907": "永豐優息存股",
-    "00908": "野村企業家精選50",
-    "00909": "國泰數位支付服務",
-    "00910": "第一金太空衛星",
-    "00911": "兆豐洲際半導體",
-    "00912": "中信臺灣智慧50",
-    "00913": "兆豐台灣晶圓製造",
-    "00915": "凱基優選高股息30",
-    "00916": "國泰全球品牌50",
-    "00917": "中信特選金融",
-    "00918": "大華優利高填息30",
-    "00919": "群益台灣精選高息",
-    "00920": "野村臺灣智慧優選主動式",
-    "00921": "兆豐龍頭等權重",
-    "00922": "國泰台灣領袖50",
-    "00923": "群益台ESG低碳50",
-    "00924": "復華S&P500成長",
-    "00925": "新光標普電動車",
-    "00926": "凱基全球菁英55",
-    "00927": "群益半導體收益",
-    "00929": "復華台灣科技優息",
-    "00930": "永豐ESG低碳高息",
-    "00932": "兆豐永續高息等權",
-    "00934": "中信成長高股息",
-    "00935": "野村臺灣新科技50",
-    "00936": "台新永續高息中小",
-    "00938": "凱基優選30",
-    "00939": "統一台灣高息動能",
-    "00940": "元大台灣價值高息",
-    "00941": "中信上游半導體",
-    "00943": "兆豐電子高息等權",
-    "00944": "野村趨勢動能高息",
-    "00945B": "凱基美國非投等債",
-    "00946": "群益科技高息成長",
-    "00947": "台新臺灣IC設計",
-    "00949": "復華日本龍頭",
-    "00950": "凱基臺灣優選30",
-    "00951": "台新日本半導體",
-    "00952": "凱基台灣AI50",
-    "00953B": "統一美國非投等債",
-    "00954": "中信日本商社",
-    "00955": "中信日本半導體",
-    "00956": "中信日經高股息",
-    "00957B": "兆豐優選投等債",
-    "00958B": "中信優息投資級債",
-    "00960": "野村臺灣智慧優選主動式",
-    "00961": "FT臺灣永續高息",
-    "00962": "台新AI優息動能",
-    "00963": "野村趨勢動能高息",
-    "00964": "中信亞太高股息",
-    "00965": "野村臺灣半導體",
-    "00966": "中信成長高股息",
-    "00967": "台新臺灣IC設計",
-    "00968": "群益優選非投等債",
-    "00969": "國泰台灣領袖50",
-    "00970": "野村臺灣新科技50",
-    "00980A": "野村臺灣智慧優選主動式",
-    "00981A": "主動統一台股增長",
-    "00982A": "主動群益台灣強棒",
-    "00983A": "主動中信ARK創新",
-    "00984A": "主動安聯台灣高息",
-    "00985A": "主動野村台灣優選"
-}
-
-
-# ============================================================
-# 股票池
-# ============================================================
+# 勝率判斷：
 #
-# 正式版採「公開市場股票池」＋ ETF。
+# 在訊號出現後 N 個交易日，
+# 只要價格高於訊號日價格，
+# 就視為成功。
 #
-# 若無法從 TWSE / TPEx 取得完整清單，
-# 會使用內建備援清單，避免 GitHub Actions 整個失敗。
+# 同時另外計算平均報酬率。
 #
-# ============================================================
 
-FALLBACK_STOCKS = {
-
-    "1101": "台泥",
-    "1102": "亞泥",
-    "1216": "統一",
-    "1301": "台塑",
-    "1303": "南亞",
-    "1326": "台化",
-    "1402": "遠東新",
-    "1476": "儒鴻",
-    "1504": "東元",
-    "1513": "中興電",
-    "1519": "華城",
-    "1605": "華新",
-    "2002": "中鋼",
-    "2105": "正新",
-    "2201": "裕隆",
-    "2207": "和泰車",
-    "2301": "光寶科",
-    "2303": "聯電",
-    "2317": "鴻海",
-    "2330": "台積電",
-    "2345": "智邦",
-    "2353": "宏碁",
-    "2356": "英業達",
-    "2376": "技嘉",
-    "2382": "廣達",
-    "2408": "南亞科",
-    "2409": "友達",
-    "2412": "中華電",
-    "2421": "建準",
-    "2425": "承啟",
-    "2426": "鼎元",
-    "2449": "京元電子",
-    "2454": "聯發科",
-    "2603": "長榮",
-    "2609": "陽明",
-    "2615": "萬海",
-    "2618": "長榮航",
-    "2633": "台灣高鐵",
-    "2881": "富邦金",
-    "2882": "國泰金",
-    "2883": "開發金",
-    "2884": "玉山金",
-    "2885": "元大金",
-    "2886": "兆豐金",
-    "2887": "台新金",
-    "2890": "永豐金",
-    "2891": "中信金",
-    "2892": "第一金",
-    "2912": "統一超",
-    "3006": "晶豪科",
-    "3017": "奇鋐",
-    "3037": "欣興",
-    "3042": "晶技",
-    "3044": "健鼎",
-    "3231": "緯創",
-    "3324": "雙鴻",
-    "3338": "泰碩",
-    "3356": "奇偶",
-    "3450": "聯鈞",
-    "3481": "群創",
-    "3490": "單井",
-    "3532": "台勝科",
-    "3661": "世芯-KY",
-    "3711": "日月光投控",
-    "4763": "材料-KY",
-    "4966": "譜瑞-KY",
-    "5269": "祥碩",
-    "5274": "信驊",
-    "5347": "世界",
-    "5483": "中美晶",
-    "6125": "廣運",
-    "6117": "迎廣",
-    "6176": "瑞儀",
-    "6239": "力成",
-    "6257": "矽格",
-    "6271": "同欣電",
-    "6290": "良維",
-    "6669": "緯穎",
-    "8046": "南電",
-    "8150": "南茂",
-    "8210": "勤誠",
-    "8299": "群聯"
-}
+MIN_BACKTEST_DATA = 120
 
 
 # ============================================================
@@ -409,10 +391,16 @@ def clean_number(value, digits=4):
 
         value = float(value)
 
-        if math.isnan(value) or math.isinf(value):
+        if math.isnan(value):
             return None
 
-        return round(value, digits)
+        if math.isinf(value):
+            return None
+
+        return round(
+            value,
+            digits
+        )
 
     except Exception:
 
@@ -429,38 +417,29 @@ def safe_bool(value):
         return False
 
 
-def ticker(stock_id):
+def get_ticker(stock_id):
 
     return f"{stock_id}.TW"
-
-
-def is_valid_code(code):
-
-    if not code:
-        return False
-
-    code = str(code).strip()
-
-    return (
-        code.isdigit()
-        or (
-            code[:-1].isdigit()
-            and code[-1].isalpha()
-        )
-    )
 
 
 # ============================================================
 # RSI
 # ============================================================
 
-def calculate_rsi(close, period=14):
+def calculate_rsi(
+    close,
+    period=RSI_PERIOD
+):
 
     delta = close.diff()
 
-    gain = delta.clip(lower=0)
+    gain = delta.clip(
+        lower=0
+    )
 
-    loss = -delta.clip(upper=0)
+    loss = -delta.clip(
+        upper=0
+    )
 
     avg_gain = gain.ewm(
         alpha=1 / period,
@@ -474,13 +453,23 @@ def calculate_rsi(close, period=14):
         min_periods=period
     ).mean()
 
-    rs = avg_gain / avg_loss.replace(
-        0,
-        np.nan
+    rs = (
+        avg_gain
+        /
+        avg_loss.replace(
+            0,
+            np.nan
+        )
     )
 
-    rsi = 100 - (
-        100 / (1 + rs)
+    rsi = (
+        100
+        -
+        (
+            100
+            /
+            (1 + rs)
+        )
     )
 
     return rsi
@@ -502,16 +491,28 @@ def calculate_macd(close):
         adjust=False
     ).mean()
 
-    dif = ema_fast - ema_slow
+    dif = (
+        ema_fast
+        -
+        ema_slow
+    )
 
     dem = dif.ewm(
         span=MACD_SIGNAL,
         adjust=False
     ).mean()
 
-    hist = dif - dem
+    histogram = (
+        dif
+        -
+        dem
+    )
 
-    return dif, dem, hist
+    return (
+        dif,
+        dem,
+        histogram
+    )
 
 
 # ============================================================
@@ -520,20 +521,34 @@ def calculate_macd(close):
 
 def calculate_kd(df):
 
-    low = df["Low"].rolling(
-        KD_PERIOD
-    ).min()
+    lowest_low = (
+        df["Low"]
+        .rolling(
+            KD_PERIOD
+        )
+        .min()
+    )
 
-    high = df["High"].rolling(
-        KD_PERIOD
-    ).max()
+    highest_high = (
+        df["High"]
+        .rolling(
+            KD_PERIOD
+        )
+        .max()
+    )
 
     denominator = (
-        high - low
+        highest_high
+        -
+        lowest_low
     )
 
     rsv = (
-        (df["Close"] - low)
+        (
+            df["Close"]
+            -
+            lowest_low
+        )
         /
         denominator.replace(
             0,
@@ -551,7 +566,10 @@ def calculate_kd(df):
         adjust=False
     ).mean()
 
-    return k, d
+    return (
+        k,
+        d
+    )
 
 
 # ============================================================
@@ -562,29 +580,45 @@ def calculate_indicators(df):
 
     df = df.copy()
 
+    # --------------------------------------------------------
+    # 均線
+    # --------------------------------------------------------
+
     df["MA5"] = (
         df["Close"]
-        .rolling(5)
+        .rolling(
+            MA5_PERIOD
+        )
         .mean()
     )
 
     df["MA10"] = (
         df["Close"]
-        .rolling(10)
+        .rolling(
+            MA10_PERIOD
+        )
         .mean()
     )
 
     df["MA20"] = (
         df["Close"]
-        .rolling(20)
+        .rolling(
+            MA20_PERIOD
+        )
         .mean()
     )
 
     df["MA60"] = (
         df["Close"]
-        .rolling(60)
+        .rolling(
+            MA60_PERIOD
+        )
         .mean()
     )
+
+    # --------------------------------------------------------
+    # MA20斜率
+    # --------------------------------------------------------
 
     df["MA20_PREV"] = (
         df["MA20"]
@@ -601,9 +635,15 @@ def calculate_indicators(df):
         df["MA20_PREV"]
     ) * 100
 
+    # --------------------------------------------------------
+    # 成交量
+    # --------------------------------------------------------
+
     df["VOLUME_MA5"] = (
         df["Volume"]
-        .rolling(5)
+        .rolling(
+            VOLUME_PERIOD
+        )
         .mean()
     )
 
@@ -613,10 +653,17 @@ def calculate_indicators(df):
         df["VOLUME_MA5"]
     )
 
+    # --------------------------------------------------------
+    # RSI
+    # --------------------------------------------------------
+
     df["RSI"] = calculate_rsi(
-        df["Close"],
-        RSI_PERIOD
+        df["Close"]
     )
+
+    # --------------------------------------------------------
+    # MACD
+    # --------------------------------------------------------
 
     (
         df["DIF"],
@@ -626,10 +673,20 @@ def calculate_indicators(df):
         df["Close"]
     )
 
+    # --------------------------------------------------------
+    # KD
+    # --------------------------------------------------------
+
     (
         df["K"],
         df["D"]
-    ) = calculate_kd(df)
+    ) = calculate_kd(
+        df
+    )
+
+    # --------------------------------------------------------
+    # MACD黃金交叉
+    # --------------------------------------------------------
 
     df["MACD_GOLDEN"] = (
         (df["DIF"] > df["DEM"])
@@ -641,9 +698,17 @@ def calculate_indicators(df):
         )
     )
 
+    # --------------------------------------------------------
+    # MACD柱狀圖翻紅
+    # --------------------------------------------------------
+
     df["MACD_RED"] = (
         df["MACD_HIST"] > 0
     )
+
+    # --------------------------------------------------------
+    # KD黃金交叉
+    # --------------------------------------------------------
 
     df["KD_GOLDEN"] = (
         (df["K"] > df["D"])
@@ -655,33 +720,64 @@ def calculate_indicators(df):
         )
     )
 
+    # --------------------------------------------------------
+    # KD低位黃金交叉
+    # --------------------------------------------------------
+
     df["KD_LOW_GOLDEN"] = (
         df["KD_GOLDEN"]
         &
         (
-            df["K"].shift(1) <= 30
+            df["K"].shift(1)
+            <= 30
         )
     )
+
+    # --------------------------------------------------------
+    # RSI多方
+    # --------------------------------------------------------
 
     df["RSI_BULLISH"] = (
         df["RSI"] > 50
     )
 
+    # --------------------------------------------------------
+    # 成交量突破
+    # --------------------------------------------------------
+
     df["VOLUME_BREAKOUT"] = (
         df["Volume"]
         >
-        df["VOLUME_MA5"] * VOLUME_MULTIPLIER
+        (
+            df["VOLUME_MA5"]
+            *
+            VOLUME_MULTIPLIER
+        )
     )
 
+    # --------------------------------------------------------
+    # 站上20MA
+    # --------------------------------------------------------
+
     df["ABOVE_MA20"] = (
-        df["Close"] > df["MA20"]
+        df["Close"]
+        >
+        df["MA20"]
     )
+
+    # --------------------------------------------------------
+    # 20MA向上
+    # --------------------------------------------------------
 
     df["MA20_UP"] = (
         df["MA20"]
         >
         df["MA20"].shift(1)
     )
+
+    # --------------------------------------------------------
+    # 20MA向上勾
+    # --------------------------------------------------------
 
     df["MA20_TURN_UP"] = (
         (df["MA20"] > df["MA20"].shift(1))
@@ -692,6 +788,10 @@ def calculate_indicators(df):
             df["MA20"].shift(2)
         )
     )
+
+    # --------------------------------------------------------
+    # 短期核心
+    # --------------------------------------------------------
 
     df["SHORT_TERM_CORE"] = (
         df["MACD_GOLDEN"]
@@ -711,15 +811,16 @@ def calculate_indicators(df):
 
 
 # ============================================================
-# AI 評分
+# 短線評分
 # ============================================================
 
-def calculate_score(row):
+def calculate_short_score(row):
 
     score = 0
 
     reasons = []
 
+    # MACD
     if safe_bool(
         row["MACD_GOLDEN"]
     ):
@@ -737,9 +838,10 @@ def calculate_score(row):
         score += 10
 
         reasons.append(
-            "MACD翻紅"
+            "MACD柱狀圖翻紅"
         )
 
+    # KD
     if safe_bool(
         row["KD_LOW_GOLDEN"]
     ):
@@ -774,24 +876,17 @@ def calculate_score(row):
             "KD多方"
         )
 
+    # RSI
     rsi = row["RSI"]
 
     if pd.notna(rsi):
 
-        if rsi >= 60:
+        if rsi >= 55:
 
             score += 15
 
             reasons.append(
-                "RSI強勢"
-            )
-
-        elif rsi >= 55:
-
-            score += 13
-
-            reasons.append(
-                "RSI偏強"
+                "RSI多方"
             )
 
         elif rsi > 50:
@@ -802,13 +897,16 @@ def calculate_score(row):
                 "RSI站上50"
             )
 
-    ratio = row[
-        "VOLUME_RATIO"
-    ]
+    # Volume
+    volume_ratio = (
+        row["VOLUME_RATIO"]
+    )
 
-    if pd.notna(ratio):
+    if pd.notna(
+        volume_ratio
+    ):
 
-        if ratio >= 2:
+        if volume_ratio >= 2:
 
             score += 20
 
@@ -816,7 +914,7 @@ def calculate_score(row):
                 "成交量爆量"
             )
 
-        elif ratio >= 1.5:
+        elif volume_ratio >= 1.5:
 
             score += 15
 
@@ -824,10 +922,11 @@ def calculate_score(row):
                 "成交量放大"
             )
 
-        elif ratio >= 1.2:
+        elif volume_ratio >= 1.2:
 
             score += 5
 
+    # MA20
     if safe_bool(
         row["ABOVE_MA20"]
     ):
@@ -838,6 +937,7 @@ def calculate_score(row):
             "站上20MA"
         )
 
+    # MA20 up
     if safe_bool(
         row["MA20_UP"]
     ):
@@ -848,6 +948,7 @@ def calculate_score(row):
             "20MA向上"
         )
 
+    # MA20 turn
     if safe_bool(
         row["MA20_TURN_UP"]
     ):
@@ -858,14 +959,17 @@ def calculate_score(row):
             "20MA向上勾"
         )
 
-    return score, reasons
+    return (
+        score,
+        reasons
+    )
 
 
 # ============================================================
-# 定投
+# 定投策略
 # ============================================================
 
-def calculate_dca(
+def calculate_dca_strategy(
     close,
     ma20,
     ma60
@@ -875,7 +979,11 @@ def calculate_dca(
 
         return {
             "status": "資料不足",
-            "action": "觀望"
+            "action": "觀望",
+            "buy_1": None,
+            "buy_2": None,
+            "buy_3": None,
+            "buy_4": None
         }
 
     reference = (
@@ -898,28 +1006,53 @@ def calculate_dca(
 
     if close >= buy_1:
 
-        status = "高於第一定投區"
-        action = "觀察 / 小額"
+        status = (
+            "高於第一定投區"
+        )
+
+        action = (
+            "觀察 / 小額"
+        )
 
     elif close >= buy_2:
 
-        status = "第一定投區"
-        action = "第一批"
+        status = (
+            "第一定投區"
+        )
+
+        action = (
+            "第一批"
+        )
 
     elif close >= buy_3:
 
-        status = "第二定投區"
-        action = "第二批"
+        status = (
+            "第二定投區"
+        )
+
+        action = (
+            "第二批"
+        )
 
     elif close >= buy_4:
 
-        status = "第三定投區"
-        action = "第三批"
+        status = (
+            "第三定投區"
+        )
+
+        action = (
+            "第三批"
+        )
 
     else:
 
-        status = "深度回撤區"
-        action = "第四批 / 等待確認"
+        status = (
+            "深度回撤區"
+        )
+
+        action = (
+            "第四批 / 等待確認"
+        )
 
     return {
 
@@ -950,10 +1083,10 @@ def calculate_dca(
 
 
 # ============================================================
-# 風控
+# 動態風控
 # ============================================================
 
-def calculate_risk(
+def calculate_risk_control(
     close,
     ma20,
     ma60,
@@ -970,8 +1103,16 @@ def calculate_risk(
 
             "take_profit_1": None,
 
-            "take_profit_2": None
+            "take_profit_2": None,
+
+            "risk_reward_1": None,
+
+            "risk_reward_2": None
         }
+
+    # --------------------------------------------------------
+    # 基礎停損
+    # --------------------------------------------------------
 
     stop_loss = (
         close * 0.93
@@ -987,6 +1128,10 @@ def calculate_risk(
             close * 0.95
         )
 
+    # --------------------------------------------------------
+    # 停利
+    # --------------------------------------------------------
+
     take_profit_1 = (
         close * 1.08
     )
@@ -995,31 +1140,62 @@ def calculate_risk(
         close * 1.15
     )
 
-    if (
-        ma20 is not None
-        and
+    # --------------------------------------------------------
+    # 風險
+    # --------------------------------------------------------
+
+    if ma20 is None:
+
+        risk_level = "資料不足"
+
+    elif (
         close >= ma20
         and
         ma20_up
     ):
 
-        risk = "低～中"
+        risk_level = "低～中"
 
-    elif (
-        ma20 is not None
-        and
-        close >= ma20
-    ):
+    elif close >= ma20:
 
-        risk = "中"
+        risk_level = "中"
 
     else:
 
-        risk = "中～高"
+        risk_level = "中～高"
+
+    # --------------------------------------------------------
+    # 報酬風險比
+    # --------------------------------------------------------
+
+    risk_amount = (
+        close
+        -
+        stop_loss
+    )
+
+    if risk_amount > 0:
+
+        rr1 = (
+            take_profit_1
+            -
+            close
+        ) / risk_amount
+
+        rr2 = (
+            take_profit_2
+            -
+            close
+        ) / risk_amount
+
+    else:
+
+        rr1 = None
+        rr2 = None
 
     return {
 
-        "risk_level": risk,
+        "risk_level": risk_level,
 
         "stop_loss": clean_number(
             stop_loss,
@@ -1034,127 +1210,213 @@ def calculate_risk(
         "take_profit_2": clean_number(
             take_profit_2,
             2
+        ),
+
+        "risk_reward_1": clean_number(
+            rr1,
+            2
+        ),
+
+        "risk_reward_2": clean_number(
+            rr2,
+            2
         )
     }
 
 
 # ============================================================
-# 30 / 60 / 90 日前瞻資料
+# 歷史勝率回測
 # ============================================================
 
-def calculate_forward_performance(
-    df
+def calculate_backtest(
+    df,
+    days_list=BACKTEST_DAYS
 ):
 
-    result = {
+    result = {}
 
-        "30d": {
-            "available": False,
-            "return_pct": None,
-            "max_return_pct": None,
-            "max_drawdown_pct": None
-        },
+    # --------------------------------------------------------
+    # 只使用完整資料
+    # --------------------------------------------------------
 
-        "60d": {
-            "available": False,
-            "return_pct": None,
-            "max_return_pct": None,
-            "max_drawdown_pct": None
-        },
+    if (
+        df is None
+        or
+        len(df) < MIN_BACKTEST_DATA
+    ):
 
-        "90d": {
-            "available": False,
-            "return_pct": None,
-            "max_return_pct": None,
-            "max_drawdown_pct": None
-        }
-    }
+        for days in days_list:
 
-    if len(df) < 2:
+            result[str(days)] = {
+
+                "days": days,
+
+                "signals": 0,
+
+                "wins": 0,
+
+                "losses": 0,
+
+                "win_rate": None,
+
+                "average_return": None,
+
+                "best_return": None,
+
+                "worst_return": None
+            }
 
         return result
 
-    latest_close = float(
-        df["Close"].iloc[-1]
+    # --------------------------------------------------------
+    # 核心訊號
+    # --------------------------------------------------------
+
+    signal_index = (
+        df.index[
+            df["SHORT_TERM_CORE"]
+            .fillna(False)
+        ]
     )
 
-    for key, days in FORWARD_DAYS.items():
+    for days in days_list:
 
-        target_index = len(df) - 1 + days
+        returns = []
 
-        if target_index >= len(df):
+        for index in signal_index:
 
-            continue
+            try:
 
-        future_close = float(
-            df["Close"].iloc[target_index]
+                position = (
+                    df.index.get_loc(
+                        index
+                    )
+                )
+
+                future_position = (
+                    position + days
+                )
+
+                if (
+                    future_position
+                    >= len(df)
+                ):
+
+                    continue
+
+                entry_price = float(
+                    df.iloc[
+                        position
+                    ]["Close"]
+                )
+
+                future_price = float(
+                    df.iloc[
+                        future_position
+                    ]["Close"]
+                )
+
+                if (
+                    entry_price <= 0
+                    or
+                    future_price <= 0
+                ):
+
+                    continue
+
+                return_pct = (
+                    (
+                        future_price
+                        -
+                        entry_price
+                    )
+                    /
+                    entry_price
+                ) * 100
+
+                returns.append(
+                    return_pct
+                )
+
+            except Exception:
+
+                continue
+
+        signals = len(
+            returns
         )
 
-        future_window = df.iloc[
-            len(df) - 1:
-            target_index + 1
-        ]
-
-        if future_window.empty:
-
-            continue
-
-        max_high = float(
-            future_window["High"].max()
+        wins = sum(
+            1
+            for value in returns
+            if value > 0
         )
 
-        min_low = float(
-            future_window["Low"].min()
+        losses = sum(
+            1
+            for value in returns
+            if value <= 0
         )
 
-        return_pct = (
-            (
-                future_close
-                -
-                latest_close
+        if signals > 0:
+
+            win_rate = (
+                wins
+                /
+                signals
+            ) * 100
+
+            average_return = (
+                sum(returns)
+                /
+                signals
             )
-            /
-            latest_close
-        ) * 100
 
-        max_return = (
-            (
-                max_high
-                -
-                latest_close
+            best_return = max(
+                returns
             )
-            /
-            latest_close
-        ) * 100
 
-        max_drawdown = (
-            (
-                min_low
-                -
-                latest_close
+            worst_return = min(
+                returns
             )
-            /
-            latest_close
-        ) * 100
 
-        result[
-            f"{key}d"
-        ] = {
+        else:
 
-            "available": True,
+            win_rate = None
 
-            "return_pct": clean_number(
-                return_pct,
+            average_return = None
+
+            best_return = None
+
+            worst_return = None
+
+        result[str(days)] = {
+
+            "days": days,
+
+            "signals": signals,
+
+            "wins": wins,
+
+            "losses": losses,
+
+            "win_rate": clean_number(
+                win_rate,
                 2
             ),
 
-            "max_return_pct": clean_number(
-                max_return,
+            "average_return": clean_number(
+                average_return,
                 2
             ),
 
-            "max_drawdown_pct": clean_number(
-                max_drawdown,
+            "best_return": clean_number(
+                best_return,
+                2
+            ),
+
+            "worst_return": clean_number(
+                worst_return,
                 2
             )
         }
@@ -1163,31 +1425,85 @@ def calculate_forward_performance(
 
 
 # ============================================================
-# 單一標的分析
+# 股票分析
 # ============================================================
 
-def analyze_symbol(
+def analyze_stock(
     stock_id,
-    name,
-    asset_type,
-    df
+    stock_info
 ):
 
-    if df is None or df.empty:
+    stock_name = stock_info[
+        "name"
+    ]
+
+    asset_type = stock_info[
+        "type"
+    ]
+
+    ticker = get_ticker(
+        stock_id
+    )
+
+    print(
+        f"正在分析："
+        f"{stock_id} "
+        f"{stock_name} "
+        f"[{asset_type}]"
+    )
+
+    try:
+
+        df = yf.download(
+            ticker,
+            period="2y",
+            interval="1d",
+            auto_adjust=False,
+            progress=False,
+            threads=False
+        )
+
+    except Exception as e:
+
+        print(
+            f"  抓取失敗：{e}"
+        )
 
         return None
+
+    if (
+        df is None
+        or
+        df.empty
+    ):
+
+        print(
+            "  無資料"
+        )
+
+        return None
+
+    # --------------------------------------------------------
+    # Yahoo 多層欄位
+    # --------------------------------------------------------
 
     if isinstance(
         df.columns,
         pd.MultiIndex
     ):
 
-        df.columns = (
-            df.columns
-            .get_level_values(0)
-        )
+        try:
 
-    required = [
+            df.columns = (
+                df.columns
+                .get_level_values(0)
+            )
+
+        except Exception:
+
+            pass
+
+    required_columns = [
         "Open",
         "High",
         "Low",
@@ -1195,30 +1511,48 @@ def analyze_symbol(
         "Volume"
     ]
 
-    for col in required:
+    for column in required_columns:
 
-        if col not in df.columns:
+        if column not in df.columns:
+
+            print(
+                f"  缺少欄位：{column}"
+            )
 
             return None
 
+    # --------------------------------------------------------
+    # 清理
+    # --------------------------------------------------------
+
     df = df[
-        required
+        required_columns
     ].copy()
 
-    for col in required:
+    for column in required_columns:
 
-        df[col] = pd.to_numeric(
-            df[col],
+        df[column] = pd.to_numeric(
+            df[column],
             errors="coerce"
         )
 
     df = df.dropna(
-        subset=["Close"]
+        subset=[
+            "Close"
+        ]
     )
 
-    if len(df) < MIN_HISTORY:
+    if len(df) < 120:
+
+        print(
+            "  歷史資料不足"
+        )
 
         return None
+
+    # --------------------------------------------------------
+    # 技術指標
+    # --------------------------------------------------------
 
     df = calculate_indicators(
         df
@@ -1228,9 +1562,33 @@ def analyze_symbol(
 
     previous = df.iloc[-2]
 
+    # --------------------------------------------------------
+    # 價格
+    # --------------------------------------------------------
+
     close = clean_number(
         latest["Close"],
         2
+    )
+
+    open_price = clean_number(
+        latest["Open"],
+        2
+    )
+
+    high = clean_number(
+        latest["High"],
+        2
+    )
+
+    low = clean_number(
+        latest["Low"],
+        2
+    )
+
+    volume = clean_number(
+        latest["Volume"],
+        0
     )
 
     previous_close = clean_number(
@@ -1238,14 +1596,12 @@ def analyze_symbol(
         2
     )
 
-    if close is None:
-
-        return None
-
     change = None
     change_percent = None
 
     if (
+        close is not None
+        and
         previous_close is not None
         and
         previous_close != 0
@@ -1265,22 +1621,138 @@ def analyze_symbol(
                 )
                 /
                 previous_close
-            )
-            * 100,
+            ) * 100,
             2
         )
 
-    score, reasons = calculate_score(
-        latest
+    # --------------------------------------------------------
+    # 技術指標
+    # --------------------------------------------------------
+
+    ma5 = clean_number(
+        latest["MA5"],
+        2
     )
 
-    core = safe_bool(
-        latest[
-            "SHORT_TERM_CORE"
-        ]
+    ma10 = clean_number(
+        latest["MA10"],
+        2
     )
 
-    if core:
+    ma20 = clean_number(
+        latest["MA20"],
+        2
+    )
+
+    ma60 = clean_number(
+        latest["MA60"],
+        2
+    )
+
+    rsi = clean_number(
+        latest["RSI"],
+        2
+    )
+
+    dif = clean_number(
+        latest["DIF"],
+        4
+    )
+
+    dem = clean_number(
+        latest["DEM"],
+        4
+    )
+
+    macd_hist = clean_number(
+        latest["MACD_HIST"],
+        4
+    )
+
+    k = clean_number(
+        latest["K"],
+        2
+    )
+
+    d = clean_number(
+        latest["D"],
+        2
+    )
+
+    volume_ma5 = clean_number(
+        latest["VOLUME_MA5"],
+        0
+    )
+
+    volume_ratio = clean_number(
+        latest["VOLUME_RATIO"],
+        2
+    )
+
+    ma20_slope = clean_number(
+        latest["MA20_SLOPE"],
+        2
+    )
+
+    # --------------------------------------------------------
+    # 條件
+    # --------------------------------------------------------
+
+    macd_golden = safe_bool(
+        latest["MACD_GOLDEN"]
+    )
+
+    macd_red = safe_bool(
+        latest["MACD_RED"]
+    )
+
+    kd_golden = safe_bool(
+        latest["KD_GOLDEN"]
+    )
+
+    kd_low_golden = safe_bool(
+        latest["KD_LOW_GOLDEN"]
+    )
+
+    rsi_bullish = safe_bool(
+        latest["RSI_BULLISH"]
+    )
+
+    volume_breakout = safe_bool(
+        latest["VOLUME_BREAKOUT"]
+    )
+
+    above_ma20 = safe_bool(
+        latest["ABOVE_MA20"]
+    )
+
+    ma20_up = safe_bool(
+        latest["MA20_UP"]
+    )
+
+    ma20_turn_up = safe_bool(
+        latest["MA20_TURN_UP"]
+    )
+
+    short_term_core = safe_bool(
+        latest["SHORT_TERM_CORE"]
+    )
+
+    # --------------------------------------------------------
+    # 評分
+    # --------------------------------------------------------
+
+    score, reasons = (
+        calculate_short_score(
+            latest
+        )
+    )
+
+    # --------------------------------------------------------
+    # 訊號
+    # --------------------------------------------------------
+
+    if short_term_core:
 
         signal = "強勢啟動"
 
@@ -1304,48 +1776,84 @@ def analyze_symbol(
 
         signal = "不符合"
 
-    ma20 = clean_number(
-        latest["MA20"],
-        2
+    # --------------------------------------------------------
+    # DCA
+    # --------------------------------------------------------
+
+    dca = (
+        calculate_dca_strategy(
+            close,
+            ma20,
+            ma60
+        )
     )
 
-    ma60 = clean_number(
-        latest["MA60"],
-        2
+    # --------------------------------------------------------
+    # Risk
+    # --------------------------------------------------------
+
+    risk = (
+        calculate_risk_control(
+            close,
+            ma20,
+            ma60,
+            ma20_up
+        )
     )
 
-    ma20_up = safe_bool(
-        latest["MA20_UP"]
-    )
+    # --------------------------------------------------------
+    # Backtest
+    # --------------------------------------------------------
 
-    dca = calculate_dca(
-        close,
-        ma20,
-        ma60
-    )
-
-    risk = calculate_risk(
-        close,
-        ma20,
-        ma60,
-        ma20_up
-    )
-
-    forward = (
-        calculate_forward_performance(
+    backtest = (
+        calculate_backtest(
             df
         )
     )
+
+    # --------------------------------------------------------
+    # 回測摘要
+    # --------------------------------------------------------
+
+    valid_win_rates = []
+
+    for days in BACKTEST_DAYS:
+
+        item = backtest[
+            str(days)
+        ]
+
+        if item[
+            "win_rate"
+        ] is not None:
+
+            valid_win_rates.append(
+                item["win_rate"]
+            )
+
+    if valid_win_rates:
+
+        overall_win_rate = (
+            sum(valid_win_rates)
+            /
+            len(valid_win_rates)
+        )
+
+    else:
+
+        overall_win_rate = None
+
+    # --------------------------------------------------------
+    # 最終資料
+    # --------------------------------------------------------
 
     result = {
 
         "id": stock_id,
 
-        "symbol": ticker(
-            stock_id
-        ),
+        "symbol": ticker,
 
-        "name": name,
+        "name": stock_name,
 
         "asset_type": asset_type,
 
@@ -1355,20 +1863,11 @@ def analyze_symbol(
 
         "price": {
 
-            "open": clean_number(
-                latest["Open"],
-                2
-            ),
+            "open": open_price,
 
-            "high": clean_number(
-                latest["High"],
-                2
-            ),
+            "high": high,
 
-            "low": clean_number(
-                latest["Low"],
-                2
-            ),
+            "low": low,
 
             "close": close,
 
@@ -1376,157 +1875,78 @@ def analyze_symbol(
 
             "change": change,
 
-            "change_percent":
-                change_percent,
+            "change_percent": change_percent,
 
-            "volume": clean_number(
-                latest["Volume"],
-                0
-            )
+            "volume": volume
         },
 
         "technical": {
 
-            "ma5": clean_number(
-                latest["MA5"],
-                2
-            ),
+            "ma5": ma5,
 
-            "ma10": clean_number(
-                latest["MA10"],
-                2
-            ),
+            "ma10": ma10,
 
             "ma20": ma20,
 
             "ma60": ma60,
 
-            "ma20_slope":
-                clean_number(
-                    latest[
-                        "MA20_SLOPE"
-                    ],
-                    2
-                ),
+            "ma20_slope": ma20_slope,
 
-            "rsi": clean_number(
-                latest["RSI"],
-                2
-            ),
+            "rsi": rsi,
 
-            "dif": clean_number(
-                latest["DIF"],
-                4
-            ),
+            "dif": dif,
 
-            "dem": clean_number(
-                latest["DEM"],
-                4
-            ),
+            "dem": dem,
 
-            "macd_hist":
-                clean_number(
-                    latest[
-                        "MACD_HIST"
-                    ],
-                    4
-                ),
+            "macd_hist": macd_hist,
 
-            "k": clean_number(
-                latest["K"],
-                2
-            ),
+            "k": k,
 
-            "d": clean_number(
-                latest["D"],
-                2
-            ),
+            "d": d,
 
-            "volume_ma5":
-                clean_number(
-                    latest[
-                        "VOLUME_MA5"
-                    ],
-                    0
-                ),
+            "volume_ma5": volume_ma5,
 
-            "volume_ratio":
-                clean_number(
-                    latest[
-                        "VOLUME_RATIO"
-                    ],
-                    2
-                )
+            "volume_ratio": volume_ratio
         },
 
         "conditions": {
 
             "macd_golden_cross":
-                safe_bool(
-                    latest[
-                        "MACD_GOLDEN"
-                    ]
-                ),
+                macd_golden,
 
             "macd_red":
-                safe_bool(
-                    latest[
-                        "MACD_RED"
-                    ]
-                ),
+                macd_red,
 
             "kd_golden_cross":
-                safe_bool(
-                    latest[
-                        "KD_GOLDEN"
-                    ]
-                ),
+                kd_golden,
 
             "kd_low_golden_cross":
-                safe_bool(
-                    latest[
-                        "KD_LOW_GOLDEN"
-                    ]
-                ),
+                kd_low_golden,
 
             "rsi_above_50":
-                safe_bool(
-                    latest[
-                        "RSI_BULLISH"
-                    ]
-                ),
+                rsi_bullish,
 
             "volume_over_1_5x":
-                safe_bool(
-                    latest[
-                        "VOLUME_BREAKOUT"
-                    ]
-                ),
+                volume_breakout,
 
             "above_ma20":
-                safe_bool(
-                    latest[
-                        "ABOVE_MA20"
-                    ]
-                ),
+                above_ma20,
 
             "ma20_up":
                 ma20_up,
 
             "ma20_turn_up":
-                safe_bool(
-                    latest[
-                        "MA20_TURN_UP"
-                    ]
-                ),
+                ma20_turn_up,
 
             "short_term_core":
-                core
+                short_term_core
         },
 
         "short_term": {
 
             "score": score,
+
+            "max_score": 120,
 
             "signal": signal,
 
@@ -1535,59 +1955,52 @@ def analyze_symbol(
             "core_conditions": {
 
                 "macd":
-                    safe_bool(
-                        latest[
-                            "MACD_GOLDEN"
-                        ]
-                    ),
+                    macd_golden,
 
                 "kd":
-                    safe_bool(
-                        latest[
-                            "KD_GOLDEN"
-                        ]
-                    ),
+                    kd_golden,
 
                 "rsi":
-                    safe_bool(
-                        latest[
-                            "RSI_BULLISH"
-                        ]
-                    ),
+                    rsi_bullish,
 
                 "volume":
-                    safe_bool(
-                        latest[
-                            "VOLUME_BREAKOUT"
-                        ]
-                    ),
+                    volume_breakout,
 
                 "ma20":
-                    safe_bool(
-                        latest[
-                            "ABOVE_MA20"
-                        ]
-                    ),
+                    above_ma20,
 
                 "ma20_up":
                     ma20_up
             }
         },
 
+        "backtest": {
+
+            "overall_win_rate":
+                clean_number(
+                    overall_win_rate,
+                    2
+                ),
+
+            "30d":
+                backtest["30"],
+
+            "60d":
+                backtest["60"],
+
+            "90d":
+                backtest["90"]
+        },
+
         "dca": dca,
 
         "risk_control": risk,
-
-        "performance": {
-
-            "forward": forward
-        },
 
         "strategy": {
 
             "short_term": (
                 "符合全部核心條件"
-                if core
+                if short_term_core
                 else
                 "尚未完全符合短期核心條件"
             ),
@@ -1600,244 +2013,73 @@ def analyze_symbol(
         }
     }
 
+    print(
+        f"  收盤：{close} | "
+        f"評分：{score} | "
+        f"訊號：{signal} | "
+        f"30D勝率："
+        f"{backtest['30']['win_rate']}"
+    )
+
     return result
 
 
 # ============================================================
-# 取得股票池
+# 全部股票
 # ============================================================
 
-def build_universe():
-
-    universe = {}
-
-    # 個股備援池
-    for code, name in FALLBACK_STOCKS.items():
-
-        if is_valid_code(code):
-
-            universe[code] = {
-
-                "name": name,
-
-                "asset_type": "stock"
-            }
-
-    # ETF
-    for code, name in ETF_LIST.items():
-
-        if is_valid_code(code):
-
-            universe[code] = {
-
-                "name": name,
-
-                "asset_type": "etf"
-            }
-
-    return universe
-
-
-# ============================================================
-# 批次下載
-# ============================================================
-
-def download_batch(
-    batch,
-    universe
-):
-
-    symbols = [
-        ticker(code)
-        for code in batch
-    ]
-
-    print(
-        f"下載 {len(symbols)} 檔..."
-    )
-
-    try:
-
-        data = yf.download(
-            symbols,
-            period=SCAN_PERIOD,
-            interval="1d",
-            auto_adjust=False,
-            progress=False,
-            threads=True,
-            group_by="ticker"
-        )
-
-        return data
-
-    except Exception as e:
-
-        print(
-            f"批次下載失敗：{e}"
-        )
-
-        return None
-
-
-# ============================================================
-# 從批次資料取出單一股票
-# ============================================================
-
-def extract_symbol_data(
-    data,
-    code
-):
-
-    if data is None:
-
-        return None
-
-    symbol = ticker(
-        code
-    )
-
-    try:
-
-        if isinstance(
-            data.columns,
-            pd.MultiIndex
-        ):
-
-            levels = data.columns
-
-            if symbol in levels.get_level_values(0):
-
-                return data[
-                    symbol
-                ].copy()
-
-            if symbol in levels.get_level_values(1):
-
-                return data[
-                    :,
-                    symbol
-                ].copy()
-
-        else:
-
-            return data.copy()
-
-    except Exception:
-
-        return None
-
-    return None
-
-
-# ============================================================
-# 掃描全市場
-# ============================================================
-
-def scan_market():
-
-    universe = build_universe()
-
-    codes = list(
-        universe.keys()
-    )
-
-    print("")
-    print("=" * 70)
-    print("台股 AI 全市場掃描")
-    print("=" * 70)
-    print(
-        f"分析標的：{len(codes)}"
-    )
-    print(
-        f"個股："
-        f"{sum(1 for x in universe.values() if x['asset_type'] == 'stock')}"
-    )
-    print(
-        f"ETF："
-        f"{sum(1 for x in universe.values() if x['asset_type'] == 'etf')}"
-    )
-    print("=" * 70)
-    print("")
+def fetch_all_stocks():
 
     results = []
 
-    total_batches = (
-        len(codes)
-        +
-        BATCH_SIZE
-        -
-        1
-    ) // BATCH_SIZE
+    total = len(
+        STOCKS
+    )
 
-    for batch_number in range(
-        total_batches
+    print("")
+    print("=" * 70)
+    print("開始抓取台股個股 + ETF")
+    print(
+        f"標的數量：{total}"
+    )
+    print("=" * 70)
+    print("")
+
+    for index, (
+        stock_id,
+        stock_info
+    ) in enumerate(
+        STOCKS.items(),
+        start=1
     ):
 
-        start = (
-            batch_number
-            *
-            BATCH_SIZE
-        )
-
-        end = start + BATCH_SIZE
-
-        batch = codes[
-            start:end
-        ]
-
         print(
-            f"[批次 {batch_number + 1}/"
-            f"{total_batches}]"
+            f"[{index}/{total}]"
         )
 
-        data = download_batch(
-            batch,
-            universe
+        try:
+
+            result = analyze_stock(
+                stock_id,
+                stock_info
+            )
+
+            if result is not None:
+
+                results.append(
+                    result
+                )
+
+        except Exception as e:
+
+            print(
+                f"  分析錯誤：{e}"
+            )
+
+        # Yahoo API 節流
+        time.sleep(
+            0.4
         )
-
-        if data is None:
-
-            continue
-
-        for code in batch:
-
-            info = universe[
-                code
-            ]
-
-            df = extract_symbol_data(
-                data,
-                code
-            )
-
-            try:
-
-                result = analyze_symbol(
-                    code,
-                    info["name"],
-                    info["asset_type"],
-                    df
-                )
-
-                if result is not None:
-
-                    results.append(
-                        result
-                    )
-
-            except Exception as e:
-
-                print(
-                    f"{code} 分析失敗：{e}"
-                )
-
-        if batch_number < (
-            total_batches - 1
-        ):
-
-            time.sleep(
-                BATCH_SLEEP
-            )
 
     return results
 
@@ -1850,48 +2092,80 @@ def create_rankings(
     results
 ):
 
-    stocks = [
-        x
-        for x in results
-        if x["asset_type"]
-        == "stock"
-    ]
+    # --------------------------------------------------------
+    # 全部短線排名
+    # --------------------------------------------------------
 
-    etfs = [
-        x
-        for x in results
-        if x["asset_type"]
-        == "etf"
-    ]
-
-    def ranking_key(x):
-
-        return (
+    short_term = sorted(
+        results,
+        key=lambda x: (
             x["short_term"]["score"],
             x["technical"][
                 "volume_ratio"
             ] or 0
-        )
+        ),
+        reverse=True
+    )
 
-    stocks_sorted = sorted(
+    # --------------------------------------------------------
+    # 個股排名
+    # --------------------------------------------------------
+
+    stocks = [
+        item
+        for item in results
+        if item["asset_type"]
+        == "STOCK"
+    ]
+
+    stocks = sorted(
         stocks,
-        key=ranking_key,
+        key=lambda x: (
+            x["short_term"]["score"],
+            x["technical"][
+                "volume_ratio"
+            ] or 0
+        ),
         reverse=True
     )
 
-    etfs_sorted = sorted(
+    # --------------------------------------------------------
+    # ETF排名
+    # --------------------------------------------------------
+
+    etfs = [
+        item
+        for item in results
+        if item["asset_type"]
+        == "ETF"
+    ]
+
+    etfs = sorted(
         etfs,
-        key=ranking_key,
+        key=lambda x: (
+            x["short_term"]["score"],
+            x["technical"][
+                "volume_ratio"
+            ] or 0
+        ),
         reverse=True
     )
+
+    # --------------------------------------------------------
+    # 核心條件
+    # --------------------------------------------------------
 
     core = [
-        x
-        for x in stocks_sorted
-        if x["conditions"][
+        item
+        for item in results
+        if item["conditions"][
             "short_term_core"
         ]
     ]
+
+    # --------------------------------------------------------
+    # DCA
+    # --------------------------------------------------------
 
     dca = sorted(
         results,
@@ -1904,219 +2178,363 @@ def create_rankings(
         reverse=True
     )
 
+    # --------------------------------------------------------
+    # 回測勝率
+    # --------------------------------------------------------
+
+    backtest = sorted(
+        results,
+        key=lambda x: (
+            x["backtest"][
+                "overall_win_rate"
+            ]
+            if
+            x["backtest"][
+                "overall_win_rate"
+            ] is not None
+            else -1
+        ),
+        reverse=True
+    )
+
     return {
 
-        "short_term_top20": [
-            x["id"]
-            for x in stocks_sorted[:20]
+        "short_term": [
+            item["id"]
+            for item in short_term[:10]
         ],
 
-        "stock_top10": [
-            x["id"]
-            for x in stocks_sorted[:10]
+        "stocks": [
+            item["id"]
+            for item in stocks[:10]
         ],
 
-        "etf_top10": [
-            x["id"]
-            for x in etfs_sorted[:10]
+        "etf": [
+            item["id"]
+            for item in etfs[:10]
         ],
 
         "core": [
-            x["id"]
-            for x in core
+            item["id"]
+            for item in core
         ],
 
-        "dca_top20": [
-            x["id"]
-            for x in dca[:20]
+        "dca": [
+            item["id"]
+            for item in dca[:10]
+        ],
+
+        "backtest": [
+            item["id"]
+            for item in backtest[:10]
         ]
     }
 
 
 # ============================================================
-# 統計
+# 系統統計
 # ============================================================
 
 def create_statistics(
     results
 ):
 
-    total = len(results)
-
-    stocks = sum(
-        1
-        for x in results
-        if x["asset_type"]
-        == "stock"
+    total = len(
+        results
     )
 
-    etfs = sum(
+    stock_count = sum(
         1
-        for x in results
-        if x["asset_type"]
-        == "etf"
+        for item in results
+        if item["asset_type"]
+        == "STOCK"
     )
 
-    core = sum(
+    etf_count = sum(
         1
-        for x in results
-        if x["conditions"][
+        for item in results
+        if item["asset_type"]
+        == "ETF"
+    )
+
+    core_count = sum(
+        1
+        for item in results
+        if item["conditions"][
             "short_term_core"
         ]
     )
 
-    high_attention = sum(
+    macd_count = sum(
         1
-        for x in results
-        if x["short_term"]["score"]
-        >= 75
+        for item in results
+        if item["conditions"][
+            "macd_golden_cross"
+        ]
     )
 
-    bullish = sum(
+    kd_count = sum(
         1
-        for x in results
-        if x["short_term"]["score"]
-        >= 60
+        for item in results
+        if item["conditions"][
+            "kd_golden_cross"
+        ]
     )
 
-    return {
-
-        "total_scanned": total,
-
-        "stocks": stocks,
-
-        "etfs": etfs,
-
-        "core_stocks": core,
-
-        "high_attention": high_attention,
-
-        "bullish": bullish
-    }
-
-
-# ============================================================
-# 系統資訊
-# ============================================================
-
-def create_system():
-
-    now = datetime.now(
-        TAIPEI_TZ
+    rsi_count = sum(
+        1
+        for item in results
+        if item["conditions"][
+            "rsi_above_50"
+        ]
     )
 
-    return {
+    volume_count = sum(
+        1
+        for item in results
+        if item["conditions"][
+            "volume_over_1_5x"
+        ]
+    )
 
-        "name":
-            "台股 AI 選股・零股定投・ETF・動態風控",
+    ma20_count = sum(
+        1
+        for item in results
+        if item["conditions"][
+            "above_ma20"
+        ]
+    )
 
-        "version":
-            "3.0 FULL MARKET",
+    # --------------------------------------------------------
+    # 平均回測勝率
+    # --------------------------------------------------------
 
-        "generated_at":
-            now.isoformat(),
+    backtest_average = {}
 
-        "timezone":
-            "Asia/Taipei",
+    for days in BACKTEST_DAYS:
 
-        "data_source":
-            "Yahoo Finance",
+        values = []
 
-        "scan_mode":
-            "FULL_MARKET",
+        for item in results:
 
-        "description":
-            "上市/上櫃個股＋ETF自動掃描"
-    }
-
-
-# ============================================================
-# 策略設定
-# ============================================================
-
-def create_strategy():
-
-    return {
-
-        "short_term": {
-
-            "macd_golden_cross":
-                True,
-
-            "kd_golden_cross":
-                True,
-
-            "rsi_above":
-                50,
-
-            "volume_multiplier":
-                1.5,
-
-            "above_ma20":
-                True,
-
-            "ma20_up":
-                True
-        },
-
-        "scoring": {
-
-            "max_score":
-                125,
-
-            "macd_golden":
-                25,
-
-            "kd_golden":
-                20,
-
-            "kd_low_golden":
-                25,
-
-            "rsi":
-                15,
-
-            "volume":
-                20,
-
-            "above_ma20":
-                8,
-
-            "ma20_up":
-                5,
-
-            "ma20_turn_up":
-                7
-        },
-
-        "dca": {
-
-            "reference":
-                "MA20",
-
-            "levels": [
-
-                "MA20附近",
-
-                "MA20下方3%",
-
-                "MA20下方6%",
-
-                "MA20下方10%"
+            value = item[
+                "backtest"
+            ][
+                f"{days}d"
+            ][
+                "win_rate"
             ]
-        },
 
-        "performance_tracking": {
+            if value is not None:
 
-            "windows":
-                [30, 60, 90],
+                values.append(
+                    value
+                )
 
-            "metric":
-                "forward_return",
+        if values:
 
-            "win_definition":
-                "future_return > 0"
+            backtest_average[
+                f"{days}d"
+            ] = clean_number(
+                sum(values)
+                /
+                len(values),
+                2
+            )
+
+        else:
+
+            backtest_average[
+                f"{days}d"
+            ] = None
+
+    return {
+
+        "total_stocks": total,
+
+        "stock_count": stock_count,
+
+        "etf_count": etf_count,
+
+        "core_stocks": core_count,
+
+        "macd_golden": macd_count,
+
+        "kd_golden": kd_count,
+
+        "rsi_above_50": rsi_count,
+
+        "volume_breakout": volume_count,
+
+        "above_ma20": ma20_count,
+
+        "backtest_average": backtest_average
+    }
+
+
+# ============================================================
+# 儀表板摘要
+# ============================================================
+
+def create_dashboard_summary(
+    results
+):
+
+    if not results:
+
+        return {
+
+            "market_status":
+                "無資料",
+
+            "top_stock":
+                None,
+
+            "top_etf":
+                None,
+
+            "core_count":
+                0,
+
+            "average_win_rate_30d":
+                None,
+
+            "average_win_rate_60d":
+                None,
+
+            "average_win_rate_90d":
+                None
         }
+
+    stocks = [
+        item
+        for item in results
+        if item["asset_type"]
+        == "STOCK"
+    ]
+
+    etfs = [
+        item
+        for item in results
+        if item["asset_type"]
+        == "ETF"
+    ]
+
+    stocks = sorted(
+        stocks,
+        key=lambda x:
+        x["short_term"]["score"],
+        reverse=True
+    )
+
+    etfs = sorted(
+        etfs,
+        key=lambda x:
+        x["short_term"]["score"],
+        reverse=True
+    )
+
+    core_count = sum(
+        1
+        for item in results
+        if item["conditions"][
+            "short_term_core"
+        ]
+    )
+
+    def average_win_rate(
+        days
+    ):
+
+        values = []
+
+        for item in results:
+
+            value = item[
+                "backtest"
+            ][
+                f"{days}d"
+            ][
+                "win_rate"
+            ]
+
+            if value is not None:
+
+                values.append(
+                    value
+                )
+
+        if not values:
+
+            return None
+
+        return clean_number(
+            sum(values)
+            /
+            len(values),
+            2
+        )
+
+    # --------------------------------------------------------
+    # 市場狀態
+    # --------------------------------------------------------
+
+    core_ratio = (
+        core_count
+        /
+        len(results)
+    )
+
+    if core_ratio >= 0.30:
+
+        market_status = (
+            "多方偏強"
+        )
+
+    elif core_ratio >= 0.15:
+
+        market_status = (
+            "震盪偏多"
+        )
+
+    elif core_ratio >= 0.05:
+
+        market_status = (
+            "震盪觀察"
+        )
+
+    else:
+
+        market_status = (
+            "偏弱"
+        )
+
+    return {
+
+        "market_status":
+            market_status,
+
+        "top_stock":
+            stocks[0]["id"]
+            if stocks
+            else None,
+
+        "top_etf":
+            etfs[0]["id"]
+            if etfs
+            else None,
+
+        "core_count":
+            core_count,
+
+        "average_win_rate_30d":
+            average_win_rate(30),
+
+        "average_win_rate_60d":
+            average_win_rate(60),
+
+        "average_win_rate_90d":
+            average_win_rate(90)
     }
 
 
@@ -2136,13 +2554,103 @@ def save_json(
         results
     )
 
+    dashboard = (
+        create_dashboard_summary(
+            results
+        )
+    )
+
+    now = datetime.now(
+        TAIPEI_TZ
+    )
+
     output = {
 
-        "system":
-            create_system(),
+        "system": {
 
-        "strategy":
-            create_strategy(),
+            "name":
+                "台股 AI 選股・零股定投・動態風控儀表板",
+
+            "version":
+                "3.0",
+
+            "generated_at":
+                now.isoformat(),
+
+            "timezone":
+                "Asia/Taipei",
+
+            "data_source":
+                "Yahoo Finance",
+
+            "engine":
+                "fetch_data.py V3",
+
+            "backtest_enabled":
+                True
+        },
+
+        "strategy": {
+
+            "short_term": {
+
+                "macd_golden_cross":
+                    True,
+
+                "kd_golden_cross":
+                    True,
+
+                "rsi_above":
+                    50,
+
+                "volume_multiplier":
+                    1.5,
+
+                "above_ma20":
+                    True,
+
+                "ma20_up":
+                    True
+            },
+
+            "dca": {
+
+                "reference":
+                    "20MA",
+
+                "levels": [
+
+                    "MA20附近",
+
+                    "MA20下方3%",
+
+                    "MA20下方6%",
+
+                    "MA20下方10%"
+                ]
+            },
+
+            "backtest": {
+
+                "enabled":
+                    True,
+
+                "periods": [
+
+                    30,
+
+                    60,
+
+                    90
+                ],
+
+                "win_definition":
+                    "訊號後N個交易日收盤價高於訊號日收盤價"
+            }
+        },
+
+        "dashboard":
+            dashboard,
 
         "statistics":
             statistics,
@@ -2154,6 +2662,10 @@ def save_json(
             results
     }
 
+    # --------------------------------------------------------
+    # 寫入
+    # --------------------------------------------------------
+
     with open(
         OUTPUT_FILE,
         "w",
@@ -2164,103 +2676,129 @@ def save_json(
             output,
             f,
             ensure_ascii=False,
-            indent=2,
-            allow_nan=False
+            indent=2
         )
+
+    # --------------------------------------------------------
+    # Console
+    # --------------------------------------------------------
 
     print("")
     print("=" * 70)
     print("資料寫入完成")
     print("=" * 70)
-    print(
-        f"檔案：{OUTPUT_FILE}"
-    )
-    print(
-        f"總掃描："
-        f"{statistics['total_scanned']}"
-    )
-    print(
-        f"個股："
-        f"{statistics['stocks']}"
-    )
-    print(
-        f"ETF："
-        f"{statistics['etfs']}"
-    )
-    print(
-        f"核心條件："
-        f"{statistics['core_stocks']}"
-    )
-    print(
-        f"高度關注："
-        f"{statistics['high_attention']}"
-    )
     print("")
 
-    print("個股 Top 10：")
+    print(
+        f"檔案："
+        f"{OUTPUT_FILE}"
+    )
 
-    stock_map = {
-        x["id"]: x
-        for x in results
-        if x["asset_type"]
-        == "stock"
-    }
+    print(
+        f"總標的："
+        f"{statistics['total_stocks']}"
+    )
 
-    for i, code in enumerate(
-        rankings["stock_top10"],
-        1
+    print(
+        f"個股："
+        f"{statistics['stock_count']}"
+    )
+
+    print(
+        f"ETF："
+        f"{statistics['etf_count']}"
+    )
+
+    print(
+        f"符合核心條件："
+        f"{statistics['core_stocks']}"
+    )
+
+    print("")
+
+    print(
+        "市場狀態："
+        f"{dashboard['market_status']}"
+    )
+
+    print("")
+
+    print(
+        "30日平均勝率："
+        f"{dashboard['average_win_rate_30d']}"
+    )
+
+    print(
+        "60日平均勝率："
+        f"{dashboard['average_win_rate_60d']}"
+    )
+
+    print(
+        "90日平均勝率："
+        f"{dashboard['average_win_rate_90d']}"
+    )
+
+    print("")
+
+    print(
+        "短線排名："
+    )
+
+    for rank, stock_id in enumerate(
+        rankings["short_term"],
+        start=1
     ):
 
-        stock = stock_map.get(
-            code
+        stock = next(
+            (
+                item
+                for item in results
+                if item["id"]
+                == stock_id
+            ),
+            None
         )
 
         if stock:
 
             print(
-                f"{i:02d}. "
-                f"{code} "
+                f"{rank}. "
+                f"{stock['id']} "
                 f"{stock['name']} "
-                f""
-                f"分數="
-                f"{stock['short_term']['score']} "
-                f""
-                f"訊號="
-                f"{stock['short_term']['signal']}"
+                f"[{stock['asset_type']}] "
+                f"評分："
+                f"{stock['short_term']['score']}"
             )
 
     print("")
 
-    print("ETF Top 10：")
+    print(
+        "ETF排名："
+    )
 
-    etf_map = {
-        x["id"]: x
-        for x in results
-        if x["asset_type"]
-        == "etf"
-    }
-
-    for i, code in enumerate(
-        rankings["etf_top10"],
-        1
+    for rank, stock_id in enumerate(
+        rankings["etf"],
+        start=1
     ):
 
-        etf = etf_map.get(
-            code
+        stock = next(
+            (
+                item
+                for item in results
+                if item["id"]
+                == stock_id
+            ),
+            None
         )
 
-        if etf:
+        if stock:
 
             print(
-                f"{i:02d}. "
-                f"{code} "
-                f"{etf['name']} "
-                f""
-                f"分數="
-                f"{etf['short_term']['score']} "
-                f""
-                f"訊號="
-                f"{etf['short_term']['signal']}"
+                f"{rank}. "
+                f"{stock['id']} "
+                f"{stock['name']} "
+                f"評分："
+                f"{stock['short_term']['score']}"
             )
 
     print("")
@@ -2275,23 +2813,30 @@ def main():
     print("")
     print("=" * 70)
     print(
-        "台股 AI 選股 + ETF + 零股定投"
+        "台股 AI 選股 + 零股定投"
     )
+
     print(
-        "FULL MARKET VERSION 3.0"
+        "+ 動態風控 + 30/60/90日勝率"
     )
+
+    print(
+        "V3 正式版"
+    )
+
     print("=" * 70)
     print("")
 
     start_time = time.time()
 
-    results = scan_market()
+    results = fetch_all_stocks()
 
     if not results:
 
         print("")
         print(
-            "錯誤：沒有成功取得任何市場資料。"
+            "錯誤："
+            "沒有成功取得任何股票資料。"
         )
         print("")
 
