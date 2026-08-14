@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>台股資訊儀表板</title>
+  <title>台股 AI 選股儀表板</title>
   <style>
     :root {
       --bg-color: #0f172a;
@@ -12,60 +12,135 @@
       --text-main: #f8fafc;
       --text-muted: #94a3b8;
       --accent-blue: #38bdf8;
+      --price-up: #ef4444;   /* 台股：紅漲 */
+      --price-down: #10b981; /* 台股：綠跌 */
+      --badge-core: #10b981;
     }
 
     * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
     body { background-color: var(--bg-color); color: var(--text-main); padding: 16px; max-width: 600px; margin: 0 auto; }
 
+    /* 頂部總覽區 */
     .dashboard-header { background: var(--card-bg); border: 1px solid var(--card-border); border-radius: 12px; padding: 16px; margin-bottom: 20px; }
     .dashboard-title { font-size: 1.25rem; font-weight: bold; margin-bottom: 6px; }
-    .status-msg { color: var(--accent-blue); font-size: 0.85rem; }
+    .update-time { color: var(--accent-blue); font-size: 0.85rem; margin-bottom: 12px; }
 
+    .stats-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; font-size: 0.8rem; background: rgba(0, 0, 0, 0.2); padding: 10px; border-radius: 8px; text-align: center; }
+    .stats-item span { display: block; font-weight: bold; color: var(--accent-blue); font-size: 1rem; margin-top: 2px; }
+
+    /* 個股卡片列表 */
     .stock-list { display: flex; flex-direction: column; gap: 16px; }
     .stock-card { background: var(--card-bg); border: 1px solid var(--card-border); border-radius: 12px; padding: 16px; }
 
-    pre { background: rgba(0, 0, 0, 0.3); padding: 12px; border-radius: 8px; color: #38bdf8; font-size: 0.85rem; overflow-x: auto; white-space: pre-wrap; word-break: break-all; }
+    .card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
+    .stock-title { font-size: 1.15rem; font-weight: bold; }
+    .stock-code { font-size: 0.85rem; color: var(--text-muted); font-weight: normal; }
+    
+    .ai-score-badge { background: rgba(56, 189, 248, 0.15); color: var(--accent-blue); padding: 4px 10px; border-radius: 6px; font-size: 0.85rem; font-weight: bold; }
+
+    .price-row { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 12px; }
+    .current-price { font-size: 1.3rem; font-weight: bold; }
+    .price-change { font-size: 0.95rem; font-weight: bold; }
+    .price-up { color: var(--price-up); }
+    .price-down { color: var(--price-down); }
+
+    /* 技術指標網格 */
+    .tech-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; font-size: 0.85rem; background: rgba(0, 0, 0, 0.2); padding: 12px; border-radius: 8px; }
+    .tech-item { color: var(--text-muted); }
+    .tech-item span { color: var(--text-main); font-weight: 600; float: right; }
+
+    .signal-badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 0.75rem; font-weight: bold; background: rgba(16, 185, 129, 0.2); color: var(--badge-core); margin-left: 6px; }
   </style>
 </head>
 <body>
 
+  <!-- 頂部總覽卡片 -->
   <div class="dashboard-header">
-    <div class="dashboard-title">台股數據監控</div>
-    <div class="status-msg" id="statusMsg">正在讀取 Data/prices.json...</div>
+    <div class="dashboard-title">台股 AI 選股儀表板 <span id="appVersion" style="font-size: 0.8rem; color: var(--text-muted);"></span></div>
+    <div class="update-time" id="generatedAt">正在讀取 Data/prices.json...</div>
+    
+    <!-- 統計數據 -->
+    <div class="stats-grid" id="statsContainer">
+      <div class="stats-item">掃描總數<span id="statTotal">--</span></div>
+      <div class="stats-item">CORE 核心<span id="statCore">--</span></div>
+      <div class="stats-item">STRONG 強勢<span id="statStrong">--</span></div>
+    </div>
   </div>
 
-  <div class="stock-list" id="dataContainer"></div>
+  <!-- 個股數據列表 -->
+  <div class="stock-list" id="stockListContainer"></div>
 
   <script>
-    async function loadData() {
-      const statusElem = document.getElementById('statusMsg');
-      const container = document.getElementById('dataContainer');
+    async function loadDashboardData() {
+      const timeElem = document.getElementById('generatedAt');
+      const container = document.getElementById("stockListContainer");
 
       try {
-        // 直接從 Data/prices.json 抓取資料
-        const response = await fetch('./Data/prices.json');
+        const res = await fetch('./Data/prices.json');
         
-        if (!response.ok) {
-          throw new Error(`HTTP 狀態碼: ${response.status}`);
+        if (!res.ok) {
+          throw new Error(`HTTP 狀態碼: ${res.status}`);
         }
 
-        const jsonData = await response.json();
-        statusElem.innerText = "資料讀取成功";
+        const data = await res.json();
 
-        // 完整呈現 JSON 內容
-        container.innerHTML = `
-          <div class="stock-card">
-            <pre>${JSON.stringify(jsonData, null, 2)}</pre>
-          </div>
-        `;
+        // 1. 渲染頂部資訊與統計數據
+        document.getElementById('appVersion').innerText = data.version ? `(${data.version})` : '';
+        timeElem.innerText = `資料生成時間：${data.generated_at || data.updated_at || '最新'}`;
+
+        if (data.statistics) {
+          document.getElementById('statTotal').innerText = data.statistics.total || '--';
+          document.getElementById('statCore').innerText = data.statistics.core || '--';
+          document.getElementById('statStrong').innerText = data.statistics.strong || '--';
+        }
+
+        // 2. 讀取 top30 陣列數據並渲染
+        const stockList = data.top30 || [];
+        let html = "";
+
+        stockList.forEach(item => {
+          const changePct = item.change_pct ?? 0;
+          const isUp = changePct >= 0;
+          const priceClass = isUp ? "price-up" : "price-down";
+          const changeSign = isUp ? "+" : "";
+
+          html += `
+            <div class="stock-card">
+              <!-- 標題：股名、代號、AI 分數 -->
+              <div class="card-header">
+                <div class="stock-title">
+                  ${item.name} <span class="stock-code">${item.symbol || item.code}</span>
+                  ${item.signal ? `<span class="signal-badge">${item.signal}</span>` : ''}
+                </div>
+                <div class="ai-score-badge">AI SCORE: ${item.ai_score ?? '--'}</div>
+              </div>
+
+              <!-- 股價與漲跌幅 -->
+              <div class="price-row">
+                <div class="current-price ${priceClass}">${item.price ?? '--'}</div>
+                <div class="price-change ${priceClass}">${changeSign}${changePct}%</div>
+              </div>
+
+              <!-- 技術指標細節 -->
+              <div class="tech-grid">
+                <div class="tech-item">RSI (14)<span>${item.rsi ?? '--'}</span></div>
+                <div class="tech-item">20日線 (MA20)<span>${item.ma20 ?? '--'}</span></div>
+                <div class="tech-item">KD (K / D)<span>${item.kd_k ?? '--'} / ${item.kd_d ?? '--'}</span></div>
+                <div class="tech-item">成交量<span>${item.volume ? Number(item.volume).toLocaleString() : '--'}</span></div>
+              </div>
+            </div>
+          `;
+        });
+
+        container.innerHTML = html;
 
       } catch (error) {
-        console.error("讀取失敗:", error);
-        statusElem.innerText = "數據讀取失敗，請確認 Data/prices.json 檔案是否存在。";
+        console.error("讀取 Data/prices.json 失敗:", error);
+        timeElem.innerText = "數據讀取失敗，請確認 Data/prices.json 路徑與內容。";
       }
     }
 
-    window.onload = loadData;
+    window.onload = loadDashboardData;
   </script>
 </body>
 </html>
