@@ -2,4322 +2,1912 @@
 <html lang="zh-TW">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1.0">
-<meta name="theme-color" content="#0b1220">
-<title>台股 AI 選股 × 零股定投 × 動態風控</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<title>零股定投與動態風控儀表板</title>
 
 <style>
-:root{
-  --bg:#070b14;
-  --bg2:#0b1220;
-  --panel:#101827;
-  --panel2:#151f31;
-  --panel3:#1a263a;
-  --border:#26344a;
-  --text:#f3f6fb;
-  --muted:#8e9bb0;
-  --green:#25d69a;
-  --red:#ff5d70;
-  --yellow:#f5c451;
-  --blue:#4ca3ff;
-  --purple:#a77bff;
-  --cyan:#42d9ff;
-  --shadow:0 12px 35px rgba(0,0,0,.25);
-  --radius:18px;
+:root {
+    --bg: #f4f6f8;
+    --card: #ffffff;
+    --text: #1f2937;
+    --muted: #6b7280;
+    --border: #e5e7eb;
+    --primary: #2563eb;
+    --primary-dark: #1d4ed8;
+    --green: #16a34a;
+    --red: #dc2626;
+    --orange: #ea580c;
+    --yellow: #ca8a04;
+    --shadow: 0 4px 14px rgba(0,0,0,0.06);
+    --radius: 14px;
 }
 
-*{
-  box-sizing:border-box;
-  -webkit-tap-highlight-color:transparent;
+* {
+    box-sizing: border-box;
 }
 
-html,body{
-  margin:0;
-  padding:0;
-  background:var(--bg);
-  color:var(--text);
-  font-family:
-    -apple-system,
-    BlinkMacSystemFont,
-    "Segoe UI",
-    "Noto Sans TC",
-    "PingFang TC",
-    Arial,
-    sans-serif;
+body {
+    margin: 0;
+    padding: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family:
+        -apple-system,
+        BlinkMacSystemFont,
+        "Segoe UI",
+        "Noto Sans TC",
+        Arial,
+        sans-serif;
 }
 
-body{
-  min-height:100vh;
+.container {
+    width: min(1200px, 94%);
+    margin: 0 auto;
+    padding: 20px 0 50px;
 }
 
-button,
+header {
+    background: linear-gradient(135deg, #1e3a8a, #2563eb);
+    color: white;
+    border-radius: 18px;
+    padding: 24px;
+    margin-bottom: 20px;
+    box-shadow: var(--shadow);
+}
+
+header h1 {
+    margin: 0 0 8px;
+    font-size: 26px;
+}
+
+header p {
+    margin: 0;
+    opacity: 0.9;
+    font-size: 14px;
+}
+
+.section {
+    margin-bottom: 20px;
+}
+
+.section-title {
+    font-size: 19px;
+    font-weight: 700;
+    margin: 0 0 12px;
+}
+
+.summary-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 14px;
+}
+
+.card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 18px;
+    box-shadow: var(--shadow);
+}
+
+.summary-label {
+    color: var(--muted);
+    font-size: 13px;
+    margin-bottom: 7px;
+}
+
+.summary-value {
+    font-size: 24px;
+    font-weight: 800;
+    word-break: break-word;
+}
+
+.summary-sub {
+    margin-top: 6px;
+    font-size: 12px;
+    color: var(--muted);
+}
+
+.profit {
+    color: var(--green);
+}
+
+.loss {
+    color: var(--red);
+}
+
+.neutral {
+    color: var(--text);
+}
+
+.toolbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 12px;
+    flex-wrap: wrap;
+}
+
+.button-group {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+button {
+    border: 0;
+    border-radius: 9px;
+    padding: 10px 15px;
+    font-size: 14px;
+    font-weight: 700;
+    cursor: pointer;
+}
+
+.btn-primary {
+    background: var(--primary);
+    color: white;
+}
+
+.btn-primary:hover {
+    background: var(--primary-dark);
+}
+
+.btn-secondary {
+    background: #e5e7eb;
+    color: #374151;
+}
+
+.btn-danger {
+    background: #fee2e2;
+    color: #991b1b;
+}
+
+.btn-success {
+    background: #dcfce7;
+    color: #166534;
+}
+
+.table-wrap {
+    overflow-x: auto;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+}
+
+table {
+    width: 100%;
+    border-collapse: collapse;
+    min-width: 1050px;
+}
+
+th,
+td {
+    padding: 12px 10px;
+    border-bottom: 1px solid var(--border);
+    text-align: right;
+    font-size: 13px;
+    white-space: nowrap;
+}
+
+th {
+    background: #f8fafc;
+    color: #475569;
+    font-weight: 700;
+}
+
+th:first-child,
+td:first-child {
+    text-align: left;
+}
+
+tr:last-child td {
+    border-bottom: none;
+}
+
+.stock-name {
+    font-weight: 700;
+}
+
+.stock-code {
+    color: var(--muted);
+    font-size: 11px;
+    margin-top: 2px;
+}
+
+.badge {
+    display: inline-block;
+    padding: 4px 7px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 700;
+}
+
+.badge-good {
+    background: #dcfce7;
+    color: #166534;
+}
+
+.badge-warning {
+    background: #fef3c7;
+    color: #92400e;
+}
+
+.badge-danger {
+    background: #fee2e2;
+    color: #991b1b;
+}
+
+.empty {
+    text-align: center;
+    padding: 45px 20px;
+    color: var(--muted);
+}
+
+.form-card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 20px;
+    box-shadow: var(--shadow);
+}
+
+.form-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 14px;
+}
+
+.form-group {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.form-group.full {
+    grid-column: 1 / -1;
+}
+
+label {
+    font-size: 13px;
+    font-weight: 700;
+    color: #374151;
+}
+
 input,
-select{
-  font:inherit;
-}
-
-button{
-  cursor:pointer;
-}
-
-.app{
-  min-height:100vh;
-  display:flex;
-}
-
-/* =========================
-   SIDEBAR
-========================= */
-
-.sidebar{
-  width:245px;
-  position:fixed;
-  left:0;
-  top:0;
-  bottom:0;
-  background:#0a101c;
-  border-right:1px solid var(--border);
-  padding:22px 14px;
-  z-index:100;
-  overflow-y:auto;
-}
-
-.brand{
-  padding:4px 12px 22px;
-}
-
-.brand-title{
-  font-size:20px;
-  font-weight:800;
-  letter-spacing:.5px;
-}
-
-.brand-sub{
-  color:var(--muted);
-  font-size:12px;
-  margin-top:6px;
-}
-
-.nav-section{
-  color:#637188;
-  font-size:11px;
-  font-weight:700;
-  padding:15px 12px 8px;
-  letter-spacing:1px;
-}
-
-.nav-btn{
-  width:100%;
-  border:0;
-  background:transparent;
-  color:#9da9bb;
-  padding:12px 13px;
-  border-radius:12px;
-  display:flex;
-  align-items:center;
-  gap:11px;
-  text-align:left;
-  margin-bottom:3px;
-  transition:.2s;
-}
-
-.nav-btn:hover{
-  background:#111b2b;
-  color:white;
-}
-
-.nav-btn.active{
-  background:linear-gradient(
-    135deg,
-    rgba(76,163,255,.18),
-    rgba(167,123,255,.12)
-  );
-  color:white;
-  border:1px solid rgba(76,163,255,.22);
-}
-
-.nav-icon{
-  width:22px;
-  text-align:center;
-  font-size:17px;
-}
-
-.nav-label{
-  flex:1;
-}
-
-.nav-count{
-  min-width:20px;
-  height:20px;
-  border-radius:10px;
-  background:#202c40;
-  color:#b9c6d8;
-  font-size:11px;
-  display:flex;
-  align-items:center;
-  justify-content:center;
-}
-
-.sidebar-status{
-  margin-top:20px;
-  padding:12px;
-  border-radius:14px;
-  background:#0f1827;
-  border:1px solid var(--border);
-}
-
-.status-dot{
-  display:inline-block;
-  width:8px;
-  height:8px;
-  border-radius:50%;
-  background:var(--green);
-  margin-right:6px;
-}
-
-.status-text{
-  font-size:11px;
-  color:var(--muted);
-}
-
-/* =========================
-   MAIN
-========================= */
-
-.main{
-  margin-left:245px;
-  width:calc(100% - 245px);
-  min-height:100vh;
-}
-
-.topbar{
-  height:72px;
-  border-bottom:1px solid var(--border);
-  background:rgba(7,11,20,.88);
-  backdrop-filter:blur(15px);
-  display:flex;
-  align-items:center;
-  justify-content:space-between;
-  padding:0 28px;
-  position:sticky;
-  top:0;
-  z-index:90;
-}
-
-.page-title{
-  font-size:19px;
-  font-weight:800;
-}
-
-.page-desc{
-  font-size:11px;
-  color:var(--muted);
-  margin-top:3px;
-}
-
-.top-actions{
-  display:flex;
-  gap:9px;
-  align-items:center;
-}
-
-.icon-btn{
-  border:1px solid var(--border);
-  background:#101827;
-  color:#cbd5e4;
-  width:38px;
-  height:38px;
-  border-radius:11px;
-}
-
-.content{
-  padding:26px;
-  max-width:1500px;
-  margin:auto;
-}
-
-/* =========================
-   SEARCH
-========================= */
-
-.search-wrap{
-  position:relative;
-  width:390px;
-}
-
-.search-box{
-  width:100%;
-  height:43px;
-  background:#111a2a;
-  border:1px solid var(--border);
-  border-radius:12px;
-  padding:0 15px 0 42px;
-  color:white;
-  outline:none;
-}
-
-.search-box:focus{
-  border-color:var(--blue);
-}
-
-.search-icon{
-  position:absolute;
-  left:15px;
-  top:11px;
-  color:#718097;
-}
-
-.search-results{
-  position:absolute;
-  top:48px;
-  left:0;
-  right:0;
-  background:#101827;
-  border:1px solid var(--border);
-  border-radius:14px;
-  overflow:hidden;
-  box-shadow:var(--shadow);
-  z-index:200;
-  display:none;
-}
-
-.search-results.show{
-  display:block;
-}
-
-.search-result{
-  padding:12px 14px;
-  display:flex;
-  align-items:center;
-  justify-content:space-between;
-  border-bottom:1px solid #1b2738;
-  cursor:pointer;
-}
-
-.search-result:last-child{
-  border-bottom:0;
-}
-
-.search-result:hover{
-  background:#162235;
-}
-
-.result-code{
-  font-weight:800;
-}
-
-.result-name{
-  color:#c4cedd;
-  margin-left:8px;
-}
-
-.result-market{
-  color:#68768c;
-  font-size:11px;
-}
-
-/* =========================
-   COMMON
-========================= */
-
-.section{
-  display:none;
-}
-
-.section.active{
-  display:block;
-}
-
-.hero{
-  margin-bottom:22px;
-}
-
-.hero-title{
-  font-size:27px;
-  font-weight:850;
-  letter-spacing:-.4px;
-}
-
-.hero-desc{
-  margin-top:7px;
-  color:var(--muted);
-  font-size:13px;
-}
-
-.grid{
-  display:grid;
-  gap:16px;
-}
-
-.grid-4{
-  grid-template-columns:repeat(4,minmax(0,1fr));
-}
-
-.grid-3{
-  grid-template-columns:repeat(3,minmax(0,1fr));
-}
-
-.grid-2{
-  grid-template-columns:repeat(2,minmax(0,1fr));
-}
-
-.card{
-  background:linear-gradient(
-    145deg,
-    rgba(16,24,39,.98),
-    rgba(12,19,32,.98)
-  );
-  border:1px solid var(--border);
-  border-radius:var(--radius);
-  box-shadow:var(--shadow);
-}
-
-.stat-card{
-  padding:19px;
-  min-height:120px;
-}
-
-.stat-label{
-  color:#8290a5;
-  font-size:12px;
-}
-
-.stat-value{
-  font-size:27px;
-  font-weight:850;
-  margin-top:10px;
-}
-
-.stat-note{
-  margin-top:7px;
-  color:#68768a;
-  font-size:11px;
-}
-
-.section-head{
-  display:flex;
-  justify-content:space-between;
-  align-items:center;
-  margin:28px 0 14px;
-}
-
-.section-title{
-  font-size:17px;
-  font-weight:800;
-}
-
-.section-sub{
-  color:var(--muted);
-  font-size:11px;
-  margin-top:3px;
-}
-
-.btn{
-  border:1px solid var(--border);
-  background:#141f31;
-  color:#eaf0f8;
-  border-radius:10px;
-  padding:9px 13px;
-  font-size:12px;
-  font-weight:700;
-}
-
-.btn:hover{
-  background:#1b2a40;
-}
-
-.btn-primary{
-  background:linear-gradient(135deg,#287fd2,#526bdc);
-  border-color:#438de0;
-}
-
-.btn-green{
-  background:rgba(37,214,154,.12);
-  border-color:rgba(37,214,154,.3);
-  color:#55e5b0;
-}
-
-.btn-danger{
-  background:rgba(255,93,112,.1);
-  border-color:rgba(255,93,112,.25);
-  color:#ff8090;
-}
-
-.btn-small{
-  padding:7px 10px;
-  font-size:11px;
-}
-
-.badge{
-  display:inline-flex;
-  align-items:center;
-  border-radius:999px;
-  padding:5px 9px;
-  font-size:10px;
-  font-weight:800;
-}
-
-.badge-green{
-  background:rgba(37,214,154,.1);
-  color:#45dda7;
-}
-
-.badge-red{
-  background:rgba(255,93,112,.1);
-  color:#ff7182;
-}
-
-.badge-yellow{
-  background:rgba(245,196,81,.1);
-  color:#f4cb69;
-}
-
-.badge-blue{
-  background:rgba(76,163,255,.1);
-  color:#6db6ff;
-}
-
-.empty{
-  padding:48px 25px;
-  text-align:center;
-  color:#69778c;
-}
-
-.empty-icon{
-  font-size:38px;
-  margin-bottom:12px;
-  opacity:.6;
-}
-
-.empty-title{
-  color:#aeb9c9;
-  font-weight:800;
-  font-size:15px;
-}
-
-.empty-text{
-  margin-top:7px;
-  font-size:12px;
-}
-
-/* =========================
-   STOCK CARD
-========================= */
-
-.stock-card{
-  padding:17px;
-  position:relative;
-  overflow:hidden;
-}
-
-.stock-top{
-  display:flex;
-  align-items:flex-start;
-  justify-content:space-between;
-}
-
-.stock-code{
-  font-size:13px;
-  font-weight:850;
-  color:#a9b7c9;
-}
-
-.stock-name{
-  font-size:19px;
-  font-weight:850;
-  margin-top:3px;
-}
-
-.stock-price{
-  font-size:25px;
-  font-weight:850;
-  margin-top:17px;
-}
-
-.stock-change{
-  font-size:12px;
-  margin-top:5px;
-  font-weight:700;
-}
-
-.up{
-  color:var(--green);
-}
-
-.down{
-  color:var(--red);
-}
-
-.flat{
-  color:var(--yellow);
-}
-
-.stock-metrics{
-  display:grid;
-  grid-template-columns:repeat(2,1fr);
-  gap:8px;
-  margin-top:16px;
-}
-
-.metric{
-  background:#0d1523;
-  border:1px solid #1c293c;
-  border-radius:10px;
-  padding:9px;
-}
-
-.metric-label{
-  color:#66758a;
-  font-size:9px;
-}
-
-.metric-value{
-  font-size:12px;
-  font-weight:800;
-  margin-top:4px;
-}
-
-.stock-actions{
-  display:flex;
-  gap:7px;
-  margin-top:14px;
-}
-
-.stock-actions .btn{
-  flex:1;
-}
-
-/* =========================
-   TODAY SCAN
-========================= */
-
-.scan-banner{
-  padding:20px;
-  display:flex;
-  align-items:center;
-  justify-content:space-between;
-  gap:15px;
-  background:
-    radial-gradient(
-      circle at 80% 20%,
-      rgba(76,163,255,.12),
-      transparent 35%
-    ),
-    #101827;
-}
-
-.scan-left{
-  display:flex;
-  align-items:center;
-  gap:14px;
-}
-
-.scan-icon{
-  width:50px;
-  height:50px;
-  border-radius:14px;
-  background:rgba(76,163,255,.1);
-  display:flex;
-  align-items:center;
-  justify-content:center;
-  font-size:25px;
-}
-
-.scan-title{
-  font-size:16px;
-  font-weight:850;
-}
-
-.scan-sub{
-  color:var(--muted);
-  font-size:11px;
-  margin-top:4px;
-}
-
-.scan-info{
-  display:flex;
-  gap:20px;
-  align-items:center;
-}
-
-.scan-number{
-  text-align:center;
-}
-
-.scan-number strong{
-  display:block;
-  font-size:21px;
-}
-
-.scan-number span{
-  color:#738197;
-  font-size:10px;
-}
-
-.filter-bar{
-  display:flex;
-  gap:8px;
-  flex-wrap:wrap;
-  margin:16px 0;
-}
-
-.filter{
-  border:1px solid var(--border);
-  background:#101827;
-  color:#7f8da2;
-  padding:8px 11px;
-  border-radius:9px;
-  font-size:11px;
-}
-
-.filter.active{
-  color:white;
-  border-color:#3c80c7;
-  background:rgba(76,163,255,.1);
-}
-
-.scan-grid{
-  display:grid;
-  grid-template-columns:repeat(3,minmax(0,1fr));
-  gap:15px;
-}
-
-/* =========================
-   SCORE
-========================= */
-
-.score{
-  width:43px;
-  height:43px;
-  border-radius:50%;
-  display:flex;
-  align-items:center;
-  justify-content:center;
-  font-size:12px;
-  font-weight:850;
-  border:2px solid #36587c;
-}
-
-.score.high{
-  border-color:var(--green);
-  color:var(--green);
-}
-
-.score.mid{
-  border-color:var(--yellow);
-  color:var(--yellow);
-}
-
-.score.low{
-  border-color:#67758a;
-  color:#aab5c4;
-}
-
-/* =========================
-   LIST
-========================= */
-
-.list-card{
-  padding:18px;
-}
-
-.list-row{
-  display:flex;
-  align-items:center;
-  justify-content:space-between;
-  gap:15px;
-  padding:15px 0;
-  border-bottom:1px solid #1d293b;
-}
-
-.list-row:last-child{
-  border-bottom:0;
-}
-
-.list-main{
-  display:flex;
-  align-items:center;
-  gap:12px;
-}
-
-.stock-avatar{
-  width:42px;
-  height:42px;
-  border-radius:12px;
-  background:#18253a;
-  display:flex;
-  align-items:center;
-  justify-content:center;
-  font-size:11px;
-  font-weight:850;
-}
-
-.list-name{
-  font-weight:800;
-  font-size:13px;
-}
-
-.list-meta{
-  color:#6d7b8f;
-  font-size:10px;
-  margin-top:4px;
-}
-
-.list-right{
-  display:flex;
-  align-items:center;
-  gap:18px;
-}
-
-.list-price{
-  text-align:right;
-}
-
-.list-price strong{
-  display:block;
-  font-size:14px;
-}
-
-.list-price span{
-  color:#718095;
-  font-size:10px;
-}
-
-/* =========================
-   DCA
-========================= */
-
-.dca-hero{
-  padding:22px;
-  background:
-    radial-gradient(
-      circle at 85% 10%,
-      rgba(37,214,154,.1),
-      transparent 30%
-    ),
-    #101827;
-}
-
-.dca-title{
-  font-size:19px;
-  font-weight:850;
-}
-
-.dca-desc{
-  color:var(--muted);
-  font-size:11px;
-  margin-top:5px;
-}
-
-.dca-summary{
-  display:grid;
-  grid-template-columns:repeat(4,1fr);
-  gap:12px;
-  margin-top:19px;
-}
-
-.dca-box{
-  background:#0c1421;
-  border:1px solid #1c293a;
-  border-radius:12px;
-  padding:13px;
-}
-
-.dca-box-label{
-  color:#6f7d91;
-  font-size:10px;
-}
-
-.dca-box-value{
-  margin-top:7px;
-  font-size:18px;
-  font-weight:850;
-}
-
-.dca-table{
-  width:100%;
-  border-collapse:collapse;
-}
-
-.dca-table th{
-  text-align:left;
-  color:#6e7d92;
-  font-size:10px;
-  padding:11px;
-  border-bottom:1px solid var(--border);
-}
-
-.dca-table td{
-  padding:13px 11px;
-  border-bottom:1px solid #1a2638;
-  font-size:12px;
-}
-
-.input{
-  width:100%;
-  background:#0d1523;
-  color:white;
-  border:1px solid var(--border);
-  border-radius:9px;
-  padding:9px 10px;
-  outline:none;
-}
-
-.input:focus{
-  border-color:var(--blue);
-}
-
-/* =========================
-   DETAIL
-========================= */
-
-.detail-card{
-  padding:22px;
-}
-
-.detail-head{
-  display:flex;
-  justify-content:space-between;
-  align-items:flex-start;
-}
-
-.detail-name{
-  font-size:27px;
-  font-weight:900;
-}
-
-.detail-code{
-  color:#7e8da2;
-  font-size:12px;
-}
-
-.detail-price{
-  font-size:34px;
-  font-weight:900;
-  margin-top:15px;
-}
-
-.detail-grid{
-  display:grid;
-  grid-template-columns:repeat(4,1fr);
-  gap:11px;
-  margin-top:22px;
-}
-
-.detail-metric{
-  background:#0c1421;
-  border:1px solid #1c293a;
-  border-radius:12px;
-  padding:13px;
-}
-
-.detail-metric-label{
-  color:#718096;
-  font-size:10px;
-}
-
-.detail-metric-value{
-  font-size:16px;
-  font-weight:850;
-  margin-top:6px;
-}
-
-/* =========================
-   RISK
-========================= */
-
-.risk-panel{
-  padding:20px;
-}
-
-.risk-meter{
-  height:12px;
-  background:#1a2536;
-  border-radius:99px;
-  overflow:hidden;
-  margin-top:12px;
-}
-
-.risk-fill{
-  height:100%;
-  width:0%;
-  transition:.4s;
-}
-
-.risk-low{
-  background:var(--green);
-}
-
-.risk-mid{
-  background:var(--yellow);
-}
-
-.risk-high{
-  background:var(--red);
-}
-
-/* =========================
-   SYSTEM
-========================= */
-
-.system-row{
-  display:flex;
-  justify-content:space-between;
-  align-items:center;
-  padding:15px 0;
-  border-bottom:1px solid #1c293a;
-}
-
-.system-row:last-child{
-  border-bottom:0;
-}
-
-.system-label{
-  font-size:13px;
-  font-weight:700;
-}
-
-.system-value{
-  color:#7d8ca1;
-  font-size:11px;
-}
-
-/* =========================
-   MOBILE
-========================= */
-
-.mobile-nav{
-  display:none;
-}
-
-@media(max-width:1100px){
-  .grid-4{
-    grid-template-columns:repeat(2,1fr);
-  }
-
-  .scan-grid{
-    grid-template-columns:repeat(2,1fr);
-  }
-
-  .detail-grid{
-    grid-template-columns:repeat(2,1fr);
-  }
-}
-
-@media(max-width:800px){
-  .sidebar{
-    display:none;
-  }
-
-  .main{
-    margin-left:0;
-    width:100%;
-    padding-bottom:75px;
-  }
-
-  .topbar{
-    padding:0 14px;
-  }
-
-  .top-actions{
-    display:none;
-  }
-
-  .content{
-    padding:17px 13px;
-  }
-
-  .search-wrap{
-    width:100%;
-    max-width:280px;
-  }
-
-  .hero-title{
-    font-size:22px;
-  }
-
-  .grid-4,
-  .grid-3,
-  .grid-2{
-    grid-template-columns:1fr;
-  }
-
-  .scan-grid{
-    grid-template-columns:1fr;
-  }
-
-  .scan-banner{
-    align-items:flex-start;
-    flex-direction:column;
-  }
-
-  .scan-info{
-    width:100%;
-    justify-content:space-between;
-  }
-
-  .dca-summary{
-    grid-template-columns:repeat(2,1fr);
-  }
-
-  .dca-table{
-    min-width:700px;
-  }
-
-  .table-scroll{
-    overflow-x:auto;
-  }
-
-  .detail-grid{
-    grid-template-columns:repeat(2,1fr);
-  }
-
-  .mobile-nav{
-    display:flex;
-    position:fixed;
-    bottom:0;
-    left:0;
-    right:0;
-    height:65px;
-    background:#0b111d;
-    border-top:1px solid var(--border);
-    z-index:300;
-    justify-content:space-around;
-  }
-
-  .mobile-nav button{
-    flex:1;
-    border:0;
-    background:transparent;
-    color:#68768b;
-    font-size:9px;
-  }
-
-  .mobile-nav button.active{
-    color:white;
-  }
-
-  .mobile-nav-icon{
-    font-size:18px;
-    display:block;
-    margin-bottom:2px;
-  }
-}
-
-@media(max-width:500px){
-  .search-wrap{
-    max-width:210px;
-  }
-
-  .dca-summary{
-    grid-template-columns:1fr 1fr;
-  }
-
-  .list-right{
-    gap:7px;
-  }
-
-  .list-price{
-    display:none;
-  }
+select,
+textarea {
+    width: 100%;
+    border: 1px solid #d1d5db;
+    border-radius: 9px;
+    padding: 10px 11px;
+    font-size: 14px;
+    background: white;
+    color: var(--text);
+    outline: none;
+}
+
+input:focus,
+select:focus,
+textarea:focus {
+    border-color: var(--primary);
+    box-shadow: 0 0 0 3px rgba(37,99,235,0.1);
+}
+
+textarea {
+    min-height: 80px;
+    resize: vertical;
+}
+
+.form-actions {
+    display: flex;
+    gap: 8px;
+    margin-top: 16px;
+}
+
+.hidden {
+    display: none !important;
+}
+
+.info-box {
+    background: #eff6ff;
+    border: 1px solid #bfdbfe;
+    color: #1e40af;
+    border-radius: 10px;
+    padding: 12px 14px;
+    font-size: 13px;
+    line-height: 1.6;
+}
+
+.warning-box {
+    background: #fff7ed;
+    border: 1px solid #fed7aa;
+    color: #9a3412;
+    border-radius: 10px;
+    padding: 12px 14px;
+    font-size: 13px;
+    line-height: 1.6;
+}
+
+.footer {
+    text-align: center;
+    color: var(--muted);
+    font-size: 12px;
+    margin-top: 30px;
+}
+
+@media (max-width: 900px) {
+    .summary-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+
+    .form-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+}
+
+@media (max-width: 600px) {
+    .container {
+        width: 94%;
+        padding-top: 12px;
+    }
+
+    header {
+        padding: 18px;
+    }
+
+    header h1 {
+        font-size: 21px;
+    }
+
+    .summary-grid {
+        grid-template-columns: 1fr 1fr;
+        gap: 9px;
+    }
+
+    .card {
+        padding: 14px;
+    }
+
+    .summary-value {
+        font-size: 18px;
+    }
+
+    .form-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .form-group.full {
+        grid-column: auto;
+    }
+
+    button {
+        padding: 9px 12px;
+    }
 }
 </style>
 </head>
 
 <body>
 
-<div class="app">
+<div class="container">
+
+<header>
+    <h1>零股定投與動態風控儀表板</h1>
+    <p>獨立定投管理系統｜資料儲存在本機瀏覽器 LocalStorage</p>
+</header>
 
 <!-- =========================
-     SIDEBAR
+     總覽
 ========================= -->
 
-<aside class="sidebar">
+<section class="section">
 
-  <div class="brand">
-    <div class="brand-title">台股 AI Scanner</div>
-    <div class="brand-sub">選股 × 定投 × 動態風控</div>
-  </div>
+    <div class="section-title">投資總覽</div>
 
-  <div class="nav-section">市場分析</div>
+    <div class="summary-grid">
 
-  <button class="nav-btn active" data-section="overview">
-    <span class="nav-icon">⌂</span>
-    <span class="nav-label">總覽</span>
-  </button>
+        <div class="card">
+            <div class="summary-label">總投入成本</div>
+            <div id="totalCost" class="summary-value neutral">NT$ 0</div>
+            <div class="summary-sub">目前持有部位的實際成本</div>
+        </div>
 
-  <button class="nav-btn" data-section="scanner">
-    <span class="nav-icon">⌕</span>
-    <span class="nav-label">今日選股</span>
-  </button>
+        <div class="card">
+            <div class="summary-label">目前總市值</div>
+            <div id="totalValue" class="summary-value neutral">NT$ 0</div>
+            <div class="summary-sub">持有股數 × 目前價格</div>
+        </div>
 
-  <button class="nav-btn" data-section="search">
-    <span class="nav-icon">⌕</span>
-    <span class="nav-label">個股搜尋</span>
-  </button>
+        <div class="card">
+            <div class="summary-label">總損益</div>
+            <div id="totalProfit" class="summary-value neutral">NT$ 0</div>
+            <div id="totalProfitSub" class="summary-sub">尚無資料</div>
+        </div>
 
-  <div class="nav-section">我的投資</div>
+        <div class="card">
+            <div class="summary-label">總報酬率</div>
+            <div id="totalReturn" class="summary-value neutral">0.00%</div>
+            <div class="summary-sub">總損益 ÷ 總投入成本</div>
+        </div>
 
-  <button class="nav-btn" data-section="watchlist">
-    <span class="nav-icon">▣</span>
-    <span class="nav-label">股票清單</span>
-    <span class="nav-count" id="watchCount">0</span>
-  </button>
-
-  <button class="nav-btn" data-section="dca">
-    <span class="nav-icon">◈</span>
-    <span class="nav-label">零股定投</span>
-    <span class="nav-count" id="dcaCount">0</span>
-  </button>
-
-  <div class="nav-section">分析工具</div>
-
-  <button class="nav-btn" data-section="performance">
-    <span class="nav-icon">↗</span>
-    <span class="nav-label">績效分析</span>
-  </button>
-
-  <button class="nav-btn" data-section="risk">
-    <span class="nav-icon">◉</span>
-    <span class="nav-label">動態風控</span>
-  </button>
-
-  <button class="nav-btn" data-section="system">
-    <span class="nav-icon">⚙</span>
-    <span class="nav-label">系統</span>
-  </button>
-
-  <div class="sidebar-status">
-    <div>
-      <span class="status-dot"></span>
-      <span class="status-text" id="dataStatus">
-        資料載入中
-      </span>
     </div>
-  </div>
 
-</aside>
+</section>
+
 
 <!-- =========================
-     MAIN
+     說明
 ========================= -->
 
-<main class="main">
+<section class="section">
 
-  <header class="topbar">
-
-    <div>
-      <div class="page-title" id="pageTitle">
-        台股 AI 投資儀表板
-      </div>
-      <div class="page-desc" id="pageDesc">
-        今日市場與投資管理
-      </div>
+    <div class="info-box">
+        <strong>報酬計算規則：</strong><br>
+        投入成本 = 持有股數 × 平均成本<br>
+        目前市值 = 持有股數 × 目前價格<br>
+        損益 = 目前市值 − 投入成本<br>
+        報酬率 = 損益 ÷ 投入成本 × 100%
     </div>
 
-    <div class="top-actions">
+</section>
 
-      <div class="search-wrap">
 
-        <span class="search-icon">⌕</span>
+<!-- =========================
+     操作列
+========================= -->
 
-        <input
-          id="globalSearch"
-          class="search-box"
-          placeholder="搜尋股票代號或名稱..."
-          autocomplete="off"
-        >
+<section class="section">
 
-        <div id="searchResults" class="search-results"></div>
+    <div class="toolbar">
 
-      </div>
-
-      <button
-        class="icon-btn"
-        id="refreshBtn"
-        title="重新載入資料"
-      >↻</button>
-
-    </div>
-
-  </header>
-
-  <div class="content">
-
-    <!-- =========================
-         OVERVIEW
-    ========================= -->
-
-    <section id="overview" class="section active">
-
-      <div class="hero">
-
-        <div class="hero-title">
-          台股 AI 投資儀表板
-        </div>
-
-        <div class="hero-desc">
-          今日選股、個股搜尋、股票清單與零股定投完全分離管理
-        </div>
-
-      </div>
-
-      <div class="grid grid-4">
-
-        <div class="card stat-card">
-          <div class="stat-label">市場資料筆數</div>
-          <div class="stat-value" id="marketCount">0</div>
-          <div class="stat-note">Data / prices.json</div>
-        </div>
-
-        <div class="card stat-card">
-          <div class="stat-label">今日符合條件</div>
-          <div class="stat-value" id="qualifiedCount">0</div>
-          <div class="stat-note">AI 收盤選股結果</div>
-        </div>
-
-        <div class="card stat-card">
-          <div class="stat-label">我的股票清單</div>
-          <div class="stat-value" id="overviewWatchCount">0</div>
-          <div class="stat-note">僅由你手動加入</div>
-        </div>
-
-        <div class="card stat-card">
-          <div class="stat-label">零股定投標的</div>
-          <div class="stat-value" id="overviewDcaCount">0</div>
-          <div class="stat-note">獨立管理</div>
-        </div>
-
-      </div>
-
-      <div class="section-head">
-        <div>
-          <div class="section-title">今日 AI 選股</div>
-          <div class="section-sub">
-            僅顯示符合設定條件的市場標的，不會自動加入你的股票清單
-          </div>
-        </div>
-
-        <button
-          class="btn btn-primary"
-          onclick="showSection('scanner')"
-        >
-          查看全部
-        </button>
-      </div>
-
-      <div id="overviewScanner" class="scan-grid"></div>
-
-    </section>
-
-
-    <!-- =========================
-         SCANNER
-    ========================= -->
-
-    <section id="scanner" class="section">
-
-      <div class="hero">
-        <div class="hero-title">今日 AI 收盤選股</div>
-        <div class="hero-desc">
-          全市場資料依既定條件掃描，推薦結果與你的股票清單完全分離
-        </div>
-      </div>
-
-      <div class="card scan-banner">
-
-        <div class="scan-left">
-
-          <div class="scan-icon">⚡</div>
-
-          <div>
-            <div class="scan-title">
-              今日市場掃描
-            </div>
-
-            <div class="scan-sub">
-              MACD × RSI × KD × 成交量 × 趨勢
-            </div>
-          </div>
-
-        </div>
-
-        <div class="scan-info">
-
-          <div class="scan-number">
-            <strong id="scanTotal">0</strong>
-            <span>資料</span>
-          </div>
-
-          <div class="scan-number">
-            <strong id="scanQualified">0</strong>
-            <span>符合</span>
-          </div>
-
-          <div class="scan-number">
-            <strong id="scanDate">--</strong>
-            <span>資料日期</span>
-          </div>
-
-        </div>
-
-      </div>
-
-      <div class="filter-bar">
-
-        <button class="filter active" data-filter="all">
-          全部
-        </button>
-
-        <button class="filter" data-filter="qualified">
-          符合條件
-        </button>
-
-        <button class="filter" data-filter="high">
-          高分
-        </button>
-
-      </div>
-
-      <div id="scannerGrid" class="scan-grid"></div>
-
-    </section>
-
-
-    <!-- =========================
-         SEARCH
-    ========================= -->
-
-    <section id="search" class="section">
-
-      <div class="hero">
-
-        <div class="hero-title">
-          個股搜尋
-        </div>
-
-        <div class="hero-desc">
-          搜尋股票代號或名稱，查看個股資料後由你決定是否加入股票清單
-        </div>
-
-      </div>
-
-      <div class="card" style="padding:20px">
-
-        <div class="search-wrap" style="width:100%;max-width:650px">
-
-          <span class="search-icon">⌕</span>
-
-          <input
-            id="pageSearch"
-            class="search-box"
-            placeholder="例如：2303、聯電、2330、台積電..."
-            autocomplete="off"
-          >
-
-          <div
-            id="pageSearchResults"
-            class="search-results"
-          ></div>
-
-        </div>
-
-      </div>
-
-      <div id="searchDetail" style="margin-top:18px"></div>
-
-    </section>
-
-
-    <!-- =========================
-         WATCHLIST
-    ========================= -->
-
-    <section id="watchlist" class="section">
-
-      <div class="hero">
-
-        <div class="hero-title">
-          我的股票清單
-        </div>
-
-        <div class="hero-desc">
-          這裡只放你親自加入的股票。系統絕不會因為 AI 推薦而自動加入。
-        </div>
-
-      </div>
-
-      <div class="card list-card">
-
-        <div
-          id="watchlistContainer"
-        ></div>
-
-      </div>
-
-    </section>
-
-
-    <!-- =========================
-         DCA
-    ========================= -->
-
-    <section id="dca" class="section">
-
-      <div class="hero">
-
-        <div class="hero-title">
-          零股定投
-        </div>
-
-        <div class="hero-desc">
-          獨立投資模組。加入股票清單不代表加入定投，必須另外設定。
-        </div>
-
-      </div>
-
-      <div class="card dca-hero">
-
-        <div class="dca-title">
-          零股定投總覽
-        </div>
-
-        <div class="dca-desc">
-          目前沒有任何預設定投標的，所有資料由你自行建立。
-        </div>
-
-        <div class="dca-summary">
-
-          <div class="dca-box">
-            <div class="dca-box-label">定投標的</div>
-            <div
-              class="dca-box-value"
-              id="dcaSummaryCount"
-            >0</div>
-          </div>
-
-          <div class="dca-box">
-            <div class="dca-box-label">累計投入</div>
-            <div
-              class="dca-box-value"
-              id="dcaInvested"
-            >$0</div>
-          </div>
-
-          <div class="dca-box">
-            <div class="dca-box-label">目前市值</div>
-            <div
-              class="dca-box-value"
-              id="dcaValue"
-            >$0</div>
-          </div>
-
-          <div class="dca-box">
-            <div class="dca-box-label">總報酬</div>
-            <div
-              class="dca-box-value"
-              id="dcaReturn"
-            >0%</div>
-          </div>
-
-        </div>
-
-      </div>
-
-      <div class="section-head">
-
-        <div>
-          <div class="section-title">
+        <div class="section-title" style="margin:0;">
             我的定投標的
-          </div>
-
-          <div class="section-sub">
-            必須從股票清單個別設定加入定投
-          </div>
         </div>
 
-      </div>
+        <div class="button-group">
+            <button
+                class="btn-primary"
+                onclick="openAddForm()">
+                ＋ 新增標的
+            </button>
 
-      <div class="card list-card">
+            <button
+                class="btn-secondary"
+                onclick="exportData()">
+                匯出資料
+            </button>
 
-        <div id="dcaContainer"></div>
+            <button
+                class="btn-secondary"
+                onclick="document.getElementById('importFile').click()">
+                匯入資料
+            </button>
 
-      </div>
-
-    </section>
-
-
-    <!-- =========================
-         PERFORMANCE
-    ========================= -->
-
-    <section id="performance" class="section">
-
-      <div class="hero">
-        <div class="hero-title">績效分析</div>
-        <div class="hero-desc">
-          只分析你已建立的投資資料
-        </div>
-      </div>
-
-      <div class="grid grid-4">
-
-        <div class="card stat-card">
-          <div class="stat-label">累計投入</div>
-          <div class="stat-value" id="perfInvested">$0</div>
+            <input
+                id="importFile"
+                type="file"
+                accept=".json"
+                class="hidden"
+                onchange="importData(event)">
         </div>
 
-        <div class="card stat-card">
-          <div class="stat-label">目前市值</div>
-          <div class="stat-value" id="perfValue">$0</div>
+    </div>
+
+
+    <div class="table-wrap">
+
+        <table>
+
+            <thead>
+
+            <tr>
+                <th>標的</th>
+                <th>持有股數</th>
+                <th>平均成本</th>
+                <th>投入成本</th>
+                <th>目前價格</th>
+                <th>目前市值</th>
+                <th>損益</th>
+                <th>報酬率</th>
+                <th>停損</th>
+                <th>第一停利</th>
+                <th>第二停利</th>
+                <th>風控狀態</th>
+                <th>操作</th>
+            </tr>
+
+            </thead>
+
+            <tbody id="stockTableBody"></tbody>
+
+        </table>
+
+    </div>
+
+</section>
+
+
+<!-- =========================
+     新增 / 編輯
+========================= -->
+
+<section
+    id="formSection"
+    class="section hidden">
+
+    <div class="form-card">
+
+        <div class="section-title" id="formTitle">
+            新增定投標的
         </div>
 
-        <div class="card stat-card">
-          <div class="stat-label">損益</div>
-          <div class="stat-value" id="perfProfit">$0</div>
-        </div>
+        <form id="stockForm">
 
-        <div class="card stat-card">
-          <div class="stat-label">報酬率</div>
-          <div class="stat-value" id="perfReturn">0%</div>
-        </div>
+            <div class="form-grid">
 
-      </div>
+                <div class="form-group">
+                    <label for="code">股票代號</label>
+                    <input
+                        id="code"
+                        type="text"
+                        placeholder="例如：2330"
+                        required>
+                </div>
 
-      <div
-        class="card empty"
-        style="margin-top:18px"
-        id="performanceEmpty"
-      >
-        <div class="empty-icon">▥</div>
-        <div class="empty-title">
-          尚無投資績效資料
-        </div>
-        <div class="empty-text">
-          建立定投標的與持有資料後，這裡才會開始計算。
-        </div>
-      </div>
+                <div class="form-group">
+                    <label for="name">股票名稱</label>
+                    <input
+                        id="name"
+                        type="text"
+                        placeholder="例如：台積電"
+                        required>
+                </div>
 
-    </section>
+                <div class="form-group">
+                    <label for="assetType">資產類型</label>
+                    <select id="assetType">
+                        <option value="股票">股票</option>
+                        <option value="ETF">ETF</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label for="shares">持有股數</label>
+                    <input
+                        id="shares"
+                        type="number"
+                        min="0"
+                        step="0.001"
+                        placeholder="例如：350">
+                </div>
+
+                <div class="form-group">
+                    <label for="avgCost">平均成本</label>
+                    <input
+                        id="avgCost"
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        placeholder="例如：100.50">
+                </div>
+
+                <div class="form-group">
+                    <label for="currentPrice">目前價格</label>
+                    <input
+                        id="currentPrice"
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        placeholder="例如：105.00">
+                </div>
+
+                <div class="form-group">
+                    <label for="monthlyInvestment">
+                        每期投入金額
+                    </label>
+                    <input
+                        id="monthlyInvestment"
+                        type="number"
+                        min="0"
+                        step="1"
+                        placeholder="例如：3000">
+                </div>
+
+                <div class="form-group">
+                    <label for="buyFrequency">
+                        定投頻率
+                    </label>
+                    <select id="buyFrequency">
+                        <option value="每月">每月</option>
+                        <option value="每週">每週</option>
+                        <option value="每兩週">每兩週</option>
+                        <option value="自訂">自訂</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label for="stopLoss">
+                        停損價格
+                    </label>
+                    <input
+                        id="stopLoss"
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        placeholder="例如：90">
+                </div>
+
+                <div class="form-group">
+                    <label for="takeProfit1">
+                        第一停利價格
+                    </label>
+                    <input
+                        id="takeProfit1"
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        placeholder="例如：115">
+                </div>
+
+                <div class="form-group">
+                    <label for="takeProfit2">
+                        第二停利價格
+                    </label>
+                    <input
+                        id="takeProfit2"
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        placeholder="例如：125">
+                </div>
+
+                <div class="form-group full">
+                    <label for="note">
+                        備註
+                    </label>
+
+                    <textarea
+                        id="note"
+                        placeholder="可記錄定投策略、進場原因或其他資訊"></textarea>
+                </div>
+
+            </div>
+
+            <div class="form-actions">
+
+                <button
+                    type="submit"
+                    class="btn-primary">
+                    儲存
+                </button>
+
+                <button
+                    type="button"
+                    class="btn-secondary"
+                    onclick="closeForm()">
+                    取消
+                </button>
+
+            </div>
+
+        </form>
+
+    </div>
+
+</section>
 
 
-    <!-- =========================
-         RISK
-    ========================= -->
+<section class="section">
 
-    <section id="risk" class="section">
+    <div class="warning-box">
+        <strong>重要：</strong>
+        本儀表板的資料儲存在目前瀏覽器的 LocalStorage。
+        清除網站資料或瀏覽器儲存空間可能會造成資料遺失，
+        建議定期使用「匯出資料」備份。
+    </div>
 
-      <div class="hero">
-        <div class="hero-title">動態風控</div>
-        <div class="hero-desc">
-          依你的股票與定投資料提供風險觀察
-        </div>
-      </div>
-
-      <div class="card risk-panel">
-
-        <div class="section-title">
-          目前投資組合風險
-        </div>
-
-        <div
-          style="margin-top:15px;font-size:26px;font-weight:850"
-          id="riskLabel"
-        >
-          尚無投資資料
-        </div>
-
-        <div class="risk-meter">
-          <div
-            id="riskFill"
-            class="risk-fill"
-          ></div>
-        </div>
-
-        <div
-          style="margin-top:10px;color:#718096;font-size:11px"
-          id="riskDescription"
-        >
-          建立股票或定投資料後才會產生風控結果。
-        </div>
-
-      </div>
-
-    </section>
+</section>
 
 
-    <!-- =========================
-         SYSTEM
-    ========================= -->
-
-    <section id="system" class="section">
-
-      <div class="hero">
-        <div class="hero-title">系統</div>
-        <div class="hero-desc">
-          資料來源與系統狀態
-        </div>
-      </div>
-
-      <div class="card list-card">
-
-        <div class="system-row">
-          <div class="system-label">資料來源</div>
-          <div class="system-value">
-            Data/prices.json
-          </div>
-        </div>
-
-        <div class="system-row">
-          <div class="system-label">市場資料</div>
-          <div
-            class="system-value"
-            id="systemDataCount"
-          >
-            0
-          </div>
-        </div>
-
-        <div class="system-row">
-          <div class="system-label">股票清單</div>
-          <div
-            class="system-value"
-            id="systemWatchCount"
-          >
-            0
-          </div>
-        </div>
-
-        <div class="system-row">
-          <div class="system-label">定投標的</div>
-          <div
-            class="system-value"
-            id="systemDcaCount"
-          >
-            0
-          </div>
-        </div>
-
-        <div class="system-row">
-          <div class="system-label">資料狀態</div>
-          <div
-            class="system-value"
-            id="systemStatus"
-          >
-            載入中
-          </div>
-        </div>
-
-      </div>
-
-    </section>
-
-
-    <!-- =========================
-         DETAIL
-    ========================= -->
-
-    <section
-      id="detail"
-      class="section"
-    ></section>
-
-  </div>
-
-</main>
-
+<div class="footer">
+    零股定投與動態風控儀表板 V1.1
 </div>
 
-
-<!-- MOBILE NAV -->
-
-<nav class="mobile-nav">
-
-  <button
-    class="active"
-    data-section="overview"
-  >
-    <span class="mobile-nav-icon">⌂</span>
-    總覽
-  </button>
-
-  <button data-section="scanner">
-    <span class="mobile-nav-icon">⚡</span>
-    選股
-  </button>
-
-  <button data-section="search">
-    <span class="mobile-nav-icon">⌕</span>
-    搜尋
-  </button>
-
-  <button data-section="watchlist">
-    <span class="mobile-nav-icon">▣</span>
-    清單
-  </button>
-
-  <button data-section="dca">
-    <span class="mobile-nav-icon">◈</span>
-    定投
-  </button>
-
-</nav>
+</div>
 
 
 <script>
 
 /* =========================================================
-   GLOBAL STATE
-   ========================================================= */
+   基本設定
+========================================================= */
 
-const DATA_URL = "Data/prices.json";
+const STORAGE_KEY = "tw_stock_dca_portfolio_v1";
 
-let marketData = [];
-let qualifiedStocks = [];
-
-let state = {
-  /*
-    非常重要：
-
-    這裡刻意是空的。
-
-    不預設任何股票。
-    不預設任何 ETF。
-    不預設 00713。
-    不預設持股。
-    不預設定投。
-  */
-
-  watchlist: [],
-  dca: []
-};
-
-let currentSection = "overview";
-let currentFilter = "all";
+let portfolio = [];
+let editingIndex = -1;
 
 
 /* =========================================================
-   LOCAL STORAGE
-   ========================================================= */
+   初始化
+========================================================= */
 
-function loadUserState(){
+document.addEventListener("DOMContentLoaded", () => {
 
-  try{
+    loadData();
 
-    const saved =
-      localStorage.getItem(
-        "twStockAIUserState"
-      );
-
-    if(!saved){
-      return;
-    }
-
-    const parsed =
-      JSON.parse(saved);
-
-    if(
-      parsed &&
-      Array.isArray(parsed.watchlist)
-    ){
-      state.watchlist =
-        parsed.watchlist;
-    }
-
-    if(
-      parsed &&
-      Array.isArray(parsed.dca)
-    ){
-      state.dca =
-        parsed.dca;
-    }
-
-  }catch(error){
-
-    console.error(
-      "使用者資料讀取失敗",
-      error
-    );
-
-    state.watchlist = [];
-    state.dca = [];
-  }
-}
-
-
-function saveUserState(){
-
-  localStorage.setItem(
-    "twStockAIUserState",
-    JSON.stringify(state)
-  );
-
-  updateCounters();
-}
-
-
-/* =========================================================
-   DATA NORMALIZATION
-   ========================================================= */
-
-function normalizeStock(raw){
-
-  if(!raw || typeof raw !== "object"){
-    return null;
-  }
-
-  const code =
-    String(
-      raw.code ??
-      raw.stock_id ??
-      raw.stockCode ??
-      raw.symbol ??
-      raw.ticker ??
-      ""
-    ).trim();
-
-  const name =
-    String(
-      raw.name ??
-      raw.stock_name ??
-      raw.stockName ??
-      raw.company_name ??
-      ""
-    ).trim();
-
-  if(!code){
-    return null;
-  }
-
-  const price =
-    toNumber(
-      raw.price ??
-      raw.close ??
-      raw.close_price ??
-      raw.current_price ??
-      raw.last
-    );
-
-  const change =
-    toNumber(
-      raw.change ??
-      raw.price_change ??
-      raw.change_price
-    );
-
-  const changePct =
-    toNumber(
-      raw.change_pct ??
-      raw.changePercent ??
-      raw.pct_change ??
-      raw.change_percent
-    );
-
-  const volume =
-    toNumber(
-      raw.volume ??
-      raw.vol ??
-      raw.trade_volume
-    );
-
-  const rsi =
-    toNumber(
-      raw.rsi ??
-      raw.RSI
-    );
-
-  const k =
-    toNumber(
-      raw.k ??
-      raw.K ??
-      raw.k_value ??
-      raw.kd_k
-    );
-
-  const d =
-    toNumber(
-      raw.d ??
-      raw.D ??
-      raw.d_value ??
-      raw.kd_d
-    );
-
-  const macd =
-    toNumber(
-      raw.macd ??
-      raw.MACD
-    );
-
-  const macdSignal =
-    toNumber(
-      raw.macd_signal ??
-      raw.macdSignal ??
-      raw.signal
-    );
-
-  const avgVolume5 =
-    toNumber(
-      raw.avg_volume_5 ??
-      raw.volume_avg_5 ??
-      raw.ma5_volume
-    );
-
-  const date =
-    raw.date ??
-    raw.trade_date ??
-    raw.data_date ??
-    raw.updated_at ??
-    "";
-
-  return {
-
-    code,
-    name: name || code,
-
-    price,
-    change,
-    changePct,
-
-    volume,
-    avgVolume5,
-
-    rsi,
-    k,
-    d,
-
-    macd,
-    macdSignal,
-
-    date,
-
-    raw
-  };
-}
-
-
-function toNumber(value){
-
-  if(
-    value === null ||
-    value === undefined ||
-    value === ""
-  ){
-    return null;
-  }
-
-  const n =
-    Number(
-      String(value)
-        .replace(/,/g,"")
-        .replace("%","")
-    );
-
-  return Number.isFinite(n)
-    ? n
-    : null;
-}
-
-
-/* =========================================================
-   LOAD DATA
-   ========================================================= */
-
-async function loadData(){
-
-  setDataStatus(
-    "資料載入中..."
-  );
-
-  try{
-
-    const response =
-      await fetch(
-        DATA_URL +
-        "?t=" +
-        Date.now(),
-        {
-          cache:"no-store"
-        }
-      );
-
-    if(!response.ok){
-      throw new Error(
-        "HTTP " +
-        response.status
-      );
-    }
-
-    const json =
-      await response.json();
-
-    let rows = [];
-
-    if(Array.isArray(json)){
-      rows = json;
-    }
-    else if(
-      json &&
-      Array.isArray(json.data)
-    ){
-      rows = json.data;
-    }
-    else if(
-      json &&
-      Array.isArray(json.stocks)
-    ){
-      rows = json.stocks;
-    }
-    else if(
-      json &&
-      typeof json === "object"
-    ){
-
-      /*
-        支援：
-
-        {
-          "2330": {...},
-          "2303": {...}
-        }
-      */
-
-      rows =
-        Object.entries(json)
-          .map(
-            ([code,value]) => {
-
-              if(
-                value &&
-                typeof value === "object" &&
-                !Array.isArray(value)
-              ){
-
-                return {
-                  code,
-                  ...value
-                };
-
-              }
-
-              return null;
-
-            }
-          )
-          .filter(Boolean);
-    }
-
-    marketData =
-      rows
-        .map(normalizeStock)
-        .filter(Boolean);
-
-    qualifiedStocks =
-      scanQualifiedStocks(
-        marketData
-      );
-
-    setDataStatus(
-      "資料已更新"
-    );
-
-    renderAll();
-
-  }catch(error){
-
-    console.error(
-      "資料載入失敗：",
-      error
-    );
-
-    marketData = [];
-    qualifiedStocks = [];
-
-    setDataStatus(
-      "資料載入失敗"
-    );
-
-    renderAll();
-
-  }
-}
-
-
-/* =========================================================
-   AI SCANNER
-   ========================================================= */
-
-function scanQualifiedStocks(data){
-
-  /*
-    這裡只做前端結果判斷。
-
-    真正的核心資料／計算仍以後端
-    fetch_data.py 產生的 prices.json 為準。
-
-    不在 UI 顯示核心運算內容。
-  */
-
-  return data
-    .map(stock => {
-
-      let score = 0;
-      let conditions = 0;
-
-      /*
-        RSI > 50
-      */
-      if(
-        stock.rsi !== null &&
-        stock.rsi > 50
-      ){
-        score += 20;
-        conditions++;
-      }
-
-      /*
-        MACD > Signal
-      */
-      if(
-        stock.macd !== null &&
-        stock.macdSignal !== null &&
-        stock.macd > stock.macdSignal
-      ){
-        score += 20;
-        conditions++;
-      }
-
-      /*
-        KD K > D
-      */
-      if(
-        stock.k !== null &&
-        stock.d !== null &&
-        stock.k > stock.d
-      ){
-        score += 20;
-        conditions++;
-      }
-
-      /*
-        Volume >= 5日均量 × 1.5
-      */
-      if(
-        stock.volume !== null &&
-        stock.avgVolume5 !== null &&
-        stock.avgVolume5 > 0 &&
-        stock.volume >=
-          stock.avgVolume5 * 1.5
-      ){
-        score += 20;
-        conditions++;
-      }
-
-      /*
-        價格存在且非負
-      */
-      if(
-        stock.price !== null &&
-        stock.price > 0
-      ){
-        score += 20;
-        conditions++;
-      }
-
-      return {
-        ...stock,
-        score,
-        conditions,
-        qualified:
-          conditions >= 4
-      };
-
-    })
-    .filter(
-      stock => stock.qualified
-    )
-    .sort(
-      (a,b) =>
-        b.score - a.score
-    );
-}
-
-
-/* =========================================================
-   NAVIGATION
-   ========================================================= */
-
-function showSection(section){
-
-  currentSection = section;
-
-  document
-    .querySelectorAll(".section")
-    .forEach(el => {
-
-      el.classList.toggle(
-        "active",
-        el.id === section
-      );
-
-    });
-
-  document
-    .querySelectorAll(".nav-btn")
-    .forEach(btn => {
-
-      btn.classList.toggle(
-        "active",
-        btn.dataset.section === section
-      );
-
-    });
-
-  document
-    .querySelectorAll(".mobile-nav button")
-    .forEach(btn => {
-
-      btn.classList.toggle(
-        "active",
-        btn.dataset.section === section
-      );
-
-    });
-
-  const titles = {
-
-    overview:[
-      "台股 AI 投資儀表板",
-      "今日市場與投資管理"
-    ],
-
-    scanner:[
-      "今日 AI 收盤選股",
-      "全市場條件掃描"
-    ],
-
-    search:[
-      "個股搜尋",
-      "搜尋、分析與手動加入股票清單"
-    ],
-
-    watchlist:[
-      "我的股票清單",
-      "由你手動管理"
-    ],
-
-    dca:[
-      "零股定投",
-      "獨立定投投資管理"
-    ],
-
-    performance:[
-      "績效分析",
-      "投資績效統計"
-    ],
-
-    risk:[
-      "動態風控",
-      "投資風險監控"
-    ],
-
-    system:[
-      "系統",
-      "資料與系統狀態"
-    ]
-
-  };
-
-  if(titles[section]){
+    render();
 
     document
-      .getElementById("pageTitle")
-      .textContent =
-      titles[section][0];
+        .getElementById("stockForm")
+        .addEventListener("submit", saveStock);
 
-    document
-      .getElementById("pageDesc")
-      .textContent =
-      titles[section][1];
-
-  }
-
-  window.scrollTo({
-    top:0,
-    behavior:"smooth"
-  });
-
-}
-
-
-document
-  .querySelectorAll(
-    ".nav-btn,.mobile-nav button"
-  )
-  .forEach(btn => {
-
-    btn.addEventListener(
-      "click",
-      () =>
-        showSection(
-          btn.dataset.section
-        )
-    );
-
-  });
+});
 
 
 /* =========================================================
-   SEARCH
-   ========================================================= */
+   LocalStorage
+========================================================= */
 
-function searchStocks(keyword){
+function loadData() {
 
-  const q =
-    String(keyword || "")
-      .trim()
-      .toLowerCase();
+    try {
 
-  if(!q){
-    return [];
-  }
+        const raw = localStorage.getItem(STORAGE_KEY);
 
-  return marketData
-    .filter(stock => {
+        if (!raw) {
 
-      return (
-        stock.code
-          .toLowerCase()
-          .includes(q)
-        ||
-        stock.name
-          .toLowerCase()
-          .includes(q)
-      );
+            portfolio = [];
 
-    })
-    .slice(0,10);
+            return;
+        }
+
+        const parsed = JSON.parse(raw);
+
+        if (!Array.isArray(parsed)) {
+
+            portfolio = [];
+
+            return;
+        }
+
+        portfolio = parsed.map(normalizeStock);
+
+    } catch (error) {
+
+        console.error("讀取定投資料失敗：", error);
+
+        portfolio = [];
+
+    }
+
 }
 
 
-function renderSearchResults(
-  container,
-  results
-){
+function saveData() {
 
-  if(!results.length){
+    try {
 
-    container.innerHTML = `
-      <div class="empty" style="padding:25px">
-        找不到符合的股票
-      </div>
-    `;
+        localStorage.setItem(
+            STORAGE_KEY,
+            JSON.stringify(portfolio)
+        );
 
-    container.classList.add("show");
+    } catch (error) {
 
-    return;
-  }
+        console.error("寫入定投資料失敗：", error);
 
-  container.innerHTML =
-    results
-      .map(stock => `
+        alert(
+            "資料儲存失敗，請確認瀏覽器是否允許網站使用儲存空間。"
+        );
 
-        <div
-          class="search-result"
-          data-code="${escapeHtml(stock.code)}"
-        >
+    }
 
-          <div>
+}
 
-            <span class="result-code">
-              ${escapeHtml(stock.code)}
-            </span>
 
-            <span class="result-name">
-              ${escapeHtml(stock.name)}
-            </span>
+/* =========================================================
+   資料標準化
+========================================================= */
 
-          </div>
+function normalizeStock(stock) {
 
-          <div class="result-market">
-            ${formatPrice(stock.price)}
-          </div>
+    return {
 
-        </div>
+        code: String(stock.code ?? "").trim(),
 
-      `)
-      .join("");
+        name: String(stock.name ?? "").trim(),
 
-  container.classList.add("show");
+        assetType:
+            stock.assetType === "ETF"
+                ? "ETF"
+                : "股票",
 
-  container
-    .querySelectorAll(".search-result")
-    .forEach(row => {
+        shares: toNumber(stock.shares),
 
-      row.addEventListener(
-        "click",
-        () => {
+        avgCost: toNumber(stock.avgCost),
 
-          const code =
-            row.dataset.code;
+        currentPrice: toNumber(stock.currentPrice),
 
-          openStockDetail(code);
+        monthlyInvestment:
+            toNumber(stock.monthlyInvestment),
 
-          container.classList.remove(
-            "show"
-          );
+        buyFrequency:
+            String(stock.buyFrequency ?? "每月"),
 
-        }
-      );
+        stopLoss:
+            toNumber(stock.stopLoss),
+
+        takeProfit1:
+            toNumber(stock.takeProfit1),
+
+        takeProfit2:
+            toNumber(stock.takeProfit2),
+
+        note:
+            String(stock.note ?? ""),
+
+        updatedAt:
+            stock.updatedAt || new Date().toISOString()
+
+    };
+
+}
+
+
+/* =========================================================
+   數字處理
+========================================================= */
+
+function toNumber(value) {
+
+    const number = Number(value);
+
+    return Number.isFinite(number)
+        ? number
+        : 0;
+
+}
+
+
+function cleanNumber(value) {
+
+    const number = toNumber(value);
+
+    if (!Number.isFinite(number)) {
+        return 0;
+    }
+
+    return number;
+
+}
+
+
+/* =========================================================
+   核心計算
+========================================================= */
+
+/*
+    ★★★ 這裡是本次修正最重要的地方 ★★★
+
+    投入成本：
+    持有股數 × 平均成本
+
+    市值：
+    持有股數 × 目前價格
+
+    損益：
+    市值 − 投入成本
+
+    報酬率：
+    損益 ÷ 投入成本 × 100
+*/
+
+
+function calculateStock(stock) {
+
+    const shares = cleanNumber(stock.shares);
+
+    const avgCost = cleanNumber(stock.avgCost);
+
+    const currentPrice =
+        cleanNumber(stock.currentPrice);
+
+
+    // 實際投入成本
+    const cost =
+        shares * avgCost;
+
+
+    // 目前市值
+    const value =
+        shares * currentPrice;
+
+
+    // 實際損益
+    const profit =
+        value - cost;
+
+
+    // 報酬率
+    let returnRate = 0;
+
+    if (cost > 0) {
+
+        returnRate =
+            (profit / cost) * 100;
+
+    }
+
+
+    return {
+
+        cost,
+
+        value,
+
+        profit,
+
+        returnRate
+
+    };
+
+}
+
+
+/* =========================================================
+   總計計算
+========================================================= */
+
+function calculateTotals() {
+
+    let totalCost = 0;
+
+    let totalValue = 0;
+
+    let totalProfit = 0;
+
+
+    portfolio.forEach(stock => {
+
+        const result =
+            calculateStock(stock);
+
+        totalCost += result.cost;
+
+        totalValue += result.value;
+
+        totalProfit += result.profit;
 
     });
 
-}
 
+    let totalReturn = 0;
 
-function setupSearch(
-  inputId,
-  resultsId
-){
+    if (totalCost > 0) {
 
-  const input =
-    document.getElementById(
-      inputId
-    );
-
-  const results =
-    document.getElementById(
-      resultsId
-    );
-
-  if(!input || !results){
-    return;
-  }
-
-  input.addEventListener(
-    "input",
-    () => {
-
-      const list =
-        searchStocks(
-          input.value
-        );
-
-      if(!input.value.trim()){
-
-        results.classList.remove(
-          "show"
-        );
-
-        return;
-      }
-
-      renderSearchResults(
-        results,
-        list
-      );
+        totalReturn =
+            (totalProfit / totalCost) * 100;
 
     }
-  );
 
-  document.addEventListener(
-    "click",
-    event => {
 
-      if(
-        !input.contains(event.target) &&
-        !results.contains(event.target)
-      ){
+    return {
 
-        results.classList.remove(
-          "show"
-        );
+        totalCost,
 
-      }
+        totalValue,
 
-    }
-  );
+        totalProfit,
+
+        totalReturn
+
+    };
+
 }
 
 
 /* =========================================================
-   STOCK DETAIL
-   ========================================================= */
+   格式化
+========================================================= */
 
-function openStockDetail(code){
+function formatMoney(value) {
 
-  const stock =
-    marketData.find(
-      s => s.code === String(code)
-    );
-
-  if(!stock){
-    return;
-  }
-
-  showSection("search");
-
-  const detail =
-    document.getElementById(
-      "searchDetail"
-    );
-
-  const inWatch =
-    state.watchlist.includes(
-      stock.code
-    );
-
-  const inDca =
-    state.dca.some(
-      item =>
-        item.code === stock.code
-    );
-
-  detail.innerHTML =
-    createDetailHtml(
-      stock,
-      inWatch,
-      inDca
-    );
-
-  window.scrollTo({
-    top:220,
-    behavior:"smooth"
-  });
+    return "NT$ " +
+        Math.round(value).toLocaleString("zh-TW");
 
 }
 
 
-function createDetailHtml(
-  stock,
-  inWatch,
-  inDca
-){
+function formatPrice(value) {
 
-  const changeClass =
-    stock.changePct > 0
-      ? "up"
-      : stock.changePct < 0
-        ? "down"
-        : "flat";
+    if (!Number.isFinite(value)) {
 
-  return `
-
-    <div class="card detail-card">
-
-      <div class="detail-head">
-
-        <div>
-
-          <div class="detail-code">
-            ${escapeHtml(stock.code)}
-          </div>
-
-          <div class="detail-name">
-            ${escapeHtml(stock.name)}
-          </div>
-
-          <div class="detail-price">
-            ${formatPrice(stock.price)}
-          </div>
-
-          <div
-            class="${changeClass}"
-            style="font-weight:800;margin-top:5px"
-          >
-            ${formatChange(stock)}
-          </div>
-
-        </div>
-
-        <div>
-
-          ${
-            inWatch
-            ? `
-              <button
-                class="btn btn-danger"
-                onclick="removeFromWatchlist('${escapeJs(stock.code)}')"
-              >
-                移除股票清單
-              </button>
-            `
-            : `
-              <button
-                class="btn btn-primary"
-                onclick="addToWatchlist('${escapeJs(stock.code)}')"
-              >
-                ＋加入股票清單
-              </button>
-            `
-          }
-
-        </div>
-
-      </div>
-
-      <div class="detail-grid">
-
-        ${detailMetric(
-          "RSI",
-          formatIndicator(stock.rsi)
-        )}
-
-        ${detailMetric(
-          "MACD",
-          formatIndicator(stock.macd)
-        )}
-
-        ${detailMetric(
-          "KD K",
-          formatIndicator(stock.k)
-        )}
-
-        ${detailMetric(
-          "KD D",
-          formatIndicator(stock.d)
-        )}
-
-        ${detailMetric(
-          "成交量",
-          formatNumber(stock.volume)
-        )}
-
-        ${detailMetric(
-          "5日均量",
-          formatNumber(stock.avgVolume5)
-        )}
-
-        ${detailMetric(
-          "MACD Signal",
-          formatIndicator(stock.macdSignal)
-        )}
-
-        ${detailMetric(
-          "資料日期",
-          stock.date || "--"
-        )}
-
-      </div>
-
-      <div
-        style="
-          margin-top:20px;
-          padding-top:18px;
-          border-top:1px solid #202c3e;
-        "
-      >
-
-        <div class="section-title">
-          定投管理
-        </div>
-
-        <div
-          style="
-            color:#718096;
-            font-size:11px;
-            margin-top:5px;
-          "
-        >
-          股票清單與零股定投是兩個獨立功能。
-        </div>
-
-        <div style="margin-top:13px">
-
-          ${
-            inDca
-            ? `
-              <button
-                class="btn btn-danger"
-                onclick="removeFromDca('${escapeJs(stock.code)}')"
-              >
-                移除定投
-              </button>
-            `
-            : `
-              <button
-                class="btn btn-green"
-                onclick="addToDca('${escapeJs(stock.code)}')"
-              >
-                ＋加入零股定投
-              </button>
-            `
-          }
-
-        </div>
-
-      </div>
-
-    </div>
-  `;
-}
-
-
-function detailMetric(
-  label,
-  value
-){
-
-  return `
-
-    <div class="detail-metric">
-
-      <div class="detail-metric-label">
-        ${label}
-      </div>
-
-      <div class="detail-metric-value">
-        ${value}
-      </div>
-
-    </div>
-  `;
-}
-
-
-/* =========================================================
-   WATCHLIST
-   ========================================================= */
-
-function addToWatchlist(code){
-
-  code = String(code);
-
-  if(
-    state.watchlist.includes(code)
-  ){
-    return;
-  }
-
-  /*
-    只有使用者明確呼叫這個函式，
-    股票才可以加入清單。
-  */
-
-  state.watchlist.push(code);
-
-  saveUserState();
-
-  renderAll();
-
-  openStockDetail(code);
-
-}
-
-
-function removeFromWatchlist(code){
-
-  code = String(code);
-
-  state.watchlist =
-    state.watchlist.filter(
-      item => item !== code
-    );
-
-  saveUserState();
-
-  renderAll();
-
-}
-
-
-function renderWatchlist(){
-
-  const container =
-    document.getElementById(
-      "watchlistContainer"
-    );
-
-  if(!state.watchlist.length){
-
-    container.innerHTML = `
-
-      <div class="empty">
-
-        <div class="empty-icon">
-          ▣
-        </div>
-
-        <div class="empty-title">
-          股票清單目前是空的
-        </div>
-
-        <div class="empty-text">
-          使用上方「個股搜尋」搜尋股票，
-          查看資料後按「加入股票清單」。
-        </div>
-
-        <button
-          class="btn btn-primary"
-          style="margin-top:16px"
-          onclick="showSection('search')"
-        >
-          開始搜尋個股
-        </button>
-
-      </div>
-
-    `;
-
-    return;
-  }
-
-  const stocks =
-    state.watchlist
-      .map(
-        code =>
-          marketData.find(
-            stock =>
-              stock.code === code
-          )
-      )
-      .filter(Boolean);
-
-  container.innerHTML =
-    stocks
-      .map(stock =>
-        createWatchRow(stock)
-      )
-      .join("");
-
-}
-
-
-function createWatchRow(stock){
-
-  const changeClass =
-    stock.changePct > 0
-      ? "up"
-      : stock.changePct < 0
-        ? "down"
-        : "flat";
-
-  const inDca =
-    state.dca.some(
-      item =>
-        item.code === stock.code
-    );
-
-  return `
-
-    <div class="list-row">
-
-      <div class="list-main">
-
-        <div class="stock-avatar">
-          ${escapeHtml(stock.code)}
-        </div>
-
-        <div>
-
-          <div class="list-name">
-            ${escapeHtml(stock.name)}
-          </div>
-
-          <div class="list-meta">
-            ${inDca ? "已加入定投" : "僅股票清單"}
-          </div>
-
-        </div>
-
-      </div>
-
-      <div class="list-right">
-
-        <div class="list-price">
-
-          <strong>
-            ${formatPrice(stock.price)}
-          </strong>
-
-          <span class="${changeClass}">
-            ${formatChange(stock)}
-          </span>
-
-        </div>
-
-        <button
-          class="btn btn-small"
-          onclick="openStockDetail('${escapeJs(stock.code)}')"
-        >
-          詳情
-        </button>
-
-        ${
-          inDca
-          ? `
-            <button
-              class="btn btn-small btn-danger"
-              onclick="removeFromDca('${escapeJs(stock.code)}')"
-            >
-              移除定投
-            </button>
-          `
-          : `
-            <button
-              class="btn btn-small btn-green"
-              onclick="addToDca('${escapeJs(stock.code)}')"
-            >
-              加入定投
-            </button>
-          `
-        }
-
-        <button
-          class="btn btn-small btn-danger"
-          onclick="removeFromWatchlist('${escapeJs(stock.code)}')"
-        >
-          移除
-        </button>
-
-      </div>
-
-    </div>
-  `;
-}
-
-
-/* =========================================================
-   DCA
-   ========================================================= */
-
-function addToDca(code){
-
-  code = String(code);
-
-  if(
-    state.dca.some(
-      item =>
-        item.code === code
-    )
-  ){
-    return;
-  }
-
-  /*
-    定投是獨立操作。
-    不會因為加入股票清單而自動產生。
-  */
-
-  state.dca.push({
-
-    code,
-
-    shares:0,
-
-    cost:0,
-
-    monthly:0,
-
-    frequency:"monthly",
-
-    createdAt:
-      new Date().toISOString()
-
-  });
-
-  saveUserState();
-
-  renderAll();
-
-  openStockDetail(code);
-
-}
-
-
-function removeFromDca(code){
-
-  code = String(code);
-
-  state.dca =
-    state.dca.filter(
-      item =>
-        item.code !== code
-    );
-
-  saveUserState();
-
-  renderAll();
-
-}
-
-
-function updateDca(
-  code,
-  field,
-  value
-){
-
-  const item =
-    state.dca.find(
-      d => d.code === code
-    );
-
-  if(!item){
-    return;
-  }
-
-  item[field] =
-    Number(value) || 0;
-
-  saveUserState();
-
-  renderDca();
-
-  updatePerformance();
-
-}
-
-
-function renderDca(){
-
-  const container =
-    document.getElementById(
-      "dcaContainer"
-    );
-
-  if(!state.dca.length){
-
-    container.innerHTML = `
-
-      <div class="empty">
-
-        <div class="empty-icon">
-          ◈
-        </div>
-
-        <div class="empty-title">
-          尚未設定任何定投標的
-        </div>
-
-        <div class="empty-text">
-          先到「個股搜尋」或「股票清單」，
-          再個別按下「加入定投」。
-        </div>
-
-        <button
-          class="btn btn-primary"
-          style="margin-top:16px"
-          onclick="showSection('search')"
-        >
-          搜尋個股
-        </button>
-
-      </div>
-
-    `;
-
-    updateDcaSummary();
-
-    return;
-  }
-
-  const rows =
-    state.dca
-      .map(item => {
-
-        const stock =
-          marketData.find(
-            s =>
-              s.code === item.code
-          );
-
-        return {
-          item,
-          stock
-        };
-
-      });
-
-  container.innerHTML = `
-
-    <div class="table-scroll">
-
-      <table class="dca-table">
-
-        <thead>
-
-          <tr>
-
-            <th>標的</th>
-            <th>目前價格</th>
-            <th>持有股數</th>
-            <th>持有成本</th>
-            <th>每月定投</th>
-            <th>目前市值</th>
-            <th>報酬</th>
-            <th></th>
-
-          </tr>
-
-        </thead>
-
-        <tbody>
-
-          ${
-            rows
-              .map(
-                ({item,stock}) =>
-                  createDcaRow(
-                    item,
-                    stock
-                  )
-              )
-              .join("")
-          }
-
-        </tbody>
-
-      </table>
-
-    </div>
-  `;
-
-  updateDcaSummary();
-
-}
-
-
-function createDcaRow(
-  item,
-  stock
-){
-
-  const price =
-    stock?.price ?? 0;
-
-  const value =
-    price *
-    Number(item.shares || 0);
-
-  const profit =
-    value -
-    Number(item.cost || 0);
-
-  const returnPct =
-    item.cost > 0
-      ? profit /
-        item.cost *
-        100
-      : 0;
-
-  return `
-
-    <tr>
-
-      <td>
-
-        <strong>
-          ${escapeHtml(item.code)}
-        </strong>
-
-        <div
-          style="
-            color:#718096;
-            font-size:10px;
-            margin-top:3px;
-          "
-        >
-          ${escapeHtml(
-            stock?.name ||
-            item.code
-          )}
-        </div>
-
-      </td>
-
-      <td>
-        ${formatPrice(price)}
-      </td>
-
-      <td>
-
-        <input
-          class="input"
-          style="width:100px"
-          type="number"
-          min="0"
-          step="0.01"
-          value="${item.shares || 0}"
-          onchange="
-            updateDca(
-              '${escapeJs(item.code)}',
-              'shares',
-              this.value
-            )
-          "
-        >
-
-      </td>
-
-      <td>
-
-        <input
-          class="input"
-          style="width:110px"
-          type="number"
-          min="0"
-          step="1"
-          value="${item.cost || 0}"
-          onchange="
-            updateDca(
-              '${escapeJs(item.code)}',
-              'cost',
-              this.value
-            )
-          "
-        >
-
-      </td>
-
-      <td>
-
-        <input
-          class="input"
-          style="width:110px"
-          type="number"
-          min="0"
-          step="100"
-          value="${item.monthly || 0}"
-          onchange="
-            updateDca(
-              '${escapeJs(item.code)}',
-              'monthly',
-              this.value
-            )
-          "
-        >
-
-      </td>
-
-      <td>
-        ${formatMoney(value)}
-      </td>
-
-      <td>
-
-        <span class="${
-          profit > 0
-            ? "up"
-            : profit < 0
-              ? "down"
-              : "flat"
-        }">
-
-          ${formatMoney(profit)}
-
-          <div
-            style="
-              font-size:9px;
-              margin-top:3px;
-            "
-          >
-            ${returnPct.toFixed(2)}%
-          </div>
-
-        </span>
-
-      </td>
-
-      <td>
-
-        <button
-          class="btn btn-small btn-danger"
-          onclick="
-            removeFromDca(
-              '${escapeJs(item.code)}'
-            )
-          "
-        >
-          移除
-        </button>
-
-      </td>
-
-    </tr>
-  `;
-}
-
-
-function updateDcaSummary(){
-
-  let invested = 0;
-  let value = 0;
-
-  state.dca.forEach(item => {
-
-    invested +=
-      Number(item.cost || 0);
-
-    const stock =
-      marketData.find(
-        s =>
-          s.code === item.code
-      );
-
-    if(stock){
-
-      value +=
-        Number(stock.price || 0) *
-        Number(item.shares || 0);
+        return "—";
 
     }
 
-  });
-
-  const profit =
-    value - invested;
-
-  const returnPct =
-    invested > 0
-      ? profit /
-        invested *
-        100
-      : 0;
-
-  setText(
-    "dcaSummaryCount",
-    state.dca.length
-  );
-
-  setText(
-    "dcaInvested",
-    formatMoney(invested)
-  );
-
-  setText(
-    "dcaValue",
-    formatMoney(value)
-  );
-
-  setText(
-    "dcaReturn",
-    returnPct.toFixed(2) + "%"
-  );
-
-}
-
-
-/* =========================================================
-   PERFORMANCE
-   ========================================================= */
-
-function updatePerformance(){
-
-  let invested = 0;
-  let value = 0;
-
-  state.dca.forEach(item => {
-
-    invested +=
-      Number(item.cost || 0);
-
-    const stock =
-      marketData.find(
-        s =>
-          s.code === item.code
-      );
-
-    if(stock){
-
-      value +=
-        Number(stock.price || 0) *
-        Number(item.shares || 0);
-
-    }
-
-  });
-
-  const profit =
-    value - invested;
-
-  const returnPct =
-    invested > 0
-      ? profit /
-        invested *
-        100
-      : 0;
-
-  setText(
-    "perfInvested",
-    formatMoney(invested)
-  );
-
-  setText(
-    "perfValue",
-    formatMoney(value)
-  );
-
-  setText(
-    "perfProfit",
-    formatMoney(profit)
-  );
-
-  setText(
-    "perfReturn",
-    returnPct.toFixed(2) + "%"
-  );
-
-  const empty =
-    document.getElementById(
-      "performanceEmpty"
-    );
-
-  if(empty){
-
-    empty.style.display =
-      state.dca.length
-        ? "none"
-        : "block";
-
-  }
-
-}
-
-
-/* =========================================================
-   RISK
-   ========================================================= */
-
-function updateRisk(){
-
-  const count =
-    state.dca.length;
-
-  const label =
-    document.getElementById(
-      "riskLabel"
-    );
-
-  const fill =
-    document.getElementById(
-      "riskFill"
-    );
-
-  const desc =
-    document.getElementById(
-      "riskDescription"
-    );
-
-  if(!count){
-
-    label.textContent =
-      "尚無投資資料";
-
-    fill.style.width =
-      "0%";
-
-    fill.className =
-      "risk-fill";
-
-    desc.textContent =
-      "建立股票或定投資料後才會產生風控結果。";
-
-    return;
-  }
-
-  /*
-    基礎 UI 風控指標。
-    不將它當作投資建議。
-  */
-
-  let risk = 20;
-
-  state.dca.forEach(item => {
-
-    const stock =
-      marketData.find(
-        s =>
-          s.code === item.code
-      );
-
-    if(!stock){
-      risk += 5;
-      return;
-    }
-
-    if(
-      stock.changePct !== null &&
-      stock.changePct < -5
-    ){
-      risk += 15;
-    }
-
-    if(
-      stock.rsi !== null &&
-      stock.rsi < 35
-    ){
-      risk += 10;
-    }
-
-  });
-
-  risk =
-    Math.min(
-      100,
-      risk
-    );
-
-  fill.style.width =
-    risk + "%";
-
-  if(risk < 40){
-
-    label.textContent =
-      "低風險觀察";
-
-    fill.className =
-      "risk-fill risk-low";
-
-    desc.textContent =
-      "目前沒有明顯的高風險訊號。";
-
-  }
-  else if(risk < 70){
-
-    label.textContent =
-      "中度風險";
-
-    fill.className =
-      "risk-fill risk-mid";
-
-    desc.textContent =
-      "部分標的出現需要注意的價格或動能訊號。";
-
-  }
-  else{
-
-    label.textContent =
-      "高風險";
-
-    fill.className =
-      "risk-fill risk-high";
-
-    desc.textContent =
-      "目前組合存在較高波動或弱勢訊號，應重新檢視持有策略。";
-
-  }
-
-}
-
-
-/* =========================================================
-   SCANNER UI
-   ========================================================= */
-
-function renderScanner(){
-
-  const container =
-    document.getElementById(
-      "scannerGrid"
-    );
-
-  let list =
-    [...qualifiedStocks];
-
-  if(
-    currentFilter === "high"
-  ){
-
-    list =
-      list.filter(
-        stock =>
-          stock.score >= 80
-      );
-
-  }
-
-  if(
-    currentFilter === "qualified"
-  ){
-
-    list =
-      list.filter(
-        stock =>
-          stock.qualified
-      );
-
-  }
-
-  if(!list.length){
-
-    container.innerHTML = `
-
-      <div
-        class="card empty"
-        style="grid-column:1/-1"
-      >
-
-        <div class="empty-icon">
-          ⌁
-        </div>
-
-        <div class="empty-title">
-          今日沒有符合目前篩選條件的標的
-        </div>
-
-        <div class="empty-text">
-          這代表今天的資料經過條件篩選後，
-          沒有符合目前設定的結果。
-        </div>
-
-      </div>
-
-    `;
-
-    return;
-  }
-
-  container.innerHTML =
-    list
-      .slice(0,30)
-      .map(
-        stock =>
-          createScannerCard(stock)
-      )
-      .join("");
-
-}
-
-
-function createScannerCard(stock){
-
-  const scoreClass =
-    stock.score >= 80
-      ? "high"
-      : stock.score >= 60
-        ? "mid"
-        : "low";
-
-  const changeClass =
-    stock.changePct > 0
-      ? "up"
-      : stock.changePct < 0
-        ? "down"
-        : "flat";
-
-  const inWatch =
-    state.watchlist.includes(
-      stock.code
-    );
-
-  return `
-
-    <div class="card stock-card">
-
-      <div class="stock-top">
-
-        <div>
-
-          <div class="stock-code">
-            ${escapeHtml(stock.code)}
-          </div>
-
-          <div class="stock-name">
-            ${escapeHtml(stock.name)}
-          </div>
-
-        </div>
-
-        <div
-          class="score ${scoreClass}"
-          title="AI 條件符合度"
-        >
-          ${stock.score}
-        </div>
-
-      </div>
-
-      <div class="stock-price">
-        ${formatPrice(stock.price)}
-      </div>
-
-      <div class="stock-change ${changeClass}">
-        ${formatChange(stock)}
-      </div>
-
-      <div class="stock-metrics">
-
-        <div class="metric">
-          <div class="metric-label">
-            RSI
-          </div>
-          <div class="metric-value">
-            ${formatIndicator(stock.rsi)}
-          </div>
-        </div>
-
-        <div class="metric">
-          <div class="metric-label">
-            MACD
-          </div>
-          <div class="metric-value">
-            ${
-              stock.macd !== null &&
-              stock.macdSignal !== null
-                ? stock.macd > stock.macdSignal
-                  ? "多頭"
-                  : "空頭"
-                : "--"
-            }
-          </div>
-        </div>
-
-        <div class="metric">
-          <div class="metric-label">
-            KD
-          </div>
-          <div class="metric-value">
-            ${
-              stock.k !== null &&
-              stock.d !== null
-                ? stock.k > stock.d
-                  ? "K > D"
-                  : "K < D"
-                : "--"
-            }
-          </div>
-        </div>
-
-        <div class="metric">
-          <div class="metric-label">
-            成交量
-          </div>
-          <div class="metric-value">
-            ${
-              stock.volume !== null
-                ? formatNumber(stock.volume)
-                : "--"
-            }
-          </div>
-        </div>
-
-      </div>
-
-      <div
-        style="
-          margin-top:12px;
-          color:#718096;
-          font-size:10px;
-        "
-      >
-        ${stock.conditions}/5 項條件
-      </div>
-
-      <div class="stock-actions">
-
-        <button
-          class="btn btn-small"
-          onclick="
-            openStockDetail(
-              '${escapeJs(stock.code)}'
-            )
-          "
-        >
-          查看分析
-        </button>
-
-        ${
-          inWatch
-          ? `
-            <button
-              class="btn btn-small btn-danger"
-              onclick="
-                removeFromWatchlist(
-                  '${escapeJs(stock.code)}'
-                )
-              "
-            >
-              已在清單
-            </button>
-          `
-          : `
-            <button
-              class="btn btn-small btn-green"
-              onclick="
-                addToWatchlist(
-                  '${escapeJs(stock.code)}'
-                )
-              "
-            >
-              加入清單
-            </button>
-          `
-        }
-
-      </div>
-
-    </div>
-  `;
-}
-
-
-/* =========================================================
-   OVERVIEW
-   ========================================================= */
-
-function renderOverview(){
-
-  const container =
-    document.getElementById(
-      "overviewScanner"
-    );
-
-  const list =
-    qualifiedStocks.slice(0,6);
-
-  if(!list.length){
-
-    container.innerHTML = `
-
-      <div
-        class="card empty"
-        style="grid-column:1/-1"
-      >
-
-        <div class="empty-icon">
-          ⌁
-        </div>
-
-        <div class="empty-title">
-          今日暫無符合條件的個股
-        </div>
-
-        <div class="empty-text">
-          系統不會因為沒有推薦結果而自行建立股票清單。
-        </div>
-
-      </div>
-    `;
-
-    return;
-  }
-
-  container.innerHTML =
-    list
-      .map(
-        stock =>
-          createScannerCard(stock)
-      )
-      .join("");
-
-}
-
-
-/* =========================================================
-   COUNTERS
-   ========================================================= */
-
-function updateCounters(){
-
-  const watch =
-    state.watchlist.length;
-
-  const dca =
-    state.dca.length;
-
-  setText(
-    "watchCount",
-    watch
-  );
-
-  setText(
-    "dcaCount",
-    dca
-  );
-
-  setText(
-    "overviewWatchCount",
-    watch
-  );
-
-  setText(
-    "overviewDcaCount",
-    dca
-  );
-
-  setText(
-    "systemWatchCount",
-    watch
-  );
-
-  setText(
-    "systemDcaCount",
-    dca
-  );
-
-}
-
-
-function updateMarketCounters(){
-
-  setText(
-    "marketCount",
-    marketData.length
-  );
-
-  setText(
-    "qualifiedCount",
-    qualifiedStocks.length
-  );
-
-  setText(
-    "scanTotal",
-    marketData.length
-  );
-
-  setText(
-    "scanQualified",
-    qualifiedStocks.length
-  );
-
-  const date =
-    qualifiedStocks[0]?.date ||
-    marketData[0]?.date ||
-    "--";
-
-  setText(
-    "scanDate",
-    String(date).slice(0,10)
-  );
-
-  setText(
-    "systemDataCount",
-    marketData.length
-  );
-
-}
-
-
-/* =========================================================
-   RENDER ALL
-   ========================================================= */
-
-function renderAll(){
-
-  updateCounters();
-
-  updateMarketCounters();
-
-  renderOverview();
-
-  renderScanner();
-
-  renderWatchlist();
-
-  renderDca();
-
-  updatePerformance();
-
-  updateRisk();
-
-}
-
-
-/* =========================================================
-   FORMATTERS
-   ========================================================= */
-
-function formatPrice(value){
-
-  if(
-    value === null ||
-    value === undefined ||
-    !Number.isFinite(
-      Number(value)
-    )
-  ){
-    return "--";
-  }
-
-  return Number(value)
-    .toLocaleString(
-      "zh-TW",
-      {
-        minimumFractionDigits:2,
-        maximumFractionDigits:2
-      }
-    );
-}
-
-
-function formatMoney(value){
-
-  if(
-    value === null ||
-    value === undefined ||
-    !Number.isFinite(
-      Number(value)
-    )
-  ){
-    return "$0";
-  }
-
-  return "$" +
-    Number(value)
-      .toLocaleString(
+    return value.toLocaleString(
         "zh-TW",
         {
-          maximumFractionDigits:0
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2
         }
-      );
-}
-
-
-function formatNumber(value){
-
-  if(
-    value === null ||
-    value === undefined ||
-    !Number.isFinite(
-      Number(value)
-    )
-  ){
-    return "--";
-  }
-
-  return Number(value)
-    .toLocaleString(
-      "zh-TW",
-      {
-        maximumFractionDigits:0
-      }
     );
+
 }
 
 
-function formatIndicator(value){
+function formatShares(value) {
 
-  if(
-    value === null ||
-    value === undefined ||
-    !Number.isFinite(
-      Number(value)
-    )
-  ){
-    return "--";
-  }
+    if (!Number.isFinite(value)) {
 
-  return Number(value)
-    .toFixed(2);
+        return "0";
+
+    }
+
+    return value.toLocaleString(
+        "zh-TW",
+        {
+            maximumFractionDigits: 3
+        }
+    );
+
 }
 
 
-function formatChange(stock){
+function formatPercent(value) {
 
-  if(
-    stock.changePct === null &&
-    stock.change === null
-  ){
-    return "--";
-  }
+    const number =
+        Number.isFinite(value)
+            ? value
+            : 0;
 
-  const priceChange =
-    stock.change !== null
-      ? stock.change
-      : null;
+    const sign =
+        number > 0
+            ? "+"
+            : "";
 
-  const pct =
-    stock.changePct !== null
-      ? stock.changePct
-      : null;
+    return sign +
+        number.toFixed(2) +
+        "%";
 
-  let result = "";
-
-  if(priceChange !== null){
-
-    result +=
-      (
-        priceChange > 0
-          ? "+"
-          : ""
-      ) +
-      priceChange.toFixed(2);
-
-  }
-
-  if(pct !== null){
-
-    result +=
-      " (" +
-      (
-        pct > 0
-          ? "+"
-          : ""
-      ) +
-      pct.toFixed(2) +
-      "%)";
-
-  }
-
-  return result || "--";
 }
 
 
 /* =========================================================
-   SECURITY HELPERS
-   ========================================================= */
+   顏色
+========================================================= */
 
-function escapeHtml(value){
+function profitClass(value) {
 
-  return String(value)
-    .replace(
-      /&/g,
-      "&amp;"
-    )
-    .replace(
-      /</g,
-      "&lt;"
-    )
-    .replace(
-      />/g,
-      "&gt;"
-    )
-    .replace(
-      /"/g,
-      "&quot;"
-    )
-    .replace(
-      /'/g,
-      "&#039;"
-    );
-}
+    if (value > 0) {
 
+        return "profit";
 
-function escapeJs(value){
+    }
 
-  return String(value)
-    .replace(
-      /\\/g,
-      "\\\\"
-    )
-    .replace(
-      /'/g,
-      "\\'"
-    );
+    if (value < 0) {
+
+        return "loss";
+
+    }
+
+    return "neutral";
+
 }
 
 
 /* =========================================================
-   DOM HELPERS
-   ========================================================= */
+   風控狀態
+========================================================= */
 
-function setText(
-  id,
-  value
-){
+function getRiskStatus(stock) {
 
-  const el =
-    document.getElementById(id);
+    const price =
+        cleanNumber(stock.currentPrice);
 
-  if(el){
-    el.textContent =
-      value;
-  }
+    const stopLoss =
+        cleanNumber(stock.stopLoss);
+
+    const tp1 =
+        cleanNumber(stock.takeProfit1);
+
+    const tp2 =
+        cleanNumber(stock.takeProfit2);
+
+
+    if (price <= 0) {
+
+        return {
+            text: "待輸入價格",
+            className: "badge-warning"
+        };
+
+    }
+
+
+    if (stopLoss > 0 && price <= stopLoss) {
+
+        return {
+            text: "停損警戒",
+            className: "badge-danger"
+        };
+
+    }
+
+
+    if (tp2 > 0 && price >= tp2) {
+
+        return {
+            text: "第二停利",
+            className: "badge-good"
+        };
+
+    }
+
+
+    if (tp1 > 0 && price >= tp1) {
+
+        return {
+            text: "第一停利",
+            className: "badge-good"
+        };
+
+    }
+
+
+    return {
+        text: "正常",
+        className: "badge-good"
+    };
 
 }
 
 
-function setDataStatus(text){
+/* =========================================================
+   Render
+========================================================= */
 
-  const status =
+function render() {
+
+    renderSummary();
+
+    renderTable();
+
+}
+
+
+/* =========================================================
+   Render：總覽
+========================================================= */
+
+function renderSummary() {
+
+    const totals =
+        calculateTotals();
+
+
     document.getElementById(
-      "dataStatus"
-    );
+        "totalCost"
+    ).textContent =
+        formatMoney(totals.totalCost);
 
-  const system =
+
     document.getElementById(
-      "systemStatus"
-    );
+        "totalValue"
+    ).textContent =
+        formatMoney(totals.totalValue);
 
-  if(status){
-    status.textContent =
-      text;
-  }
 
-  if(system){
-    system.textContent =
-      text;
-  }
+    const profitElement =
+        document.getElementById("totalProfit");
+
+
+    profitElement.textContent =
+        formatMoney(totals.totalProfit);
+
+
+    profitElement.className =
+        "summary-value " +
+        profitClass(totals.totalProfit);
+
+
+    const returnElement =
+        document.getElementById("totalReturn");
+
+
+    returnElement.textContent =
+        formatPercent(totals.totalReturn);
+
+
+    returnElement.className =
+        "summary-value " +
+        profitClass(totals.totalReturn);
+
+
+    document.getElementById(
+        "totalProfitSub"
+    ).textContent =
+        portfolio.length === 0
+            ? "尚無定投資料"
+            : `${portfolio.length} 個投資標的`;
 
 }
 
 
 /* =========================================================
-   FILTERS
-   ========================================================= */
+   Render：股票表格
+========================================================= */
 
-document
-  .querySelectorAll(".filter")
-  .forEach(btn => {
+function renderTable() {
 
-    btn.addEventListener(
-      "click",
-      () => {
-
-        document
-          .querySelectorAll(
-            ".filter"
-          )
-          .forEach(
-            b =>
-              b.classList.remove(
-                "active"
-              )
-          );
-
-        btn.classList.add(
-          "active"
+    const tbody =
+        document.getElementById(
+            "stockTableBody"
         );
 
-        currentFilter =
-          btn.dataset.filter;
 
-        renderScanner();
+    tbody.innerHTML = "";
 
-      }
-    );
 
-  });
+    if (portfolio.length === 0) {
+
+        tbody.innerHTML = `
+            <tr>
+                <td colspan="13">
+                    <div class="empty">
+                        目前尚無定投標的<br>
+                        請點擊「＋ 新增標的」
+                    </div>
+                </td>
+            </tr>
+        `;
+
+        return;
+    }
+
+
+    portfolio.forEach((stock, index) => {
+
+        const result =
+            calculateStock(stock);
+
+        const risk =
+            getRiskStatus(stock);
+
+
+        const tr =
+            document.createElement("tr");
+
+
+        tr.innerHTML = `
+
+            <td>
+                <div class="stock-name">
+                    ${escapeHTML(stock.name)}
+                </div>
+
+                <div class="stock-code">
+                    ${escapeHTML(stock.code)}
+                    ·
+                    ${escapeHTML(stock.assetType)}
+                </div>
+            </td>
+
+            <td>
+                ${formatShares(stock.shares)}
+            </td>
+
+            <td>
+                ${formatPrice(stock.avgCost)}
+            </td>
+
+            <td>
+                ${formatMoney(result.cost)}
+            </td>
+
+            <td>
+                ${formatPrice(stock.currentPrice)}
+            </td>
+
+            <td>
+                ${formatMoney(result.value)}
+            </td>
+
+            <td class="${profitClass(result.profit)}">
+                <strong>
+                    ${formatMoney(result.profit)}
+                </strong>
+            </td>
+
+            <td class="${profitClass(result.returnRate)}">
+                <strong>
+                    ${formatPercent(result.returnRate)}
+                </strong>
+            </td>
+
+            <td>
+                ${stock.stopLoss > 0
+                    ? formatPrice(stock.stopLoss)
+                    : "—"}
+            </td>
+
+            <td>
+                ${stock.takeProfit1 > 0
+                    ? formatPrice(stock.takeProfit1)
+                    : "—"}
+            </td>
+
+            <td>
+                ${stock.takeProfit2 > 0
+                    ? formatPrice(stock.takeProfit2)
+                    : "—"}
+            </td>
+
+            <td>
+                <span class="badge ${risk.className}">
+                    ${risk.text}
+                </span>
+            </td>
+
+            <td>
+
+                <div class="button-group">
+
+                    <button
+                        class="btn-secondary"
+                        onclick="editStock(${index})">
+                        編輯
+                    </button>
+
+                    <button
+                        class="btn-danger"
+                        onclick="deleteStock(${index})">
+                        刪除
+                    </button>
+
+                </div>
+
+            </td>
+
+        `;
+
+
+        tbody.appendChild(tr);
+
+    });
+
+}
 
 
 /* =========================================================
-   REFRESH
-   ========================================================= */
+   新增
+========================================================= */
 
-document
-  .getElementById(
-    "refreshBtn"
-  )
-  .addEventListener(
-    "click",
-    loadData
-  );
+function openAddForm() {
+
+    editingIndex = -1;
+
+
+    document.getElementById(
+        "formTitle"
+    ).textContent =
+        "新增定投標的";
+
+
+    document.getElementById(
+        "stockForm"
+    ).reset();
+
+
+    document.getElementById(
+        "assetType"
+    ).value =
+        "股票";
+
+
+    document.getElementById(
+        "buyFrequency"
+    ).value =
+        "每月";
+
+
+    document.getElementById(
+        "formSection"
+    ).classList.remove("hidden");
+
+
+    document.getElementById(
+        "code"
+    ).focus();
+
+}
 
 
 /* =========================================================
-   INITIALIZE SEARCH
-   ========================================================= */
+   編輯
+========================================================= */
 
-setupSearch(
-  "globalSearch",
-  "searchResults"
-);
+function editStock(index) {
 
-setupSearch(
-  "pageSearch",
-  "pageSearchResults"
-);
+    if (
+        index < 0 ||
+        index >= portfolio.length
+    ) {
+
+        return;
+
+    }
+
+
+    const stock =
+        portfolio[index];
+
+
+    editingIndex = index;
+
+
+    document.getElementById(
+        "formTitle"
+    ).textContent =
+        "編輯定投標的";
+
+
+    document.getElementById("code").value =
+        stock.code;
+
+    document.getElementById("name").value =
+        stock.name;
+
+    document.getElementById("assetType").value =
+        stock.assetType;
+
+    document.getElementById("shares").value =
+        stock.shares;
+
+    document.getElementById("avgCost").value =
+        stock.avgCost;
+
+    document.getElementById("currentPrice").value =
+        stock.currentPrice;
+
+    document.getElementById("monthlyInvestment").value =
+        stock.monthlyInvestment;
+
+    document.getElementById("buyFrequency").value =
+        stock.buyFrequency;
+
+    document.getElementById("stopLoss").value =
+        stock.stopLoss || "";
+
+    document.getElementById("takeProfit1").value =
+        stock.takeProfit1 || "";
+
+    document.getElementById("takeProfit2").value =
+        stock.takeProfit2 || "";
+
+    document.getElementById("note").value =
+        stock.note;
+
+
+    document.getElementById(
+        "formSection"
+    ).classList.remove("hidden");
+
+
+    document.getElementById(
+        "formSection"
+    ).scrollIntoView({
+        behavior: "smooth",
+        block: "start"
+    });
+
+}
 
 
 /* =========================================================
-   INITIALIZE
-   ========================================================= */
+   關閉表單
+========================================================= */
 
-loadUserState();
+function closeForm() {
 
-renderAll();
+    editingIndex = -1;
 
-loadData();
+
+    document.getElementById(
+        "formSection"
+    ).classList.add("hidden");
+
+
+    document.getElementById(
+        "stockForm"
+    ).reset();
+
+}
+
+
+/* =========================================================
+   儲存
+========================================================= */
+
+function saveStock(event) {
+
+    event.preventDefault();
+
+
+    const stock = normalizeStock({
+
+        code:
+            document.getElementById("code").value,
+
+        name:
+            document.getElementById("name").value,
+
+        assetType:
+            document.getElementById("assetType").value,
+
+        shares:
+            document.getElementById("shares").value,
+
+        avgCost:
+            document.getElementById("avgCost").value,
+
+        currentPrice:
+            document.getElementById("currentPrice").value,
+
+        monthlyInvestment:
+            document.getElementById(
+                "monthlyInvestment"
+            ).value,
+
+        buyFrequency:
+            document.getElementById(
+                "buyFrequency"
+            ).value,
+
+        stopLoss:
+            document.getElementById(
+                "stopLoss"
+            ).value,
+
+        takeProfit1:
+            document.getElementById(
+                "takeProfit1"
+            ).value,
+
+        takeProfit2:
+            document.getElementById(
+                "takeProfit2"
+            ).value,
+
+        note:
+            document.getElementById(
+                "note"
+            ).value,
+
+        updatedAt:
+            new Date().toISOString()
+
+    });
+
+
+    if (!stock.code || !stock.name) {
+
+        alert("請輸入股票代號與股票名稱。");
+
+        return;
+    }
+
+
+    if (stock.shares < 0) {
+
+        alert("持有股數不可小於 0。");
+
+        return;
+    }
+
+
+    if (stock.avgCost < 0) {
+
+        alert("平均成本不可小於 0。");
+
+        return;
+    }
+
+
+    if (stock.currentPrice < 0) {
+
+        alert("目前價格不可小於 0。");
+
+        return;
+    }
+
+
+    if (editingIndex === -1) {
+
+        portfolio.push(stock);
+
+    } else {
+
+        portfolio[editingIndex] =
+            stock;
+
+    }
+
+
+    saveData();
+
+    render();
+
+    closeForm();
+
+}
+
+
+/* =========================================================
+   刪除
+========================================================= */
+
+function deleteStock(index) {
+
+    if (
+        index < 0 ||
+        index >= portfolio.length
+    ) {
+
+        return;
+
+    }
+
+
+    const stock =
+        portfolio[index];
+
+
+    const confirmed =
+        confirm(
+            `確定要刪除 ${stock.code} ${stock.name}？`
+        );
+
+
+    if (!confirmed) {
+
+        return;
+
+    }
+
+
+    portfolio.splice(index, 1);
+
+    saveData();
+
+    render();
+
+}
+
+
+/* =========================================================
+   匯出 JSON
+========================================================= */
+
+function exportData() {
+
+    const data = {
+
+        version: "1.1",
+
+        exportedAt:
+            new Date().toISOString(),
+
+        portfolio:
+            portfolio
+
+    };
+
+
+    const blob =
+        new Blob(
+            [
+                JSON.stringify(
+                    data,
+                    null,
+                    2
+                )
+            ],
+            {
+                type: "application/json"
+            }
+        );
+
+
+    const url =
+        URL.createObjectURL(blob);
+
+
+    const a =
+        document.createElement("a");
+
+
+    const date =
+        new Date()
+            .toISOString()
+            .slice(0, 10);
+
+
+    a.href = url;
+
+    a.download =
+        `tw-stock-dca-backup-${date}.json`;
+
+
+    document.body.appendChild(a);
+
+    a.click();
+
+    a.remove();
+
+
+    URL.revokeObjectURL(url);
+
+}
+
+
+/* =========================================================
+   匯入 JSON
+========================================================= */
+
+function importData(event) {
+
+    const file =
+        event.target.files[0];
+
+
+    if (!file) {
+
+        return;
+
+    }
+
+
+    const reader =
+        new FileReader();
+
+
+    reader.onload = function(e) {
+
+        try {
+
+            const parsed =
+                JSON.parse(e.target.result);
+
+
+            let imported;
+
+
+            if (Array.isArray(parsed)) {
+
+                imported =
+                    parsed;
+
+            } else if (
+                parsed &&
+                Array.isArray(parsed.portfolio)
+            ) {
+
+                imported =
+                    parsed.portfolio;
+
+            } else {
+
+                throw new Error(
+                    "JSON 格式不正確"
+                );
+
+            }
+
+
+            imported =
+                imported.map(
+                    normalizeStock
+                );
+
+
+            const confirmed =
+                confirm(
+                    `即將匯入 ${imported.length} 筆資料。\n\n` +
+                    "匯入後會取代目前儀表板資料。\n\n" +
+                    "確定要繼續嗎？"
+                );
+
+
+            if (!confirmed) {
+
+                return;
+
+            }
+
+
+            portfolio =
+                imported;
+
+
+            saveData();
+
+            render();
+
+
+            alert(
+                `成功匯入 ${portfolio.length} 筆資料。`
+            );
+
+
+        } catch (error) {
+
+            console.error(
+                "匯入失敗：",
+                error
+            );
+
+
+            alert(
+                "匯入失敗：JSON 格式不正確。"
+            );
+
+        } finally {
+
+            event.target.value = "";
+
+        }
+
+    };
+
+
+    reader.readAsText(file);
+
+}
+
+
+/* =========================================================
+   HTML 安全處理
+========================================================= */
+
+function escapeHTML(value) {
+
+    return String(value ?? "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+
+}
+
+
+/* =========================================================
+   除錯用：於瀏覽器 Console 驗證計算
+========================================================= */
+
+window.DCA_DEBUG = {
+
+    calculateStock,
+
+    calculateTotals,
+
+    getPortfolio: () =>
+        JSON.parse(
+            JSON.stringify(portfolio)
+        )
+
+};
+
+
+/* =========================================================
+   完成
+========================================================= */
 
 </script>
 
