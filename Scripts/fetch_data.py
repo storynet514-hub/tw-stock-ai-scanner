@@ -1,52 +1,26 @@
 # ============================================================
 # 台股 AI 選股・零股定投・動態風控
-# fetch_data.py V7.4.2
+# fetch_data.py V7.5
 #
+# 核心修正版：
+# 1. 官方 TWSE / TPEx 建立市場 universe
+# 2. Yahoo Finance 改採「批次下載」
+# 3. 禁止 2159 檔逐檔呼叫 Yahoo
+# 4. 批次下載失敗才進行有限 fallback
+# 5. 保留 RSI / KD / MACD / MA20 / Volume
+# 6. 後端產生 AI SCORE
+# 7. 後端產生 TOP30
+# 8. 有效資料不足時禁止覆蓋舊 prices.json
+# 9. 原子式寫入
+# 10. 輸出後再次驗證
 # ============================================================
-# V7.4.2 正式資料層
-#
-# 核心目的：
-#
-# 1. 建立穩定的台股上市 / 上櫃 / ETF 資料集
-# 2. 後端完成所有核心技術分析
-# 3. 後端產生 AI SCORE
-# 4. 後端產生 TOP 30
-# 5. 前端只負責讀取與顯示
-# 6. 禁止空資料覆蓋有效 prices.json
-#
-# 核心欄位：
-#
-# code
-# name
-# market
-# type
-# price
-# change_pct
-# volume
-# rsi
-# kd_k
-# kd_d
-# macd
-# macd_signal
-# ma20
-# volume_ma5
-# ai_score
-# signal
-# result_tags
-# action
-# risk_level
-#
-# ============================================================
-
 
 import os
-import io
 import json
 import math
 import time
 import tempfile
 from datetime import datetime, timezone, timedelta
-from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import numpy as np
 import pandas as pd
@@ -62,7 +36,7 @@ except ImportError:
 # 基本設定
 # ============================================================
 
-VERSION = "V7.4.2"
+VERSION = "V7.5"
 
 BASE_DIR = os.path.dirname(
     os.path.dirname(
@@ -103,45 +77,24 @@ YF_PERIOD = "1y"
 
 YF_INTERVAL = "1d"
 
-MAX_RETRY = 3
+# 重要：
+# 不再逐檔呼叫 Yahoo。
+# 改成批次下載。
+BATCH_SIZE = 40
 
-RETRY_DELAY = 1.5
+BATCH_DELAY = 2.0
 
-MAX_WORKERS = 6
+MAX_BATCH_RETRY = 3
 
-REQUEST_TIMEOUT = 30
+MAX_SINGLE_RETRY = 2
 
-
-# ============================================================
-# 最低資料安全門檻
-# ============================================================
+SINGLE_RETRY_DELAY = 3.0
 
 MIN_VALID_ROWS = 30
 
 MIN_OUTPUT_STOCKS = 50
 
 TOP_N = 30
-
-
-# ============================================================
-# HTTP Headers
-# ============================================================
-
-HEADERS = {
-    "User-Agent": (
-        "Mozilla/5.0 "
-        "(Windows NT 10.0; Win64; x64) "
-        "AppleWebKit/537.36 "
-        "(KHTML, like Gecko) "
-        "Chrome/126.0 Safari/537.36"
-    ),
-    "Accept": (
-        "application/json,text/plain,*/*"
-    ),
-    "Accept-Language": (
-        "zh-TW,zh;q=0.9,en;q=0.8"
-    )
-}
 
 
 # ============================================================
@@ -156,16 +109,6 @@ TWSE_STOCK_API = (
 TPEX_QUOTES_API = (
     "https://www.tpex.org.tw/"
     "openapi/v1/tpex_mainboard_quotes"
-)
-
-TPEX_DAILY_API = (
-    "https://www.tpex.org.tw/"
-    "openapi/v1/tpex_mainboard_daily_close_quotes"
-)
-
-TWSE_ISIN_API = (
-    "https://isin.twse.com.tw/"
-    "isin/C_public.jsp"
 )
 
 
@@ -367,18 +310,42 @@ INVALID_SECURITY_KEYWORDS = [
     "ETN",
     "可轉債",
     "轉換公司債",
-    "特別股權證",
 ]
+
+
+# ============================================================
+# HTTP
+# ============================================================
+
+HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 "
+        "(Windows NT 10.0; Win64; x64) "
+        "AppleWebKit/537.36 "
+        "(KHTML, like Gecko) "
+        "Chrome/126.0 Safari/537.36"
+    ),
+    "Accept": (
+        "application/json,text/plain,*/*"
+    ),
+    "Accept-Language": (
+        "zh-TW,zh;q=0.9,en;q=0.8"
+    ),
+}
+
+
+REQUEST_TIMEOUT = 30
 
 
 # ============================================================
 # Safe helpers
 # ============================================================
 
-def safe_float(value, default=None):
-
+def safe_float(
+    value,
+    default=None
+):
     try:
-
         if value is None:
             return default
 
@@ -389,8 +356,8 @@ def safe_float(value, default=None):
                 tuple,
                 dict,
                 pd.Series,
-                pd.DataFrame
-            )
+                pd.DataFrame,
+            ),
         ):
             return default
 
@@ -402,12 +369,13 @@ def safe_float(value, default=None):
         return number
 
     except Exception:
-
         return default
 
 
-def safe_int(value, default=None):
-
+def safe_int(
+    value,
+    default=None
+):
     number = safe_float(value)
 
     if number is None:
@@ -415,9 +383,23 @@ def safe_int(value, default=None):
 
     try:
         return int(number)
-
     except Exception:
         return default
+
+
+def round_value(
+    value,
+    digits=2
+):
+    number = safe_float(value)
+
+    if number is None:
+        return None
+
+    return round(
+        number,
+        digits
+    )
 
 
 def clean_code(value):
@@ -431,7 +413,7 @@ def clean_code(value):
         "",
         "nan",
         "none",
-        "null"
+        "null",
     }:
         return None
 
@@ -439,7 +421,7 @@ def clean_code(value):
         ".TW",
         ".tw",
         ".TWO",
-        ".two"
+        ".two",
     ):
         if text.endswith(suffix):
             text = text[:-len(suffix)]
@@ -466,7 +448,10 @@ def valid_code(code):
     )
 
 
-def yahoo_symbol(code, market):
+def yahoo_symbol(
+    code,
+    market
+):
 
     code = clean_code(code)
 
@@ -476,14 +461,19 @@ def yahoo_symbol(code, market):
     return f"{code}.TW"
 
 
-def is_etf(code, name=""):
+def is_etf(
+    code,
+    name=""
+):
 
     code = clean_code(code)
 
     if code in KNOWN_ETFS:
         return True
 
-    text = str(name or "").upper()
+    text = str(
+        name or ""
+    ).upper()
 
     if "ETF" in text:
         return True
@@ -496,7 +486,9 @@ def is_etf(code, name=""):
 
 def invalid_security(text):
 
-    text = str(text or "").upper()
+    text = str(
+        text or ""
+    ).upper()
 
     return any(
         keyword.upper() in text
@@ -511,21 +503,21 @@ def invalid_security(text):
 def get_json(url):
 
     if requests is None:
-
         print(
             "requests 不存在，無法使用官方 API"
         )
-
         return None
 
-    for attempt in range(1, MAX_RETRY + 1):
-
+    for attempt in range(
+        1,
+        4
+    ):
         try:
 
             response = requests.get(
                 url,
                 headers=HEADERS,
-                timeout=REQUEST_TIMEOUT
+                timeout=REQUEST_TIMEOUT,
             )
 
             response.raise_for_status()
@@ -535,14 +527,14 @@ def get_json(url):
         except Exception as error:
 
             print(
-                f"API 失敗 "
-                f"{attempt}/{MAX_RETRY}: "
+                f"官方 API 失敗 "
+                f"{attempt}/3: "
                 f"{error}"
             )
 
-            if attempt < MAX_RETRY:
+            if attempt < 3:
                 time.sleep(
-                    RETRY_DELAY * attempt
+                    attempt * 2
                 )
 
     return None
@@ -562,12 +554,13 @@ def fetch_twse():
         TWSE_STOCK_API
     )
 
-    if not isinstance(data, list):
-
+    if not isinstance(
+        data,
+        list
+    ):
         print(
             "TWSE 官方 API 無有效資料"
         )
-
         return []
 
     result = []
@@ -585,15 +578,8 @@ def fetch_twse():
         if not valid_code(code):
             continue
 
-        if invalid_security(
-            name
-        ):
+        if invalid_security(name):
             continue
-
-        etf = is_etf(
-            code,
-            name
-        )
 
         result.append({
             "code": code,
@@ -601,9 +587,12 @@ def fetch_twse():
             "market": "TWSE",
             "type": (
                 "ETF"
-                if etf
+                if is_etf(
+                    code,
+                    name
+                )
                 else "STOCK"
-            )
+            ),
         })
 
     print(
@@ -614,7 +603,7 @@ def fetch_twse():
 
 
 # ============================================================
-# TPEX
+# TPEx
 # ============================================================
 
 def fetch_tpex():
@@ -627,12 +616,13 @@ def fetch_tpex():
         TPEX_QUOTES_API
     )
 
-    if not isinstance(data, list):
-
+    if not isinstance(
+        data,
+        list
+    ):
         print(
-            "TPEx quotes API 無有效資料"
+            "TPEx 官方 API 無有效資料"
         )
-
         return []
 
     result = []
@@ -640,7 +630,9 @@ def fetch_tpex():
     for row in data:
 
         code = clean_code(
-            row.get("SecuritiesCompanyCode")
+            row.get(
+                "SecuritiesCompanyCode"
+            )
             or row.get("Code")
             or row.get("股票代號")
         )
@@ -658,20 +650,18 @@ def fetch_tpex():
         if invalid_security(name):
             continue
 
-        etf = is_etf(
-            code,
-            name
-        )
-
         result.append({
             "code": code,
             "name": name,
             "market": "TPEx",
             "type": (
                 "ETF"
-                if etf
+                if is_etf(
+                    code,
+                    name
+                )
                 else "STOCK"
-            )
+            ),
         })
 
     print(
@@ -682,7 +672,7 @@ def fetch_tpex():
 
 
 # ============================================================
-# 官方市場清單
+# Universe
 # ============================================================
 
 def build_universe():
@@ -697,30 +687,33 @@ def build_universe():
         twse + tpex
     ):
 
-        code = item["code"]
+        key = (
+            f'{item["market"]}:'
+            f'{item["code"]}'
+        )
 
-        universe[
-            f'{item["market"]}:{code}'
-        ] = item
+        universe[key] = item
 
     # --------------------------------------------------------
-    # 關鍵 ETF 如果官方 API 暫時漏掉，加入備援
+    # 關鍵標的備援
     # --------------------------------------------------------
 
     for code, name in KEY_SYMBOLS.items():
 
-        if code in KNOWN_ETFS:
+        key = f"TWSE:{code}"
 
-            key = f"TWSE:{code}"
+        if key not in universe:
 
-            if key not in universe:
-
-                universe[key] = {
-                    "code": code,
-                    "name": name,
-                    "market": "TWSE",
-                    "type": "ETF"
-                }
+            universe[key] = {
+                "code": code,
+                "name": name,
+                "market": "TWSE",
+                "type": (
+                    "ETF"
+                    if code in KNOWN_ETFS
+                    else "STOCK"
+                ),
+            }
 
     result = list(
         universe.values()
@@ -735,128 +728,425 @@ def build_universe():
 
 
 # ============================================================
-# yfinance 資料
+# Yahoo dataframe normalize
 # ============================================================
 
-def download_history(
+def normalize_single_dataframe(
+    df,
+    symbol
+):
+
+    if df is None:
+        return None
+
+    if not isinstance(
+        df,
+        pd.DataFrame
+    ):
+        return None
+
+    if df.empty:
+        return None
+
+    df = df.copy()
+
+    # --------------------------------------------------------
+    # MultiIndex
+    # --------------------------------------------------------
+
+    if isinstance(
+        df.columns,
+        pd.MultiIndex
+    ):
+
+        # 常見格式：
+        # ('Close', '2330.TW')
+        #
+        # 或：
+        # ('2330.TW', 'Close')
+
+        level0 = [
+            str(x)
+            for x in df.columns.get_level_values(0)
+        ]
+
+        level1 = [
+            str(x)
+            for x in df.columns.get_level_values(1)
+        ]
+
+        if "Close" in level0:
+
+            selected = {}
+
+            for col in df.columns:
+
+                if str(col[0]) in {
+                    "Close",
+                    "Volume",
+                }:
+                    selected[
+                        str(col[0])
+                    ] = df[col]
+
+            if selected:
+
+                df = pd.DataFrame(
+                    selected,
+                    index=df.index
+                )
+
+        elif "Close" in level1:
+
+            selected = {}
+
+            for col in df.columns:
+
+                if str(col[1]) in {
+                    "Close",
+                    "Volume",
+                }:
+                    selected[
+                        str(col[1])
+                    ] = df[col]
+
+            if selected:
+
+                df = pd.DataFrame(
+                    selected,
+                    index=df.index
+                )
+
+        else:
+
+            try:
+
+                if symbol in (
+                    df.columns
+                    .get_level_values(1)
+                ):
+
+                    df = df.xs(
+                        symbol,
+                        axis=1,
+                        level=1
+                    )
+
+                elif symbol in (
+                    df.columns
+                    .get_level_values(0)
+                ):
+
+                    df = df.xs(
+                        symbol,
+                        axis=1,
+                        level=0
+                    )
+
+            except Exception:
+                pass
+
+    df.columns = [
+        str(col).strip()
+        for col in df.columns
+    ]
+
+    if "Close" not in df.columns:
+        return None
+
+    if "Volume" not in df.columns:
+
+        df["Volume"] = 0
+
+    df = df[
+        ["Close", "Volume"]
+    ].copy()
+
+    df["Close"] = pd.to_numeric(
+        df["Close"],
+        errors="coerce"
+    )
+
+    df["Volume"] = pd.to_numeric(
+        df["Volume"],
+        errors="coerce"
+    )
+
+    df = df.dropna(
+        subset=["Close"]
+    )
+
+    df = df.sort_index()
+
+    if len(df) < MIN_VALID_ROWS:
+        return None
+
+    return df
+
+
+# ============================================================
+# 批次 Yahoo 下載
+# ============================================================
+
+def download_batch(
+    symbols
+):
+
+    if not symbols:
+        return {}
+
+    symbol_string = " ".join(
+        symbols
+    )
+
+    for attempt in range(
+        1,
+        MAX_BATCH_RETRY + 1
+    ):
+
+        try:
+
+            print(
+                f"Yahoo 批次下載："
+                f"{len(symbols)} 檔 "
+                f"(第 {attempt} 次)"
+            )
+
+            raw = yf.download(
+                tickers=symbol_string,
+                period=YF_PERIOD,
+                interval=YF_INTERVAL,
+                auto_adjust=False,
+                actions=False,
+                progress=False,
+                threads=False,
+                group_by="column",
+                timeout=30,
+                multi_level_index=True,
+            )
+
+            if raw is None:
+                raise ValueError(
+                    "Yahoo 回傳 None"
+                )
+
+            if raw.empty:
+                raise ValueError(
+                    "Yahoo 回傳空資料"
+                )
+
+            result = {}
+
+            # ------------------------------------------------
+            # 單檔
+            # ------------------------------------------------
+
+            if len(symbols) == 1:
+
+                symbol = symbols[0]
+
+                df = normalize_single_dataframe(
+                    raw,
+                    symbol
+                )
+
+                if df is not None:
+                    result[symbol] = df
+
+                return result
+
+            # ------------------------------------------------
+            # 多檔 MultiIndex
+            # ------------------------------------------------
+
+            if isinstance(
+                raw.columns,
+                pd.MultiIndex
+            ):
+
+                level0 = set(
+                    str(x)
+                    for x in raw.columns
+                    .get_level_values(0)
+                )
+
+                level1 = set(
+                    str(x)
+                    for x in raw.columns
+                    .get_level_values(1)
+                )
+
+                # --------------------------------------------
+                # 格式 A：
+                # Close / Volume 第一層
+                # ticker 第二層
+                # --------------------------------------------
+
+                if (
+                    "Close" in level0
+                    or
+                    "Volume" in level0
+                ):
+
+                    for symbol in symbols:
+
+                        selected = {}
+
+                        for field in (
+                            "Close",
+                            "Volume",
+                        ):
+
+                            try:
+
+                                selected[field] = (
+                                    raw[
+                                        (
+                                            field,
+                                            symbol
+                                        )
+                                    ]
+                                )
+
+                            except Exception:
+                                pass
+
+                        if "Close" not in selected:
+                            continue
+
+                        df = pd.DataFrame(
+                            selected,
+                            index=raw.index
+                        )
+
+                        df = normalize_single_dataframe(
+                            df,
+                            symbol
+                        )
+
+                        if df is not None:
+                            result[symbol] = df
+
+                # --------------------------------------------
+                # 格式 B：
+                # ticker 第一層
+                # Close / Volume 第二層
+                # --------------------------------------------
+
+                elif (
+                    "Close" in level1
+                    or
+                    "Volume" in level1
+                ):
+
+                    for symbol in symbols:
+
+                        try:
+
+                            sub = raw[symbol]
+
+                            df = normalize_single_dataframe(
+                                sub,
+                                symbol
+                            )
+
+                            if df is not None:
+                                result[symbol] = df
+
+                        except Exception:
+                            continue
+
+            else:
+
+                # 非 MultiIndex 防護
+                if len(symbols) == 1:
+
+                    symbol = symbols[0]
+
+                    df = normalize_single_dataframe(
+                        raw,
+                        symbol
+                    )
+
+                    if df is not None:
+                        result[symbol] = df
+
+            print(
+                f"批次成功："
+                f"{len(result)}/{len(symbols)}"
+            )
+
+            return result
+
+        except Exception as error:
+
+            print(
+                f"Yahoo 批次失敗 "
+                f"{attempt}/{MAX_BATCH_RETRY}: "
+                f"{error}"
+            )
+
+            if attempt < MAX_BATCH_RETRY:
+
+                time.sleep(
+                    attempt * 5
+                )
+
+    return {}
+
+
+# ============================================================
+# 單檔 fallback
+# ============================================================
+
+def download_single_fallback(
     symbol
 ):
 
     for attempt in range(
         1,
-        MAX_RETRY + 1
+        MAX_SINGLE_RETRY + 1
     ):
 
         try:
 
-            df = yf.download(
-                symbol,
+            print(
+                f"fallback：{symbol} "
+                f"{attempt}/{MAX_SINGLE_RETRY}"
+            )
+
+            raw = yf.download(
+                tickers=symbol,
                 period=YF_PERIOD,
                 interval=YF_INTERVAL,
                 auto_adjust=False,
+                actions=False,
                 progress=False,
-                threads=False
+                threads=False,
+                group_by="column",
+                timeout=30,
+                multi_level_index=True,
             )
 
-            if df is None:
-                raise ValueError(
-                    "Yahoo 回傳 None"
-                )
-
-            if df.empty:
-                raise ValueError(
-                    "Yahoo 回傳空 DataFrame"
-                )
-
-            # MultiIndex 防護
-            if isinstance(
-                df.columns,
-                pd.MultiIndex
-            ):
-
-                if symbol in df.columns.get_level_values(-1):
-
-                    try:
-                        df = df.xs(
-                            symbol,
-                            axis=1,
-                            level=-1
-                        )
-                    except Exception:
-                        pass
-
-                if isinstance(
-                    df.columns,
-                    pd.MultiIndex
-                ):
-
-                    df.columns = [
-                        col[0]
-                        for col in df.columns
-                    ]
-
-            df = df.copy()
-
-            df.columns = [
-                str(col).strip()
-                for col in df.columns
-            ]
-
-            required = {
-                "Close",
-                "Volume"
-            }
-
-            if not required.issubset(
-                set(df.columns)
-            ):
-
-                raise ValueError(
-                    "缺少 Close / Volume"
-                )
-
-            df = df[
-                ["Close", "Volume"]
-            ].copy()
-
-            df["Close"] = pd.to_numeric(
-                df["Close"],
-                errors="coerce"
+            df = normalize_single_dataframe(
+                raw,
+                symbol
             )
 
-            df["Volume"] = pd.to_numeric(
-                df["Volume"],
-                errors="coerce"
-            )
-
-            df = df.dropna(
-                subset=[
-                    "Close"
-                ]
-            )
-
-            if len(df) < MIN_VALID_ROWS:
-
-                raise ValueError(
-                    f"有效資料不足：{len(df)}"
-                )
-
-            return df
+            if df is not None:
+                return df
 
         except Exception as error:
 
             print(
-                f"{symbol} "
-                f"Yahoo 失敗 "
-                f"{attempt}/{MAX_RETRY}: "
+                f"{symbol} fallback 失敗："
                 f"{error}"
             )
 
-            if attempt < MAX_RETRY:
-
-                time.sleep(
-                    RETRY_DELAY * attempt
-                )
+        if attempt < MAX_SINGLE_RETRY:
+            time.sleep(
+                SINGLE_RETRY_DELAY
+            )
 
     return None
 
@@ -890,21 +1180,23 @@ def calculate_rsi(
         adjust=False
     ).mean()
 
-    rs = avg_gain / avg_loss.replace(
-        0,
-        np.nan
+    rs = (
+        avg_gain /
+        avg_loss.replace(
+            0,
+            np.nan
+        )
     )
 
     rsi = 100 - (
-        100 / (1 + rs)
+        100 /
+        (1 + rs)
     )
 
-    rsi = rsi.clip(
+    return rsi.clip(
         0,
         100
     )
-
-    return rsi
 
 
 # ============================================================
@@ -1163,18 +1455,7 @@ def analyze_history(
     )
 
     # --------------------------------------------------------
-    # Score
-    #
-    # 核心條件：
-    #
-    # MACD 黃金交叉
-    # RSI > 50
-    # KD K>D
-    # 成交量 >= MA5 * 1.5
-    #
-    # 輔助：
-    # 站上 MA20
-    # MA20 向上
+    # AI SCORE
     # --------------------------------------------------------
 
     score = 0
@@ -1212,19 +1493,15 @@ def analyze_history(
     # --------------------------------------------------------
 
     if score >= 85:
-
         signal = "CORE"
 
     elif score >= 70:
-
         signal = "STRONG"
 
     elif score >= 60:
-
         signal = "BULL"
 
     else:
-
         signal = "WATCH"
 
     # --------------------------------------------------------
@@ -1314,19 +1591,20 @@ def analyze_history(
             if score >= 60
             else "暫不新增"
         ),
+
         "stage_2": (
             "訊號延續再加碼"
             if score >= 70
             else "等待"
         ),
+
         "stage_3": (
             "趨勢確認後加碼"
             if score >= 80
             else "等待"
         ),
-        "stage_4": (
-            "動態風控"
-        )
+
+        "stage_4": "動態風控",
     }
 
     change_pct = None
@@ -1336,7 +1614,7 @@ def analyze_history(
         and
         previous_close not in (
             None,
-            0
+            0,
         )
     ):
 
@@ -1350,67 +1628,85 @@ def analyze_history(
         ) * 100
 
     return {
-        "price": round_value(
-            latest_close,
-            2
-        ),
 
-        "change_pct": round_value(
-            change_pct,
-            2
-        ),
+        "price":
+            round_value(
+                latest_close,
+                2
+            ),
 
-        "volume": safe_int(
-            latest_volume
-        ),
+        "change_pct":
+            round_value(
+                change_pct,
+                2
+            ),
 
-        "volume_ma5": safe_int(
-            latest_ma5_volume
-        ),
+        "volume":
+            safe_int(
+                latest_volume
+            ),
 
-        "rsi": round_value(
-            latest_rsi,
-            2
-        ),
+        "volume_ma5":
+            safe_int(
+                latest_ma5_volume
+            ),
 
-        "kd_k": round_value(
-            latest_k,
-            2
-        ),
+        "rsi":
+            round_value(
+                latest_rsi,
+                2
+            ),
 
-        "kd_d": round_value(
-            latest_d,
-            2
-        ),
+        "kd_k":
+            round_value(
+                latest_k,
+                2
+            ),
 
-        "macd": round_value(
-            latest_macd,
-            4
-        ),
+        "kd_d":
+            round_value(
+                latest_d,
+                2
+            ),
 
-        "macd_signal": round_value(
-            latest_macd_signal,
-            4
-        ),
+        "macd":
+            round_value(
+                latest_macd,
+                4
+            ),
 
-        "ma20": round_value(
-            latest_ma20,
-            2
-        ),
+        "macd_signal":
+            round_value(
+                latest_macd_signal,
+                4
+            ),
 
-        "ai_score": score,
+        "ma20":
+            round_value(
+                latest_ma20,
+                2
+            ),
 
-        "signal": signal,
+        "ai_score":
+            score,
 
-        "result_tags": tags,
+        "signal":
+            signal,
 
-        "action": action,
+        "result_tags":
+            tags,
 
-        "risk_level": risk_level,
+        "action":
+            action,
 
-        "dca": dca,
+        "risk_level":
+            risk_level,
+
+        "dca":
+            dca,
 
         "conditions": {
+
             "macd_golden_cross":
                 macd_golden_cross,
 
@@ -1427,85 +1723,9 @@ def analyze_history(
                 above_ma20,
 
             "ma20_up":
-                ma20_up
-        }
+                ma20_up,
+        },
     }
-
-
-# ============================================================
-# 單一標的分析
-# ============================================================
-
-def process_security(
-    security
-):
-
-    code = security["code"]
-
-    name = security["name"]
-
-    market = security["market"]
-
-    security_type = security["type"]
-
-    symbol = yahoo_symbol(
-        code,
-        market
-    )
-
-    try:
-
-        df = download_history(
-            symbol
-        )
-
-        if df is None:
-
-            return None, {
-                "code": code,
-                "name": name,
-                "market": market,
-                "type": security_type,
-                "reason": "Yahoo 無有效資料"
-            }
-
-        analysis = analyze_history(
-            df
-        )
-
-        if (
-            analysis["price"]
-            is None
-        ):
-
-            return None, {
-                "code": code,
-                "name": name,
-                "market": market,
-                "type": security_type,
-                "reason": "缺少股價"
-            }
-
-        result = {
-            "code": code,
-            "name": name,
-            "market": market,
-            "type": security_type,
-            "symbol": symbol,
-            **analysis
-        }
-
-        return result, None
-
-    except Exception as error:
-
-        return None, {
-            "code": code,
-            "name": name,
-            "market": market,
-            "type": security_type,
-            "reason": str(error)
-        }
 
 
 # ============================================================
@@ -1530,9 +1750,9 @@ def build_rankings(
                     "change_pct"
                 ),
                 -999
-            )
+            ),
         ),
-        reverse=True
+        reverse=True,
     )
 
     for index, stock in enumerate(
@@ -1559,74 +1779,112 @@ def build_statistics(
     successful = sum(
         1
         for stock in stocks
-        if stock.get("price") is not None
+        if stock.get(
+            "price"
+        ) is not None
     )
 
     stock_count = sum(
         1
         for stock in stocks
-        if stock.get("type") == "STOCK"
+        if stock.get(
+            "type"
+        ) == "STOCK"
     )
 
     etf_count = sum(
         1
         for stock in stocks
-        if stock.get("type") == "ETF"
+        if stock.get(
+            "type"
+        ) == "ETF"
     )
 
     listed_count = sum(
         1
         for stock in stocks
-        if stock.get("market") == "TWSE"
+        if stock.get(
+            "market"
+        ) == "TWSE"
     )
 
     otc_count = sum(
         1
         for stock in stocks
-        if stock.get("market") == "TPEx"
+        if stock.get(
+            "market"
+        ) == "TPEx"
     )
 
     core_count = sum(
         1
         for stock in stocks
-        if stock.get("signal") == "CORE"
+        if stock.get(
+            "signal"
+        ) == "CORE"
     )
 
     strong_count = sum(
         1
         for stock in stocks
-        if stock.get("signal") == "STRONG"
+        if stock.get(
+            "signal"
+        ) == "STRONG"
     )
 
     ai_count = sum(
         1
         for stock in stocks
         if safe_float(
-            stock.get("ai_score"),
+            stock.get(
+                "ai_score"
+            ),
             0
         ) >= 70
     )
 
     return {
-        "total": total,
-        "successful": successful,
-        "failed": len(failed),
-        "stocks": stock_count,
-        "etf": etf_count,
-        "twse": listed_count,
-        "tpex": otc_count,
-        "core": core_count,
-        "strong": strong_count,
-        "ai_70_plus": ai_count,
-        "top30": min(
-            TOP_N,
-            total
-        )
+
+        "total":
+            total,
+
+        "successful":
+            successful,
+
+        "failed":
+            len(failed),
+
+        "stocks":
+            stock_count,
+
+        "etf":
+            etf_count,
+
+        "twse":
+            listed_count,
+
+        "tpex":
+            otc_count,
+
+        "core":
+            core_count,
+
+        "strong":
+            strong_count,
+
+        "ai_70_plus":
+            ai_count,
+
+        "top30":
+            min(
+                TOP_N,
+                total
+            ),
     }
 
 
 # ============================================================
-# JSON 安全序列化
+# JSON sanitize
 # ============================================================
 
 def sanitize_json(
@@ -1641,7 +1899,8 @@ def sanitize_json(
         return {
             str(key):
                 sanitize_json(item)
-            for key, item in value.items()
+            for key, item
+            in value.items()
         }
 
     if isinstance(
@@ -1659,7 +1918,7 @@ def sanitize_json(
         (
             np.integer,
             np.int64,
-            np.int32
+            np.int32,
         )
     ):
 
@@ -1670,7 +1929,7 @@ def sanitize_json(
         (
             np.floating,
             np.float64,
-            np.float32
+            np.float32,
         )
     ):
 
@@ -1702,60 +1961,7 @@ def sanitize_json(
 
 
 # ============================================================
-# 讀取舊資料
-# ============================================================
-
-def load_existing_json():
-
-    if not os.path.exists(
-        OUTPUT_FILE
-    ):
-
-        return None
-
-    try:
-
-        with open(
-            OUTPUT_FILE,
-            "r",
-            encoding="utf-8"
-        ) as file:
-
-            data = json.load(
-                file
-            )
-
-        if not isinstance(
-            data,
-            dict
-        ):
-
-            return None
-
-        stocks = data.get(
-            "stocks"
-        )
-
-        if not isinstance(
-            stocks,
-            list
-        ):
-
-            return None
-
-        if len(stocks) < MIN_OUTPUT_STOCKS:
-
-            return None
-
-        return data
-
-    except Exception:
-
-        return None
-
-
-# ============================================================
-# 原子式寫入
+# Atomic write
 # ============================================================
 
 def atomic_write_json(
@@ -1805,11 +2011,9 @@ def atomic_write_json(
     except Exception:
 
         try:
-
             os.remove(
                 temp_path
             )
-
         except Exception:
             pass
 
@@ -1817,7 +2021,7 @@ def atomic_write_json(
 
 
 # ============================================================
-# 驗證輸出
+# Validation
 # ============================================================
 
 def validate_output(
@@ -1880,7 +2084,7 @@ def validate_output(
         "type",
         "price",
         "ai_score",
-        "signal"
+        "signal",
     }
 
     for stock in top30:
@@ -1900,14 +2104,14 @@ def validate_output(
                 )
             )
 
-        if (
-            stock.get("price")
-            is None
-        ):
+        if stock.get(
+            "price"
+        ) is None:
 
             raise RuntimeError(
-                f'TOP30 {stock.get("code")} '
-                "缺少 price"
+                f'TOP30 '
+                f'{stock.get("code")} '
+                f'缺少 price'
             )
 
     return True
@@ -1943,7 +2147,7 @@ def main():
     print("=" * 70)
 
     # --------------------------------------------------------
-    # 1. 建立 universe
+    # 1. Universe
     # --------------------------------------------------------
 
     universe = build_universe()
@@ -1956,110 +2160,354 @@ def main():
         )
 
     # --------------------------------------------------------
-    # 2. 分析
+    # 2. 建立 symbol 對照
     # --------------------------------------------------------
 
-    results = []
+    symbol_map = {}
 
-    failed = []
+    for security in universe:
 
-    completed = 0
+        symbol = yahoo_symbol(
+            security["code"],
+            security["market"]
+        )
 
-    total = len(
-        universe
+        symbol_map[symbol] = security
+
+    symbols = list(
+        symbol_map.keys()
+    )
+
+    total = len(symbols)
+
+    print(
+        f"開始批次分析："
+        f"{total} 個標的"
     )
 
     print(
-        f"開始分析 {total} 個標的..."
+        f"批次大小："
+        f"{BATCH_SIZE}"
     )
 
-    with ThreadPoolExecutor(
-        max_workers=MAX_WORKERS
-    ) as executor:
+    # --------------------------------------------------------
+    # 3. 批次下載
+    # --------------------------------------------------------
 
-        futures = {
-            executor.submit(
-                process_security,
-                security
-            ): security
-            for security in universe
-        }
+    history_map = {}
 
-        for future in as_completed(
-            futures
+    failed = []
+
+    total_batches = (
+        (
+            len(symbols)
+            +
+            BATCH_SIZE
+            -
+            1
+        )
+        //
+        BATCH_SIZE
+    )
+
+    for batch_index in range(
+        total_batches
+    ):
+
+        start = (
+            batch_index *
+            BATCH_SIZE
+        )
+
+        end = min(
+            start +
+            BATCH_SIZE,
+            len(symbols)
+        )
+
+        batch = symbols[
+            start:end
+        ]
+
+        print()
+        print(
+            "=" * 60
+        )
+
+        print(
+            f"批次 "
+            f"{batch_index + 1}/"
+            f"{total_batches}"
+        )
+
+        print(
+            f"範圍："
+            f"{start + 1}-"
+            f"{end}"
+        )
+
+        print(
+            "=" * 60
+        )
+
+        result = download_batch(
+            batch
+        )
+
+        history_map.update(
+            result
+        )
+
+        print(
+            f"本批成功："
+            f"{len(result)}/"
+            f"{len(batch)}"
+        )
+
+        if (
+            batch_index + 1
+            < total_batches
         ):
 
-            completed += 1
+            time.sleep(
+                BATCH_DELAY
+            )
 
-            try:
+    # --------------------------------------------------------
+    # 4. 對批次中失敗的少量標的做 fallback
+    # --------------------------------------------------------
 
-                result, error = (
-                    future.result()
-                )
+    missing_symbols = [
+        symbol
+        for symbol in symbols
+        if symbol not in history_map
+    ]
 
-                if result is not None:
+    print()
+    print(
+        "=" * 70
+    )
 
-                    results.append(
-                        result
-                    )
+    print(
+        f"批次下載完成"
+    )
 
-                if error is not None:
+    print(
+        f"成功："
+        f"{len(history_map)}"
+    )
 
-                    failed.append(
-                        error
-                    )
+    print(
+        f"缺失："
+        f"{len(missing_symbols)}"
+    )
 
-            except Exception as error:
+    print(
+        "=" * 70
+    )
 
-                security = futures[
-                    future
+    # --------------------------------------------------------
+    # fallback 限制
+    #
+    # 如果 Yahoo 整體掛掉：
+    # 不允許再把 2159 檔全部逐檔打回去。
+    #
+    # 最多只對前 100 檔做 fallback。
+    # --------------------------------------------------------
+
+    FALLBACK_LIMIT = 100
+
+    if missing_symbols:
+
+        fallback_symbols = missing_symbols[
+            :FALLBACK_LIMIT
+        ]
+
+        print(
+            f"開始有限 fallback："
+            f"{len(fallback_symbols)} 檔"
+        )
+
+        for index, symbol in enumerate(
+            fallback_symbols,
+            start=1
+        ):
+
+            df = download_single_fallback(
+                symbol
+            )
+
+            if df is not None:
+
+                history_map[
+                    symbol
+                ] = df
+
+            else:
+
+                security = symbol_map[
+                    symbol
                 ]
 
                 failed.append({
                     "code":
-                        security.get(
-                            "code"
-                        ),
+                        security["code"],
+
                     "name":
-                        security.get(
-                            "name"
-                        ),
+                        security["name"],
+
                     "market":
-                        security.get(
-                            "market"
-                        ),
+                        security["market"],
+
                     "type":
-                        security.get(
-                            "type"
-                        ),
+                        security["type"],
+
                     "reason":
-                        str(error)
+                        "Yahoo 無有效資料",
                 })
 
-            if (
-                completed % 100 == 0
-                or
-                completed == total
-            ):
+            if index % 10 == 0:
 
                 print(
-                    f"進度："
-                    f"{completed}/{total} "
-                    f"| 成功："
-                    f"{len(results)} "
-                    f"| 失敗："
-                    f"{len(failed)}"
+                    f"fallback 進度："
+                    f"{index}/"
+                    f"{len(fallback_symbols)}"
                 )
 
+        # ----------------------------------------------------
+        # 剩餘未嘗試者直接記錄
+        # ----------------------------------------------------
+
+        for symbol in missing_symbols[
+            FALLBACK_LIMIT:
+        ]:
+
+            security = symbol_map[
+                symbol
+            ]
+
+            failed.append({
+                "code":
+                    security["code"],
+
+                "name":
+                    security["name"],
+
+                "market":
+                    security["market"],
+
+                "type":
+                    security["type"],
+
+                "reason":
+                    "批次下載無資料，"
+                    "超過 fallback 上限",
+            })
+
     # --------------------------------------------------------
-    # 3. 基本安全檢查
+    # 5. 分析成功資料
     # --------------------------------------------------------
+
+    results = []
+
+    for symbol, df in history_map.items():
+
+        security = symbol_map.get(
+            symbol
+        )
+
+        if security is None:
+            continue
+
+        try:
+
+            analysis = analyze_history(
+                df
+            )
+
+            if analysis.get(
+                "price"
+            ) is None:
+
+                failed.append({
+                    "code":
+                        security["code"],
+
+                    "name":
+                        security["name"],
+
+                    "market":
+                        security["market"],
+
+                    "type":
+                        security["type"],
+
+                    "reason":
+                        "缺少最新股價",
+                })
+
+                continue
+
+            result = {
+                "code":
+                    security["code"],
+
+                "name":
+                    security["name"],
+
+                "market":
+                    security["market"],
+
+                "type":
+                    security["type"],
+
+                "symbol":
+                    symbol,
+
+                **analysis,
+            }
+
+            results.append(
+                result
+            )
+
+        except Exception as error:
+
+            failed.append({
+                "code":
+                    security["code"],
+
+                "name":
+                    security["name"],
+
+                "market":
+                    security["market"],
+
+                "type":
+                    security["type"],
+
+                "reason":
+                    str(error),
+            })
+
+    # --------------------------------------------------------
+    # 6. 安全檢查
+    # --------------------------------------------------------
+
+    print()
+    print(
+        "=" * 70
+    )
 
     print(
         f"分析完成："
         f"成功 {len(results)}"
         f" / "
         f"失敗 {len(failed)}"
+    )
+
+    print(
+        "=" * 70
     )
 
     if len(results) < MIN_OUTPUT_STOCKS:
@@ -2078,13 +2526,14 @@ def main():
         )
 
         raise RuntimeError(
-            f"有效資料只有 {len(results)} "
-            f"筆，低於安全門檻 "
+            f"有效資料只有 "
+            f"{len(results)} 筆，"
+            f"低於安全門檻 "
             f"{MIN_OUTPUT_STOCKS}"
         )
 
     # --------------------------------------------------------
-    # 4. 排名
+    # 7. 排名
     # --------------------------------------------------------
 
     ranked = build_rankings(
@@ -2096,7 +2545,7 @@ def main():
     ]
 
     # --------------------------------------------------------
-    # 5. 統計
+    # 8. Statistics
     # --------------------------------------------------------
 
     statistics = build_statistics(
@@ -2105,7 +2554,7 @@ def main():
     )
 
     # --------------------------------------------------------
-    # 6. JSON
+    # 9. Payload
     # --------------------------------------------------------
 
     payload = {
@@ -2140,11 +2589,11 @@ def main():
             ranked,
 
         "failed":
-            failed
+            failed,
     }
 
     # --------------------------------------------------------
-    # 7. 輸出驗證
+    # 10. Validate
     # --------------------------------------------------------
 
     validate_output(
@@ -2152,7 +2601,7 @@ def main():
     )
 
     # --------------------------------------------------------
-    # 8. 原子寫入
+    # 11. Atomic write
     # --------------------------------------------------------
 
     atomic_write_json(
@@ -2160,7 +2609,7 @@ def main():
     )
 
     # --------------------------------------------------------
-    # 9. 寫入後再次驗證
+    # 12. Post-write validation
     # --------------------------------------------------------
 
     if not os.path.exists(
@@ -2182,18 +2631,21 @@ def main():
         )
 
     # --------------------------------------------------------
-    # 10. 顯示 TOP 30
+    # 13. TOP30
     # --------------------------------------------------------
 
     print()
-
-    print("=" * 70)
+    print(
+        "=" * 70
+    )
 
     print(
         f"TOP {TOP_N}"
     )
 
-    print("=" * 70)
+    print(
+        "=" * 70
+    )
 
     for stock in top30:
 
@@ -2206,10 +2658,13 @@ def main():
             f'signal={stock["signal"]}'
         )
 
-    print("=" * 70)
+    print(
+        "=" * 70
+    )
 
     elapsed = (
-        time.time() -
+        time.time()
+        -
         start_time
     )
 
@@ -2243,13 +2698,17 @@ def main():
         f"{elapsed:.1f} 秒"
     )
 
-    print("=" * 70)
+    print(
+        "=" * 70
+    )
 
     print(
         "資料更新成功。"
     )
 
-    print("=" * 70)
+    print(
+        "=" * 70
+    )
 
 
 # ============================================================
