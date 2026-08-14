@@ -2,34 +2,39 @@
 <html lang="zh-TW">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="theme-color" content="#080d15">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#07111f">
+<meta name="apple-mobile-web-app-capable" content="yes">
 
-<title>台股 AI 選股｜零股定投與動態風控</title>
+<title>台股 AI 選股｜動態風控</title>
 
 <style>
-
 :root{
-  --bg:#080d15;
-  --bg2:#0d1420;
-  --card:#111a25;
-  --card2:#151f2d;
-  --line:rgba(255,255,255,.08);
+  --bg:#07111f;
+  --bg2:#0b1728;
+  --surface:#101e30;
+  --surface2:#14253a;
+  --surface3:#182c44;
 
-  --text:#f5f7fa;
-  --muted:#8b98a8;
+  --line:rgba(255,255,255,.075);
+  --line2:rgba(255,255,255,.12);
 
-  --up:#ff5367;
-  --down:#27c997;
+  --text:#f4f7fb;
+  --text2:#b7c3d2;
+  --text3:#718197;
 
-  --blue:#5caeff;
-  --gold:#f4c96b;
+  --blue:#55a9ff;
+  --blue2:#2d78d4;
 
-  --good:#27c997;
-  --warn:#f4c96b;
-  --bad:#ff6675;
+  --green:#31d39b;
+  --red:#ff6578;
+  --yellow:#f2c96d;
 
-  --radius:16px;
+  --shadow:
+    0 14px 40px rgba(0,0,0,.22);
+
+  --radius:18px;
+  --radius-sm:12px;
 }
 
 *{
@@ -38,6 +43,7 @@
 
 html{
   background:var(--bg);
+  scroll-behavior:smooth;
 }
 
 body{
@@ -46,9 +52,14 @@ body{
 
   background:
     radial-gradient(
-      circle at 15% 0%,
-      rgba(70,130,220,.12),
-      transparent 28%
+      900px 450px at 10% -10%,
+      rgba(48,126,215,.16),
+      transparent 65%
+    ),
+    radial-gradient(
+      700px 400px at 100% 0%,
+      rgba(98,73,180,.10),
+      transparent 65%
     ),
     var(--bg);
 
@@ -70,43 +81,48 @@ select{
 }
 
 button{
-  cursor:pointer;
+  border:0;
+}
+
+button:active{
+  transform:scale(.98);
 }
 
 .app{
-  width:min(1200px,100%);
+  width:min(1240px,100%);
   margin:auto;
 
   padding:
-    14px
-    max(14px,env(safe-area-inset-left))
-    50px;
+    18px
+    max(18px,env(safe-area-inset-left))
+    calc(70px + env(safe-area-inset-bottom))
+    max(18px,env(safe-area-inset-right));
 }
 
-/* =====================================
+/* ==================================================
    HEADER
-===================================== */
+================================================== */
 
-.top{
+.header{
   display:flex;
-  align-items:center;
   justify-content:space-between;
+  align-items:center;
+  gap:16px;
 
-  gap:12px;
-  margin-bottom:14px;
+  margin-bottom:18px;
 }
 
 .brand{
   display:flex;
   align-items:center;
-  gap:10px;
+  gap:12px;
 }
 
-.logo{
-  width:42px;
-  height:42px;
+.brand-icon{
+  width:46px;
+  height:46px;
 
-  border-radius:13px;
+  border-radius:15px;
 
   display:grid;
   place-items:center;
@@ -114,405 +130,882 @@ button{
   background:
     linear-gradient(
       135deg,
-      #5caeff,
-      #916bff
+      #54a9ff,
+      #6859e8
     );
 
-  font-weight:900;
+  box-shadow:
+    0 10px 25px rgba(53,126,220,.25);
+
+  font-size:16px;
+  font-weight:950;
 }
 
-.title{
-  font-size:18px;
-  font-weight:900;
+.brand-title{
+  font-size:20px;
+  line-height:1.2;
+  font-weight:950;
+  letter-spacing:-.5px;
 }
 
-.sub{
+.brand-sub{
+  margin-top:4px;
+
+  color:var(--text3);
+
   font-size:11px;
-  color:var(--muted);
-  margin-top:3px;
 }
 
-.status{
+.system-status{
+  display:flex;
+  align-items:center;
+  gap:7px;
+
+  color:var(--text3);
   font-size:11px;
-  color:var(--muted);
-  white-space:nowrap;
 }
 
-.dot{
-  display:inline-block;
-
+.status-dot{
   width:7px;
   height:7px;
-
   border-radius:50%;
 
-  background:var(--good);
+  background:var(--green);
 
-  margin-right:6px;
+  box-shadow:
+    0 0 10px rgba(49,211,155,.5);
 }
 
-/* =====================================
-   NAVIGATION
-===================================== */
+/* ==================================================
+   NAV
+================================================== */
 
-.tabs{
+.nav{
   display:flex;
-  gap:8px;
+  gap:7px;
 
-  overflow:auto;
+  overflow-x:auto;
+  scrollbar-width:none;
 
-  margin-bottom:12px;
+  margin-bottom:18px;
 
-  position:sticky;
-  top:0;
+  padding:5px;
 
-  z-index:20;
-
-  padding:6px 0;
-
-  background:rgba(8,13,21,.86);
-
-  backdrop-filter:blur(12px);
-}
-
-.tab{
   border:1px solid var(--line);
 
-  background:var(--card);
+  border-radius:15px;
 
-  color:var(--muted);
+  background:
+    rgba(16,30,48,.78);
 
-  padding:9px 14px;
+  backdrop-filter:blur(16px);
 
-  border-radius:999px;
+  position:sticky;
+  top:8px;
 
-  white-space:nowrap;
-
-  font-weight:800;
-
-  font-size:13px;
+  z-index:100;
 }
 
-.tab.active{
-  background:#183455;
-  color:#fff;
-  border-color:#2b5e92;
-}
-
-/* =====================================
-   PANELS
-===================================== */
-
-.panel{
+.nav::-webkit-scrollbar{
   display:none;
 }
 
-.panel.active{
+.nav-btn{
+  flex:0 0 auto;
+
+  padding:10px 15px;
+
+  border-radius:10px;
+
+  color:var(--text3);
+
+  background:transparent;
+
+  font-size:13px;
+  font-weight:850;
+
+  transition:.2s;
+}
+
+.nav-btn.active{
+  color:#fff;
+
+  background:
+    linear-gradient(
+      135deg,
+      #1e5c98,
+      #245080
+    );
+
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.08);
+}
+
+/* ==================================================
+   PAGE
+================================================== */
+
+.page{
+  display:none;
+}
+
+.page.active{
   display:block;
 }
 
-/* =====================================
-   CARDS
-===================================== */
+/* ==================================================
+   HERO
+================================================== */
 
-.scan-card,
-.card{
+.hero{
+  display:grid;
+
+  grid-template-columns:
+    minmax(0,1fr)
+    auto;
+
+  gap:18px;
+
+  padding:22px;
+
+  margin-bottom:14px;
+
+  border:
+    1px solid
+    rgba(95,160,225,.15);
+
+  border-radius:22px;
+
+  background:
+    linear-gradient(
+      135deg,
+      rgba(36,83,130,.28),
+      rgba(16,30,48,.82)
+    );
+
+  box-shadow:var(--shadow);
+}
+
+.hero-title{
+  font-size:25px;
+  font-weight:950;
+  letter-spacing:-.7px;
+}
+
+.hero-desc{
+  margin-top:7px;
+
+  color:var(--text2);
+
+  font-size:12px;
+  line-height:1.7;
+}
+
+.hero-score{
+  min-width:105px;
+
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  justify-content:center;
+
+  border:
+    1px solid
+    rgba(255,255,255,.08);
+
+  border-radius:17px;
+
+  background:
+    rgba(255,255,255,.035);
+}
+
+.hero-score-number{
+  font-size:32px;
+  line-height:1;
+
+  font-weight:950;
+
+  color:var(--yellow);
+}
+
+.hero-score-label{
+  margin-top:7px;
+
+  font-size:10px;
+
+  color:var(--text3);
+}
+
+/* ==================================================
+   STATS
+================================================== */
+
+.stats{
+  display:grid;
+
+  grid-template-columns:
+    repeat(4,1fr);
+
+  gap:10px;
+
+  margin-bottom:14px;
+}
+
+.stat{
+  min-width:0;
+
+  padding:15px;
+
+  border:
+    1px solid
+    var(--line);
+
+  border-radius:16px;
+
+  background:
+    rgba(16,30,48,.82);
+
+  box-shadow:
+    0 8px 25px rgba(0,0,0,.10);
+}
+
+.stat-label{
+  color:var(--text3);
+
+  font-size:10px;
+}
+
+.stat-value{
+  margin-top:6px;
+
+  font-size:22px;
+
+  font-weight:950;
+
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+}
+
+/* ==================================================
+   SECTION HEADER
+================================================== */
+
+.section-head{
+  display:flex;
+  justify-content:space-between;
+  align-items:flex-end;
+
+  gap:12px;
+
+  margin:20px 2px 10px;
+}
+
+.section-title{
+  font-size:16px;
+  font-weight:950;
+}
+
+.section-sub{
+  margin-top:3px;
+
+  color:var(--text3);
+
+  font-size:10px;
+}
+
+/* ==================================================
+   SEARCH
+================================================== */
+
+.search-row{
+  display:flex;
+  gap:8px;
+
+  margin-bottom:12px;
+}
+
+.search-box{
+  flex:1;
+  min-width:0;
+
+  position:relative;
+}
+
+.search-box input{
+  width:100%;
+
+  padding:
+    12px
+    14px
+    12px
+    38px;
+
+  border:
+    1px solid
+    var(--line);
+
+  border-radius:13px;
+
+  outline:none;
+
+  color:#fff;
+
+  background:
+    rgba(16,30,48,.9);
+}
+
+.search-box input:focus{
+  border-color:
+    rgba(85,169,255,.5);
+
+  box-shadow:
+    0 0 0 3px
+    rgba(85,169,255,.08);
+}
+
+.search-icon{
+  position:absolute;
+
+  left:13px;
+  top:50%;
+
+  transform:translateY(-50%);
+
+  color:var(--text3);
+}
+
+.btn{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+
+  gap:6px;
+
+  padding:
+    10px
+    13px;
+
+  border-radius:11px;
+
+  color:#fff;
+
+  background:
+    var(--surface2);
+
+  border:
+    1px solid
+    var(--line);
+
+  font-size:12px;
+  font-weight:850;
+
+  cursor:pointer;
+
+  white-space:nowrap;
+}
+
+.btn.primary{
+  background:
+    linear-gradient(
+      135deg,
+      #2874bb,
+      #24598b
+    );
+
+  border-color:
+    rgba(96,177,255,.25);
+}
+
+.btn.good{
+  background:
+    rgba(35,125,98,.32);
+
+  color:#74edc1;
+}
+
+.btn.danger{
+  background:
+    rgba(150,45,60,.25);
+
+  color:#ff8290;
+}
+
+.btn.small{
+  padding:7px 9px;
+  font-size:10px;
+}
+
+/* ==================================================
+   STOCK GRID
+================================================== */
+
+.stock-grid{
+  display:grid;
+
+  grid-template-columns:
+    repeat(3,1fr);
+
+  gap:11px;
+}
+
+.stock-card{
+  position:relative;
+
+  padding:16px;
+
+  border:
+    1px solid
+    var(--line);
+
+  border-radius:17px;
 
   background:
     linear-gradient(
       145deg,
-      rgba(255,255,255,.035),
-      rgba(255,255,255,.018)
+      rgba(20,37,58,.92),
+      rgba(13,25,41,.94)
     );
 
-  border:1px solid var(--line);
-
-  border-radius:20px;
-
-  padding:16px;
-
-  margin-bottom:13px;
-}
-
-.scan-head{
-  display:flex;
-
-  justify-content:space-between;
-
-  gap:12px;
-
-  align-items:flex-start;
-}
-
-h2{
-  font-size:18px;
-  margin:0;
-}
-
-.muted{
-  color:var(--muted);
-}
-
-.small{
-  font-size:11px;
-}
-
-/* =====================================
-   BUTTONS
-===================================== */
-
-.btn{
-
-  border:1px solid var(--line);
-
-  background:var(--card2);
-
-  color:#fff;
-
-  border-radius:10px;
-
-  padding:9px 12px;
-
-  font-weight:800;
-}
-
-.btn.primary{
-
-  background:#1d5e9c;
-
-  border-color:#2b79bd;
-}
-
-.btn.danger{
-  background:#55202a;
-}
-
-.btn.good{
-  background:#174c3e;
-}
-
-/* =====================================
-   SEARCH
-===================================== */
-
-.search{
-  display:flex;
-
-  gap:8px;
-
-  margin:12px 0;
-}
-
-.search input{
-
-  flex:1;
-
-  min-width:0;
-
-  background:var(--card);
-
-  color:#fff;
-
-  border:1px solid var(--line);
-
-  border-radius:11px;
-
-  padding:11px 13px;
-
-  outline:0;
-}
-
-/* =====================================
-   GRID
-===================================== */
-
-.grid{
-
-  display:grid;
-
-  grid-template-columns:
-    repeat(3,1fr);
-
-  gap:9px;
-}
-
-.metric{
-
-  background:
-    rgba(255,255,255,.035);
-
-  border:1px solid var(--line);
-
-  border-radius:12px;
-
-  padding:10px;
-}
-
-.metric .label{
-
-  font-size:10px;
-
-  color:var(--muted);
-}
-
-.metric .value{
-
-  font-size:18px;
-
-  font-weight:900;
-
-  margin-top:4px;
-}
-
-/* =====================================
-   STOCK
-===================================== */
-
-.stock-grid{
-
-  display:grid;
-
-  grid-template-columns:
-    repeat(3,1fr);
-
-  gap:10px;
-}
-
-.stock{
-
-  border:1px solid var(--line);
-
-  background:var(--card);
-
-  border-radius:15px;
-
-  padding:13px;
+  box-shadow:
+    0 8px 28px rgba(0,0,0,.13);
 
   cursor:pointer;
 
   transition:
-    transform .15s ease,
-    background .15s ease;
+    transform .18s,
+    border-color .18s,
+    background .18s;
 }
 
-.stock:hover{
+.stock-card:hover{
+  transform:translateY(-2px);
 
-  background:var(--card2);
-
-  transform:translateY(-1px);
+  border-color:
+    rgba(85,169,255,.22);
 }
 
 .stock-top{
+  display:flex;
+  justify-content:space-between;
+  align-items:flex-start;
 
+  gap:10px;
+}
+
+.stock-name{
+  font-weight:950;
+  font-size:15px;
+}
+
+.stock-code{
+  margin-top:3px;
+
+  color:var(--text3);
+
+  font-size:10px;
+}
+
+.price-row{
+  display:flex;
+  align-items:baseline;
+  gap:7px;
+
+  margin-top:15px;
+}
+
+.stock-price{
+  font-size:23px;
+  font-weight:950;
+  letter-spacing:-.5px;
+}
+
+.change{
+  font-size:11px;
+  font-weight:850;
+}
+
+.up{
+  color:var(--red);
+}
+
+.down{
+  color:var(--green);
+}
+
+.neutral{
+  color:var(--text3);
+}
+
+/* ==================================================
+   BADGE
+================================================== */
+
+.badge{
+  display:inline-flex;
+  align-items:center;
+
+  padding:5px 8px;
+
+  border-radius:999px;
+
+  font-size:9px;
+  font-weight:950;
+
+  white-space:nowrap;
+}
+
+.badge.good{
+  color:#69e8bb;
+
+  background:
+    rgba(49,211,155,.11);
+
+  border:
+    1px solid
+    rgba(49,211,155,.15);
+}
+
+.badge.warn{
+  color:#f4d17d;
+
+  background:
+    rgba(242,201,109,.10);
+
+  border:
+    1px solid
+    rgba(242,201,109,.13);
+}
+
+.badge.bad{
+  color:#ff7c8c;
+
+  background:
+    rgba(255,101,120,.10);
+
+  border:
+    1px solid
+    rgba(255,101,120,.13);
+}
+
+/* ==================================================
+   CONDITION BAR
+================================================== */
+
+.condition-summary{
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+
+  margin-top:12px;
+
+  padding-top:11px;
+
+  border-top:
+    1px solid
+    var(--line);
+}
+
+.condition-label{
+  color:var(--text3);
+  font-size:10px;
+}
+
+.condition-count{
+  font-size:13px;
+  font-weight:950;
+}
+
+.condition-bar{
+  display:flex;
+
+  gap:3px;
+
+  margin-top:7px;
+}
+
+.condition-dot{
+  height:4px;
+
+  flex:1;
+
+  border-radius:999px;
+
+  background:
+    rgba(255,255,255,.08);
+}
+
+.condition-dot.ok{
+  background:var(--green);
+
+  box-shadow:
+    0 0 5px
+    rgba(49,211,155,.25);
+}
+
+/* ==================================================
+   TECH GRID
+================================================== */
+
+.tech-grid{
+  display:grid;
+
+  grid-template-columns:
+    repeat(3,1fr);
+
+  gap:5px;
+
+  margin-top:11px;
+}
+
+.tech{
+  padding:7px 8px;
+
+  border-radius:9px;
+
+  background:
+    rgba(255,255,255,.025);
+}
+
+.tech-label{
+  color:var(--text3);
+  font-size:8px;
+}
+
+.tech-value{
+  margin-top:2px;
+
+  font-size:11px;
+  font-weight:850;
+}
+
+/* ==================================================
+   EMPTY
+================================================== */
+
+.empty{
+  grid-column:1/-1;
+
+  padding:45px 20px;
+
+  text-align:center;
+
+  color:var(--text3);
+
+  border:
+    1px dashed
+    var(--line2);
+
+  border-radius:17px;
+
+  background:
+    rgba(255,255,255,.015);
+}
+
+/* ==================================================
+   DETAIL
+================================================== */
+
+.detail-header{
   display:flex;
 
   justify-content:space-between;
 
+  align-items:flex-start;
+
+  gap:14px;
+
+  margin-bottom:14px;
+}
+
+.detail-name{
+  font-size:25px;
+  font-weight:950;
+}
+
+.detail-code{
+  margin-left:7px;
+
+  color:var(--text3);
+
+  font-size:12px;
+}
+
+.detail-price{
+  margin-top:9px;
+
+  font-size:28px;
+  font-weight:950;
+}
+
+.detail-actions{
+  display:flex;
+  gap:7px;
+}
+
+.card{
+  padding:18px;
+
+  margin-bottom:12px;
+
+  border:
+    1px solid
+    var(--line);
+
+  border-radius:18px;
+
+  background:
+    rgba(16,30,48,.86);
+
+  box-shadow:
+    0 8px 30px rgba(0,0,0,.12);
+}
+
+.card-title{
+  font-size:15px;
+  font-weight:950;
+}
+
+.card-sub{
+  margin-top:3px;
+
+  color:var(--text3);
+
+  font-size:10px;
+}
+
+/* ==================================================
+   CONDITION DETAIL
+================================================== */
+
+.condition-grid{
+  display:grid;
+
+  grid-template-columns:
+    repeat(3,1fr);
+
   gap:8px;
-}
-
-.name{
-  font-weight:900;
-}
-
-.code{
-
-  font-size:11px;
-
-  color:var(--muted);
-
-  margin-top:2px;
-}
-
-.price{
-
-  font-size:20px;
-
-  font-weight:900;
 
   margin-top:12px;
 }
 
-.change{
+.condition-item{
+  padding:12px;
 
-  font-size:12px;
+  border-radius:12px;
 
-  margin-left:6px;
+  border:
+    1px solid
+    var(--line);
+
+  background:
+    rgba(255,255,255,.025);
 }
 
-.up{
-  color:var(--up);
+.condition-item.ok{
+  border-color:
+    rgba(49,211,155,.16);
+
+  background:
+    rgba(49,211,155,.045);
 }
 
-.down{
-  color:var(--down);
+.condition-item.no{
+  border-color:
+    rgba(255,101,120,.14);
+
+  background:
+    rgba(255,101,120,.035);
 }
 
-.neutral{
-  color:var(--muted);
+.condition-item-title{
+  font-size:11px;
+  font-weight:850;
 }
 
-/* =====================================
-   BADGES
-===================================== */
-
-.badge{
-
-  display:inline-block;
-
-  padding:4px 7px;
-
-  border-radius:999px;
+.condition-item-value{
+  margin-top:6px;
 
   font-size:10px;
+}
 
-  font-weight:900;
+/* ==================================================
+   RISK
+================================================== */
+
+.risk-grid{
+  display:grid;
+
+  grid-template-columns:
+    repeat(4,1fr);
+
+  gap:8px;
+
+  margin-top:12px;
+}
+
+.risk-item{
+  padding:14px;
+
+  border-radius:13px;
 
   background:
-    rgba(92,174,255,.12);
+    rgba(255,255,255,.025);
 
-  color:var(--blue);
+  border:
+    1px solid
+    var(--line);
 }
 
-.badge.good{
+.risk-label{
+  color:var(--text3);
+
+  font-size:9px;
+}
+
+.risk-value{
+  margin-top:5px;
+
+  font-size:18px;
+
+  font-weight:950;
+}
+
+/* ==================================================
+   WATCH
+================================================== */
+
+.watch-actions{
+  display:flex;
+  gap:7px;
+}
+
+/* ==================================================
+   DCA
+================================================== */
+
+.info{
+  padding:13px 15px;
+
+  margin-bottom:12px;
+
+  border:
+    1px solid
+    rgba(85,169,255,.13);
+
+  border-radius:14px;
 
   background:
-    rgba(39,201,151,.12);
+    rgba(85,169,255,.055);
 
-  color:var(--good);
+  color:var(--text2);
+
+  font-size:11px;
+
+  line-height:1.75;
 }
-
-.badge.warn{
-
-  background:
-    rgba(244,201,107,.12);
-
-  color:var(--warn);
-}
-
-.badge.bad{
-
-  background:
-    rgba(255,102,117,.12);
-
-  color:var(--bad);
-}
-
-.score{
-
-  font-size:25px;
-
-  font-weight:900;
-
-  color:var(--gold);
-}
-
-/* =====================================
-   FORM
-===================================== */
 
 .form-grid{
-
   display:grid;
 
   grid-template-columns:
@@ -522,189 +1015,300 @@ h2{
 }
 
 .field label{
-
   display:block;
 
-  font-size:11px;
-
-  color:var(--muted);
-
   margin-bottom:5px;
+
+  color:var(--text3);
+
+  font-size:10px;
 }
 
 .field input,
 .field select{
-
   width:100%;
 
-  background:var(--card);
+  padding:11px 12px;
 
-  border:1px solid var(--line);
+  border:
+    1px solid
+    var(--line);
+
+  border-radius:11px;
+
+  outline:none;
 
   color:#fff;
 
-  border-radius:10px;
+  background:
+    #0c1929;
+}
 
-  padding:10px;
+.field input:focus,
+.field select:focus{
+  border-color:
+    rgba(85,169,255,.5);
 
-  outline:0;
+  box-shadow:
+    0 0 0 3px
+    rgba(85,169,255,.07);
 }
 
 .form-actions{
-
   display:flex;
-
-  gap:8px;
+  gap:7px;
 
   margin-top:12px;
 }
 
-/* =====================================
-   RISK
-===================================== */
-
-.risk-box{
-
+.dca-summary{
   display:grid;
 
   grid-template-columns:
     repeat(4,1fr);
 
   gap:9px;
-}
-
-.risk{
-
-  padding:12px;
-
-  border:1px solid var(--line);
-
-  border-radius:13px;
-
-  background:
-    rgba(255,255,255,.03);
-}
-
-.risk strong{
-
-  display:block;
-
-  font-size:18px;
-
-  margin-top:5px;
-}
-
-/* =====================================
-   DETAIL
-===================================== */
-
-.detail-head{
-
-  display:flex;
-
-  justify-content:space-between;
-
-  gap:10px;
-
-  align-items:flex-start;
-}
-
-.back{
-  margin-bottom:10px;
-}
-
-/* =====================================
-   NOTICE
-===================================== */
-
-.notice{
-
-  padding:11px 12px;
-
-  border-radius:11px;
-
-  background:
-    rgba(92,174,255,.08);
-
-  border:
-    1px solid
-    rgba(92,174,255,.18);
-
-  font-size:12px;
-
-  line-height:1.7;
 
   margin-bottom:12px;
 }
 
-.empty{
+.dca-card{
+  padding:17px;
 
-  padding:30px;
+  margin-bottom:10px;
 
-  text-align:center;
+  border:
+    1px solid
+    var(--line);
 
-  color:var(--muted);
+  border-radius:17px;
+
+  background:
+    rgba(16,30,48,.86);
 }
 
-.footer{
+.dca-head{
+  display:flex;
 
-  text-align:center;
+  justify-content:space-between;
 
-  color:var(--muted);
+  align-items:flex-start;
+
+  gap:10px;
+}
+
+.dca-name{
+  font-size:16px;
+  font-weight:950;
+}
+
+.dca-code{
+  margin-left:5px;
+
+  color:var(--text3);
 
   font-size:10px;
-
-  margin-top:25px;
 }
 
-/* =====================================
-   MOBILE
-===================================== */
+.dca-data{
+  display:grid;
 
-@media(max-width:850px){
+  grid-template-columns:
+    repeat(5,1fr);
+
+  gap:7px;
+
+  margin-top:12px;
+}
+
+.dca-data-item{
+  padding:10px;
+
+  border-radius:11px;
+
+  background:
+    rgba(255,255,255,.025);
+}
+
+.dca-data-label{
+  color:var(--text3);
+
+  font-size:8px;
+}
+
+.dca-data-value{
+  margin-top:4px;
+
+  font-size:12px;
+  font-weight:900;
+}
+
+/* ==================================================
+   TOAST
+================================================== */
+
+.toast{
+  position:fixed;
+
+  left:50%;
+  bottom:
+    calc(20px + env(safe-area-inset-bottom));
+
+  transform:
+    translate(-50%,20px);
+
+  z-index:500;
+
+  padding:
+    11px 15px;
+
+  border:
+    1px solid
+    var(--line2);
+
+  border-radius:12px;
+
+  background:
+    rgba(14,27,43,.96);
+
+  box-shadow:
+    0 15px 40px rgba(0,0,0,.35);
+
+  color:#fff;
+
+  font-size:11px;
+
+  opacity:0;
+
+  pointer-events:none;
+
+  transition:.25s;
+}
+
+.toast.show{
+  opacity:1;
+
+  transform:
+    translate(-50%,0);
+}
+
+/* ==================================================
+   RESPONSIVE
+================================================== */
+
+@media(max-width:900px){
 
   .stock-grid{
     grid-template-columns:
       repeat(2,1fr);
   }
 
-  .form-grid{
+  .stats{
     grid-template-columns:
       repeat(2,1fr);
   }
 
+  .risk-grid{
+    grid-template-columns:
+      repeat(2,1fr);
+  }
+
+  .dca-summary{
+    grid-template-columns:
+      repeat(2,1fr);
+  }
+
+  .dca-data{
+    grid-template-columns:
+      repeat(3,1fr);
+  }
+
 }
 
-@media(max-width:560px){
+@media(max-width:620px){
 
-  .status{
+  .app{
+    padding-top:12px;
+  }
+
+  .header{
+    margin-bottom:12px;
+  }
+
+  .brand-title{
+    font-size:17px;
+  }
+
+  .brand-icon{
+    width:40px;
+    height:40px;
+  }
+
+  .system-status{
     display:none;
   }
 
-  .grid{
-    grid-template-columns:
-      repeat(2,1fr);
+  .hero{
+    grid-template-columns:1fr;
+
+    padding:18px;
+  }
+
+  .hero-score{
+    min-height:82px;
+  }
+
+  .hero-score-number{
+    font-size:28px;
   }
 
   .stock-grid{
     grid-template-columns:1fr;
   }
 
-  .form-grid{
-    grid-template-columns:1fr;
-  }
-
-  .risk-box{
+  .condition-grid{
     grid-template-columns:
       repeat(2,1fr);
   }
 
-  .scan-head{
+  .form-grid{
+    grid-template-columns:1fr;
+  }
+
+  .detail-header{
     flex-direction:column;
+  }
+
+  .detail-actions{
+    width:100%;
+  }
+
+  .detail-actions .btn{
+    flex:1;
+  }
+
+  .dca-data{
+    grid-template-columns:
+      repeat(2,1fr);
   }
 
 }
 
+@media(max-width:400px){
+
+  .stats{
+    grid-template-columns:1fr 1fr;
+  }
+
+  .condition-grid{
+    grid-template-columns:1fr;
+  }
+
+  .risk-grid{
+    grid-template-columns:1fr 1fr;
+  }
+
+}
 </style>
 </head>
 
@@ -712,206 +1316,246 @@ h2{
 
 <div class="app">
 
-<!-- =====================================
-     HEADER
-===================================== -->
-
-<header class="top">
+<header class="header">
 
   <div class="brand">
 
-    <div class="logo">
+    <div class="brand-icon">
       AI
     </div>
 
     <div>
-
-      <div class="title">
+      <div class="brand-title">
         台股 AI 選股
       </div>
 
-      <div class="sub">
-        選股・個股分析・零股定投・動態風控
+      <div class="brand-sub">
+        智慧選股・動態風控・零股定投
       </div>
-
     </div>
 
   </div>
 
-  <div class="status">
-
-    <span class="dot"></span>
-
-    <span id="dataStatus">
+  <div class="system-status">
+    <span class="status-dot"></span>
+    <span id="systemStatus">
       資料載入中
     </span>
-
   </div>
 
 </header>
 
 
-<!-- =====================================
-     NAVIGATION
-===================================== -->
-
-<nav class="tabs">
+<nav class="nav">
 
   <button
-    class="tab active"
-    data-tab="scan">
-
+    class="nav-btn active"
+    data-page="scanner">
     AI 選股
-
   </button>
 
   <button
-    class="tab"
-    data-tab="watch">
+    class="nav-btn"
+    data-page="all">
+    全部個股
+  </button>
 
+  <button
+    class="nav-btn"
+    data-page="watch">
     我的清單
-
   </button>
 
   <button
-    class="tab"
-    data-tab="dca">
-
+    class="nav-btn"
+    data-page="dca">
     零股定投
-
   </button>
 
 </nav>
 
 
-<main>
-
-
-<!-- =====================================
+<!-- ==================================================
      AI SCANNER
-===================================== -->
+================================================== -->
 
 <section
-  id="scan"
-  class="panel active">
+  id="page-scanner"
+  class="page active">
 
-  <div class="scan-card">
+  <div class="hero">
 
-    <div class="scan-head">
+    <div>
 
-      <div>
+      <div class="hero-title">
+        今日 AI 選股
+      </div>
 
-        <h2>
-          每日 AI 精選
-        </h2>
-
-        <div
-          class="muted small"
-          id="scanMeta">
-
-          讀取 Data/prices.json
-
-        </div>
-
+      <div class="hero-desc">
+        依照目前系統既定的六項核心條件判斷。
+        <br>
+        只有 <strong>6 / 6</strong> 才會被標示為「符合」。
       </div>
 
       <div
-        class="score"
-        id="marketCount">
+        style="margin-top:14px">
 
-        0
+        <span
+          class="badge good"
+          id="qualifiedBadge">
+          0 檔符合
+        </span>
 
       </div>
 
     </div>
 
+    <div class="hero-score">
 
-    <div
-      class="grid"
-      style="margin-top:12px">
-
-
-      <div class="metric">
-
-        <div class="label">
-          符合 6 條件
-        </div>
-
-        <div
-          class="value"
-          id="qualifiedCount">
-
-          0
-
-        </div>
-
+      <div
+        class="hero-score-number"
+        id="topQualified">
+        0
       </div>
 
-
-      <div class="metric">
-
-        <div class="label">
-          資料筆數
-        </div>
-
-        <div
-          class="value"
-          id="dataCount">
-
-          0
-
-        </div>
-
+      <div class="hero-score-label">
+        今日符合全部條件
       </div>
-
-
-      <div class="metric">
-
-        <div class="label">
-          最後更新
-        </div>
-
-        <div
-          class="value"
-          id="updatedAt"
-          style="font-size:13px">
-
-          —
-
-        </div>
-
-      </div>
-
 
     </div>
 
   </div>
 
 
-  <!-- SEARCH -->
+  <div class="stats">
 
-  <div class="search">
+    <div class="stat">
 
-    <input
-      id="searchInput"
-      type="search"
-      placeholder="搜尋股票代號或名稱">
+      <div class="stat-label">
+        股票資料
+      </div>
+
+      <div
+        class="stat-value"
+        id="statTotal">
+        0
+      </div>
+
+    </div>
+
+    <div class="stat">
+
+      <div class="stat-label">
+        6 / 6 符合
+      </div>
+
+      <div
+        class="stat-value"
+        id="statQualified">
+        0
+      </div>
+
+    </div>
+
+    <div class="stat">
+
+      <div class="stat-label">
+        觀察
+      </div>
+
+      <div
+        class="stat-value"
+        id="statWatch">
+        0
+      </div>
+
+    </div>
+
+    <div class="stat">
+
+      <div class="stat-label">
+        資料日期
+      </div>
+
+      <div
+        class="stat-value"
+        id="statDate"
+        style="font-size:14px">
+        —
+      </div>
+
+    </div>
+
+  </div>
+
+
+  <div class="section-head">
+
+    <div>
+
+      <div class="section-title">
+        符合全部條件
+      </div>
+
+      <div class="section-sub">
+        僅顯示六項核心條件全部成立的股票
+      </div>
+
+    </div>
+
+  </div>
+
+
+  <div
+    id="qualifiedGrid"
+    class="stock-grid">
+
+  </div>
+
+
+  <div class="section-head">
+
+    <div>
+
+      <div class="section-title">
+        觀察名單
+      </div>
+
+      <div class="section-sub">
+        有部分條件成立，但尚未達到 6 / 6
+      </div>
+
+    </div>
+
+  </div>
+
+
+  <div class="search-row">
+
+    <div class="search-box">
+
+      <span class="search-icon">
+        ⌕
+      </span>
+
+      <input
+        id="searchInput"
+        type="search"
+        placeholder="搜尋代號或股票名稱">
+
+    </div>
 
     <button
-      class="btn primary"
+      class="btn"
       id="refreshBtn">
-
-      重新讀取
-
+      ↻ 更新
     </button>
 
   </div>
 
 
-  <!-- STOCK LIST -->
-
   <div
-    id="stockGrid"
+    id="observeGrid"
     class="stock-grid">
 
   </div>
@@ -919,39 +1563,91 @@ h2{
 </section>
 
 
-<!-- =====================================
-     WATCH LIST
-===================================== -->
+<!-- ==================================================
+     ALL
+================================================== -->
 
 <section
-  id="watch"
-  class="panel">
+  id="page-all"
+  class="page">
 
-  <div class="card">
+  <div class="section-head">
 
-    <div class="scan-head">
+    <div>
 
-      <div>
-
-        <h2>
-          我的清單
-        </h2>
-
-        <div class="muted small">
-          可從個股加入；資料保存在本機
-        </div>
-
+      <div class="section-title">
+        全部個股
       </div>
 
-      <button
-        class="btn danger"
-        id="clearWatch">
-
-        清空
-
-      </button>
+      <div class="section-sub">
+        今日資料庫中的所有股票
+      </div>
 
     </div>
+
+    <div
+      class="badge"
+      id="allCount">
+      0
+    </div>
+
+  </div>
+
+
+  <div class="search-row">
+
+    <div class="search-box">
+
+      <span class="search-icon">
+        ⌕
+      </span>
+
+      <input
+        id="allSearch"
+        type="search"
+        placeholder="搜尋股票">
+
+    </div>
+
+  </div>
+
+
+  <div
+    id="allGrid"
+    class="stock-grid">
+
+  </div>
+
+</section>
+
+
+<!-- ==================================================
+     WATCH
+================================================== -->
+
+<section
+  id="page-watch"
+  class="page">
+
+  <div class="section-head">
+
+    <div>
+
+      <div class="section-title">
+        我的清單
+      </div>
+
+      <div class="section-sub">
+        追蹤你關注的股票
+      </div>
+
+    </div>
+
+    <button
+      class="btn danger"
+      id="clearWatch">
+      清空
+    </button>
 
   </div>
 
@@ -965,52 +1661,103 @@ h2{
 </section>
 
 
-<!-- =====================================
+<!-- ==================================================
      DCA
-===================================== -->
+================================================== -->
 
 <section
-  id="dca"
-  class="panel">
+  id="page-dca"
+  class="page">
 
-
-  <div class="notice">
+  <div class="info">
 
     <strong>
-      動態風控自動計算
+      動態風控已自動化
     </strong>
 
     <br>
 
-    停損、第一停利、第二停利
-    <strong>不需要使用者輸入</strong>。
+    停損、第一停利、第二停利不需要自行填寫。
+    有 ATR 時使用 ATR 動態模型；沒有 ATR 時使用系統備援模型。
 
-    <br>
+  </div>
 
-    有 ATR 資料時：
-    停損 = 成本 − 1.5 × ATR；
-    第一停利 = 成本 + 1.5 × ATR；
-    第二停利 = 成本 + 3 × ATR。
 
-    <br>
+  <div class="dca-summary">
 
-    沒有 ATR 時，
-    系統自動使用百分比備援模型。
+    <div class="stat">
+
+      <div class="stat-label">
+        總投入
+      </div>
+
+      <div
+        class="stat-value"
+        id="dcaCost">
+        NT$ 0
+      </div>
+
+    </div>
+
+    <div class="stat">
+
+      <div class="stat-label">
+        目前市值
+      </div>
+
+      <div
+        class="stat-value"
+        id="dcaValue">
+        NT$ 0
+      </div>
+
+    </div>
+
+    <div class="stat">
+
+      <div class="stat-label">
+        總損益
+      </div>
+
+      <div
+        class="stat-value"
+        id="dcaProfit">
+        NT$ 0
+      </div>
+
+    </div>
+
+    <div class="stat">
+
+      <div class="stat-label">
+        總報酬率
+      </div>
+
+      <div
+        class="stat-value"
+        id="dcaReturn">
+        0.00%
+      </div>
+
+    </div>
 
   </div>
 
 
   <div class="card">
 
-    <h2>
-      新增／編輯定投
-    </h2>
+    <div class="card-title">
+      新增零股定投
+    </div>
+
+    <div class="card-sub">
+      只需輸入持倉資料，風控價格由系統自動計算
+    </div>
 
 
     <form id="dcaForm">
 
       <div class="form-grid">
-
 
         <div class="field">
 
@@ -1019,11 +1766,11 @@ h2{
           </label>
 
           <input
-            id="fCode"
-            required>
+            id="dcaCode"
+            required
+            placeholder="例如 2408">
 
         </div>
-
 
         <div class="field">
 
@@ -1032,11 +1779,11 @@ h2{
           </label>
 
           <input
-            id="fName"
-            required>
+            id="dcaName"
+            required
+            placeholder="例如 南亞科">
 
         </div>
-
 
         <div class="field">
 
@@ -1045,14 +1792,13 @@ h2{
           </label>
 
           <input
-            id="fShares"
+            id="dcaShares"
             type="number"
             min="0"
             step="0.001"
             required>
 
         </div>
-
 
         <div class="field">
 
@@ -1061,29 +1807,13 @@ h2{
           </label>
 
           <input
-            id="fCost"
+            id="dcaAvgCost"
             type="number"
             min="0"
             step="0.01"
             required>
 
         </div>
-
-
-        <div class="field">
-
-          <label>
-            目前價格
-          </label>
-
-          <input
-            id="fPrice"
-            type="number"
-            min="0"
-            step="0.01">
-
-        </div>
-
 
         <div class="field">
 
@@ -1092,21 +1822,20 @@ h2{
           </label>
 
           <input
-            id="fInvest"
+            id="dcaInvest"
             type="number"
             min="0"
             step="1">
 
         </div>
 
-
         <div class="field">
 
           <label>
-            定投頻率
+            頻率
           </label>
 
-          <select id="fFreq">
+          <select id="dcaFreq">
 
             <option>
               每月
@@ -1120,23 +1849,7 @@ h2{
               每兩週
             </option>
 
-            <option>
-              自訂
-            </option>
-
           </select>
-
-        </div>
-
-
-        <div class="field">
-
-          <label>
-            備註
-          </label>
-
-          <input
-            id="fNote">
 
         </div>
 
@@ -1148,18 +1861,14 @@ h2{
         <button
           class="btn primary"
           type="submit">
-
-          儲存
-
+          儲存定投
         </button>
 
         <button
           class="btn"
           type="button"
-          id="cancelEdit">
-
-          取消
-
+          id="dcaCancel">
+          清除
         </button>
 
       </div>
@@ -1169,120 +1878,92 @@ h2{
   </div>
 
 
-  <div
-    id="dcaSummary"
-    class="grid">
-
-  </div>
-
-
-  <div
-    id="dcaList">
-
-  </div>
+  <div id="dcaList"></div>
 
 </section>
 
 
-<!-- =====================================
+<!-- ==================================================
      DETAIL
-===================================== -->
+================================================== -->
 
 <section
-  id="detail"
-  class="panel">
-
-  <button
-    class="btn back"
-    id="backBtn">
-
-    ← 返回
-
-  </button>
-
+  id="page-detail"
+  class="page">
 
   <div
     id="detailContent">
-
   </div>
 
 </section>
 
-
-</main>
-
-
-<div class="footer">
-
-  台股 AI 選股／零股定投與動態風控
 
 </div>
 
 
+<div
+  id="toast"
+  class="toast">
 </div>
 
 
 <script>
 
-/* =====================================
+/* ==================================================
    CONFIG
-===================================== */
+================================================== */
 
 const DATA_URL =
   "./Data/prices.json";
 
 const WATCH_KEY =
-  "tw_ai_watch_v2";
+  "tw_stock_ai_watch_v3";
 
 const DCA_KEY =
-  "tw_ai_dca_v2";
+  "tw_stock_ai_dca_v3";
 
 
-/* =====================================
-   GLOBAL
-===================================== */
+/* ==================================================
+   STATE
+================================================== */
 
 let stocks = [];
 
-let watch =
-  loadLocal(
+let watchList =
+  loadStorage(
     WATCH_KEY,
     []
   );
 
-let dca =
-  loadLocal(
+let dcaList =
+  loadStorage(
     DCA_KEY,
     []
   );
 
-let editingIndex = -1;
+let currentDcaEdit =
+  -1;
 
 
-/* =====================================
-   LOCAL STORAGE
-===================================== */
+/* ==================================================
+   STORAGE
+================================================== */
 
-function loadLocal(
+function loadStorage(
   key,
   fallback
 ){
 
   try{
 
-    const raw =
+    const value =
       localStorage.getItem(key);
 
-    if(!raw){
-      return fallback;
-    }
+    return value
+      ? JSON.parse(value)
+      : fallback;
 
-    const value =
-      JSON.parse(raw);
-
-    return value ?? fallback;
-
-  }catch(error){
+  }catch(e){
 
     return fallback;
 
@@ -1291,47 +1972,36 @@ function loadLocal(
 }
 
 
-function saveLocal(
+function saveStorage(
   key,
   value
 ){
 
-  try{
-
-    localStorage.setItem(
-      key,
-      JSON.stringify(value)
-    );
-
-  }catch(error){
-
-    console.error(
-      "LocalStorage error:",
-      error
-    );
-
-  }
+  localStorage.setItem(
+    key,
+    JSON.stringify(value)
+  );
 
 }
 
 
-/* =====================================
-   BASIC HELPERS
-===================================== */
+/* ==================================================
+   HELPERS
+================================================== */
 
-function num(value){
+function n(value){
 
-  const n =
+  const number =
     Number(value);
 
-  return Number.isFinite(n)
-    ? n
+  return Number.isFinite(number)
+    ? number
     : 0;
 
 }
 
 
-function text(value){
+function s(value){
 
   return String(
     value ?? ""
@@ -1340,54 +2010,44 @@ function text(value){
 }
 
 
-function escapeHTML(value){
+function esc(value){
 
-  return text(value)
+  return s(value)
     .replace(
       /[&<>"']/g,
-      function(char){
-
-        const map = {
-
-          "&":"&amp;",
-          "<":"&lt;",
-          ">":"&gt;",
-          '"':"&quot;",
-          "'":"&#39;"
-
-        };
-
-        return map[char];
-
-      }
+      char => ({
+        "&":"&amp;",
+        "<":"&lt;",
+        ">":"&gt;",
+        '"':"&quot;",
+        "'":"&#039;"
+      }[char])
     );
 
 }
 
 
-function formatPrice(value){
+function price(value){
 
-  const n =
-    num(value);
+  const v =
+    n(value);
 
-  if(!n){
-    return "—";
-  }
-
-  return n.toLocaleString(
-    "zh-TW",
-    {
-      minimumFractionDigits:2,
-      maximumFractionDigits:2
-    }
-  );
+  return v
+    ? v.toLocaleString(
+        "zh-TW",
+        {
+          minimumFractionDigits:2,
+          maximumFractionDigits:2
+        }
+      )
+    : "—";
 
 }
 
 
-function formatNumber(value){
+function integer(value){
 
-  return num(value)
+  return n(value)
     .toLocaleString(
       "zh-TW"
     );
@@ -1395,11 +2055,11 @@ function formatNumber(value){
 }
 
 
-function formatMoney(value){
+function money(value){
 
   return "NT$ " +
     Math.round(
-      num(value)
+      n(value)
     ).toLocaleString(
       "zh-TW"
     );
@@ -1407,69 +2067,81 @@ function formatMoney(value){
 }
 
 
-function formatPct(value){
+function pct(value){
 
-  const n =
-    num(value);
+  const v =
+    n(value);
 
   return (
-    n >= 0
+    v >= 0
       ? "+"
       : ""
   ) +
-  n.toFixed(2) +
+  v.toFixed(2) +
   "%";
 
 }
 
 
-function colorClass(value){
+function directionClass(value){
 
-  const n =
-    num(value);
+  const v =
+    n(value);
 
-  if(n > 0){
-    return "up";
-  }
-
-  if(n < 0){
-    return "down";
-  }
+  if(v > 0) return "up";
+  if(v < 0) return "down";
 
   return "neutral";
 
 }
 
 
-function setText(
-  id,
-  value
-){
+function toast(message){
 
-  const element =
-    document.getElementById(id);
+  const el =
+    document.getElementById(
+      "toast"
+    );
 
-  if(element){
-    element.textContent =
-      value;
-  }
+  el.textContent =
+    message;
+
+  el.classList.add(
+    "show"
+  );
+
+  clearTimeout(
+    toast.timer
+  );
+
+  toast.timer =
+    setTimeout(
+      () =>
+        el.classList.remove(
+          "show"
+        ),
+      1800
+    );
 
 }
 
 
-/* =====================================
-   NORMALIZE STOCK DATA
-===================================== */
+/* ==================================================
+   DATA NORMALIZATION
+================================================== */
 
-function normalizeStock(raw){
+function normalizeStock(
+  raw
+){
 
   const x =
     raw || {};
 
+
   const stock = {
 
     code:
-      text(
+      s(
         x.code ??
         x.stock_id ??
         x.stockCode ??
@@ -1483,97 +2155,86 @@ function normalizeStock(raw){
       ),
 
     name:
-      text(
+      s(
         x.name ??
         x.stock_name ??
         x.stockName ??
-        x.n ??
         ""
       ),
 
     price:
-      num(
+      n(
         x.price ??
         x.close ??
+        x.close_price ??
         x.current_price ??
-        x.currentPrice ??
-        x.last ??
-        x.close_price
+        x.last
       ),
 
     change:
-      num(
+      n(
         x.change_pct ??
         x.changePercent ??
         x.pct_change ??
-        x.change ??
-        0
+        x.change
       ),
 
     rsi:
-      num(
+      n(
         x.rsi ??
         x.RSI
       ),
 
     k:
-      num(
+      n(
         x.k ??
         x.K ??
         x.kd_k
       ),
 
     d:
-      num(
+      n(
         x.d ??
         x.D ??
         x.kd_d
       ),
 
     macd:
-      num(
+      n(
         x.macd ??
         x.MACD
       ),
 
     signal:
-      num(
+      n(
         x.signal ??
         x.macd_signal ??
         x.MACD_signal
       ),
 
     volume:
-      num(
+      n(
         x.volume ??
         x.Volume
       ),
 
     avgVolume5:
-      num(
+      n(
         x.avg_volume_5 ??
         x.volume_ma5 ??
         x.vol_ma5
       ),
 
     ma20:
-      num(
+      n(
         x.ma20 ??
         x.MA20
       ),
 
     atr:
-      num(
+      n(
         x.atr ??
         x.ATR
-      ),
-
-    score:
-      num(
-        x.ai_score ??
-        x.AI_SCORE ??
-        x.score ??
-        x.aiScore
       ),
 
     raw:x
@@ -1581,11 +2242,41 @@ function normalizeStock(raw){
   };
 
 
+  /*
+   IMPORTANT
+
+   不讀取 raw.score / raw.ai_score
+   作為 AI Score。
+
+   AI Score 必須由核心條件
+   重新計算。
+  */
+
   stock.conditions =
-    buildConditions(
-      stock,
-      x
+    calculateConditions(
+      stock
     );
+
+
+  stock.passCount =
+    Object
+      .values(
+        stock.conditions
+      )
+      .filter(Boolean)
+      .length;
+
+
+  stock.aiScore =
+    Math.round(
+      stock.passCount /
+      6 *
+      100
+    );
+
+
+  stock.qualified =
+    stock.passCount === 6;
 
 
   return stock;
@@ -1593,94 +2284,58 @@ function normalizeStock(raw){
 }
 
 
-/* =====================================
-   SIX CONDITIONS
-===================================== */
+/* ==================================================
+   CORE CONDITIONS
+================================================== */
 
-function buildConditions(
-  s,
-  raw
+function calculateConditions(
+  stock
 ){
 
-  const c =
-    raw.conditions ??
-    raw.signals ??
-    {};
-
+  /*
+   這裡保留六項核心條件。
+   不使用外部 score。
+  */
 
   const macd =
-    Boolean(
-      c.macd ??
-      c.MACD ??
-      raw.macd_goldencross ??
-      raw.macdGoldenCross ??
-      (
-        s.macd > s.signal &&
-        s.macd !== 0
-      )
-    );
+    stock.macd !== 0 &&
+    stock.signal !== 0 &&
+    stock.macd >
+    stock.signal;
 
 
   const rsi =
-    Boolean(
-      c.rsi ??
-      c.RSI ??
-      raw.rsi_bull ??
-      (
-        s.rsi > 50
-      )
-    );
+    stock.rsi > 50;
 
 
   const kd =
-    Boolean(
-      c.kd ??
-      c.KD ??
-      raw.kd_bull ??
-      (
-        s.k > s.d &&
-        s.k !== 0
-      )
-    );
+    stock.k !== 0 &&
+    stock.d !== 0 &&
+    stock.k >
+    stock.d;
 
 
   const volume =
-    Boolean(
-      c.volume ??
-      c.Volume ??
-      raw.volume_expand ??
-      (
-        s.volume > 0 &&
-        s.avgVolume5 > 0 &&
-        s.volume >=
-          s.avgVolume5 * 1.5
-      )
-    );
+    stock.volume > 0 &&
+    stock.avgVolume5 > 0 &&
+    stock.volume >=
+      stock.avgVolume5 * 1.5;
 
 
-  const ma =
-    Boolean(
-      c.ma ??
-      c.MA ??
-      raw.above_ma20 ??
-      (
-        s.price > s.ma20 &&
-        s.ma20 > 0
-      )
-    );
+  const ma20 =
+    stock.ma20 > 0 &&
+    stock.price >
+    stock.ma20;
 
 
   const trend =
-    Boolean(
-      c.trend ??
-      c.Trend ??
-      raw.trend_up ??
-      (
-        s.price > s.ma20 &&
-        s.macd > s.signal &&
-        s.rsi > 50
-      )
-    );
+    stock.price > 0 &&
+    stock.ma20 > 0 &&
+    stock.price >
+    stock.ma20 &&
+    stock.macd >
+    stock.signal &&
+    stock.rsi > 50;
 
 
   return {
@@ -1689,7 +2344,7 @@ function buildConditions(
     rsi,
     kd,
     volume,
-    ma,
+    ma20,
     trend
 
   };
@@ -1697,159 +2352,73 @@ function buildConditions(
 }
 
 
-/* =====================================
-   CONDITION COUNT
-===================================== */
-
-function conditionCount(stock){
-
-  return Object
-    .values(
-      stock.conditions
-    )
-    .filter(Boolean)
-    .length;
-
-}
-
-
-/* =====================================
-   AI SCORE
-===================================== */
-
-function getAIScore(
-  stock
-){
-
-  if(
-    stock.score > 0
-  ){
-
-    return Math.min(
-      100,
-      stock.score
-    );
-
-  }
-
-
-  return (
-    conditionCount(stock) /
-    6
-  ) * 100;
-
-}
-
-
-/* =====================================
-   QUALIFICATION
-===================================== */
-
-function isQualified(
-  stock
-){
-
-  return (
-    conditionCount(stock) >= 5
-    ||
-    getAIScore(stock) >= 80
-  );
-
-}
-
-
-/* =====================================
-   DYNAMIC RISK
-===================================== */
+/* ==================================================
+   RISK MODEL
+================================================== */
 
 function calculateRisk(
   stock,
-  costOverride
+  cost
 ){
 
-  const marketPrice =
-    num(stock.price);
-
-  const cost =
-    num(costOverride) ||
-    marketPrice;
+  const base =
+    n(cost) ||
+    n(stock.price);
 
 
-  let stopLoss;
-  let takeProfit1;
-  let takeProfit2;
+  let stop;
+  let tp1;
+  let tp2;
 
-  /*
-    ATR 模型：
-
-    停損：
-    成本 - 1.5 ATR
-
-    第一停利：
-    成本 + 1.5 ATR
-
-    第二停利：
-    成本 + 3 ATR
-  */
 
   if(
     stock.atr > 0
   ){
 
-    stopLoss =
-      cost -
+    stop =
+      base -
       stock.atr * 1.5;
 
-    takeProfit1 =
-      cost +
+    tp1 =
+      base +
       stock.atr * 1.5;
 
-    takeProfit2 =
-      cost +
+    tp2 =
+      base +
       stock.atr * 3;
 
   }else{
 
-    /*
-      沒 ATR：
+    stop =
+      base * .92;
 
-      停損 -8%
+    tp1 =
+      base * 1.10;
 
-      第一停利 +10%
-
-      第二停利 +18%
-    */
-
-    stopLoss =
-      cost * 0.92;
-
-    takeProfit1 =
-      cost * 1.10;
-
-    takeProfit2 =
-      cost * 1.18;
+    tp2 =
+      base * 1.18;
 
   }
 
 
   return {
 
-    stopLoss:
+    stop:
       Math.max(
         0,
-        stopLoss
+        stop
       ),
 
-    takeProfit1:
+    tp1:
       Math.max(
         0,
-        takeProfit1
+        tp1
       ),
 
-    takeProfit2:
+    tp2:
       Math.max(
         0,
-        takeProfit2
+        tp2
       )
 
   };
@@ -1857,17 +2426,17 @@ function calculateRisk(
 }
 
 
-/* =====================================
+/* ==================================================
    RISK STATUS
-===================================== */
+================================================== */
 
-function getRiskStatus(
+function riskStatus(
   stock,
   cost
 ){
 
-  const price =
-    num(stock.price);
+  const current =
+    n(stock.price);
 
   const risk =
     calculateRisk(
@@ -1876,10 +2445,12 @@ function getRiskStatus(
     );
 
 
-  if(!price){
+  if(
+    !current
+  ){
 
     return {
-      text:"等待價格",
+      label:"等待價格",
       className:"warn"
     };
 
@@ -1887,12 +2458,12 @@ function getRiskStatus(
 
 
   if(
-    price <=
-    risk.stopLoss
+    current <=
+    risk.stop
   ){
 
     return {
-      text:"停損警戒",
+      label:"停損警戒",
       className:"bad"
     };
 
@@ -1900,12 +2471,12 @@ function getRiskStatus(
 
 
   if(
-    price >=
-    risk.takeProfit2
+    current >=
+    risk.tp2
   ){
 
     return {
-      text:"第二停利",
+      label:"第二停利",
       className:"good"
     };
 
@@ -1913,47 +2484,33 @@ function getRiskStatus(
 
 
   if(
-    price >=
-    risk.takeProfit1
+    current >=
+    risk.tp1
   ){
 
     return {
-      text:"第一停利",
+      label:"第一停利",
       className:"good"
-    };
-
-  }
-
-
-  if(
-    price <=
-    risk.stopLoss * 1.03
-  ){
-
-    return {
-      text:"接近停損",
-      className:"warn"
     };
 
   }
 
 
   return {
-    text:"正常",
+    label:"正常",
     className:"good"
   };
 
 }
 
 
-/* =====================================
-   FETCH DATA
-===================================== */
+/* ==================================================
+   LOAD DATA
+================================================== */
 
-async function fetchData(){
+async function loadData(){
 
-  setText(
-    "dataStatus",
+  setSystemStatus(
     "資料載入中"
   );
 
@@ -1987,7 +2544,7 @@ async function fetchData(){
       await response.json();
 
 
-    let array;
+    let array = [];
 
 
     if(
@@ -2004,7 +2561,6 @@ async function fetchData(){
         raw.stocks ??
         raw.items ??
         raw.results ??
-        raw.stocks_data ??
         [];
 
     }
@@ -2012,15 +2568,17 @@ async function fetchData(){
 
     stocks =
       array
-        .map(normalizeStock)
+        .map(
+          normalizeStock
+        )
         .filter(
-          stock =>
-            stock.code ||
-            stock.name
+          x =>
+            x.code ||
+            x.name
         );
 
 
-    const updated =
+    const date =
       raw.updated_at ??
       raw.updatedAt ??
       raw.last_update ??
@@ -2029,38 +2587,20 @@ async function fetchData(){
       "";
 
 
-    setText(
-      "updatedAt",
-      updated
-        ? String(updated)
-        : "—"
-    );
+    document.getElementById(
+      "statDate"
+    ).textContent =
+      date
+        ? s(date)
+        : "今日";
 
 
-    setText(
-      "dataStatus",
+    setSystemStatus(
       "資料正常"
     );
 
 
-    setText(
-      "dataCount",
-      formatNumber(
-        stocks.length
-      )
-    );
-
-
-    setText(
-      "marketCount",
-      formatNumber(
-        stocks.length
-      )
-    );
-
-
-    renderAll();
-
+    render();
 
   }catch(error){
 
@@ -2069,158 +2609,174 @@ async function fetchData(){
     );
 
 
-    stocks = [];
-
-
-    setText(
-      "dataStatus",
+    setSystemStatus(
       "資料讀取失敗"
     );
 
 
-    setText(
-      "dataCount",
-      "0"
+    renderError(
+      error.message
     );
-
-
-    setText(
-      "marketCount",
-      "0"
-    );
-
-
-    document.getElementById(
-      "stockGrid"
-    ).innerHTML = `
-
-      <div
-        class="card empty"
-        style="grid-column:1/-1">
-
-        <strong>
-          無法讀取股票資料
-        </strong>
-
-        <br><br>
-
-        Data/prices.json
-
-        <br><br>
-
-        ${escapeHTML(
-          error.message
-        )}
-
-        <br><br>
-
-        請確認 GitHub Actions
-        是否已成功產生
-        Data/prices.json。
-
-      </div>
-
-    `;
-
-
-    renderWatch();
 
   }
 
 }
 
 
-/* =====================================
-   RENDER ALL
-===================================== */
+function setSystemStatus(
+  text
+){
 
-function renderAll(){
-
-  renderScanner();
-
-  renderWatch();
-
-  renderDCA();
+  document.getElementById(
+    "systemStatus"
+  ).textContent =
+    text;
 
 }
 
 
-/* =====================================
-   SCANNER
-===================================== */
+/* ==================================================
+   RENDER
+================================================== */
 
-function renderScanner(){
+function render(){
 
-  const query =
-    document.getElementById(
-      "searchInput"
-    )
-    .value
-    .trim()
-    .toLowerCase();
+  renderStats();
+
+  renderQualified();
+
+  renderObserve();
+
+  renderAll();
+
+  renderWatch();
+
+  renderDca();
+
+}
 
 
-  let list =
+/* ==================================================
+   STATS
+================================================== */
+
+function renderStats(){
+
+  const qualified =
     stocks.filter(
-      stock => {
-
-        if(!query){
-          return true;
-        }
-
-
-        return (
-          stock.code
-            .toLowerCase()
-            .includes(query)
-          ||
-          stock.name
-            .toLowerCase()
-            .includes(query)
-        );
-
-      }
+      x =>
+        x.qualified
     );
 
 
-  list.sort(
-    (
-      a,
-      b
-    ) =>
-      getAIScore(b) -
-      getAIScore(a)
+  document.getElementById(
+    "statTotal"
+  ).textContent =
+    integer(
+      stocks.length
+    );
+
+
+  document.getElementById(
+    "statQualified"
+  ).textContent =
+    integer(
+      qualified.length
+    );
+
+
+  document.getElementById(
+    "topQualified"
+  ).textContent =
+    integer(
+      qualified.length
+    );
+
+
+  document.getElementById(
+    "qualifiedBadge"
+  ).textContent =
+    qualified.length +
+    " 檔符合";
+
+
+  document.getElementById(
+    "statWatch"
+  ).textContent =
+    integer(
+      stocks.length -
+      qualified.length
+    );
+
+}
+
+
+/* ==================================================
+   SEARCH FILTER
+================================================== */
+
+function filterStocks(
+  list,
+  query
+){
+
+  const q =
+    s(query)
+      .trim()
+      .toLowerCase();
+
+
+  if(!q){
+    return list;
+  }
+
+
+  return list.filter(
+    stock =>
+      stock.code
+        .toLowerCase()
+        .includes(q)
+      ||
+      stock.name
+        .toLowerCase()
+        .includes(q)
   );
 
+}
 
-  setText(
-    "qualifiedCount",
-    formatNumber(
-      stocks.filter(
-        isQualified
-      ).length
-    )
-  );
 
+/* ==================================================
+   QUALIFIED
+================================================== */
+
+function renderQualified(){
 
   const grid =
     document.getElementById(
-      "stockGrid"
+      "qualifiedGrid"
     );
+
+
+  const list =
+    stocks
+      .filter(
+        x =>
+          x.qualified
+      )
+      .sort(
+        (a,b) =>
+          b.aiScore -
+          a.aiScore
+      );
 
 
   if(!list.length){
 
     grid.innerHTML = `
-
-      <div
-        class="card empty"
-        style="grid-column:1/-1">
-
-        沒有符合搜尋條件的資料
-
+      <div class="empty">
+        今日目前沒有 6 / 6
+        全部符合的股票
       </div>
-
     `;
 
     return;
@@ -2230,80 +2786,183 @@ function renderScanner(){
 
   grid.innerHTML =
     list
-      .slice(0,30)
       .map(
-        renderStockCard
+        stockCard
       )
       .join("");
 
 }
 
 
-/* =====================================
-   STOCK CARD
-===================================== */
+/* ==================================================
+   OBSERVE
+================================================== */
 
-function renderStockCard(
+function renderObserve(){
+
+  const grid =
+    document.getElementById(
+      "observeGrid"
+    );
+
+
+  const query =
+    document.getElementById(
+      "searchInput"
+    ).value;
+
+
+  const list =
+    filterStocks(
+      stocks.filter(
+        x =>
+          !x.qualified
+      ),
+      query
+    )
+    .sort(
+      (a,b) =>
+        b.passCount -
+        a.passCount
+    );
+
+
+  if(!list.length){
+
+    grid.innerHTML = `
+      <div class="empty">
+        沒有符合搜尋條件的觀察股票
+      </div>
+    `;
+
+    return;
+
+  }
+
+
+  grid.innerHTML =
+    list
+      .slice(0,60)
+      .map(
+        stockCard
+      )
+      .join("");
+
+}
+
+
+/* ==================================================
+   ALL
+================================================== */
+
+function renderAll(){
+
+  const query =
+    document.getElementById(
+      "allSearch"
+    ).value;
+
+
+  const list =
+    filterStocks(
+      stocks,
+      query
+    );
+
+
+  document.getElementById(
+    "allCount"
+  ).textContent =
+    integer(
+      list.length
+    );
+
+
+  const grid =
+    document.getElementById(
+      "allGrid"
+    );
+
+
+  if(!list.length){
+
+    grid.innerHTML = `
+      <div class="empty">
+        找不到股票
+      </div>
+    `;
+
+    return;
+
+  }
+
+
+  grid.innerHTML =
+    list
+      .slice(0,100)
+      .map(
+        stockCard
+      )
+      .join("");
+
+}
+
+
+/* ==================================================
+   STOCK CARD
+================================================== */
+
+function stockCard(
   stock
 ){
 
-  const qualified =
-    isQualified(
-      stock
-    );
-
-
-  const score =
-    Math.round(
-      getAIScore(
-        stock
-      )
-    );
-
-
-  const conditions =
+  const c =
     stock.conditions;
+
+
+  const watch =
+    watchList.some(
+      x =>
+        x.code ===
+        stock.code
+    );
 
 
   return `
 
     <article
-      class="stock"
-      onclick="openDetail('${escapeHTML(stock.code)}')">
+      class="stock-card"
+      onclick="openDetail('${esc(stock.code)}')">
 
 
       <div class="stock-top">
 
         <div>
 
-          <div class="name">
-
-            ${escapeHTML(
-              stock.name ||
-              "未命名"
-            )}
-
+          <div class="stock-name">
+            ${esc(stock.name || "未命名")}
           </div>
 
-          <div class="code">
-
-            ${escapeHTML(
-              stock.code
-            )}
-
+          <div class="stock-code">
+            ${esc(stock.code)}
           </div>
 
         </div>
 
 
         <span
-          class="badge
-          ${qualified ? "good" : ""}">
+          class="badge ${
+            stock.qualified
+              ? "good"
+              : stock.passCount >= 4
+                ? "warn"
+                : "bad"
+          }">
 
           ${
-            qualified
-              ? "符合"
-              : "觀察"
+            stock.qualified
+              ? "符合 6 / 6"
+              : `觀察 ${stock.passCount} / 6`
           }
 
         </span>
@@ -2311,115 +2970,107 @@ function renderStockCard(
       </div>
 
 
-      <div class="price">
+      <div class="price-row">
 
-        ${formatPrice(
-          stock.price
-        )}
+        <div class="stock-price">
+          ${price(stock.price)}
+        </div>
 
-        <span
-          class="${colorClass(
-            stock.change
-          )} change">
+        <div
+          class="change ${directionClass(stock.change)}">
 
-          ${formatPct(
-            stock.change
-          )}
+          ${pct(stock.change)}
 
-        </span>
+        </div>
 
       </div>
 
 
-      <div
-        class="small muted"
-        style="margin-top:8px">
+      <div class="condition-summary">
 
-        AI SCORE
+        <div class="condition-label">
+          核心條件
+        </div>
 
-        <b
-          class="score"
-          style="font-size:16px">
+        <div
+          class="condition-count
+          ${stock.qualified ? "up" : ""}">
 
-          ${score}
+          ${stock.passCount} / 6
 
-        </b>
+          ・
 
-        / 100
+          AI ${stock.aiScore}
+
+        </div>
 
       </div>
 
 
-      <div
-        class="grid"
-        style="margin-top:8px">
+      <div class="condition-bar">
+
+        ${conditionDot(c.macd)}
+        ${conditionDot(c.rsi)}
+        ${conditionDot(c.kd)}
+        ${conditionDot(c.volume)}
+        ${conditionDot(c.ma20)}
+        ${conditionDot(c.trend)}
+
+      </div>
 
 
-        <div class="metric">
+      <div class="tech-grid">
 
-          <div class="label">
+        <div class="tech">
+
+          <div class="tech-label">
             RSI
           </div>
 
-          <div class="value">
-
-            ${
-              stock.rsi
-                ? formatPrice(
-                    stock.rsi
-                  )
-                : "—"
-            }
-
+          <div class="tech-value">
+            ${stock.rsi
+              ? price(stock.rsi)
+              : "—"}
           </div>
 
         </div>
 
 
-        <div class="metric">
+        <div class="tech">
 
-          <div class="label">
-            KD
+          <div class="tech-label">
+            K / D
           </div>
 
-          <div class="value">
-
+          <div class="tech-value">
             ${
               stock.k ||
               stock.d
-                ? formatPrice(
-                    stock.k
-                  ) +
-                  "/" +
-                  formatPrice(
-                    stock.d
-                  )
+                ? price(stock.k) +
+                  " / " +
+                  price(stock.d)
                 : "—"
             }
-
           </div>
 
         </div>
 
 
-        <div class="metric">
+        <div class="tech">
 
-          <div class="label">
-            量能
+          <div class="tech-label">
+            ATR
           </div>
 
-          <div class="value">
-
+          <div class="tech-value">
             ${
-              conditions.volume
-                ? "✓"
+              stock.atr
+                ? price(stock.atr)
                 : "—"
             }
-
           </div>
 
         </div>
-
 
       </div>
 
@@ -2431,80 +3082,24 @@ function renderStockCard(
 }
 
 
-/* =====================================
-   CONDITION
-===================================== */
-
-function conditionBox(
-  label,
-  enabled
+function conditionDot(
+  ok
 ){
 
   return `
-
-    <div class="metric">
-
-      <div class="label">
-        ${label}
-      </div>
-
-      <div
-        class="value
-        ${enabled ? "up" : "neutral"}">
-
-        ${
-          enabled
-            ? "符合"
-            : "未符合"
-        }
-
-      </div>
-
-    </div>
-
+    <span
+      class="condition-dot ${
+        ok ? "ok" : ""
+      }">
+    </span>
   `;
 
 }
 
 
-/* =====================================
-   METRIC
-===================================== */
-
-function metricBox(
-  label,
-  value
-){
-
-  return `
-
-    <div class="metric">
-
-      <div class="label">
-        ${label}
-      </div>
-
-      <div class="value">
-
-        ${
-          value ||
-          value === 0
-            ? formatPrice(value)
-            : "—"
-        }
-
-      </div>
-
-    </div>
-
-  `;
-
-}
-
-
-/* =====================================
+/* ==================================================
    DETAIL
-===================================== */
+================================================== */
 
 function openDetail(
   code
@@ -2512,8 +3107,9 @@ function openDetail(
 
   const stock =
     stocks.find(
-      item =>
-        item.code === code
+      x =>
+        x.code ===
+        code
     );
 
 
@@ -2522,25 +3118,13 @@ function openDetail(
   }
 
 
-  document
-    .querySelectorAll(
-      ".panel"
-    )
-    .forEach(
-      panel =>
-        panel.classList.remove(
-          "active"
-        )
-    );
+  showPage(
+    "detail"
+  );
 
 
-  document
-    .getElementById(
-      "detail"
-    )
-    .classList.add(
-      "active"
-    );
+  const c =
+    stock.conditions;
 
 
   const risk =
@@ -2550,19 +3134,15 @@ function openDetail(
 
 
   const status =
-    getRiskStatus(
+    riskStatus(
       stock
     );
 
 
-  const c =
-    stock.conditions;
-
-
-  const watchExists =
-    watch.some(
-      item =>
-        item.code ===
+  const watching =
+    watchList.some(
+      x =>
+        x.code ===
         stock.code
     );
 
@@ -2572,59 +3152,74 @@ function openDetail(
   ).innerHTML = `
 
 
+    <div
+      class="section-head"
+      style="margin-top:0">
+
+      <button
+        class="btn"
+        onclick="showPage('scanner')">
+
+        ← 返回選股
+
+      </button>
+
+    </div>
+
+
     <div class="card">
 
-
-      <div class="detail-head">
+      <div class="detail-header">
 
 
         <div>
 
-          <h2>
+          <div class="detail-name">
 
-            ${escapeHTML(
-              stock.name
-            )}
+            ${esc(stock.name)}
 
-            <span class="muted">
-
-              ${escapeHTML(
-                stock.code
-              )}
-
-            </span>
-
-          </h2>
-
-
-          <div class="price">
-
-            ${formatPrice(
-              stock.price
-            )}
-
-            <span
-              class="${colorClass(
-                stock.change
-              )} change">
-
-              ${formatPct(
-                stock.change
-              )}
-
+            <span class="detail-code">
+              ${esc(stock.code)}
             </span>
 
           </div>
 
 
+          <div class="detail-price">
+
+            ${price(stock.price)}
+
+            <span
+              class="change
+              ${directionClass(stock.change)}"
+              style="font-size:13px">
+
+              ${pct(stock.change)}
+
+            </span>
+
+          </div>
+
         </div>
 
 
-        <div class="score">
+        <div
+          style="text-align:right">
 
-          ${Math.round(
-            getAIScore(stock)
-          )}
+          <div
+            class="hero-score-number"
+            style="font-size:30px">
+
+            ${stock.aiScore}
+
+          </div>
+
+          <div
+            class="hero-score-label">
+
+            AI Score
+
+          </div>
 
         </div>
 
@@ -2632,301 +3227,430 @@ function openDetail(
       </div>
 
 
+      <div
+        class="detail-actions">
+
+        <button
+          class="btn ${
+            watching
+              ? "good"
+              : "primary"
+          }"
+          onclick="toggleWatch('${esc(stock.code)}')">
+
+          ${
+            watching
+              ? "✓ 已加入清單"
+              : "+ 加入清單"
+          }
+
+        </button>
+
+
+        <button
+          class="btn"
+          onclick="addDcaFromStock('${esc(stock.code)}')">
+
+          加入定投
+
+        </button>
+
+      </div>
+
     </div>
 
 
     <div class="card">
 
-      <h2>
-        六條件
-      </h2>
+      <div class="card-title">
+        核心條件
+      </div>
+
+      <div class="card-sub">
+        AI Score 僅由以下六項條件計算
+      </div>
 
 
-      <div
-        class="grid"
-        style="margin-top:10px">
+      <div class="condition-grid">
 
-
-        ${conditionBox(
+        ${conditionItem(
           "MACD 黃金交叉",
           c.macd
         )}
 
-
-        ${conditionBox(
+        ${conditionItem(
           "RSI > 50",
           c.rsi
         )}
 
-
-        ${conditionBox(
+        ${conditionItem(
           "KD K > D",
           c.kd
         )}
 
-
-        ${conditionBox(
-          "成交量 ≥ 5日均量 × 1.5",
+        ${conditionItem(
+          "成交量放大",
           c.volume
         )}
 
-
-        ${conditionBox(
+        ${conditionItem(
           "站上 MA20",
-          c.ma
+          c.ma20
         )}
 
-
-        ${conditionBox(
+        ${conditionItem(
           "趨勢向上",
           c.trend
         )}
 
+      </div>
+
+
+      <div
+        style="
+          margin-top:13px;
+          display:flex;
+          justify-content:space-between;
+          align-items:center;
+        ">
+
+        <span class="muted small">
+          核心條件通過
+        </span>
+
+        <strong
+          style="font-size:20px"
+          class="${
+            stock.qualified
+              ? "up"
+              : "neutral"
+          }">
+
+          ${stock.passCount} / 6
+
+        </strong>
 
       </div>
 
+
+      <div
+        class="notice"
+        style="
+          margin-top:12px;
+          padding:10px;
+          border-radius:10px;
+          background:${
+            stock.qualified
+              ? "rgba(49,211,155,.07)"
+              : "rgba(255,101,120,.05)"
+          };
+          border:1px solid ${
+            stock.qualified
+              ? "rgba(49,211,155,.12)"
+              : "rgba(255,101,120,.10)"
+          };
+        ">
+
+        ${
+          stock.qualified
+            ? "✓ 六項核心條件全部符合，可以列入今日符合名單。"
+            : `✕ 尚有 ${
+                6 - stock.passCount
+              } 項核心條件未符合，因此不列入「符合全部條件」。`
+        }
+
+      </div>
 
     </div>
 
 
     <div class="card">
 
-      <h2>
-        技術資料
-      </h2>
+      <div class="card-title">
+        技術指標
+      </div>
 
 
-      <div
-        class="grid"
-        style="margin-top:10px">
+      <div class="tech-grid"
+        style="
+          grid-template-columns:
+          repeat(2,1fr);
+          margin-top:12px;
+        ">
 
 
-        ${metricBox(
+        ${detailTech(
           "RSI",
           stock.rsi
+            ? price(stock.rsi)
+            : "—"
         )}
 
 
-        ${metricBox(
+        ${detailTech(
           "K",
           stock.k
+            ? price(stock.k)
+            : "—"
         )}
 
 
-        ${metricBox(
+        ${detailTech(
           "D",
           stock.d
+            ? price(stock.d)
+            : "—"
         )}
 
 
-        ${metricBox(
+        ${detailTech(
           "MACD",
           stock.macd
+            ? price(stock.macd)
+            : "—"
         )}
 
 
-        ${metricBox(
+        ${detailTech(
+          "Signal",
+          stock.signal
+            ? price(stock.signal)
+            : "—"
+        )}
+
+
+        ${detailTech(
           "MA20",
           stock.ma20
+            ? price(stock.ma20)
+            : "—"
         )}
 
 
-        ${metricBox(
-          "ATR",
-          stock.atr
+        ${detailTech(
+          "成交量",
+          stock.volume
+            ? integer(stock.volume)
+            : "—"
         )}
 
+
+        ${detailTech(
+          "5日均量",
+          stock.avgVolume5
+            ? integer(stock.avgVolume5)
+            : "—"
+        )}
 
       </div>
-
 
     </div>
 
 
     <div class="card">
 
-      <h2>
+      <div class="card-title">
         動態風控
-      </h2>
-
-
-      <div
-        class="risk-box"
-        style="margin-top:10px">
-
-
-        <div class="risk">
-
-          <span class="muted small">
-            自動停損
-          </span>
-
-          <strong>
-            ${formatPrice(
-              risk.stopLoss
-            )}
-          </strong>
-
-        </div>
-
-
-        <div class="risk">
-
-          <span class="muted small">
-            第一停利
-          </span>
-
-          <strong>
-            ${formatPrice(
-              risk.takeProfit1
-            )}
-          </strong>
-
-        </div>
-
-
-        <div class="risk">
-
-          <span class="muted small">
-            第二停利
-          </span>
-
-          <strong>
-            ${formatPrice(
-              risk.takeProfit2
-            )}
-          </strong>
-
-        </div>
-
-
-        <div class="risk">
-
-          <span class="muted small">
-            狀態
-          </span>
-
-          <strong
-            class="${status.className}">
-
-            ${status.text}
-
-          </strong>
-
-        </div>
-
-
       </div>
 
-
-      <div
-        class="muted small"
-        style="margin-top:10px">
-
+      <div class="card-sub">
         ${
           stock.atr > 0
-            ? "目前使用 ATR 動態風控模型。"
-            : "目前沒有 ATR，使用百分比備援風控模型。"
+            ? "使用 ATR 動態模型"
+            : "ATR 不足，使用系統備援模型"
         }
-
       </div>
 
 
-    </div>
+      <div class="risk-grid">
 
+        ${riskItem(
+          "自動停損",
+          price(risk.stop)
+        )}
 
-    <div
-      class="form-actions">
+        ${riskItem(
+          "第一停利",
+          price(risk.tp1)
+        )}
 
+        ${riskItem(
+          "第二停利",
+          price(risk.tp2)
+        )}
 
-      <button
-        class="btn primary"
-        onclick="addWatch('${escapeHTML(stock.code)}')">
+        ${riskItem(
+          "目前狀態",
+          status.label
+        )}
 
-        ${
-          watchExists
-            ? "已在清單"
-            : "加入清單"
-        }
-
-      </button>
-
-
-      <button
-        class="btn"
-        onclick="startDCA('${escapeHTML(stock.code)}')">
-
-        加入零股定投
-
-      </button>
-
+      </div>
 
     </div>
-
 
   `;
 
 }
 
 
-/* =====================================
-   WATCH LIST
-===================================== */
+function conditionItem(
+  title,
+  ok
+){
 
-function addWatch(
+  return `
+
+    <div
+      class="condition-item ${
+        ok
+          ? "ok"
+          : "no"
+      }">
+
+      <div class="condition-item-title">
+        ${title}
+      </div>
+
+      <div
+        class="condition-item-value ${
+          ok
+            ? "up"
+            : "down"
+        }">
+
+        ${
+          ok
+            ? "✓ 符合"
+            : "✕ 不符合"
+        }
+
+      </div>
+
+    </div>
+
+  `;
+
+}
+
+
+function detailTech(
+  label,
+  value
+){
+
+  return `
+
+    <div class="tech">
+
+      <div class="tech-label">
+        ${label}
+      </div>
+
+      <div class="tech-value">
+        ${value}
+      </div>
+
+    </div>
+
+  `;
+
+}
+
+
+function riskItem(
+  label,
+  value
+){
+
+  return `
+
+    <div class="risk-item">
+
+      <div class="risk-label">
+        ${label}
+      </div>
+
+      <div class="risk-value">
+        ${value}
+      </div>
+
+    </div>
+
+  `;
+
+}
+
+
+/* ==================================================
+   WATCH
+================================================== */
+
+function toggleWatch(
   code
 ){
 
-  const stock =
-    stocks.find(
-      item =>
-        item.code === code
+  const index =
+    watchList.findIndex(
+      x =>
+        x.code ===
+        code
     );
 
 
-  if(!stock){
-    return;
-  }
+  if(index >= 0){
 
-
-  if(
-    watch.some(
-      item =>
-        item.code === code
-    )
-  ){
-
-    switchTab(
-      "watch"
+    watchList.splice(
+      index,
+      1
     );
 
-    return;
+    toast(
+      "已從清單移除"
+    );
+
+  }else{
+
+    const stock =
+      stocks.find(
+        x =>
+          x.code ===
+          code
+      );
+
+
+    if(!stock){
+      return;
+    }
+
+
+    watchList.push({
+
+      code:
+        stock.code,
+
+      name:
+        stock.name
+
+    });
+
+
+    toast(
+      "已加入我的清單"
+    );
 
   }
 
 
-  watch.push({
-
-    code:
-      stock.code,
-
-    name:
-      stock.name
-
-  });
-
-
-  saveLocal(
+  saveStorage(
     WATCH_KEY,
-    watch
+    watchList
   );
 
 
   renderWatch();
 
-
-  switchTab(
-    "watch"
+  openDetail(
+    code
   );
 
 }
@@ -2940,20 +3664,18 @@ function renderWatch(){
     );
 
 
-  if(!watch.length){
+  if(!watchList.length){
 
     grid.innerHTML = `
 
-      <div
-        class="card empty"
-        style="grid-column:1/-1">
+      <div class="empty">
 
-        目前沒有加入清單的股票
+        還沒有追蹤股票
 
         <br><br>
 
-        可以從「AI 選股」
-        點進個股後加入。
+        從 AI 選股或全部個股
+        點進去即可加入。
 
       </div>
 
@@ -2965,66 +3687,40 @@ function renderWatch(){
 
 
   const list =
-    watch
+    watchList
       .map(
-        item => {
+        item =>
+          stocks.find(
+            stock =>
+              stock.code ===
+              item.code
+          )
+      )
+      .filter(Boolean);
 
-          const live =
-            stocks.find(
-              stock =>
-                stock.code ===
-                item.code
-            );
 
+  if(!list.length){
 
-          return live || {
+    grid.innerHTML = `
+      <div class="empty">
+        清單中的股票目前沒有資料
+      </div>
+    `;
 
-            code:item.code,
+    return;
 
-            name:item.name,
-
-            price:0,
-
-            change:0,
-
-            rsi:0,
-
-            k:0,
-
-            d:0,
-
-            ma20:0,
-
-            atr:0,
-
-            conditions:{
-              macd:false,
-              rsi:false,
-              kd:false,
-              volume:false,
-              ma:false,
-              trend:false
-            }
-
-          };
-
-        }
-      );
+  }
 
 
   grid.innerHTML =
     list
       .map(
-        renderStockCard
+        stockCard
       )
       .join("");
 
 }
 
-
-/* =====================================
-   CLEAR WATCH
-===================================== */
 
 document
   .getElementById(
@@ -3032,46 +3728,56 @@ document
   )
   .addEventListener(
     "click",
-    function(){
+    () => {
 
       if(
-        !confirm(
-          "確定要清空我的清單嗎？"
-        )
+        !watchList.length
       ){
-
         return;
-
       }
 
 
-      watch = [];
+      if(
+        !confirm(
+          "確定清空我的清單？"
+        )
+      ){
+        return;
+      }
 
 
-      saveLocal(
+      watchList = [];
+
+
+      saveStorage(
         WATCH_KEY,
-        watch
+        watchList
       );
 
 
       renderWatch();
 
+      toast(
+        "清單已清空"
+      );
+
     }
   );
 
 
-/* =====================================
+/* ==================================================
    DCA
-===================================== */
+================================================== */
 
-function startDCA(
+function addDcaFromStock(
   code
 ){
 
   const stock =
     stocks.find(
-      item =>
-        item.code === code
+      x =>
+        x.code ===
+        code
     );
 
 
@@ -3080,169 +3786,264 @@ function startDCA(
   }
 
 
-  switchTab(
+  showPage(
     "dca"
   );
 
 
   document.getElementById(
-    "fCode"
+    "dcaCode"
   ).value =
     stock.code;
 
 
   document.getElementById(
-    "fName"
+    "dcaName"
   ).value =
     stock.name;
 
 
   document.getElementById(
-    "fPrice"
+    "dcaAvgCost"
   ).value =
     stock.price || "";
 
 
   document.getElementById(
-    "fCost"
-  ).value =
-    stock.price || "";
-
-
-  document.getElementById(
-    "fShares"
+    "dcaShares"
   ).value =
     "";
 
 
   document.getElementById(
-    "fInvest"
+    "dcaInvest"
   ).value =
     "";
-
-
-  editingIndex = -1;
 
 }
 
 
-function renderDCA(){
+document
+  .getElementById(
+    "dcaForm"
+  )
+  .addEventListener(
+    "submit",
+    event => {
 
-  let totalCost = 0;
-
-  let totalValue = 0;
+      event.preventDefault();
 
 
-  dca.forEach(
+      const item = {
+
+        code:
+          document.getElementById(
+            "dcaCode"
+          ).value.trim(),
+
+        name:
+          document.getElementById(
+            "dcaName"
+          ).value.trim(),
+
+        shares:
+          n(
+            document.getElementById(
+              "dcaShares"
+            ).value
+          ),
+
+        avgCost:
+          n(
+            document.getElementById(
+              "dcaAvgCost"
+            ).value
+          ),
+
+        invest:
+          n(
+            document.getElementById(
+              "dcaInvest"
+            ).value
+          ),
+
+        freq:
+          document.getElementById(
+            "dcaFreq"
+          ).value
+
+      };
+
+
+      if(
+        !item.code ||
+        !item.name ||
+        item.shares < 0 ||
+        item.avgCost < 0
+      ){
+
+        toast(
+          "請確認定投資料"
+        );
+
+        return;
+
+      }
+
+
+      if(
+        currentDcaEdit >= 0
+      ){
+
+        dcaList[
+          currentDcaEdit
+        ] =
+          item;
+
+        currentDcaEdit =
+          -1;
+
+        toast(
+          "定投資料已更新"
+        );
+
+      }else{
+
+        dcaList.push(
+          item
+        );
+
+        toast(
+          "定投已建立"
+        );
+
+      }
+
+
+      saveStorage(
+        DCA_KEY,
+        dcaList
+      );
+
+
+      event.target.reset();
+
+      renderDca();
+
+    }
+  );
+
+
+document
+  .getElementById(
+    "dcaCancel"
+  )
+  .addEventListener(
+    "click",
+    () => {
+
+      currentDcaEdit =
+        -1;
+
+      document
+        .getElementById(
+          "dcaForm"
+        )
+        .reset();
+
+    }
+  );
+
+
+function currentPrice(
+  item
+){
+
+  const stock =
+    stocks.find(
+      x =>
+        x.code ===
+        item.code
+    );
+
+
+  return stock &&
+    stock.price
+      ? stock.price
+      : 0;
+
+}
+
+
+function renderDca(){
+
+  let costTotal = 0;
+
+  let valueTotal = 0;
+
+
+  dcaList.forEach(
     item => {
 
-      totalCost +=
-        num(item.shares) *
-        num(item.avgCost);
+      costTotal +=
+        n(item.shares) *
+        n(item.avgCost);
 
 
-      totalValue +=
-        num(item.shares) *
-        num(
-          getCurrentPrice(
-            item
-          )
-        );
+      valueTotal +=
+        n(item.shares) *
+        currentPrice(item);
 
     }
   );
 
 
   const profit =
-    totalValue -
-    totalCost;
+    valueTotal -
+    costTotal;
 
 
   const returnRate =
-    totalCost
+    costTotal
       ? profit /
-        totalCost *
+        costTotal *
         100
       : 0;
 
 
   document.getElementById(
-    "dcaSummary"
-  ).innerHTML = `
+    "dcaCost"
+  ).textContent =
+    money(costTotal);
 
 
-    <div class="metric">
-
-      <div class="label">
-        總投入成本
-      </div>
-
-      <div class="value">
-        ${formatMoney(
-          totalCost
-        )}
-      </div>
-
-    </div>
+  document.getElementById(
+    "dcaValue"
+  ).textContent =
+    money(valueTotal);
 
 
-    <div class="metric">
-
-      <div class="label">
-        目前總市值
-      </div>
-
-      <div class="value">
-        ${formatMoney(
-          totalValue
-        )}
-      </div>
-
-    </div>
+  document.getElementById(
+    "dcaProfit"
+  ).textContent =
+    money(profit);
 
 
-    <div class="metric">
-
-      <div class="label">
-        總損益
-      </div>
-
-      <div
-        class="value
-        ${colorClass(
-          profit
-        )}">
-
-        ${formatMoney(
-          profit
-        )}
-
-      </div>
-
-    </div>
+  const returnEl =
+    document.getElementById(
+      "dcaReturn"
+    );
 
 
-    <div class="metric">
+  returnEl.textContent =
+    pct(returnRate);
 
-      <div class="label">
-        總報酬率
-      </div>
 
-      <div
-        class="value
-        ${colorClass(
-          returnRate
-        )}">
-
-        ${formatPct(
-          returnRate
-        )}
-
-      </div>
-
-    </div>
-
-  `;
+  returnEl.className =
+    "stat-value " +
+    directionClass(
+      returnRate
+    );
 
 
   const list =
@@ -3251,16 +4052,12 @@ function renderDCA(){
     );
 
 
-  if(!dca.length){
+  if(!dcaList.length){
 
     list.innerHTML = `
-
-      <div class="card empty">
-
-        尚未建立零股定投部位。
-
+      <div class="empty">
+        尚未建立零股定投
       </div>
-
     `;
 
     return;
@@ -3269,91 +4066,50 @@ function renderDCA(){
 
 
   list.innerHTML =
-    dca
+    dcaList
       .map(
-        renderDCAItem
+        dcaCard
       )
       .join("");
 
 }
 
 
-/* =====================================
-   CURRENT PRICE
-===================================== */
-
-function getCurrentPrice(
-  item
-){
-
-  const stock =
-    stocks.find(
-      s =>
-        s.code ===
-        item.code
-    );
-
-
-  if(
-    stock &&
-    stock.price
-  ){
-
-    return stock.price;
-
-  }
-
-
-  return num(
-    item.price
-  );
-
-}
-
-
-/* =====================================
-   DCA ITEM
-===================================== */
-
-function renderDCAItem(
+function dcaCard(
   item,
   index
 ){
 
   const stock =
     stocks.find(
-      s =>
-        s.code ===
+      x =>
+        x.code ===
         item.code
     );
 
 
-  const currentPrice =
-    getCurrentPrice(
+  const live =
+    currentPrice(
       item
     );
 
 
   const shares =
-    num(
-      item.shares
-    );
+    n(item.shares);
 
 
-  const avgCost =
-    num(
-      item.avgCost
-    );
+  const avg =
+    n(item.avgCost);
 
 
   const cost =
     shares *
-    avgCost;
+    avg;
 
 
   const value =
     shares *
-    currentPrice;
+    live;
 
 
   const profit =
@@ -3372,9 +4128,7 @@ function renderDCAItem(
   const source =
     stock || {
 
-      price:
-        currentPrice,
-
+      price:live,
       atr:0
 
     };
@@ -3383,209 +4137,127 @@ function renderDCAItem(
   const risk =
     calculateRisk(
       source,
-      avgCost
+      avg
     );
 
 
   const status =
-    getRiskStatus(
+    riskStatus(
       source,
-      avgCost
+      avg
     );
 
 
   return `
 
-    <div class="card">
+    <div class="dca-card">
 
 
-      <div class="scan-head">
-
+      <div class="dca-head">
 
         <div>
 
-          <h2>
+          <div class="dca-name">
 
-            ${escapeHTML(
-              item.name
-            )}
+            ${esc(item.name)}
 
-            <span class="muted">
-
-              ${escapeHTML(
-                item.code
-              )}
-
+            <span class="dca-code">
+              ${esc(item.code)}
             </span>
-
-          </h2>
-
-
-          <div class="muted small">
-
-            持有
-            ${formatNumber(
-              shares
-            )}
-            股
-
-            ・
-
-            平均成本
-            ${formatPrice(
-              avgCost
-            )}
 
           </div>
 
+          <div
+            class="card-sub">
+
+            ${integer(shares)}
+            股
+            ・
+            平均成本 ${price(avg)}
+
+          </div>
 
         </div>
 
 
         <span
-          class="badge
-          ${status.className}">
+          class="badge ${status.className}">
 
-          ${status.text}
+          ${status.label}
 
         </span>
 
-
       </div>
 
 
-      <div
-        class="grid"
-        style="margin-top:10px">
+      <div class="dca-data">
 
-
-        ${metricBox(
+        ${dcaData(
           "目前價格",
-          currentPrice
+          price(live)
         )}
 
-
-        ${metricBox(
+        ${dcaData(
           "投入成本",
-          cost
+          money(cost)
         )}
 
-
-        ${metricBox(
+        ${dcaData(
           "目前市值",
-          value
+          money(value)
         )}
 
-
-        ${metricBox(
+        ${dcaData(
           "損益",
-          profit
+          money(profit)
         )}
 
-
-        ${metricBox(
+        ${dcaData(
           "報酬率",
-          returnRate
+          pct(returnRate)
         )}
-
-
-        ${metricBox(
-          "每期投入",
-          item.invest
-        )}
-
 
       </div>
 
 
       <div
-        class="risk-box"
+        class="risk-grid"
         style="margin-top:10px">
 
+        ${riskItem(
+          "自動停損",
+          price(risk.stop)
+        )}
 
-        <div class="risk">
+        ${riskItem(
+          "第一停利",
+          price(risk.tp1)
+        )}
 
-          <span class="muted small">
-            自動停損
-          </span>
+        ${riskItem(
+          "第二停利",
+          price(risk.tp2)
+        )}
 
-          <strong>
+        <div
+          class="risk-item"
+          style="display:flex;gap:5px;align-items:center">
 
-            ${formatPrice(
-              risk.stopLoss
-            )}
+          <button
+            class="btn small"
+            onclick="editDca(${index})">
+            編輯
+          </button>
 
-          </strong>
-
-        </div>
-
-
-        <div class="risk">
-
-          <span class="muted small">
-            第一停利
-          </span>
-
-          <strong>
-
-            ${formatPrice(
-              risk.takeProfit1
-            )}
-
-          </strong>
-
-        </div>
-
-
-        <div class="risk">
-
-          <span class="muted small">
-            第二停利
-          </span>
-
-          <strong>
-
-            ${formatPrice(
-              risk.takeProfit2
-            )}
-
-          </strong>
+          <button
+            class="btn small danger"
+            onclick="deleteDca(${index})">
+            刪除
+          </button>
 
         </div>
-
-
-        <div class="risk">
-
-          <span class="muted small">
-            操作
-          </span>
-
-          <strong>
-
-            <button
-              class="btn"
-              onclick="editDCA(${index})">
-
-              編輯
-
-            </button>
-
-
-            <button
-              class="btn danger"
-              onclick="deleteDCA(${index})">
-
-              刪除
-
-            </button>
-
-          </strong>
-
-        </div>
-
 
       </div>
-
 
     </div>
 
@@ -3594,148 +4266,36 @@ function renderDCAItem(
 }
 
 
-/* =====================================
-   DCA FORM
-===================================== */
+function dcaData(
+  label,
+  value
+){
 
-document
-  .getElementById(
-    "dcaForm"
-  )
-  .addEventListener(
-    "submit",
-    function(event){
+  return `
 
-      event.preventDefault();
+    <div class="dca-data-item">
 
+      <div class="dca-data-label">
+        ${label}
+      </div>
 
-      const item = {
+      <div class="dca-data-value">
+        ${value}
+      </div>
 
-        code:
-          document.getElementById(
-            "fCode"
-          ).value.trim(),
+    </div>
 
-        name:
-          document.getElementById(
-            "fName"
-          ).value.trim(),
+  `;
 
-        shares:
-          num(
-            document.getElementById(
-              "fShares"
-            ).value
-          ),
-
-        avgCost:
-          num(
-            document.getElementById(
-              "fCost"
-            ).value
-          ),
-
-        price:
-          num(
-            document.getElementById(
-              "fPrice"
-            ).value
-          ),
-
-        invest:
-          num(
-            document.getElementById(
-              "fInvest"
-            ).value
-          ),
-
-        freq:
-          document.getElementById(
-            "fFreq"
-          ).value,
-
-        note:
-          document.getElementById(
-            "fNote"
-          ).value.trim()
-
-      };
+}
 
 
-      if(
-        !item.code ||
-        !item.name
-      ){
-
-        alert(
-          "請輸入股票代號與名稱。"
-        );
-
-        return;
-
-      }
-
-
-      if(
-        item.shares < 0 ||
-        item.avgCost < 0
-      ){
-
-        alert(
-          "股數與成本不能小於 0。"
-        );
-
-        return;
-
-      }
-
-
-      if(
-        editingIndex >= 0
-      ){
-
-        dca[
-          editingIndex
-        ] = item;
-
-      }else{
-
-        dca.push(
-          item
-        );
-
-      }
-
-
-      saveLocal(
-        DCA_KEY,
-        dca
-      );
-
-
-      editingIndex =
-        -1;
-
-
-      this.reset();
-
-
-      renderDCA();
-
-    }
-  );
-
-
-/* =====================================
-   EDIT DCA
-===================================== */
-
-function editDCA(
+function editDca(
   index
 ){
 
   const item =
-    dca[index];
+    dcaList[index];
 
 
   if(!item){
@@ -3743,181 +4303,112 @@ function editDCA(
   }
 
 
-  editingIndex =
+  currentDcaEdit =
     index;
 
 
   document.getElementById(
-    "fCode"
+    "dcaCode"
   ).value =
     item.code;
 
 
   document.getElementById(
-    "fName"
+    "dcaName"
   ).value =
     item.name;
 
 
   document.getElementById(
-    "fShares"
+    "dcaShares"
   ).value =
     item.shares;
 
 
   document.getElementById(
-    "fCost"
+    "dcaAvgCost"
   ).value =
     item.avgCost;
 
 
   document.getElementById(
-    "fPrice"
+    "dcaInvest"
   ).value =
-    item.price || "";
+    item.invest;
 
 
   document.getElementById(
-    "fInvest"
-  ).value =
-    item.invest || "";
-
-
-  document.getElementById(
-    "fFreq"
+    "dcaFreq"
   ).value =
     item.freq ||
     "每月";
 
 
-  document.getElementById(
-    "fNote"
-  ).value =
-    item.note || "";
-
-
-  switchTab(
+  showPage(
     "dca"
   );
 
 
-  window.scrollTo(
-    {
-      top:0,
-      behavior:"smooth"
-    }
-  );
+  window.scrollTo({
+    top:0,
+    behavior:"smooth"
+  });
 
 }
 
 
-/* =====================================
-   DELETE DCA
-===================================== */
-
-function deleteDCA(
+function deleteDca(
   index
 ){
 
   if(
     !confirm(
-      "確定刪除此零股定投標的？"
+      "確定刪除這筆定投？"
     )
   ){
-
     return;
-
   }
 
 
-  dca.splice(
+  dcaList.splice(
     index,
     1
   );
 
 
-  saveLocal(
+  saveStorage(
     DCA_KEY,
-    dca
+    dcaList
   );
 
 
-  renderDCA();
+  renderDca();
+
+
+  toast(
+    "定投已刪除"
+  );
 
 }
 
 
-/* =====================================
-   CANCEL EDIT
-===================================== */
-
-document
-  .getElementById(
-    "cancelEdit"
-  )
-  .addEventListener(
-    "click",
-    function(){
-
-      editingIndex =
-        -1;
-
-
-      document
-        .getElementById(
-          "dcaForm"
-        )
-        .reset();
-
-    }
-  );
-
-
-/* =====================================
-   SEARCH
-===================================== */
-
-document
-  .getElementById(
-    "searchInput"
-  )
-  .addEventListener(
-    "input",
-    renderScanner
-  );
-
-
-/* =====================================
-   REFRESH
-===================================== */
-
-document
-  .getElementById(
-    "refreshBtn"
-  )
-  .addEventListener(
-    "click",
-    fetchData
-  );
-
-
-/* =====================================
-   TAB
-===================================== */
+/* ==================================================
+   NAVIGATION
+================================================== */
 
 document
   .querySelectorAll(
-    ".tab"
+    ".nav-btn"
   )
   .forEach(
     button => {
 
       button.addEventListener(
         "click",
-        function(){
+        () => {
 
-          switchTab(
-            this.dataset.tab
+          showPage(
+            button.dataset.page
           );
 
         }
@@ -3927,81 +4418,156 @@ document
   );
 
 
-/* =====================================
-   SWITCH TAB
-===================================== */
-
-function switchTab(
-  id
+function showPage(
+  page
 ){
 
   document
     .querySelectorAll(
-      ".tab"
+      ".page"
+    )
+    .forEach(
+      el => {
+
+        el.classList.remove(
+          "active"
+        );
+
+      }
+    );
+
+
+  const target =
+    document.getElementById(
+      "page-" +
+      page
+    );
+
+
+  if(target){
+
+    target.classList.add(
+      "active"
+    );
+
+  }
+
+
+  document
+    .querySelectorAll(
+      ".nav-btn"
     )
     .forEach(
       button => {
 
         button.classList.toggle(
           "active",
-          button.dataset.tab === id
+          button.dataset.page ===
+          page
         );
 
       }
     );
 
 
-  document
-    .querySelectorAll(
-      ".panel"
-    )
-    .forEach(
-      panel => {
-
-        panel.classList.toggle(
-          "active",
-          panel.id === id
-        );
-
-      }
-    );
-
-
-  window.scrollTo(
-    {
-      top:0,
-      behavior:"smooth"
-    }
-  );
+  window.scrollTo({
+    top:0,
+    behavior:"smooth"
+  });
 
 }
 
 
-/* =====================================
-   BACK BUTTON
-===================================== */
+/* ==================================================
+   SEARCH EVENTS
+================================================== */
 
 document
   .getElementById(
-    "backBtn"
+    "searchInput"
+  )
+  .addEventListener(
+    "input",
+    renderObserve
+  );
+
+
+document
+  .getElementById(
+    "allSearch"
+  )
+  .addEventListener(
+    "input",
+    renderAll
+  );
+
+
+document
+  .getElementById(
+    "refreshBtn"
   )
   .addEventListener(
     "click",
-    function(){
+    () => {
 
-      switchTab(
-        "scan"
-      );
+      loadData();
 
     }
   );
 
 
-/* =====================================
-   INITIAL LOAD
-===================================== */
+/* ==================================================
+   ERROR
+================================================== */
 
-fetchData();
+function renderError(
+  message
+){
+
+  document.getElementById(
+    "qualifiedGrid"
+  ).innerHTML = `
+
+    <div class="empty">
+
+      <strong>
+        無法讀取股票資料
+      </strong>
+
+      <br><br>
+
+      請確認：
+
+      <br>
+
+      Data/prices.json
+      是否存在。
+
+      <br><br>
+
+      ${esc(message)}
+
+    </div>
+
+  `;
+
+
+  document.getElementById(
+    "observeGrid"
+  ).innerHTML = "";
+
+  document.getElementById(
+    "allGrid"
+  ).innerHTML = "";
+
+}
+
+
+/* ==================================================
+   START
+================================================== */
+
+loadData();
 
 </script>
 
