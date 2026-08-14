@@ -2,13 +2,29 @@ name: 更新台股資料
 
 on:
 
+  # 手動執行
   workflow_dispatch:
 
-  schedule:
-    - cron: "30 6 * * 1-5"
+  # 自動執行
+  # GitHub Actions 使用 UTC
+  # 台灣時間 = UTC + 8
+schedule:
+  # 台灣時間 09:15
+  - cron: "15 1 * * 1-5"
+  # 台灣時間 10:30
+  - cron: "30 2 * * 1-5"
+  # 台灣時間 12:00
+  - cron: "0 4 * * 1-5"
+  # 台灣時間 14:30
+  - cron: "30 6 * * 1-5"
+  # 台灣時間 15:30
+  - cron: "30 7 * * 1-5"
+  # 台灣時間 17:30
+  - cron: "30 9 * * 1-5"
 
 permissions:
   contents: write
+
 
 jobs:
 
@@ -18,17 +34,34 @@ jobs:
 
     steps:
 
+      # ============================================================
+      # 取得專案
+      # ============================================================
+
       - name: 取得專案
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+
+      # ============================================================
+      # 設定 Python
+      # ============================================================
 
       - name: 設定 Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
 
+
+      # ============================================================
+      # 安裝套件
+      # ============================================================
+
       - name: 安裝套件
         run: |
           python -m pip install --upgrade pip
+
           pip install \
             yfinance \
             pandas \
@@ -36,9 +69,19 @@ jobs:
             requests \
             lxml
 
+
+      # ============================================================
+      # 執行股票資料更新
+      # ============================================================
+
       - name: 執行股票資料更新
         run: |
           python Scripts/fetch_data.py
+
+
+      # ============================================================
+      # 驗證 prices.json
+      # ============================================================
 
       - name: 驗證 prices.json
         run: |
@@ -65,6 +108,10 @@ jobs:
               )
 
           size = os.path.getsize(path)
+
+          print(
+              f"prices.json 大小：{size} bytes"
+          )
 
           if size < 1000:
               raise SystemExit(
@@ -127,6 +174,11 @@ jobs:
           )
           PY
 
+
+      # ============================================================
+      # 顯示 TOP30
+      # ============================================================
+
       - name: 顯示 TOP30
         run: |
 
@@ -159,6 +211,11 @@ jobs:
           print("======================================")
           PY
 
+
+      # ============================================================
+      # 提交最新資料
+      # ============================================================
+
       - name: 提交最新資料
         run: |
 
@@ -168,7 +225,22 @@ jobs:
           git config user.email \
             "41898282+github-actions[bot]@users.noreply.github.com"
 
+
+          # 先同步遠端最新 main
+          # 避免其他 GitHub Actions 或人工提交造成
+          # "fetch first" / non-fast-forward 錯誤
+
+          git fetch origin main
+
+          git pull --rebase origin main
+
+
+          # 加入最新股票資料
+
           git add Data/prices.json
+
+
+          # 檢查是否真的有資料變更
 
           if git diff --cached --quiet; then
 
@@ -177,8 +249,8 @@ jobs:
           else
 
             git commit \
-              -m "自動更新台股資料 V7.4.2"
+              -m "自動更新台股資料 V7.5"
 
-            git push
+            git push origin main
 
           fi
