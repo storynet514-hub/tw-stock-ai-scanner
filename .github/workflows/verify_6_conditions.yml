@@ -1,0 +1,82 @@
+name: 驗證台股 6 項選股條件
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+
+    steps:
+
+      - name: 取得專案
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: 設定 Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: 執行 6/6 完整驗證
+        run: |
+          python Scripts/verify_6_conditions.py
+
+      - name: 顯示驗證結果
+        run: |
+          echo "======================================"
+          echo "6/6 驗證結果"
+          echo "======================================"
+
+          python - <<'PY'
+          import json
+
+          with open(
+              "Data/qualified_stocks.json",
+              "r",
+              encoding="utf-8"
+          ) as f:
+              data = json.load(f)
+
+          print()
+          print("驗證日期：", data.get("verification_date"))
+          print("個股總數：", data.get("total_stocks"))
+          print("6/6 符合：", data.get("qualified_count"))
+          print()
+
+          print("0/6 ～ 6/6 分布：")
+
+          for key, value in data.get(
+              "distribution", {}
+          ).items():
+              print(f"{key}: {value}")
+
+          print()
+          print("======================================")
+          print("6/6 完整符合個股")
+          print("======================================")
+
+          for item in data.get(
+              "qualified_stocks",
+              []
+          ):
+              print(
+                  item.get("code"),
+                  item.get("name"),
+                  "股價=", item.get("price"),
+                  "RSI=", item.get("rsi"),
+                  "AI=", item.get("ai_score")
+              )
+          PY
+
+      - name: 上傳驗證結果
+        uses: actions/upload-artifact@v4
+        with:
+          name: qualified-stocks-6of6
+          path: |
+            Data/qualified_stocks.json
+            Data/qualified_stocks.csv
