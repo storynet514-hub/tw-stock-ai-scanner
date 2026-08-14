@@ -1,20 +1,20 @@
 {
-  "version": "V7.4",
-  "updated_at": "2026-08-14 16:49:05",
+  "version": "V7.4.1",
+  "updated_at": "2026-08-14 17:29:45",
   "market": "TW",
-  "source": "TWSE ISIN + TPEx + Yahoo Finance",
-  "market_list_count": 2267,
-  "successful_count": 2237,
-  "failed_count": 30,
+  "source": "TWSE OpenAPI + TPEx OpenAPI + TWSE ISIN fallback + Yahoo Finance",
+  "market_list_count": 2287,
+  "successful_count": 2249,
+  "failed_count": 38,
   "market_statistics": {
-    "listed": 1373,
-    "otc": 889,
-    "etf": 5
+    "listed": 1363,
+    "otc": 910,
+    "etf": 14
   },
   "success_statistics": {
-    "listed": 1344,
-    "otc": 888,
-    "etf": 5
+    "listed": 1337,
+    "otc": 900,
+    "etf": 12
   },
   "stocks": [
     {
@@ -495,6 +495,54 @@
         "buy_3": 23.28,
         "buy_4": 22.29,
         "action": "第一批區域"
+      }
+    },
+    {
+      "id": "006201",
+      "name": "元大富櫃50",
+      "symbol": "006201",
+      "type": "STOCK",
+      "market": "上櫃",
+      "yahoo_symbol": "006201.TWO",
+      "price": {
+        "close": 44.95,
+        "previous_close": 45.67,
+        "change": -0.72,
+        "change_percent": -1.58
+      },
+      "technical": {
+        "rsi": 55.4,
+        "k": 85.93,
+        "d": 83.73,
+        "macd": 0.0996,
+        "macd_signal": -0.7345,
+        "macd_hist": 0.8341,
+        "ma5": 44.71,
+        "ma20": 41.55,
+        "ma60": 45.65,
+        "volume": 379766.0,
+        "volume_ma5": 379753.0,
+        "volume_ratio": 1.0
+      },
+      "conditions": {
+        "macd_golden_cross": false,
+        "kd_golden_cross": false,
+        "rsi_above_50": true,
+        "volume_over_1_5x": false,
+        "above_ma20": true,
+        "ma20_up": true,
+        "short_term_core": false
+      },
+      "short_term": {
+        "score": 76,
+        "signal": "強勢"
+      },
+      "dca": {
+        "buy_1": 41.55,
+        "buy_2": 40.31,
+        "buy_3": 39.06,
+        "buy_4": 37.4,
+        "action": "暫緩追價"
       }
     },
     {
@@ -5346,6 +5394,54 @@
       }
     },
     {
+      "id": "00858",
+      "name": "永豐美國500大",
+      "symbol": "00858",
+      "type": "STOCK",
+      "market": "上櫃",
+      "yahoo_symbol": "00858.TWO",
+      "price": {
+        "close": 36.56,
+        "previous_close": 36.55,
+        "change": 0.01,
+        "change_percent": 0.03
+      },
+      "technical": {
+        "rsi": 54.75,
+        "k": 80.59,
+        "d": 79.13,
+        "macd": 0.0929,
+        "macd_signal": 0.0188,
+        "macd_hist": 0.0741,
+        "ma5": 36.58,
+        "ma20": 36.17,
+        "ma60": 36.16,
+        "volume": 295709.0,
+        "volume_ma5": 258742.0,
+        "volume_ratio": 1.14
+      },
+      "conditions": {
+        "macd_golden_cross": false,
+        "kd_golden_cross": false,
+        "rsi_above_50": true,
+        "volume_over_1_5x": false,
+        "above_ma20": true,
+        "ma20_up": false,
+        "short_term_core": false
+      },
+      "short_term": {
+        "score": 66,
+        "signal": "偏多"
+      },
+      "dca": {
+        "buy_1": 36.17,
+        "buy_2": 35.08,
+        "buy_3": 34.0,
+        "buy_4": 32.55,
+        "action": "第一批區域"
+      }
+    },
+    {
       "id": "00861",
       "name": "元大全球未來通訊",
       "symbol": "00861",
@@ -5538,6 +5634,54 @@
       }
     },
     {
+      "id": "00877",
+      "name": "復華中國5G",
+      "symbol": "00877",
+      "type": "STOCK",
+      "market": "上櫃",
+      "yahoo_symbol": "00877.TWO",
+      "price": {
+        "close": 38.41,
+        "previous_close": 39.07,
+        "change": -0.66,
+        "change_percent": -1.69
+      },
+      "technical": {
+        "rsi": 49.42,
+        "k": 81.99,
+        "d": 75.12,
+        "macd": -0.9229,
+        "macd_signal": -1.4917,
+        "macd_hist": 0.5688,
+        "ma5": 37.9,
+        "ma20": 36.96,
+        "ma60": 41.88,
+        "volume": 2491670.0,
+        "volume_ma5": 4198934.0,
+        "volume_ratio": 0.59
+      },
+      "conditions": {
+        "macd_golden_cross": false,
+        "kd_golden_cross": false,
+        "rsi_above_50": false,
+        "volume_over_1_5x": false,
+        "above_ma20": true,
+        "ma20_up": false,
+        "short_term_core": false
+      },
+      "short_term": {
+        "score": 43,
+        "signal": "觀察"
+      },
+      "dca": {
+        "buy_1": 36.96,
+        "buy_2": 35.85,
+        "buy_3": 34.74,
+        "buy_4": 33.26,
+        "action": "等待回測"
+      }
+    },
+    {
       "id": "00878",
       "name": "國泰永續高股息",
       "symbol": "00878",
@@ -5637,7 +5781,7 @@
       "id": "00882",
       "name": "中信中國高股息",
       "symbol": "00882",
-      "type": "STOCK",
+      "type": "ETF",
       "market": "上市",
       "yahoo_symbol": "00882.TW",
       "price": {
@@ -5726,6 +5870,150 @@
         "buy_2": 17.41,
         "buy_3": 16.87,
         "buy_4": 16.15,
+        "action": "第一批區域"
+      }
+    },
+    {
+      "id": "00886",
+      "name": "永豐美國科技",
+      "symbol": "00886",
+      "type": "STOCK",
+      "market": "上櫃",
+      "yahoo_symbol": "00886.TWO",
+      "price": {
+        "close": 47.44,
+        "previous_close": 46.99,
+        "change": 0.45,
+        "change_percent": 0.96
+      },
+      "technical": {
+        "rsi": 64.46,
+        "k": 90.16,
+        "d": 84.24,
+        "macd": 0.6462,
+        "macd_signal": 0.4327,
+        "macd_hist": 0.2135,
+        "ma5": 47.22,
+        "ma20": 45.59,
+        "ma60": 45.0,
+        "volume": 36124.0,
+        "volume_ma5": 24825.0,
+        "volume_ratio": 1.46
+      },
+      "conditions": {
+        "macd_golden_cross": false,
+        "kd_golden_cross": false,
+        "rsi_above_50": true,
+        "volume_over_1_5x": false,
+        "above_ma20": true,
+        "ma20_up": true,
+        "short_term_core": false
+      },
+      "short_term": {
+        "score": 76,
+        "signal": "強勢"
+      },
+      "dca": {
+        "buy_1": 45.59,
+        "buy_2": 44.22,
+        "buy_3": 42.85,
+        "buy_4": 41.03,
+        "action": "等待回測"
+      }
+    },
+    {
+      "id": "00887",
+      "name": "永豐中國科技50大",
+      "symbol": "00887",
+      "type": "STOCK",
+      "market": "上櫃",
+      "yahoo_symbol": "00887.TWO",
+      "price": {
+        "close": 16.93,
+        "previous_close": 17.5,
+        "change": -0.57,
+        "change_percent": -3.26
+      },
+      "technical": {
+        "rsi": 45.97,
+        "k": 74.98,
+        "d": 73.25,
+        "macd": -0.2302,
+        "macd_signal": -0.337,
+        "macd_hist": 0.1068,
+        "ma5": 17.2,
+        "ma20": 16.95,
+        "ma60": 17.92,
+        "volume": 8081440.0,
+        "volume_ma5": 6344088.0,
+        "volume_ratio": 1.27
+      },
+      "conditions": {
+        "macd_golden_cross": false,
+        "kd_golden_cross": false,
+        "rsi_above_50": false,
+        "volume_over_1_5x": false,
+        "above_ma20": false,
+        "ma20_up": true,
+        "short_term_core": false
+      },
+      "short_term": {
+        "score": 46,
+        "signal": "觀察"
+      },
+      "dca": {
+        "buy_1": 16.95,
+        "buy_2": 16.44,
+        "buy_3": 15.93,
+        "buy_4": 15.25,
+        "action": "第一批區域"
+      }
+    },
+    {
+      "id": "00888",
+      "name": "永豐台灣ESG",
+      "symbol": "00888",
+      "type": "STOCK",
+      "market": "上櫃",
+      "yahoo_symbol": "00888.TWO",
+      "price": {
+        "close": 33.08,
+        "previous_close": 33.32,
+        "change": -0.24,
+        "change_percent": -0.72
+      },
+      "technical": {
+        "rsi": 49.75,
+        "k": 83.53,
+        "d": 79.12,
+        "macd": -0.5664,
+        "macd_signal": -0.8651,
+        "macd_hist": 0.2987,
+        "ma5": 32.85,
+        "ma20": 32.29,
+        "ma60": 34.66,
+        "volume": 7158273.0,
+        "volume_ma5": 7670255.0,
+        "volume_ratio": 0.93
+      },
+      "conditions": {
+        "macd_golden_cross": false,
+        "kd_golden_cross": false,
+        "rsi_above_50": false,
+        "volume_over_1_5x": false,
+        "above_ma20": true,
+        "ma20_up": false,
+        "short_term_core": false
+      },
+      "short_term": {
+        "score": 43,
+        "signal": "觀察"
+      },
+      "dca": {
+        "buy_1": 32.29,
+        "buy_2": 31.32,
+        "buy_3": 30.35,
+        "buy_4": 29.06,
         "action": "第一批區域"
       }
     },
@@ -6165,7 +6453,7 @@
       "id": "00900",
       "name": "富邦特選高股息30",
       "symbol": "00900",
-      "type": "STOCK",
+      "type": "ETF",
       "market": "上市",
       "yahoo_symbol": "00900.TW",
       "price": {
@@ -6789,7 +7077,7 @@
       "id": "00915",
       "name": "凱基優選高股息30",
       "symbol": "00915",
-      "type": "STOCK",
+      "type": "ETF",
       "market": "上市",
       "yahoo_symbol": "00915.TW",
       "price": {
@@ -7362,6 +7650,54 @@
       }
     },
     {
+      "id": "00928",
+      "name": "中信上櫃ESG 30",
+      "symbol": "00928",
+      "type": "STOCK",
+      "market": "上櫃",
+      "yahoo_symbol": "00928.TWO",
+      "price": {
+        "close": 33.05,
+        "previous_close": 33.26,
+        "change": -0.21,
+        "change_percent": -0.63
+      },
+      "technical": {
+        "rsi": 54.2,
+        "k": 85.74,
+        "d": 82.59,
+        "macd": -0.2509,
+        "macd_signal": -0.9948,
+        "macd_hist": 0.7439,
+        "ma5": 32.74,
+        "ma20": 30.19,
+        "ma60": 35.03,
+        "volume": 531185.0,
+        "volume_ma5": 1180837.0,
+        "volume_ratio": 0.45
+      },
+      "conditions": {
+        "macd_golden_cross": false,
+        "kd_golden_cross": false,
+        "rsi_above_50": true,
+        "volume_over_1_5x": false,
+        "above_ma20": true,
+        "ma20_up": true,
+        "short_term_core": false
+      },
+      "short_term": {
+        "score": 68,
+        "signal": "偏多"
+      },
+      "dca": {
+        "buy_1": 30.19,
+        "buy_2": 29.28,
+        "buy_3": 28.38,
+        "buy_4": 27.17,
+        "action": "暫緩追價"
+      }
+    },
+    {
       "id": "00929",
       "name": "復華台灣科技優息",
       "symbol": "00929",
@@ -7509,7 +7845,7 @@
       "id": "00934",
       "name": "中信成長高股息",
       "symbol": "00934",
-      "type": "STOCK",
+      "type": "ETF",
       "market": "上市",
       "yahoo_symbol": "00934.TW",
       "price": {
@@ -8322,10 +8658,58 @@
       }
     },
     {
+      "id": "00955",
+      "name": "中信日本商社",
+      "symbol": "00955",
+      "type": "STOCK",
+      "market": "上櫃",
+      "yahoo_symbol": "00955.TWO",
+      "price": {
+        "close": 15.55,
+        "previous_close": 15.64,
+        "change": -0.09,
+        "change_percent": -0.58
+      },
+      "technical": {
+        "rsi": 60.78,
+        "k": 62.45,
+        "d": 74.37,
+        "macd": 0.3078,
+        "macd_signal": 0.2854,
+        "macd_hist": 0.0224,
+        "ma5": 15.67,
+        "ma20": 15.23,
+        "ma60": 14.7,
+        "volume": 3254198.0,
+        "volume_ma5": 3562840.0,
+        "volume_ratio": 0.91
+      },
+      "conditions": {
+        "macd_golden_cross": false,
+        "kd_golden_cross": false,
+        "rsi_above_50": true,
+        "volume_over_1_5x": false,
+        "above_ma20": true,
+        "ma20_up": true,
+        "short_term_core": false
+      },
+      "short_term": {
+        "score": 60,
+        "signal": "偏多"
+      },
+      "dca": {
+        "buy_1": 15.23,
+        "buy_2": 14.77,
+        "buy_3": 14.31,
+        "buy_4": 13.71,
+        "action": "第一批區域"
+      }
+    },
+    {
       "id": "00956",
       "name": "中信日經高股息",
       "symbol": "00956",
-      "type": "STOCK",
+      "type": "ETF",
       "market": "上市",
       "yahoo_symbol": "00956.TW",
       "price": {
@@ -8517,7 +8901,7 @@
       "id": "00963",
       "name": "中信全球高股息",
       "symbol": "00963",
-      "type": "STOCK",
+      "type": "ETF",
       "market": "上市",
       "yahoo_symbol": "00963.TW",
       "price": {
@@ -8565,7 +8949,7 @@
       "id": "00964",
       "name": "中信亞太高股息",
       "symbol": "00964",
-      "type": "STOCK",
+      "type": "ETF",
       "market": "上市",
       "yahoo_symbol": "00964.TW",
       "price": {
@@ -8994,6 +9378,102 @@
       }
     },
     {
+      "id": "009806",
+      "name": "台新標普500",
+      "symbol": "009806",
+      "type": "STOCK",
+      "market": "上櫃",
+      "yahoo_symbol": "009806.TWO",
+      "price": {
+        "close": 13.88,
+        "previous_close": 13.89,
+        "change": -0.01,
+        "change_percent": -0.07
+      },
+      "technical": {
+        "rsi": 62.47,
+        "k": 80.19,
+        "d": 83.65,
+        "macd": 0.1556,
+        "macd_signal": 0.1356,
+        "macd_hist": 0.02,
+        "ma5": 13.91,
+        "ma20": 13.63,
+        "ma60": 13.36,
+        "volume": 14413.0,
+        "volume_ma5": 90283.0,
+        "volume_ratio": 0.16
+      },
+      "conditions": {
+        "macd_golden_cross": false,
+        "kd_golden_cross": false,
+        "rsi_above_50": true,
+        "volume_over_1_5x": false,
+        "above_ma20": true,
+        "ma20_up": true,
+        "short_term_core": false
+      },
+      "short_term": {
+        "score": 60,
+        "signal": "偏多"
+      },
+      "dca": {
+        "buy_1": 13.63,
+        "buy_2": 13.22,
+        "buy_3": 12.81,
+        "buy_4": 12.27,
+        "action": "第一批區域"
+      }
+    },
+    {
+      "id": "009807",
+      "name": "台新標普科技精選",
+      "symbol": "009807",
+      "type": "STOCK",
+      "market": "上櫃",
+      "yahoo_symbol": "009807.TWO",
+      "price": {
+        "close": 17.34,
+        "previous_close": 17.33,
+        "change": 0.01,
+        "change_percent": 0.06
+      },
+      "technical": {
+        "rsi": 60.34,
+        "k": 91.99,
+        "d": 86.84,
+        "macd": 0.206,
+        "macd_signal": 0.1171,
+        "macd_hist": 0.0889,
+        "ma5": 17.24,
+        "ma20": 16.69,
+        "ma60": 16.68,
+        "volume": 17383.0,
+        "volume_ma5": 119277.0,
+        "volume_ratio": 0.15
+      },
+      "conditions": {
+        "macd_golden_cross": false,
+        "kd_golden_cross": false,
+        "rsi_above_50": true,
+        "volume_over_1_5x": false,
+        "above_ma20": true,
+        "ma20_up": true,
+        "short_term_core": false
+      },
+      "short_term": {
+        "score": 68,
+        "signal": "偏多"
+      },
+      "dca": {
+        "buy_1": 16.69,
+        "buy_2": 16.19,
+        "buy_3": 15.69,
+        "buy_4": 15.02,
+        "action": "等待回測"
+      }
+    },
+    {
       "id": "009808",
       "name": "華南永昌優選50",
       "symbol": "009808",
@@ -9326,6 +9806,102 @@
         "buy_2": 10.91,
         "buy_3": 10.58,
         "buy_4": 10.13,
+        "action": "第一批區域"
+      }
+    },
+    {
+      "id": "009814",
+      "name": "富邦標普500",
+      "symbol": "009814",
+      "type": "STOCK",
+      "market": "上櫃",
+      "yahoo_symbol": "009814.TWO",
+      "price": {
+        "close": 11.59,
+        "previous_close": 11.59,
+        "change": 0.0,
+        "change_percent": 0.0
+      },
+      "technical": {
+        "rsi": 63.95,
+        "k": 80.57,
+        "d": 82.58,
+        "macd": 0.1296,
+        "macd_signal": 0.1099,
+        "macd_hist": 0.0197,
+        "ma5": 11.6,
+        "ma20": 11.36,
+        "ma60": 11.16,
+        "volume": 609222.0,
+        "volume_ma5": 979044.0,
+        "volume_ratio": 0.62
+      },
+      "conditions": {
+        "macd_golden_cross": false,
+        "kd_golden_cross": false,
+        "rsi_above_50": true,
+        "volume_over_1_5x": false,
+        "above_ma20": true,
+        "ma20_up": true,
+        "short_term_core": false
+      },
+      "short_term": {
+        "score": 60,
+        "signal": "偏多"
+      },
+      "dca": {
+        "buy_1": 11.36,
+        "buy_2": 11.02,
+        "buy_3": 10.68,
+        "buy_4": 10.22,
+        "action": "第一批區域"
+      }
+    },
+    {
+      "id": "009815",
+      "name": "大華美國MAG7+",
+      "symbol": "009815",
+      "type": "STOCK",
+      "market": "上櫃",
+      "yahoo_symbol": "009815.TWO",
+      "price": {
+        "close": 11.67,
+        "previous_close": 11.66,
+        "change": 0.01,
+        "change_percent": 0.09
+      },
+      "technical": {
+        "rsi": 58.54,
+        "k": 72.27,
+        "d": 78.37,
+        "macd": 0.142,
+        "macd_signal": 0.1048,
+        "macd_hist": 0.0372,
+        "ma5": 11.72,
+        "ma20": 11.38,
+        "ma60": 11.31,
+        "volume": 1491835.0,
+        "volume_ma5": 2462010.0,
+        "volume_ratio": 0.61
+      },
+      "conditions": {
+        "macd_golden_cross": false,
+        "kd_golden_cross": false,
+        "rsi_above_50": true,
+        "volume_over_1_5x": false,
+        "above_ma20": true,
+        "ma20_up": true,
+        "short_term_core": false
+      },
+      "short_term": {
+        "score": 60,
+        "signal": "偏多"
+      },
+      "dca": {
+        "buy_1": 11.38,
+        "buy_2": 11.04,
+        "buy_3": 10.7,
+        "buy_4": 10.25,
         "action": "第一批區域"
       }
     },
@@ -67472,8 +68048,8 @@
       },
       "technical": {
         "rsi": 65.63,
-        "k": 80.13,
-        "d": 65.45,
+        "k": 80.37,
+        "d": 65.53,
         "macd": 1.4971,
         "macd_signal": 0.7811,
         "macd_hist": 0.716,
@@ -72271,15 +72847,15 @@
         "change_percent": -0.7
       },
       "technical": {
-        "rsi": 43.4,
-        "k": 52.3,
-        "d": 48.58,
-        "macd": -0.8782,
-        "macd_signal": -0.8399,
-        "macd_hist": -0.0382,
+        "rsi": 44.08,
+        "k": 51.82,
+        "d": 50.74,
+        "macd": -0.8456,
+        "macd_signal": -0.7869,
+        "macd_hist": -0.0588,
         "ma5": 85.0,
-        "ma20": 85.74,
-        "ma60": 87.16,
+        "ma20": 85.84,
+        "ma60": 87.19,
         "volume": 428087.0,
         "volume_ma5": 607384.0,
         "volume_ratio": 0.7
@@ -72298,10 +72874,10 @@
         "signal": "弱勢"
       },
       "dca": {
-        "buy_1": 85.74,
-        "buy_2": 83.17,
-        "buy_3": 80.6,
-        "buy_4": 77.17,
+        "buy_1": 85.84,
+        "buy_2": 83.26,
+        "buy_3": 80.69,
+        "buy_4": 77.26,
         "action": "第一批區域"
       }
     },
@@ -107579,6 +108155,7 @@
       "2636",
       "3706",
       "00670L",
+      "00886",
       "1303",
       "6214",
       "6640",
@@ -107704,6 +108281,7 @@
       "2852",
       "5534",
       "7556",
+      "006201",
       "00657K",
       "00897",
       "00684R",
@@ -107977,6 +108555,7 @@
       "2028",
       "2103",
       "00657",
+      "00928",
       "4414",
       "3323",
       "4420",
@@ -108011,6 +108590,7 @@
       "006204",
       "1435",
       "5902",
+      "009807",
       "01009T",
       "00709",
       "8401",
@@ -108045,6 +108625,7 @@
       "6015",
       "8932",
       "00631L",
+      "00858",
       "00990A",
       "7730",
       "00982A",
@@ -108096,6 +108677,7 @@
       "00956",
       "6782",
       "6491",
+      "00955",
       "2010",
       "2377",
       "2891",
@@ -108169,7 +108751,9 @@
       "8374",
       "9921",
       "9940",
+      "009814",
       "3010",
+      "009815",
       "1597",
       "4430",
       "6752",
@@ -108259,6 +108843,7 @@
       "7704",
       "1470",
       "4305",
+      "009806",
       "4991",
       "2064",
       "6148",
@@ -108449,6 +109034,7 @@
       "1737",
       "6432",
       "6614",
+      "00887",
       "1531",
       "1417",
       "2616",
@@ -108590,6 +109176,7 @@
       "00655L",
       "3049",
       "3228",
+      "00888",
       "1528",
       "2419",
       "00899",
@@ -108634,6 +109221,7 @@
       "8163",
       "3540",
       "3511",
+      "00877",
       "3297",
       "8150",
       "2478",
@@ -109847,6 +110435,7 @@
       "00770",
       "00635U",
       "2739",
+      "00886",
       "009819",
       "00730",
       "009812",
@@ -109896,6 +110485,7 @@
       "1560",
       "00935",
       "8155",
+      "006201",
       "6494",
       "4739",
       "00999A",
@@ -110076,6 +110666,7 @@
       "6796",
       "2006",
       "6578",
+      "009807",
       "1268",
       "5608",
       "00982T",
@@ -110194,6 +110785,7 @@
       "1435",
       "6642",
       "3515",
+      "00928",
       "00894",
       "2397",
       "3211",
@@ -110260,6 +110852,7 @@
       "7711",
       "5351",
       "1324",
+      "00858",
       "6198",
       "00893",
       "00930",
@@ -110357,6 +110950,7 @@
       "1906",
       "009811",
       "3073",
+      "009806",
       "2597",
       "3665",
       "00731",
@@ -110364,7 +110958,9 @@
       "6195",
       "6625",
       "8426",
+      "009814",
       "4585",
+      "00955",
       "2891",
       "6612",
       "2032",
@@ -110379,6 +110975,7 @@
       "4148",
       "8436",
       "4771",
+      "009815",
       "9934",
       "00852L",
       "2317",
@@ -110691,6 +111288,7 @@
       "0055",
       "1531",
       "2433",
+      "00887",
       "6432",
       "1417",
       "2616",
@@ -110862,6 +111460,7 @@
       "2328",
       "9943",
       "8215",
+      "00888",
       "4526",
       "6425",
       "6147",
@@ -110873,6 +111472,7 @@
       "2478",
       "6548",
       "1528",
+      "00877",
       "8150",
       "3379",
       "8255",
@@ -111637,10 +112237,10 @@
       "00683L",
       "2732",
       "006206",
-      "6023",
       "4401",
       "4102",
       "2524",
+      "6023",
       "8931",
       "1903",
       "1760",
@@ -111878,19 +112478,19 @@
     ]
   },
   "statistics": {
-    "total_market": 2267,
-    "total_stocks": 2237,
-    "listed_stocks": 1344,
-    "otc_stocks": 888,
-    "etf": 5,
+    "total_market": 2287,
+    "total_stocks": 2249,
+    "listed_stocks": 1337,
+    "otc_stocks": 900,
+    "etf": 12,
     "core_stocks": 1,
-    "ai_70": 350,
+    "ai_70": 352,
     "macd_golden": 50,
-    "rsi_above_50": 975,
+    "rsi_above_50": 984,
     "kd_golden": 76,
     "volume_over_1_5x": 408,
-    "above_ma20": 1298,
-    "ma20_up": 1078
+    "above_ma20": 1309,
+    "ma20_up": 1087
   },
   "failed": [
     {
@@ -111954,9 +112554,27 @@
       "type": "STOCK"
     },
     {
+      "id": "009822",
+      "name": "華南永昌未來金融",
+      "market": "上櫃",
+      "type": "STOCK"
+    },
+    {
+      "id": "009823",
+      "name": "群益S&P500",
+      "market": "上櫃",
+      "type": "STOCK"
+    },
+    {
       "id": "009824",
       "name": "群益美國科技巨頭",
       "market": "上市",
+      "type": "STOCK"
+    },
+    {
+      "id": "009825",
+      "name": "聯邦美國金融創新",
+      "market": "上櫃",
       "type": "STOCK"
     },
     {
@@ -111966,15 +112584,15 @@
       "type": "STOCK"
     },
     {
-      "id": "00991B",
-      "name": "貝萊德A級公司債",
+      "id": "020000",
+      "name": "富邦特選蘋果N",
       "market": "上市",
       "type": "STOCK"
     },
     {
-      "id": "020000",
-      "name": "富邦特選蘋果N",
-      "market": "上市",
+      "id": "020001",
+      "name": "富邦存股雙十N",
+      "market": "上櫃",
       "type": "STOCK"
     },
     {
@@ -112002,6 +112620,12 @@
       "type": "STOCK"
     },
     {
+      "id": "020025",
+      "name": "統一亞洲半導體N",
+      "market": "上櫃",
+      "type": "STOCK"
+    },
+    {
       "id": "020028",
       "name": "元大特選電動車N",
       "market": "上市",
@@ -112011,7 +112635,7 @@
       "id": "020029",
       "name": "元大ESG高股息N",
       "market": "上市",
-      "type": "STOCK"
+      "type": "ETF"
     },
     {
       "id": "020030",
@@ -112026,9 +112650,21 @@
       "type": "STOCK"
     },
     {
+      "id": "020033",
+      "name": "統一恒生科期N",
+      "market": "上櫃",
+      "type": "STOCK"
+    },
+    {
       "id": "020034",
       "name": "元大IC設計N",
       "market": "上市",
+      "type": "STOCK"
+    },
+    {
+      "id": "020035",
+      "name": "元大上櫃ESG高息N",
+      "market": "上櫃",
       "type": "STOCK"
     },
     {
@@ -112041,7 +112677,7 @@
       "id": "020037",
       "name": "元大金融高股息N",
       "market": "上市",
-      "type": "STOCK"
+      "type": "ETF"
     },
     {
       "id": "020038",
@@ -112053,6 +112689,18 @@
       "id": "020039",
       "name": "元大加權N",
       "market": "上市",
+      "type": "STOCK"
+    },
+    {
+      "id": "020040",
+      "name": "元大上櫃ESG龍頭N",
+      "market": "上櫃",
+      "type": "STOCK"
+    },
+    {
+      "id": "020041",
+      "name": "兆豐半導體氣候N",
+      "market": "上櫃",
       "type": "STOCK"
     },
     {
