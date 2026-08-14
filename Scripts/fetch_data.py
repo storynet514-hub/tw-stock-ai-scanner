@@ -4,32 +4,34 @@
 """
 ============================================================
 台股 AI 選股・零股定投・動態風控
-fetch_data.py V5
+fetch_data.py V6
 ============================================================
 
-正式版功能：
+正式版 V6
 
-1. 自動取得台股上市 / 上櫃標的
-2. 自動納入 ETF
-3. 不再限制資料庫只有 25 檔
-4. AI Top 25 僅作為排名結果
-5. MACD
-6. RSI
-7. KD
-8. 成交量
-9. MA20
-10. 短線核心訊號
-11. DCA 四段式進場
-12. 動態風控
-13. 輸出 Data/prices.json
+主要修正：
+1. RSI 強制限制 0～100
+2. 標準 Wilder RSI(14)
+3. 防止 NaN / Infinity 汙染 JSON
+4. 修正 MA5 殘留測試寫法
+5. 修正 ETF 判斷
+6. 完整股票＋ETF資料池
+7. AI Top 25 僅為排名，不限制資料庫
+8. MACD 12/26/9
+9. KD 9/3/3
+10. MA5 / MA20 / MA60
+11. 成交量 / 5MA
+12. DCA 四段式
+13. 動態風控
+14. JSON 最終輸出驗證
+
+執行：
+
+python Scripts/fetch_data.py
 
 輸出：
 
 Data/prices.json
-
-GitHub Actions 可直接執行：
-
-python Scripts/fetch_data.py
 ============================================================
 """
 
@@ -39,7 +41,6 @@ import json
 import math
 import os
 import re
-import statistics
 import sys
 import time
 from datetime import datetime, timezone
@@ -58,45 +59,72 @@ except ImportError:
 # 基本設定
 # ============================================================
 
-VERSION = "V5"
+VERSION = "V6"
 
-OUTPUT_DIR = Path(__file__).resolve().parent.parent / "Data"
+BASE_DIR = Path(__file__).resolve().parent.parent
+
+OUTPUT_DIR = BASE_DIR / "Data"
+
 OUTPUT_FILE = OUTPUT_DIR / "prices.json"
 
 REQUEST_TIMEOUT = 20
 
-# AI 排名只取前 25
+# AI 排名數量
 AI_TOP_N = 25
 
-# 每支股票最多保留約 1 年半資料
+# Yahoo Finance 歷史資料
 PERIOD = "18mo"
 
-# Yahoo Finance API
+# 請求間隔
+REQUEST_DELAY = 0.08
+
+# RSI
+RSI_PERIOD = 14
+
+# KD
+KD_PERIOD = 9
+KD_SMOOTH_K = 3
+KD_SMOOTH_D = 3
+
+# MACD
+MACD_FAST = 12
+MACD_SLOW = 26
+MACD_SIGNAL = 9
+
+# Volume
+VOLUME_MA_PERIOD = 5
+
+# MA
+MA_SHORT = 5
+MA_MEDIUM = 20
+MA_LONG = 60
+
+
+# ============================================================
+# API
+# ============================================================
+
 YAHOO_CHART_URL = (
     "https://query1.finance.yahoo.com/v8/finance/chart/{symbol}"
 )
 
-# TWSE
 TWSE_STOCK_API = (
     "https://openapi.twse.com.tw/v1/opendata/t187ap03_L"
 )
 
-# TWSE ETF / 基金基本資料
 TWSE_FUND_API = (
     "https://openapi.twse.com.tw/v1/opendata/t187ap47_L"
 )
 
-# TPEx
 TPEX_STOCK_API = (
     "https://www.tpex.org.tw/openapi/v1/mopsfin_t187ap03_O"
 )
 
-# TPEx ETF / 基金
 TPEX_FUND_API = (
     "https://www.tpex.org.tw/openapi/v1/tpex_etf"
 )
 
-# User-Agent
+
 HEADERS = {
     "User-Agent": (
         "Mozilla/5.0 "
@@ -117,11 +145,14 @@ def now_iso() -> str:
 
 
 def safe_float(value: Any) -> Optional[float]:
+
     try:
+
         if value is None:
             return None
 
         if isinstance(value, str):
+
             value = (
                 value
                 .replace(",", "")
@@ -129,7 +160,15 @@ def safe_float(value: Any) -> Optional[float]:
                 .strip()
             )
 
-            if value in ("", "-", "--", "N/A", "null"):
+            if value in (
+                "",
+                "-",
+                "--",
+                "N/A",
+                "NA",
+                "null",
+                "None"
+            ):
                 return None
 
         number = float(value)
@@ -140,7 +179,26 @@ def safe_float(value: Any) -> Optional[float]:
         return number
 
     except Exception:
+
         return None
+
+
+def clamp(
+    value: Optional[float],
+    minimum: float,
+    maximum: float
+) -> Optional[float]:
+
+    if value is None:
+        return None
+
+    return max(
+        minimum,
+        min(
+            maximum,
+            value
+        )
+    )
 
 
 def round_number(
@@ -151,7 +209,15 @@ def round_number(
     if value is None:
         return None
 
-    return round(float(value), digits)
+    value = safe_float(value)
+
+    if value is None:
+        return None
+
+    return round(
+        value,
+        digits
+    )
 
 
 def safe_divide(
@@ -165,25 +231,29 @@ def safe_divide(
     if b == 0:
         return None
 
-    return a / b
+    return safe_float(
+        a / b
+    )
 
 
-def clean_code(value: Any) -> str:
+def clean_code(
+    value: Any
+) -> str:
 
     if value is None:
         return ""
 
     text = str(value).strip()
 
-    # 去掉 .0
     if text.endswith(".0"):
         text = text[:-2]
 
-    # 股票代號通常 4~6 碼
     return text
 
 
-def normalize_name(value: Any) -> str:
+def normalize_name(
+    value: Any
+) -> str:
 
     if value is None:
         return ""
@@ -191,7 +261,9 @@ def normalize_name(value: Any) -> str:
     return str(value).strip()
 
 
-def is_numeric_code(code: str) -> bool:
+def is_numeric_code(
+    code: str
+) -> bool:
 
     return bool(
         re.fullmatch(
@@ -230,7 +302,7 @@ def find_value(
     candidates: List[str]
 ) -> Any:
 
-    # 精確匹配
+    # 精確
     for key in candidates:
 
         if key in row:
@@ -244,28 +316,30 @@ def find_value(
 
     for key in candidates:
 
-        value = lowered.get(
-            key.lower()
-        )
+        if key.lower() in lowered:
 
-        if value is not None:
-            return value
+            return lowered[
+                key.lower()
+            ]
 
-    # 模糊匹配
+    # 模糊
     for row_key, value in row.items():
 
-        row_key_text = str(row_key).lower()
+        row_key_text = str(
+            row_key
+        ).lower()
 
         for candidate in candidates:
 
             if candidate.lower() in row_key_text:
+
                 return value
 
     return None
 
 
 # ============================================================
-# 判斷 ETF
+# ETF 判斷
 # ============================================================
 
 def detect_etf(
@@ -286,29 +360,30 @@ def detect_etf(
         )
     ).upper()
 
-    # 明確 ETF 關鍵字
-    if "ETF" in text:
-        return True
+    keywords = [
+        "ETF",
+        "指數股票型基金",
+        "指數型基金",
+        "槓桿型",
+        "反向型"
+    ]
 
-    if "指數股票型基金" in text:
-        return True
+    for keyword in keywords:
 
-    if "指數型基金" in text:
-        return True
+        if keyword.upper() in text:
 
-    # 台灣 ETF 大多為 00 開頭
+            return True
+
+    # 台股 ETF 多數為 00 開頭
     if code.startswith("00"):
-        return True
 
-    # 常見 ETF 代號
-    if re.fullmatch(r"00\d{2}[A-Z]?", code):
         return True
 
     return False
 
 
 # ============================================================
-# 排除不適合標的
+# 標的過濾
 # ============================================================
 
 def is_valid_security(
@@ -323,15 +398,10 @@ def is_valid_security(
     if not is_numeric_code(code):
         return False
 
-    # 排除權證
+    # 權證
     if code.startswith("7"):
         return False
 
-    # 排除牛熊證 / 特殊衍生商品
-    if code.startswith("02"):
-        return False
-
-    # 名稱排除
     bad_keywords = [
         "認購權證",
         "認售權證",
@@ -341,32 +411,27 @@ def is_valid_security(
         "附認股權",
         "公司債",
         "轉換公司債",
-        "海外存託憑證",
-        "受益憑證"
+        "海外存託憑證"
     ]
 
     for keyword in bad_keywords:
 
         if keyword in name:
+
             return False
 
-    # ETF 保留
-    if is_etf:
-        return True
-
-    # 一般股票
     return True
 
 
 # ============================================================
-# 取得上市標的
+# TWSE 股票
 # ============================================================
 
 def fetch_twse_stocks() -> List[Dict[str, Any]]:
 
     print("📡 取得 TWSE 上市標的...")
 
-    result: List[Dict[str, Any]] = []
+    result = []
 
     try:
 
@@ -375,6 +440,7 @@ def fetch_twse_stocks() -> List[Dict[str, Any]]:
         )
 
         if not isinstance(data, list):
+
             return result
 
         for row in data:
@@ -424,12 +490,18 @@ def fetch_twse_stocks() -> List[Dict[str, Any]]:
             ):
                 continue
 
-            result.append({
-                "id": code,
-                "name": name,
-                "market": "TWSE",
-                "type": "ETF" if etf else "STOCK"
-            })
+            result.append(
+                {
+                    "id": code,
+                    "name": name,
+                    "market": "TWSE",
+                    "type": (
+                        "ETF"
+                        if etf
+                        else "STOCK"
+                    )
+                }
+            )
 
     except Exception as exc:
 
@@ -438,21 +510,21 @@ def fetch_twse_stocks() -> List[Dict[str, Any]]:
         )
 
     print(
-        f"   TWSE 初步取得 {len(result)} 檔"
+        f"   TWSE：{len(result)} 檔"
     )
 
     return result
 
 
 # ============================================================
-# 取得上市 ETF
+# TWSE ETF
 # ============================================================
 
 def fetch_twse_funds() -> List[Dict[str, Any]]:
 
     print("📡 取得 TWSE ETF 清單...")
 
-    result: List[Dict[str, Any]] = []
+    result = []
 
     try:
 
@@ -461,6 +533,7 @@ def fetch_twse_funds() -> List[Dict[str, Any]]:
         )
 
         if not isinstance(data, list):
+
             return result
 
         for row in data:
@@ -499,12 +572,14 @@ def fetch_twse_funds() -> List[Dict[str, Any]]:
             if not is_numeric_code(code):
                 continue
 
-            result.append({
-                "id": code,
-                "name": name,
-                "market": "TWSE",
-                "type": "ETF"
-            })
+            result.append(
+                {
+                    "id": code,
+                    "name": name,
+                    "market": "TWSE",
+                    "type": "ETF"
+                }
+            )
 
     except Exception as exc:
 
@@ -513,21 +588,21 @@ def fetch_twse_funds() -> List[Dict[str, Any]]:
         )
 
     print(
-        f"   TWSE ETF 取得 {len(result)} 檔"
+        f"   TWSE ETF：{len(result)} 檔"
     )
 
     return result
 
 
 # ============================================================
-# 取得上櫃標的
+# TPEx 股票
 # ============================================================
 
 def fetch_tpex_stocks() -> List[Dict[str, Any]]:
 
     print("📡 取得 TPEx 上櫃標的...")
 
-    result: List[Dict[str, Any]] = []
+    result = []
 
     try:
 
@@ -536,6 +611,7 @@ def fetch_tpex_stocks() -> List[Dict[str, Any]]:
         )
 
         if not isinstance(data, list):
+
             return result
 
         for row in data:
@@ -585,12 +661,18 @@ def fetch_tpex_stocks() -> List[Dict[str, Any]]:
             ):
                 continue
 
-            result.append({
-                "id": code,
-                "name": name,
-                "market": "TPEx",
-                "type": "ETF" if etf else "STOCK"
-            })
+            result.append(
+                {
+                    "id": code,
+                    "name": name,
+                    "market": "TPEx",
+                    "type": (
+                        "ETF"
+                        if etf
+                        else "STOCK"
+                    )
+                }
+            )
 
     except Exception as exc:
 
@@ -599,24 +681,102 @@ def fetch_tpex_stocks() -> List[Dict[str, Any]]:
         )
 
     print(
-        f"   TPEx 初步取得 {len(result)} 檔"
+        f"   TPEx：{len(result)} 檔"
     )
 
     return result
 
 
 # ============================================================
-# 合併 Universe
+# TPEx ETF
+# ============================================================
+
+def fetch_tpex_funds() -> List[Dict[str, Any]]:
+
+    print("📡 取得 TPEx ETF 清單...")
+
+    result = []
+
+    try:
+
+        data = get_json(
+            TPEX_FUND_API
+        )
+
+        if not isinstance(data, list):
+
+            return result
+
+        for row in data:
+
+            if not isinstance(row, dict):
+                continue
+
+            code = clean_code(
+                find_value(
+                    row,
+                    [
+                        "證券代號",
+                        "基金代號",
+                        "代號",
+                        "Code"
+                    ]
+                )
+            )
+
+            name = normalize_name(
+                find_value(
+                    row,
+                    [
+                        "證券名稱",
+                        "基金名稱",
+                        "名稱",
+                        "Name"
+                    ]
+                )
+            )
+
+            if not code or not name:
+                continue
+
+            if not is_numeric_code(code):
+                continue
+
+            result.append(
+                {
+                    "id": code,
+                    "name": name,
+                    "market": "TPEx",
+                    "type": "ETF"
+                }
+            )
+
+    except Exception as exc:
+
+        print(
+            f"⚠️ TPEx ETF 清單取得失敗：{exc}"
+        )
+
+    print(
+        f"   TPEx ETF：{len(result)} 檔"
+    )
+
+    return result
+
+
+# ============================================================
+# Universe
 # ============================================================
 
 def build_universe() -> List[Dict[str, Any]]:
 
-    all_items: Dict[str, Dict[str, Any]] = {}
+    all_items = {}
 
     sources = [
         fetch_twse_stocks(),
         fetch_twse_funds(),
-        fetch_tpex_stocks()
+        fetch_tpex_stocks(),
+        fetch_tpex_funds()
     ]
 
     for source in sources:
@@ -636,16 +796,23 @@ def build_universe() -> List[Dict[str, Any]]:
 
                     all_items[code]["type"] = "ETF"
 
+                # 保留較完整名稱
+                if len(
+                    item["name"]
+                ) > len(
+                    all_items[code]["name"]
+                ):
+
+                    all_items[code][
+                        "name"
+                    ] = item["name"]
+
     result = list(
         all_items.values()
     )
 
     result.sort(
         key=lambda x: x["id"]
-    )
-
-    print(
-        f"📊 完整標的池：{len(result)} 檔"
     )
 
     stock_count = sum(
@@ -660,6 +827,11 @@ def build_universe() -> List[Dict[str, Any]]:
         if x["type"] == "ETF"
     )
 
+    print("")
+    print(
+        f"📊 完整標的池：{len(result)} 檔"
+    )
+
     print(
         f"   個股：{stock_count}"
     )
@@ -672,7 +844,7 @@ def build_universe() -> List[Dict[str, Any]]:
 
 
 # ============================================================
-# Yahoo Finance Symbol
+# Yahoo Symbol
 # ============================================================
 
 def yahoo_symbol(
@@ -680,22 +852,21 @@ def yahoo_symbol(
     market: str
 ) -> str:
 
-    # 台股 Yahoo：
-    # TWSE / TPEx 大多可用 .TW / .TWO
     if market == "TPEx":
+
         return f"{code}.TWO"
 
     return f"{code}.TW"
 
 
 # ============================================================
-# Yahoo 行情
+# Yahoo History
 # ============================================================
 
 def fetch_history(
     code: str,
     market: str
-) -> Optional[Dict[str, List[float]]]:
+) -> Optional[Dict[str, List[Any]]]:
 
     symbol = yahoo_symbol(
         code,
@@ -726,28 +897,33 @@ def fetch_history(
 
         data = response.json()
 
-        result = data.get(
+        chart = data.get(
             "chart",
             {}
-        ).get(
+        )
+
+        results = chart.get(
             "result"
         )
 
-        if not result:
+        if not results:
+
             return None
 
-        result = result[0]
+        result = results[0]
 
         timestamps = (
             result.get("timestamp")
             or []
         )
 
+        indicators = result.get(
+            "indicators",
+            {}
+        )
+
         quote_data = (
-            result.get(
-                "indicators",
-                {}
-            )
+            indicators
             .get(
                 "quote",
                 [{}]
@@ -798,7 +974,9 @@ def fetch_history(
             "volume": []
         }
 
-        for i, ts in enumerate(timestamps):
+        for i, timestamp in enumerate(
+            timestamps
+        ):
 
             if i >= len(closes):
                 continue
@@ -810,11 +988,15 @@ def fetch_history(
             if close is None:
                 continue
 
-            clean["timestamp"].append(
-                ts
+            clean[
+                "timestamp"
+            ].append(
+                timestamp
             )
 
-            clean["open"].append(
+            clean[
+                "open"
+            ].append(
                 safe_float(
                     opens[i]
                 )
@@ -822,7 +1004,9 @@ def fetch_history(
                 else None
             )
 
-            clean["high"].append(
+            clean[
+                "high"
+            ].append(
                 safe_float(
                     highs[i]
                 )
@@ -830,7 +1014,9 @@ def fetch_history(
                 else None
             )
 
-            clean["low"].append(
+            clean[
+                "low"
+            ].append(
                 safe_float(
                     lows[i]
                 )
@@ -838,11 +1024,15 @@ def fetch_history(
                 else None
             )
 
-            clean["close"].append(
+            clean[
+                "close"
+            ].append(
                 close
             )
 
-            clean["volume"].append(
+            clean[
+                "volume"
+            ].append(
                 safe_float(
                     volumes[i]
                 )
@@ -850,7 +1040,10 @@ def fetch_history(
                 else 0
             )
 
-        if len(clean["close"]) < 30:
+        if len(
+            clean["close"]
+        ) < 60:
+
             return None
 
         return clean
@@ -858,7 +1051,7 @@ def fetch_history(
     except Exception as exc:
 
         print(
-            f"   ⚠️ {code} 行情失敗：{exc}"
+            f"   ⚠️ {symbol} 行情失敗：{exc}"
         )
 
         return None
@@ -873,18 +1066,21 @@ def ema(
     period: int
 ) -> List[Optional[float]]:
 
-    result: List[Optional[float]] = [
+    result = [
         None
     ] * len(values)
 
     if len(values) < period:
+
         return result
 
     first = sum(
         values[:period]
     ) / period
 
-    result[period - 1] = first
+    result[
+        period - 1
+    ] = first
 
     multiplier = (
         2 /
@@ -899,8 +1095,13 @@ def ema(
     ):
 
         current = (
-            values[i] - previous
-        ) * multiplier + previous
+            (
+                values[i] -
+                previous
+            )
+            * multiplier
+            + previous
+        )
 
         result[i] = current
 
@@ -918,19 +1119,23 @@ def sma(
     period: int
 ) -> List[Optional[float]]:
 
-    result: List[Optional[float]] = [
+    result = [
         None
     ] * len(values)
 
     if len(values) < period:
+
         return result
 
     window_sum = sum(
         values[:period]
     )
 
-    result[period - 1] = (
-        window_sum / period
+    result[
+        period - 1
+    ] = (
+        window_sum /
+        period
     )
 
     for i in range(
@@ -945,71 +1150,133 @@ def sma(
         ]
 
         result[i] = (
-            window_sum / period
+            window_sum /
+            period
         )
 
     return result
 
 
 # ============================================================
-# RSI
+# RSI Wilder
 # ============================================================
 
 def calculate_rsi(
     closes: List[float],
-    period: int = 14
+    period: int = RSI_PERIOD
 ) -> List[Optional[float]]:
 
-    result: List[Optional[float]] = [
+    """
+    標準 Wilder RSI
+
+    輸出絕對限制：
+    0 <= RSI <= 100
+
+    防止：
+    RSI = 560
+    RSI = -100
+    RSI = NaN
+    RSI = Infinity
+    """
+
+    result = [
         None
     ] * len(closes)
 
     if len(closes) <= period:
+
         return result
 
     gains = []
     losses = []
 
-    for i in range(1, len(closes)):
+    for i in range(
+        1,
+        len(closes)
+    ):
 
         delta = (
             closes[i] -
             closes[i - 1]
         )
 
-        gains.append(
-            max(delta, 0)
-        )
+        if delta > 0:
 
-        losses.append(
-            max(-delta, 0)
-        )
+            gains.append(delta)
+
+            losses.append(0.0)
+
+        else:
+
+            gains.append(0.0)
+
+            losses.append(
+                abs(delta)
+            )
 
     avg_gain = (
-        sum(gains[:period]) /
+        sum(
+            gains[:period]
+        ) /
         period
     )
 
     avg_loss = (
-        sum(losses[:period]) /
+        sum(
+            losses[:period]
+        ) /
         period
     )
 
-    def rsi_value(
-        gain,
-        loss
-    ):
+    def make_rsi(
+        gain: float,
+        loss: float
+    ) -> float:
+
+        gain = max(
+            0.0,
+            gain
+        )
+
+        loss = max(
+            0.0,
+            loss
+        )
 
         if loss == 0:
+
+            if gain == 0:
+
+                return 50.0
+
             return 100.0
 
         rs = gain / loss
 
-        return 100 - (
-            100 / (1 + rs)
+        value = (
+            100.0 -
+            (
+                100.0 /
+                (
+                    1.0 + rs
+                )
+            )
         )
 
-    result[period] = rsi_value(
+        # 最終防線
+        value = max(
+            0.0,
+            min(
+                100.0,
+                value
+            )
+        )
+
+        return value
+
+    result[
+        period
+    ] = make_rsi(
         avg_gain,
         avg_loss
     )
@@ -1019,27 +1286,31 @@ def calculate_rsi(
         len(closes)
     ):
 
-        gain = gains[i - 1]
+        gain = gains[
+            i - 1
+        ]
 
-        loss = losses[i - 1]
+        loss = losses[
+            i - 1
+        ]
 
         avg_gain = (
             (
                 avg_gain *
                 (period - 1)
-            ) +
-            gain
+            )
+            + gain
         ) / period
 
         avg_loss = (
             (
                 avg_loss *
                 (period - 1)
-            ) +
-            loss
+            )
+            + loss
         ) / period
 
-        result[i] = rsi_value(
+        result[i] = make_rsi(
             avg_gain,
             avg_loss
         )
@@ -1055,21 +1326,22 @@ def calculate_kd(
     highs: List[Optional[float]],
     lows: List[Optional[float]],
     closes: List[float],
-    period: int = 9
+    period: int = KD_PERIOD
 ) -> Tuple[
     List[Optional[float]],
     List[Optional[float]]
 ]:
 
-    k_values: List[Optional[float]] = [
+    k_values = [
         None
     ] * len(closes)
 
-    d_values: List[Optional[float]] = [
+    d_values = [
         None
     ] * len(closes)
 
     k = 50.0
+
     d = 50.0
 
     for i in range(
@@ -1078,7 +1350,8 @@ def calculate_kd(
     ):
 
         high_window = [
-            x for x in highs[
+            x
+            for x in highs[
                 i - period + 1:
                 i + 1
             ]
@@ -1086,14 +1359,18 @@ def calculate_kd(
         ]
 
         low_window = [
-            x for x in lows[
+            x
+            for x in lows[
                 i - period + 1:
                 i + 1
             ]
             if x is not None
         ]
 
-        if not high_window or not low_window:
+        if not high_window:
+            continue
+
+        if not low_window:
             continue
 
         highest = max(
@@ -1114,28 +1391,61 @@ def calculate_kd(
                 (
                     closes[i] -
                     lowest
-                ) /
+                )
+                /
                 (
                     highest -
                     lowest
                 )
-            ) * 100
+            ) * 100.0
+
+        rsv = max(
+            0.0,
+            min(
+                100.0,
+                rsv
+            )
+        )
 
         k = (
-            2 / 3
-        ) * k + (
-            1 / 3
-        ) * rsv
+            (
+                2.0 / 3.0
+            )
+            * k
+            +
+            (
+                1.0 / 3.0
+            )
+            * rsv
+        )
 
         d = (
-            2 / 3
-        ) * d + (
-            1 / 3
-        ) * k
+            (
+                2.0 / 3.0
+            )
+            * d
+            +
+            (
+                1.0 / 3.0
+            )
+            * k
+        )
 
-        k_values[i] = k
+        k_values[i] = max(
+            0.0,
+            min(
+                100.0,
+                k
+            )
+        )
 
-        d_values[i] = d
+        d_values[i] = max(
+            0.0,
+            min(
+                100.0,
+                d
+            )
+        )
 
     return (
         k_values,
@@ -1157,15 +1467,15 @@ def calculate_macd(
 
     ema12 = ema(
         closes,
-        12
+        MACD_FAST
     )
 
     ema26 = ema(
         closes,
-        26
+        MACD_SLOW
     )
 
-    macd_line: List[Optional[float]] = [
+    macd_line = [
         None
     ] * len(closes)
 
@@ -1185,16 +1495,17 @@ def calculate_macd(
             )
 
     valid_macd = [
-        x for x in macd_line
+        x
+        for x in macd_line
         if x is not None
     ]
 
     signal_valid = ema(
         valid_macd,
-        9
+        MACD_SIGNAL
     )
 
-    signal_line: List[Optional[float]] = [
+    signal_line = [
         None
     ] * len(closes)
 
@@ -1204,21 +1515,22 @@ def calculate_macd(
         len(closes)
     ):
 
-        if macd_line[i] is not None:
+        if macd_line[i] is None:
+            continue
 
-            if valid_index < len(
-                signal_valid
-            ):
+        if valid_index < len(
+            signal_valid
+        ):
 
-                signal_line[i] = (
-                    signal_valid[
-                        valid_index
-                    ]
-                )
+            signal_line[i] = (
+                signal_valid[
+                    valid_index
+                ]
+            )
 
-            valid_index += 1
+        valid_index += 1
 
-    histogram: List[Optional[float]] = [
+    histogram = [
         None
     ] * len(closes)
 
@@ -1233,7 +1545,8 @@ def calculate_macd(
         ):
 
             histogram[i] = (
-                macd_line[i] -
+                macd_line[i]
+                -
                 signal_line[i]
             )
 
@@ -1245,11 +1558,11 @@ def calculate_macd(
 
 
 # ============================================================
-# Technical Analysis
+# Technical Indicators
 # ============================================================
 
 def calculate_indicators(
-    history: Dict[str, List[float]]
+    history: Dict[str, List[Any]]
 ) -> Dict[str, Any]:
 
     closes = history["close"]
@@ -1262,22 +1575,22 @@ def calculate_indicators(
 
     ma5 = sma(
         closes,
-        5
+        MA_SHORT
     )
 
     ma20 = sma(
         closes,
-        20
+        MA_MEDIUM
     )
 
     ma60 = sma(
         closes,
-        60
+        MA_LONG
     )
 
     rsi = calculate_rsi(
         closes,
-        14
+        RSI_PERIOD
     )
 
     k_values, d_values = calculate_kd(
@@ -1292,15 +1605,19 @@ def calculate_indicators(
         )
     )
 
+    clean_volumes = [
+        v if v is not None else 0
+        for v in volumes
+    ]
+
     volume_ma5 = sma(
-        [
-            v or 0
-            for v in volumes
-        ],
-        5
+        clean_volumes,
+        VOLUME_MA_PERIOD
     )
 
-    i = len(closes) - 1
+    i = len(
+        closes
+    ) - 1
 
     previous_i = i - 1
 
@@ -1312,7 +1629,11 @@ def calculate_indicators(
         else None
     )
 
+    current_ma5 = ma5[i]
+
     current_ma20 = ma20[i]
+
+    current_ma60 = ma60[i]
 
     previous_ma20 = (
         ma20[previous_i]
@@ -1357,7 +1678,9 @@ def calculate_indicators(
     )
 
     current_volume = (
-        volumes[i] or 0
+        volumes[i]
+        if volumes[i] is not None
+        else 0
     )
 
     current_volume_ma5 = (
@@ -1382,13 +1705,20 @@ def calculate_indicators(
         safe_divide(
             change,
             previous_close
-        ) * 100
+        ) * 100.0
         if (
             change is not None
-            and previous_close
+            and
+            previous_close is not None
+            and
+            previous_close != 0
         )
         else None
     )
+
+    # --------------------------------------------------------
+    # MACD 黃金交叉
+    # --------------------------------------------------------
 
     macd_golden_cross = (
         previous_macd is not None
@@ -1404,6 +1734,10 @@ def calculate_indicators(
         current_macd > current_signal
     )
 
+    # --------------------------------------------------------
+    # KD 黃金交叉
+    # --------------------------------------------------------
+
     kd_golden_cross = (
         previous_k is not None
         and
@@ -1418,17 +1752,35 @@ def calculate_indicators(
         current_k > current_d
     )
 
+    # --------------------------------------------------------
+    # RSI
+    # --------------------------------------------------------
+
+    current_rsi = clamp(
+        current_rsi,
+        0.0,
+        100.0
+    )
+
     rsi_above_50 = (
         current_rsi is not None
         and
-        current_rsi > 50
+        current_rsi > 50.0
     )
+
+    # --------------------------------------------------------
+    # Volume
+    # --------------------------------------------------------
 
     volume_over_1_5x = (
         volume_ratio is not None
         and
         volume_ratio >= 1.5
     )
+
+    # --------------------------------------------------------
+    # MA20
+    # --------------------------------------------------------
 
     above_ma20 = (
         current_ma20 is not None
@@ -1444,6 +1796,10 @@ def calculate_indicators(
         current_ma20 > previous_ma20
     )
 
+    # --------------------------------------------------------
+    # 核心訊號
+    # --------------------------------------------------------
+
     short_term_core = all([
         macd_golden_cross,
         kd_golden_cross,
@@ -1454,16 +1810,21 @@ def calculate_indicators(
     ])
 
     return {
-        "ma5": current_ma5 if False else ma5[i],
+        "ma5": current_ma5,
         "ma20": current_ma20,
-        "ma60": ma60[i],
+        "ma60": current_ma60,
+
         "rsi": current_rsi,
+
         "k": current_k,
         "d": current_d,
+
         "macd": current_macd,
         "macd_signal": current_signal,
         "macd_hist": current_hist,
+
         "volume_ratio": volume_ratio,
+
         "change": change,
         "change_percent": change_percent,
 
@@ -1500,49 +1861,76 @@ def calculate_score(
 
     score = 0
 
-    # MACD 黃金交叉
-    if indicators["macd_golden_cross"]:
+    # MACD
+    if indicators[
+        "macd_golden_cross"
+    ]:
+
         score += 25
 
-    # KD 黃金交叉
-    if indicators["kd_golden_cross"]:
+    # KD
+    if indicators[
+        "kd_golden_cross"
+    ]:
+
         score += 20
 
     # RSI
-    rsi = indicators["rsi"]
+    rsi = indicators[
+        "rsi"
+    ]
 
     if rsi is not None:
 
+        rsi = clamp(
+            rsi,
+            0.0,
+            100.0
+        )
+
         if rsi > 70:
-            score += 15
+
+            # 避免超買反而被過度獎勵
+            score += 10
 
         elif rsi > 60:
+
             score += 18
 
         elif rsi > 50:
+
             score += 15
 
     # Volume
-    volume_ratio = (
-        indicators["volume_ratio"]
-    )
+    volume_ratio = indicators[
+        "volume_ratio"
+    ]
 
     if volume_ratio is not None:
 
         if volume_ratio >= 2.0:
+
             score += 20
 
         elif volume_ratio >= 1.5:
+
             score += 15
 
         elif volume_ratio >= 1.2:
+
             score += 8
 
     # MA20
-    if indicators["above_ma20"]:
+    if indicators[
+        "above_ma20"
+    ]:
+
         score += 10
 
-    if indicators["ma20_up"]:
+    if indicators[
+        "ma20_up"
+    ]:
+
         score += 10
 
     return max(
@@ -1564,15 +1952,19 @@ def get_signal(
 ) -> str:
 
     if core:
+
         return "核心買進"
 
     if score >= 75:
+
         return "強勢"
 
     if score >= 60:
+
         return "偏多"
 
     if score >= 40:
+
         return "觀察"
 
     return "弱勢"
@@ -1588,6 +1980,7 @@ def calculate_dca(
 ) -> Dict[str, Any]:
 
     if price is None:
+
         return {
             "buy_1": None,
             "buy_2": None,
@@ -1669,19 +2062,25 @@ def calculate_risk(
     # 基本停損
     stop_loss = price * 0.93
 
-    # 若有 MA20，避免離均線太遠
+    # MA20 技術停損
     if ma20 is not None:
 
-        technical_stop = ma20 * 0.96
+        technical_stop = (
+            ma20 * 0.96
+        )
 
         stop_loss = min(
             stop_loss,
             technical_stop
         )
 
-    take_profit_1 = price * 1.08
+    take_profit_1 = (
+        price * 1.08
+    )
 
-    take_profit_2 = price * 1.15
+    take_profit_2 = (
+        price * 1.15
+    )
 
     if score >= 75:
 
@@ -1696,17 +2095,72 @@ def calculate_risk(
         risk_level = "中～高"
 
     return {
-        "stop_loss": round_number(
-            stop_loss
-        ),
-        "take_profit_1": round_number(
-            take_profit_1
-        ),
-        "take_profit_2": round_number(
-            take_profit_2
-        ),
-        "risk_level": risk_level
+        "stop_loss":
+            round_number(
+                stop_loss
+            ),
+
+        "take_profit_1":
+            round_number(
+                take_profit_1
+            ),
+
+        "take_profit_2":
+            round_number(
+                take_profit_2
+            ),
+
+        "risk_level":
+            risk_level
     }
+
+
+# ============================================================
+# JSON 數值清洗
+# ============================================================
+
+def sanitize_number(
+    value: Any,
+    digits: int = 2
+) -> Optional[float]:
+
+    number = safe_float(
+        value
+    )
+
+    if number is None:
+        return None
+
+    return round(
+        number,
+        digits
+    )
+
+
+def sanitize_rsi(
+    value: Any
+) -> Optional[float]:
+
+    number = safe_float(
+        value
+    )
+
+    if number is None:
+        return None
+
+    # RSI 絕對限制 0～100
+    number = max(
+        0.0,
+        min(
+            100.0,
+            number
+        )
+    )
+
+    return round(
+        number,
+        2
+    )
 
 
 # ============================================================
@@ -1731,11 +2185,13 @@ def analyze_security(
     )
 
     if history is None:
+
         return None
 
     closes = history["close"]
 
-    if len(closes) < 30:
+    if len(closes) < 60:
+
         return None
 
     indicators = calculate_indicators(
@@ -1746,7 +2202,7 @@ def analyze_security(
         indicators
     )
 
-    core = (
+    core = bool(
         indicators[
             "short_term_core"
         ]
@@ -1757,7 +2213,21 @@ def analyze_security(
         core
     )
 
-    price = closes[-1]
+    price = safe_float(
+        closes[-1]
+    )
+
+    if price is None:
+
+        return None
+
+    previous_close = (
+        safe_float(
+            closes[-2]
+        )
+        if len(closes) >= 2
+        else None
+    )
 
     dca = calculate_dca(
         price,
@@ -1770,29 +2240,47 @@ def analyze_security(
         score
     )
 
-    return {
+    rsi_value = sanitize_rsi(
+        indicators["rsi"]
+    )
+
+    # ========================================================
+    # 最終資料
+    # ========================================================
+
+    result = {
+
         "id": code,
+
         "symbol": code,
+
         "name": name,
+
         "market": market,
+
         "type": security_type,
 
         "price": {
-            "close": round_number(
-                price
-            ),
-            "previous_close":
-                round_number(
-                    closes[-2]
-                )
-                if len(closes) >= 2
-                else None,
-            "change":
-                round_number(
-                    indicators["change"]
+
+            "close":
+                sanitize_number(
+                    price
                 ),
+
+            "previous_close":
+                sanitize_number(
+                    previous_close
+                ),
+
+            "change":
+                sanitize_number(
+                    indicators[
+                        "change"
+                    ]
+                ),
+
             "change_percent":
-                round_number(
+                sanitize_number(
                     indicators[
                         "change_percent"
                     ]
@@ -1800,48 +2288,57 @@ def analyze_security(
         },
 
         "technical": {
+
             "ma5":
-                round_number(
+                sanitize_number(
                     indicators["ma5"]
                 ),
+
             "ma20":
-                round_number(
+                sanitize_number(
                     indicators["ma20"]
                 ),
+
             "ma60":
-                round_number(
+                sanitize_number(
                     indicators["ma60"]
                 ),
+
+            # RSI 強制 0～100
             "rsi":
-                round_number(
-                    indicators["rsi"]
-                ),
+                rsi_value,
+
             "k":
-                round_number(
+                sanitize_number(
                     indicators["k"]
                 ),
+
             "d":
-                round_number(
+                sanitize_number(
                     indicators["d"]
                 ),
+
             "macd":
-                round_number(
+                sanitize_number(
                     indicators["macd"]
                 ),
+
             "macd_signal":
-                round_number(
+                sanitize_number(
                     indicators[
                         "macd_signal"
                     ]
                 ),
+
             "macd_hist":
-                round_number(
+                sanitize_number(
                     indicators[
                         "macd_hist"
                     ]
                 ),
+
             "volume_ratio":
-                round_number(
+                sanitize_number(
                     indicators[
                         "volume_ratio"
                     ],
@@ -1850,6 +2347,7 @@ def analyze_security(
         },
 
         "conditions": {
+
             "macd_golden_cross":
                 bool(
                     indicators[
@@ -1893,27 +2391,38 @@ def analyze_security(
                 ),
 
             "short_term_core":
-                bool(core)
+                core
         },
 
         "short_term": {
-            "score": score,
-            "signal": signal
+
+            "score":
+                score,
+
+            "signal":
+                signal
         },
 
-        "dca": dca,
+        "dca":
+            dca,
 
-        "risk_control": risk,
+        "risk_control":
+            risk,
 
         "data": {
+
             "history_days":
                 len(closes),
+
             "source":
                 "Yahoo Finance",
+
             "updated_at":
                 now_iso()
         }
     }
+
+    return result
 
 
 # ============================================================
@@ -1927,8 +2436,12 @@ def build_rankings(
     valid = [
         x
         for x in stocks
-        if x.get("price", {}).get("close")
-        is not None
+        if x.get(
+            "price",
+            {}
+        ).get(
+            "close"
+        ) is not None
     ]
 
     # ========================================================
@@ -1945,6 +2458,7 @@ def build_rankings(
                 "score",
                 0
             ),
+
             x.get(
                 "technical",
                 {}
@@ -2010,6 +2524,7 @@ def build_rankings(
                 "score",
                 0
             ),
+
             x.get(
                 "conditions",
                 {}
@@ -2029,9 +2544,15 @@ def build_rankings(
     ]
 
     return {
-        "short_term": short_term_ids,
-        "core": core_ids,
-        "dca": dca_ids
+
+        "short_term":
+            short_term_ids,
+
+        "core":
+            core_ids,
+
+        "dca":
+            dca_ids
     }
 
 
@@ -2043,18 +2564,24 @@ def build_statistics(
     stocks: List[Dict[str, Any]]
 ) -> Dict[str, Any]:
 
-    total = len(stocks)
+    total = len(
+        stocks
+    )
 
     stocks_count = sum(
         1
         for x in stocks
-        if x.get("type") == "STOCK"
+        if x.get(
+            "type"
+        ) == "STOCK"
     )
 
     etf_count = sum(
         1
         for x in stocks
-        if x.get("type") == "ETF"
+        if x.get(
+            "type"
+        ) == "ETF"
     )
 
     core_count = sum(
@@ -2130,17 +2657,157 @@ def build_statistics(
     )
 
     return {
-        "total_stocks": total,
-        "stocks": stocks_count,
-        "etfs": etf_count,
-        "core_stocks": core_count,
-        "macd_golden": macd_count,
-        "kd_golden": kd_count,
-        "rsi_above_50": rsi_count,
-        "volume_over_1_5x": volume_count,
-        "above_ma20": ma20_count,
-        "ai_top_n": AI_TOP_N
+
+        "total_stocks":
+            total,
+
+        "stocks":
+            stocks_count,
+
+        "etfs":
+            etf_count,
+
+        "core_stocks":
+            core_count,
+
+        "macd_golden":
+            macd_count,
+
+        "kd_golden":
+            kd_count,
+
+        "rsi_above_50":
+            rsi_count,
+
+        "volume_over_1_5x":
+            volume_count,
+
+        "above_ma20":
+            ma20_count,
+
+        "ai_top_n":
+            AI_TOP_N
     }
+
+
+# ============================================================
+# 最終 JSON 驗證
+# ============================================================
+
+def validate_output(
+    stocks: List[Dict[str, Any]]
+) -> None:
+
+    print("")
+    print("🔍 執行最終資料驗證...")
+
+    errors = []
+
+    for stock in stocks:
+
+        code = stock.get(
+            "id",
+            "UNKNOWN"
+        )
+
+        # ----------------------------------------------------
+        # RSI
+        # ----------------------------------------------------
+
+        rsi = (
+            stock
+            .get(
+                "technical",
+                {}
+            )
+            .get(
+                "rsi"
+            )
+        )
+
+        if rsi is not None:
+
+            if not (
+                0.0 <= rsi <= 100.0
+            ):
+
+                errors.append(
+                    f"{code}: RSI={rsi}"
+                )
+
+        # ----------------------------------------------------
+        # Price
+        # ----------------------------------------------------
+
+        price = (
+            stock
+            .get(
+                "price",
+                {}
+            )
+            .get(
+                "close"
+            )
+        )
+
+        if price is not None:
+
+            if price <= 0:
+
+                errors.append(
+                    f"{code}: price={price}"
+                )
+
+        # ----------------------------------------------------
+        # K / D
+        # ----------------------------------------------------
+
+        for key in [
+            "k",
+            "d"
+        ]:
+
+            value = (
+                stock
+                .get(
+                    "technical",
+                    {}
+                )
+                .get(
+                    key
+                )
+            )
+
+            if value is not None:
+
+                if not (
+                    0 <= value <= 100
+                ):
+
+                    errors.append(
+                        f"{code}: "
+                        f"{key}={value}"
+                    )
+
+    if errors:
+
+        print(
+            "❌ 資料驗證失敗："
+        )
+
+        for error in errors[:20]:
+
+            print(
+                f"   {error}"
+            )
+
+        raise ValueError(
+            "JSON 技術指標驗證失敗"
+        )
+
+    print(
+        "✅ RSI / KD / 價格資料驗證通過"
+    )
 
 
 # ============================================================
@@ -2151,20 +2818,24 @@ def main():
 
     print("")
     print("=" * 70)
+
     print(
         f"🚀 台股 AI 選股系統 {VERSION}"
     )
+
     print(
-        "完整個股＋ETF資料池正式版"
+        "完整股票＋ETF＋AI Top 25＋DCA＋動態風控"
     )
+
     print("=" * 70)
+
     print("")
 
     start_time = time.time()
 
-    # --------------------------------------------------------
-    # 建立完整標的池
-    # --------------------------------------------------------
+    # ========================================================
+    # Universe
+    # ========================================================
 
     universe = build_universe()
 
@@ -2176,24 +2847,34 @@ def main():
 
         sys.exit(1)
 
-    # --------------------------------------------------------
-    # 分析所有標的
-    # --------------------------------------------------------
+    # ========================================================
+    # Analyze
+    # ========================================================
 
-    analyzed: List[Dict[str, Any]] = []
+    analyzed = []
 
-    total = len(universe)
+    total = len(
+        universe
+    )
 
     print("")
+
     print(
         f"🔎 開始分析 {total} 檔標的"
     )
+
     print(
-        "   注意：這裡不再限制 25 檔"
+        "   ⚠️ 25 檔只代表 AI Top 25"
     )
+
+    print(
+        "   ⚠️ 不代表資料庫只有 25 檔"
+    )
+
     print("")
 
     success = 0
+
     failed = 0
 
     for index, item in enumerate(
@@ -2226,14 +2907,13 @@ def main():
 
             failed += 1
 
-        # 避免過度密集請求
         time.sleep(
-            0.08
+            REQUEST_DELAY
         )
 
-    # --------------------------------------------------------
-    # 如果資料太少
-    # --------------------------------------------------------
+    # ========================================================
+    # Empty
+    # ========================================================
 
     if not analyzed:
 
@@ -2244,9 +2924,17 @@ def main():
 
         sys.exit(1)
 
-    # --------------------------------------------------------
-    # 排名
-    # --------------------------------------------------------
+    # ========================================================
+    # Validate
+    # ========================================================
+
+    validate_output(
+        analyzed
+    )
+
+    # ========================================================
+    # Rankings
+    # ========================================================
 
     rankings = build_rankings(
         analyzed
@@ -2258,42 +2946,64 @@ def main():
         )
     )
 
-    # --------------------------------------------------------
-    # Metadata
-    # --------------------------------------------------------
+    # ========================================================
+    # Output
+    # ========================================================
 
     output = {
-        "version": VERSION,
+
+        "version":
+            VERSION,
 
         "generated_at":
             now_iso(),
 
         "source": {
+
             "price":
                 "Yahoo Finance",
+
             "twse":
                 TWSE_STOCK_API,
+
             "tpex":
                 TPEX_STOCK_API
         },
 
         "config": {
+
             "ai_top_n":
                 AI_TOP_N,
+
             "universe_limit":
                 None,
+
             "period":
                 PERIOD,
+
             "rsi_period":
-                14,
+                RSI_PERIOD,
+
+            "rsi_range":
+                "0-100",
+
             "kd_period":
-                9,
+                KD_PERIOD,
+
+            "kd_smoothing":
+                "3/3",
+
             "macd":
                 "12/26/9",
+
+            "volume_ma":
+                VOLUME_MA_PERIOD,
+
             "volume_rule":
                 "5MA × 1.5",
+
             "ma_rule":
-                "MA20"
+                "MA5 / MA20 / MA60"
         },
 
         "statistics":
@@ -2306,17 +3016,19 @@ def main():
             analyzed
     }
 
-    # --------------------------------------------------------
-    # 輸出 JSON
-    # --------------------------------------------------------
+    # ========================================================
+    # Output Directory
+    # ========================================================
 
     OUTPUT_DIR.mkdir(
         parents=True,
         exist_ok=True
     )
 
-    temp_file = OUTPUT_FILE.with_suffix(
-        ".tmp"
+    temp_file = (
+        OUTPUT_FILE.with_suffix(
+            ".tmp"
+        )
     )
 
     with open(
@@ -2329,7 +3041,8 @@ def main():
             output,
             file,
             ensure_ascii=False,
-            indent=2
+            indent=2,
+            allow_nan=False
         )
 
     os.replace(
@@ -2337,18 +3050,23 @@ def main():
         OUTPUT_FILE
     )
 
+    # ========================================================
+    # Done
+    # ========================================================
+
     elapsed = (
-        time.time() -
+        time.time()
+        -
         start_time
     )
 
-    # --------------------------------------------------------
-    # 完成
-    # --------------------------------------------------------
-
     print("")
     print("=" * 70)
-    print("✅ V5 資料更新完成")
+
+    print(
+        f"✅ {VERSION} 資料更新完成"
+    )
+
     print("=" * 70)
 
     print(
@@ -2377,8 +3095,23 @@ def main():
     )
 
     print(
-        f"📈 RSI > 50："
+        f"📈 KD 黃金交叉："
+        f"{statistics_data['kd_golden']} 檔"
+    )
+
+    print(
+        f"📊 RSI > 50："
         f"{statistics_data['rsi_above_50']} 檔"
+    )
+
+    print(
+        f"🔊 成交量 > 1.5×："
+        f"{statistics_data['volume_over_1_5x']} 檔"
+    )
+
+    print(
+        f"📈 MA20 上方："
+        f"{statistics_data['above_ma20']} 檔"
     )
 
     print(
@@ -2406,5 +3139,10 @@ def main():
     print("")
 
 
+# ============================================================
+# Entry
+# ============================================================
+
 if __name__ == "__main__":
+
     main()
