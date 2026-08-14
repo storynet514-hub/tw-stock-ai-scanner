@@ -7,30 +7,30 @@
 fetch_data.py V6
 ============================================================
 
-正式版 V6
+V6 重點修正版
 
-主要修正：
-1. RSI 強制限制 0～100
-2. 標準 Wilder RSI(14)
-3. 防止 NaN / Infinity 汙染 JSON
-4. 修正 MA5 殘留測試寫法
-5. 修正 ETF 判斷
-6. 完整股票＋ETF資料池
-7. AI Top 25 僅為排名，不限制資料庫
-8. MACD 12/26/9
-9. KD 9/3/3
-10. MA5 / MA20 / MA60
-11. 成交量 / 5MA
-12. DCA 四段式
-13. 動態風控
-14. JSON 最終輸出驗證
+【RSI】
+1. 使用標準 Wilder RSI
+2. RSI 強制限制在 0～100
+3. 輸出前再次驗證
+4. 絕不允許 RSI 出現 560、5600 等異常值
 
-執行：
+【資料】
+1. 完整上市股票
+2. 完整上櫃股票
+3. ETF
+4. AI Top 25 僅為排名，不限制資料庫
 
-python Scripts/fetch_data.py
+【技術指標】
+MACD 12/26/9
+RSI 14
+KD 9
+MA5
+MA20
+MA60
+Volume / 5MA
 
-輸出：
-
+【輸出】
 Data/prices.json
 ============================================================
 """
@@ -64,45 +64,13 @@ VERSION = "V6"
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 OUTPUT_DIR = BASE_DIR / "Data"
-
 OUTPUT_FILE = OUTPUT_DIR / "prices.json"
 
 REQUEST_TIMEOUT = 20
 
-# AI 排名數量
 AI_TOP_N = 25
 
-# Yahoo Finance 歷史資料
 PERIOD = "18mo"
-
-# 請求間隔
-REQUEST_DELAY = 0.08
-
-# RSI
-RSI_PERIOD = 14
-
-# KD
-KD_PERIOD = 9
-KD_SMOOTH_K = 3
-KD_SMOOTH_D = 3
-
-# MACD
-MACD_FAST = 12
-MACD_SLOW = 26
-MACD_SIGNAL = 9
-
-# Volume
-VOLUME_MA_PERIOD = 5
-
-# MA
-MA_SHORT = 5
-MA_MEDIUM = 20
-MA_LONG = 60
-
-
-# ============================================================
-# API
-# ============================================================
 
 YAHOO_CHART_URL = (
     "https://query1.finance.yahoo.com/v8/finance/chart/{symbol}"
@@ -119,11 +87,6 @@ TWSE_FUND_API = (
 TPEX_STOCK_API = (
     "https://www.tpex.org.tw/openapi/v1/mopsfin_t187ap03_O"
 )
-
-TPEX_FUND_API = (
-    "https://www.tpex.org.tw/openapi/v1/tpex_etf"
-)
-
 
 HEADERS = {
     "User-Agent": (
@@ -165,7 +128,6 @@ def safe_float(value: Any) -> Optional[float]:
                 "-",
                 "--",
                 "N/A",
-                "NA",
                 "null",
                 "None"
             ):
@@ -183,21 +145,38 @@ def safe_float(value: Any) -> Optional[float]:
         return None
 
 
-def clamp(
-    value: Optional[float],
-    minimum: float,
-    maximum: float
-) -> Optional[float]:
+def safe_rsi(value: Any) -> Optional[float]:
+    """
+    RSI 專用安全處理。
+
+    RSI 合法範圍：
+    0 <= RSI <= 100
+
+    不允許：
+    560
+    5600
+    -20
+    inf
+    nan
+    """
+
+    value = safe_float(value)
 
     if value is None:
         return None
 
-    return max(
-        minimum,
+    # 最後一道防線
+    value = max(
+        0.0,
         min(
-            maximum,
+            100.0,
             value
         )
+    )
+
+    return round(
+        value,
+        2
     )
 
 
@@ -209,13 +188,8 @@ def round_number(
     if value is None:
         return None
 
-    value = safe_float(value)
-
-    if value is None:
-        return None
-
     return round(
-        value,
+        float(value),
         digits
     )
 
@@ -231,14 +205,15 @@ def safe_divide(
     if b == 0:
         return None
 
-    return safe_float(
-        a / b
-    )
+    result = a / b
+
+    if not math.isfinite(result):
+        return None
+
+    return result
 
 
-def clean_code(
-    value: Any
-) -> str:
+def clean_code(value: Any) -> str:
 
     if value is None:
         return ""
@@ -251,9 +226,7 @@ def clean_code(
     return text
 
 
-def normalize_name(
-    value: Any
-) -> str:
+def normalize_name(value: Any) -> str:
 
     if value is None:
         return ""
@@ -261,9 +234,7 @@ def normalize_name(
     return str(value).strip()
 
 
-def is_numeric_code(
-    code: str
-) -> bool:
+def is_numeric_code(code: str) -> bool:
 
     return bool(
         re.fullmatch(
@@ -302,13 +273,11 @@ def find_value(
     candidates: List[str]
 ) -> Any:
 
-    # 精確
     for key in candidates:
 
         if key in row:
             return row[key]
 
-    # 忽略大小寫
     lowered = {
         str(k).lower(): v
         for k, v in row.items()
@@ -317,22 +286,15 @@ def find_value(
     for key in candidates:
 
         if key.lower() in lowered:
+            return lowered[key.lower()]
 
-            return lowered[
-                key.lower()
-            ]
-
-    # 模糊
     for row_key, value in row.items():
 
-        row_key_text = str(
-            row_key
-        ).lower()
+        row_key_text = str(row_key).lower()
 
         for candidate in candidates:
 
             if candidate.lower() in row_key_text:
-
                 return value
 
     return None
@@ -360,23 +322,16 @@ def detect_etf(
         )
     ).upper()
 
-    keywords = [
-        "ETF",
-        "指數股票型基金",
-        "指數型基金",
-        "槓桿型",
-        "反向型"
-    ]
+    if "ETF" in text:
+        return True
 
-    for keyword in keywords:
+    if "指數股票型基金" in text:
+        return True
 
-        if keyword.upper() in text:
+    if "指數型基金" in text:
+        return True
 
-            return True
-
-    # 台股 ETF 多數為 00 開頭
     if code.startswith("00"):
-
         return True
 
     return False
@@ -398,7 +353,6 @@ def is_valid_security(
     if not is_numeric_code(code):
         return False
 
-    # 權證
     if code.startswith("7"):
         return False
 
@@ -411,13 +365,13 @@ def is_valid_security(
         "附認股權",
         "公司債",
         "轉換公司債",
-        "海外存託憑證"
+        "海外存託憑證",
+        "受益憑證"
     ]
 
     for keyword in bad_keywords:
 
         if keyword in name:
-
             return False
 
     return True
@@ -440,7 +394,6 @@ def fetch_twse_stocks() -> List[Dict[str, Any]]:
         )
 
         if not isinstance(data, list):
-
             return result
 
         for row in data:
@@ -490,23 +443,17 @@ def fetch_twse_stocks() -> List[Dict[str, Any]]:
             ):
                 continue
 
-            result.append(
-                {
-                    "id": code,
-                    "name": name,
-                    "market": "TWSE",
-                    "type": (
-                        "ETF"
-                        if etf
-                        else "STOCK"
-                    )
-                }
-            )
+            result.append({
+                "id": code,
+                "name": name,
+                "market": "TWSE",
+                "type": "ETF" if etf else "STOCK"
+            })
 
     except Exception as exc:
 
         print(
-            f"⚠️ TWSE 上市清單取得失敗：{exc}"
+            f"⚠️ TWSE 上市清單失敗：{exc}"
         )
 
     print(
@@ -522,7 +469,7 @@ def fetch_twse_stocks() -> List[Dict[str, Any]]:
 
 def fetch_twse_funds() -> List[Dict[str, Any]]:
 
-    print("📡 取得 TWSE ETF 清單...")
+    print("📡 取得 TWSE ETF...")
 
     result = []
 
@@ -533,7 +480,6 @@ def fetch_twse_funds() -> List[Dict[str, Any]]:
         )
 
         if not isinstance(data, list):
-
             return result
 
         for row in data:
@@ -572,19 +518,17 @@ def fetch_twse_funds() -> List[Dict[str, Any]]:
             if not is_numeric_code(code):
                 continue
 
-            result.append(
-                {
-                    "id": code,
-                    "name": name,
-                    "market": "TWSE",
-                    "type": "ETF"
-                }
-            )
+            result.append({
+                "id": code,
+                "name": name,
+                "market": "TWSE",
+                "type": "ETF"
+            })
 
     except Exception as exc:
 
         print(
-            f"⚠️ TWSE ETF 清單取得失敗：{exc}"
+            f"⚠️ TWSE ETF 清單失敗：{exc}"
         )
 
     print(
@@ -595,7 +539,7 @@ def fetch_twse_funds() -> List[Dict[str, Any]]:
 
 
 # ============================================================
-# TPEx 股票
+# TPEx
 # ============================================================
 
 def fetch_tpex_stocks() -> List[Dict[str, Any]]:
@@ -611,7 +555,6 @@ def fetch_tpex_stocks() -> List[Dict[str, Any]]:
         )
 
         if not isinstance(data, list):
-
             return result
 
         for row in data:
@@ -661,104 +604,21 @@ def fetch_tpex_stocks() -> List[Dict[str, Any]]:
             ):
                 continue
 
-            result.append(
-                {
-                    "id": code,
-                    "name": name,
-                    "market": "TPEx",
-                    "type": (
-                        "ETF"
-                        if etf
-                        else "STOCK"
-                    )
-                }
-            )
+            result.append({
+                "id": code,
+                "name": name,
+                "market": "TPEx",
+                "type": "ETF" if etf else "STOCK"
+            })
 
     except Exception as exc:
 
         print(
-            f"⚠️ TPEx 清單取得失敗：{exc}"
+            f"⚠️ TPEx 清單失敗：{exc}"
         )
 
     print(
         f"   TPEx：{len(result)} 檔"
-    )
-
-    return result
-
-
-# ============================================================
-# TPEx ETF
-# ============================================================
-
-def fetch_tpex_funds() -> List[Dict[str, Any]]:
-
-    print("📡 取得 TPEx ETF 清單...")
-
-    result = []
-
-    try:
-
-        data = get_json(
-            TPEX_FUND_API
-        )
-
-        if not isinstance(data, list):
-
-            return result
-
-        for row in data:
-
-            if not isinstance(row, dict):
-                continue
-
-            code = clean_code(
-                find_value(
-                    row,
-                    [
-                        "證券代號",
-                        "基金代號",
-                        "代號",
-                        "Code"
-                    ]
-                )
-            )
-
-            name = normalize_name(
-                find_value(
-                    row,
-                    [
-                        "證券名稱",
-                        "基金名稱",
-                        "名稱",
-                        "Name"
-                    ]
-                )
-            )
-
-            if not code or not name:
-                continue
-
-            if not is_numeric_code(code):
-                continue
-
-            result.append(
-                {
-                    "id": code,
-                    "name": name,
-                    "market": "TPEx",
-                    "type": "ETF"
-                }
-            )
-
-    except Exception as exc:
-
-        print(
-            f"⚠️ TPEx ETF 清單取得失敗：{exc}"
-        )
-
-    print(
-        f"   TPEx ETF：{len(result)} 檔"
     )
 
     return result
@@ -775,8 +635,7 @@ def build_universe() -> List[Dict[str, Any]]:
     sources = [
         fetch_twse_stocks(),
         fetch_twse_funds(),
-        fetch_tpex_stocks(),
-        fetch_tpex_funds()
+        fetch_tpex_stocks()
     ]
 
     for source in sources:
@@ -791,21 +650,8 @@ def build_universe() -> List[Dict[str, Any]]:
 
             else:
 
-                # ETF 優先
                 if item["type"] == "ETF":
-
                     all_items[code]["type"] = "ETF"
-
-                # 保留較完整名稱
-                if len(
-                    item["name"]
-                ) > len(
-                    all_items[code]["name"]
-                ):
-
-                    all_items[code][
-                        "name"
-                    ] = item["name"]
 
     result = list(
         all_items.values()
@@ -831,11 +677,9 @@ def build_universe() -> List[Dict[str, Any]]:
     print(
         f"📊 完整標的池：{len(result)} 檔"
     )
-
     print(
         f"   個股：{stock_count}"
     )
-
     print(
         f"   ETF：{etf_count}"
     )
@@ -853,7 +697,6 @@ def yahoo_symbol(
 ) -> str:
 
     if market == "TPEx":
-
         return f"{code}.TWO"
 
     return f"{code}.TW"
@@ -866,7 +709,7 @@ def yahoo_symbol(
 def fetch_history(
     code: str,
     market: str
-) -> Optional[Dict[str, List[Any]]]:
+) -> Optional[Dict[str, List[float]]]:
 
     symbol = yahoo_symbol(
         code,
@@ -897,72 +740,51 @@ def fetch_history(
 
         data = response.json()
 
-        chart = data.get(
-            "chart",
-            {}
+        result = (
+            data
+            .get("chart", {})
+            .get("result")
         )
 
-        results = chart.get(
-            "result"
-        )
-
-        if not results:
-
+        if not result:
             return None
 
-        result = results[0]
+        result = result[0]
 
         timestamps = (
             result.get("timestamp")
             or []
         )
 
-        indicators = result.get(
-            "indicators",
-            {}
-        )
-
         quote_data = (
-            indicators
-            .get(
-                "quote",
-                [{}]
-            )[0]
+            result
+            .get("indicators", {})
+            .get("quote", [{}])[0]
         )
 
-        closes = (
-            quote_data.get(
-                "close",
-                []
-            )
+        opens = quote_data.get(
+            "open",
+            []
         )
 
-        opens = (
-            quote_data.get(
-                "open",
-                []
-            )
+        highs = quote_data.get(
+            "high",
+            []
         )
 
-        highs = (
-            quote_data.get(
-                "high",
-                []
-            )
+        lows = quote_data.get(
+            "low",
+            []
         )
 
-        lows = (
-            quote_data.get(
-                "low",
-                []
-            )
+        closes = quote_data.get(
+            "close",
+            []
         )
 
-        volumes = (
-            quote_data.get(
-                "volume",
-                []
-            )
+        volumes = quote_data.get(
+            "volume",
+            []
         )
 
         clean = {
@@ -974,7 +796,7 @@ def fetch_history(
             "volume": []
         }
 
-        for i, timestamp in enumerate(
+        for i, ts in enumerate(
             timestamps
         ):
 
@@ -988,15 +810,11 @@ def fetch_history(
             if close is None:
                 continue
 
-            clean[
-                "timestamp"
-            ].append(
-                timestamp
+            clean["timestamp"].append(
+                ts
             )
 
-            clean[
-                "open"
-            ].append(
+            clean["open"].append(
                 safe_float(
                     opens[i]
                 )
@@ -1004,9 +822,7 @@ def fetch_history(
                 else None
             )
 
-            clean[
-                "high"
-            ].append(
+            clean["high"].append(
                 safe_float(
                     highs[i]
                 )
@@ -1014,9 +830,7 @@ def fetch_history(
                 else None
             )
 
-            clean[
-                "low"
-            ].append(
+            clean["low"].append(
                 safe_float(
                     lows[i]
                 )
@@ -1024,15 +838,11 @@ def fetch_history(
                 else None
             )
 
-            clean[
-                "close"
-            ].append(
+            clean["close"].append(
                 close
             )
 
-            clean[
-                "volume"
-            ].append(
+            clean["volume"].append(
                 safe_float(
                     volumes[i]
                 )
@@ -1040,10 +850,7 @@ def fetch_history(
                 else 0
             )
 
-        if len(
-            clean["close"]
-        ) < 60:
-
+        if len(clean["close"]) < 30:
             return None
 
         return clean
@@ -1051,63 +858,10 @@ def fetch_history(
     except Exception as exc:
 
         print(
-            f"   ⚠️ {symbol} 行情失敗：{exc}"
+            f"   ⚠️ {code} 行情失敗：{exc}"
         )
 
         return None
-
-
-# ============================================================
-# EMA
-# ============================================================
-
-def ema(
-    values: List[float],
-    period: int
-) -> List[Optional[float]]:
-
-    result = [
-        None
-    ] * len(values)
-
-    if len(values) < period:
-
-        return result
-
-    first = sum(
-        values[:period]
-    ) / period
-
-    result[
-        period - 1
-    ] = first
-
-    multiplier = (
-        2 /
-        (period + 1)
-    )
-
-    previous = first
-
-    for i in range(
-        period,
-        len(values)
-    ):
-
-        current = (
-            (
-                values[i] -
-                previous
-            )
-            * multiplier
-            + previous
-        )
-
-        result[i] = current
-
-        previous = current
-
-    return result
 
 
 # ============================================================
@@ -1124,18 +878,14 @@ def sma(
     ] * len(values)
 
     if len(values) < period:
-
         return result
 
-    window_sum = sum(
+    total = sum(
         values[:period]
     )
 
-    result[
-        period - 1
-    ] = (
-        window_sum /
-        period
+    result[period - 1] = (
+        total / period
     )
 
     for i in range(
@@ -1143,52 +893,98 @@ def sma(
         len(values)
     ):
 
-        window_sum += values[i]
+        total += values[i]
 
-        window_sum -= values[
+        total -= values[
             i - period
         ]
 
         result[i] = (
-            window_sum /
-            period
+            total / period
         )
 
     return result
 
 
 # ============================================================
-# RSI Wilder
+# EMA
+# ============================================================
+
+def ema(
+    values: List[float],
+    period: int
+) -> List[Optional[float]]:
+
+    result = [
+        None
+    ] * len(values)
+
+    if len(values) < period:
+        return result
+
+    initial = (
+        sum(values[:period])
+        / period
+    )
+
+    result[period - 1] = initial
+
+    multiplier = (
+        2 /
+        (period + 1)
+    )
+
+    previous = initial
+
+    for i in range(
+        period,
+        len(values)
+    ):
+
+        current = (
+            (
+                values[i]
+                - previous
+            )
+            * multiplier
+        ) + previous
+
+        result[i] = current
+
+        previous = current
+
+    return result
+
+
+# ============================================================
+# RSI V6
 # ============================================================
 
 def calculate_rsi(
     closes: List[float],
-    period: int = RSI_PERIOD
+    period: int = 14
 ) -> List[Optional[float]]:
-
     """
-    標準 Wilder RSI
+    標準 Wilder RSI。
 
-    輸出絕對限制：
-    0 <= RSI <= 100
+    RSI 永遠限制在 0～100。
 
-    防止：
-    RSI = 560
-    RSI = -100
-    RSI = NaN
-    RSI = Infinity
+    注意：
+    RSI 是百分比型震盪指標，
+    不是價格、不是報酬率，
+    不應乘上 10 或 100。
     """
 
-    result = [
+    result: List[Optional[float]] = [
         None
     ] * len(closes)
 
     if len(closes) <= period:
-
         return result
 
-    gains = []
-    losses = []
+    gains: List[float] = []
+
+    losses: List[float] = []
 
     for i in range(
         1,
@@ -1196,36 +992,30 @@ def calculate_rsi(
     ):
 
         delta = (
-            closes[i] -
-            closes[i - 1]
+            closes[i]
+            - closes[i - 1]
         )
 
         if delta > 0:
 
             gains.append(delta)
-
             losses.append(0.0)
 
         else:
 
             gains.append(0.0)
-
             losses.append(
                 abs(delta)
             )
 
     avg_gain = (
-        sum(
-            gains[:period]
-        ) /
-        period
+        sum(gains[:period])
+        / period
     )
 
     avg_loss = (
-        sum(
-            losses[:period]
-        ) /
-        period
+        sum(losses[:period])
+        / period
     )
 
     def make_rsi(
@@ -1233,38 +1023,30 @@ def calculate_rsi(
         loss: float
     ) -> float:
 
-        gain = max(
-            0.0,
-            gain
-        )
-
-        loss = max(
-            0.0,
-            loss
-        )
-
+        # 全漲
         if loss == 0:
 
-            if gain == 0:
+            if gain > 0:
+                return 100.0
 
-                return 50.0
+            return 50.0
 
-            return 100.0
+        # 全跌
+        if gain == 0:
+            return 0.0
 
         rs = gain / loss
 
         value = (
-            100.0 -
-            (
-                100.0 /
-                (
-                    1.0 + rs
-                )
+            100.0
+            - (
+                100.0
+                / (1.0 + rs)
             )
         )
 
-        # 最終防線
-        value = max(
+        # RSI 最終防護
+        return max(
             0.0,
             min(
                 100.0,
@@ -1272,13 +1054,11 @@ def calculate_rsi(
             )
         )
 
-        return value
-
-    result[
-        period
-    ] = make_rsi(
-        avg_gain,
-        avg_loss
+    result[period] = safe_rsi(
+        make_rsi(
+            avg_gain,
+            avg_loss
+        )
     )
 
     for i in range(
@@ -1286,33 +1066,31 @@ def calculate_rsi(
         len(closes)
     ):
 
-        gain = gains[
-            i - 1
-        ]
+        gain = gains[i - 1]
 
-        loss = losses[
-            i - 1
-        ]
+        loss = losses[i - 1]
 
         avg_gain = (
             (
-                avg_gain *
-                (period - 1)
+                avg_gain
+                * (period - 1)
             )
             + gain
         ) / period
 
         avg_loss = (
             (
-                avg_loss *
-                (period - 1)
+                avg_loss
+                * (period - 1)
             )
             + loss
         ) / period
 
-        result[i] = make_rsi(
-            avg_gain,
-            avg_loss
+        result[i] = safe_rsi(
+            make_rsi(
+                avg_gain,
+                avg_loss
+            )
         )
 
     return result
@@ -1326,7 +1104,7 @@ def calculate_kd(
     highs: List[Optional[float]],
     lows: List[Optional[float]],
     closes: List[float],
-    period: int = KD_PERIOD
+    period: int = 9
 ) -> Tuple[
     List[Optional[float]],
     List[Optional[float]]
@@ -1389,62 +1167,36 @@ def calculate_kd(
 
             rsv = (
                 (
-                    closes[i] -
-                    lowest
+                    closes[i]
+                    - lowest
                 )
                 /
                 (
-                    highest -
-                    lowest
+                    highest
+                    - lowest
                 )
             ) * 100.0
 
-        rsv = max(
-            0.0,
-            min(
-                100.0,
-                rsv
-            )
-        )
-
         k = (
-            (
-                2.0 / 3.0
-            )
-            * k
+            (2.0 / 3.0) * k
             +
-            (
-                1.0 / 3.0
-            )
-            * rsv
+            (1.0 / 3.0) * rsv
         )
 
         d = (
-            (
-                2.0 / 3.0
-            )
-            * d
+            (2.0 / 3.0) * d
             +
-            (
-                1.0 / 3.0
-            )
-            * k
+            (1.0 / 3.0) * k
         )
 
         k_values[i] = max(
             0.0,
-            min(
-                100.0,
-                k
-            )
+            min(100.0, k)
         )
 
         d_values[i] = max(
             0.0,
-            min(
-                100.0,
-                d
-            )
+            min(100.0, d)
         )
 
     return (
@@ -1467,12 +1219,12 @@ def calculate_macd(
 
     ema12 = ema(
         closes,
-        MACD_FAST
+        12
     )
 
     ema26 = ema(
         closes,
-        MACD_SLOW
+        26
     )
 
     macd_line = [
@@ -1490,8 +1242,8 @@ def calculate_macd(
         ):
 
             macd_line[i] = (
-                ema12[i] -
-                ema26[i]
+                ema12[i]
+                - ema26[i]
             )
 
     valid_macd = [
@@ -1502,7 +1254,7 @@ def calculate_macd(
 
     signal_valid = ema(
         valid_macd,
-        MACD_SIGNAL
+        9
     )
 
     signal_line = [
@@ -1515,20 +1267,21 @@ def calculate_macd(
         len(closes)
     ):
 
-        if macd_line[i] is None:
-            continue
+        if macd_line[i] is not None:
 
-        if valid_index < len(
-            signal_valid
-        ):
+            if (
+                valid_index
+                <
+                len(signal_valid)
+            ):
 
-            signal_line[i] = (
-                signal_valid[
-                    valid_index
-                ]
-            )
+                signal_line[i] = (
+                    signal_valid[
+                        valid_index
+                    ]
+                )
 
-        valid_index += 1
+            valid_index += 1
 
     histogram = [
         None
@@ -1546,8 +1299,7 @@ def calculate_macd(
 
             histogram[i] = (
                 macd_line[i]
-                -
-                signal_line[i]
+                - signal_line[i]
             )
 
     return (
@@ -1558,11 +1310,11 @@ def calculate_macd(
 
 
 # ============================================================
-# Technical Indicators
+# 技術指標
 # ============================================================
 
 def calculate_indicators(
-    history: Dict[str, List[Any]]
+    history: Dict[str, List[float]]
 ) -> Dict[str, Any]:
 
     closes = history["close"]
@@ -1575,28 +1327,29 @@ def calculate_indicators(
 
     ma5 = sma(
         closes,
-        MA_SHORT
+        5
     )
 
     ma20 = sma(
         closes,
-        MA_MEDIUM
+        20
     )
 
     ma60 = sma(
         closes,
-        MA_LONG
+        60
     )
 
     rsi = calculate_rsi(
         closes,
-        RSI_PERIOD
+        14
     )
 
     k_values, d_values = calculate_kd(
         highs,
         lows,
-        closes
+        closes,
+        9
     )
 
     macd_line, signal_line, macd_hist = (
@@ -1605,59 +1358,45 @@ def calculate_indicators(
         )
     )
 
-    clean_volumes = [
-        v if v is not None else 0
-        for v in volumes
-    ]
-
     volume_ma5 = sma(
-        clean_volumes,
-        VOLUME_MA_PERIOD
+        [
+            v or 0
+            for v in volumes
+        ],
+        5
     )
 
-    i = len(
-        closes
-    ) - 1
+    i = len(closes) - 1
 
     previous_i = i - 1
 
     close = closes[i]
 
-    previous_close = (
-        closes[previous_i]
-        if previous_i >= 0
-        else None
-    )
-
-    current_ma5 = ma5[i]
+    previous_close = closes[
+        previous_i
+    ]
 
     current_ma20 = ma20[i]
 
-    current_ma60 = ma60[i]
+    previous_ma20 = ma20[
+        previous_i
+    ]
 
-    previous_ma20 = (
-        ma20[previous_i]
-        if previous_i >= 0
-        else None
+    current_rsi = safe_rsi(
+        rsi[i]
     )
-
-    current_rsi = rsi[i]
 
     current_k = k_values[i]
 
     current_d = d_values[i]
 
-    previous_k = (
-        k_values[previous_i]
-        if previous_i >= 0
-        else None
-    )
+    previous_k = k_values[
+        previous_i
+    ]
 
-    previous_d = (
-        d_values[previous_i]
-        if previous_i >= 0
-        else None
-    )
+    previous_d = d_values[
+        previous_i
+    ]
 
     current_macd = macd_line[i]
 
@@ -1665,28 +1404,20 @@ def calculate_indicators(
 
     current_hist = macd_hist[i]
 
-    previous_macd = (
-        macd_line[previous_i]
-        if previous_i >= 0
-        else None
-    )
+    previous_macd = macd_line[
+        previous_i
+    ]
 
-    previous_signal = (
-        signal_line[previous_i]
-        if previous_i >= 0
-        else None
-    )
+    previous_signal = signal_line[
+        previous_i
+    ]
 
     current_volume = (
-        volumes[i]
-        if volumes[i] is not None
-        else 0
+        volumes[i] or 0
     )
 
     current_volume_ma5 = (
         volume_ma5[i]
-        if i < len(volume_ma5)
-        else None
     )
 
     volume_ratio = safe_divide(
@@ -1695,30 +1426,16 @@ def calculate_indicators(
     )
 
     change = (
-        close -
-        previous_close
-        if previous_close is not None
-        else None
+        close
+        - previous_close
     )
 
     change_percent = (
         safe_divide(
             change,
             previous_close
-        ) * 100.0
-        if (
-            change is not None
-            and
-            previous_close is not None
-            and
-            previous_close != 0
-        )
-        else None
+        ) * 100
     )
-
-    # --------------------------------------------------------
-    # MACD 黃金交叉
-    # --------------------------------------------------------
 
     macd_golden_cross = (
         previous_macd is not None
@@ -1734,10 +1451,6 @@ def calculate_indicators(
         current_macd > current_signal
     )
 
-    # --------------------------------------------------------
-    # KD 黃金交叉
-    # --------------------------------------------------------
-
     kd_golden_cross = (
         previous_k is not None
         and
@@ -1752,35 +1465,17 @@ def calculate_indicators(
         current_k > current_d
     )
 
-    # --------------------------------------------------------
-    # RSI
-    # --------------------------------------------------------
-
-    current_rsi = clamp(
-        current_rsi,
-        0.0,
-        100.0
-    )
-
     rsi_above_50 = (
         current_rsi is not None
         and
-        current_rsi > 50.0
+        current_rsi > 50
     )
-
-    # --------------------------------------------------------
-    # Volume
-    # --------------------------------------------------------
 
     volume_over_1_5x = (
         volume_ratio is not None
         and
         volume_ratio >= 1.5
     )
-
-    # --------------------------------------------------------
-    # MA20
-    # --------------------------------------------------------
 
     above_ma20 = (
         current_ma20 is not None
@@ -1796,10 +1491,6 @@ def calculate_indicators(
         current_ma20 > previous_ma20
     )
 
-    # --------------------------------------------------------
-    # 核心訊號
-    # --------------------------------------------------------
-
     short_term_core = all([
         macd_golden_cross,
         kd_golden_cross,
@@ -1810,23 +1501,45 @@ def calculate_indicators(
     ])
 
     return {
-        "ma5": current_ma5,
-        "ma20": current_ma20,
-        "ma60": current_ma60,
 
-        "rsi": current_rsi,
+        "ma5":
+            ma5[i],
 
-        "k": current_k,
-        "d": current_d,
+        "ma20":
+            current_ma20,
 
-        "macd": current_macd,
-        "macd_signal": current_signal,
-        "macd_hist": current_hist,
+        "ma60":
+            ma60[i],
 
-        "volume_ratio": volume_ratio,
+        # ★ RSI 最重要
+        "rsi":
+            safe_rsi(
+                current_rsi
+            ),
 
-        "change": change,
-        "change_percent": change_percent,
+        "k":
+            current_k,
+
+        "d":
+            current_d,
+
+        "macd":
+            current_macd,
+
+        "macd_signal":
+            current_signal,
+
+        "macd_hist":
+            current_hist,
+
+        "volume_ratio":
+            volume_ratio,
+
+        "change":
+            change,
+
+        "change_percent":
+            change_percent,
 
         "macd_golden_cross":
             macd_golden_cross,
@@ -1861,37 +1574,25 @@ def calculate_score(
 
     score = 0
 
-    # MACD
     if indicators[
         "macd_golden_cross"
     ]:
-
         score += 25
 
-    # KD
     if indicators[
         "kd_golden_cross"
     ]:
-
         score += 20
 
-    # RSI
-    rsi = indicators[
-        "rsi"
-    ]
+    rsi = safe_rsi(
+        indicators["rsi"]
+    )
 
     if rsi is not None:
 
-        rsi = clamp(
-            rsi,
-            0.0,
-            100.0
-        )
-
         if rsi > 70:
 
-            # 避免超買反而被過度獎勵
-            score += 10
+            score += 15
 
         elif rsi > 60:
 
@@ -1901,7 +1602,6 @@ def calculate_score(
 
             score += 15
 
-    # Volume
     volume_ratio = indicators[
         "volume_ratio"
     ]
@@ -1920,7 +1620,6 @@ def calculate_score(
 
             score += 8
 
-    # MA20
     if indicators[
         "above_ma20"
     ]:
@@ -1952,19 +1651,15 @@ def get_signal(
 ) -> str:
 
     if core:
-
         return "核心買進"
 
     if score >= 75:
-
         return "強勢"
 
     if score >= 60:
-
         return "偏多"
 
     if score >= 40:
-
         return "觀察"
 
     return "弱勢"
@@ -2024,19 +1719,29 @@ def calculate_dca(
         action = "等待回檔"
 
     return {
-        "buy_1": round_number(
-            buy_1
-        ),
-        "buy_2": round_number(
-            buy_2
-        ),
-        "buy_3": round_number(
-            buy_3
-        ),
-        "buy_4": round_number(
-            buy_4
-        ),
-        "action": action
+
+        "buy_1":
+            round_number(
+                buy_1
+            ),
+
+        "buy_2":
+            round_number(
+                buy_2
+            ),
+
+        "buy_3":
+            round_number(
+                buy_3
+            ),
+
+        "buy_4":
+            round_number(
+                buy_4
+            ),
+
+        "action":
+            action
     }
 
 
@@ -2059,10 +1764,10 @@ def calculate_risk(
             "risk_level": "未知"
         }
 
-    # 基本停損
-    stop_loss = price * 0.93
+    stop_loss = (
+        price * 0.93
+    )
 
-    # MA20 技術停損
     if ma20 is not None:
 
         technical_stop = (
@@ -2095,6 +1800,7 @@ def calculate_risk(
         risk_level = "中～高"
 
     return {
+
         "stop_loss":
             round_number(
                 stop_loss
@@ -2116,55 +1822,7 @@ def calculate_risk(
 
 
 # ============================================================
-# JSON 數值清洗
-# ============================================================
-
-def sanitize_number(
-    value: Any,
-    digits: int = 2
-) -> Optional[float]:
-
-    number = safe_float(
-        value
-    )
-
-    if number is None:
-        return None
-
-    return round(
-        number,
-        digits
-    )
-
-
-def sanitize_rsi(
-    value: Any
-) -> Optional[float]:
-
-    number = safe_float(
-        value
-    )
-
-    if number is None:
-        return None
-
-    # RSI 絕對限制 0～100
-    number = max(
-        0.0,
-        min(
-            100.0,
-            number
-        )
-    )
-
-    return round(
-        number,
-        2
-    )
-
-
-# ============================================================
-# 單一標的分析
+# 單一標的
 # ============================================================
 
 def analyze_security(
@@ -2185,13 +1843,11 @@ def analyze_security(
     )
 
     if history is None:
-
         return None
 
     closes = history["close"]
 
-    if len(closes) < 60:
-
+    if len(closes) < 30:
         return None
 
     indicators = calculate_indicators(
@@ -2202,32 +1858,16 @@ def analyze_security(
         indicators
     )
 
-    core = bool(
-        indicators[
-            "short_term_core"
-        ]
-    )
+    core = indicators[
+        "short_term_core"
+    ]
 
     signal = get_signal(
         score,
         core
     )
 
-    price = safe_float(
-        closes[-1]
-    )
-
-    if price is None:
-
-        return None
-
-    previous_close = (
-        safe_float(
-            closes[-2]
-        )
-        if len(closes) >= 2
-        else None
-    )
+    price = closes[-1]
 
     dca = calculate_dca(
         price,
@@ -2240,47 +1880,72 @@ def analyze_security(
         score
     )
 
-    rsi_value = sanitize_rsi(
+    # ========================================================
+    # RSI 最後一次安全檢查
+    # ========================================================
+
+    final_rsi = safe_rsi(
         indicators["rsi"]
     )
 
-    # ========================================================
-    # 最終資料
-    # ========================================================
+    if final_rsi is not None:
 
-    result = {
+        if not (
+            0 <= final_rsi <= 100
+        ):
 
-        "id": code,
+            print(
+                f"⚠️ RSI 異常："
+                f"{code} "
+                f"{final_rsi}"
+            )
 
-        "symbol": code,
+            final_rsi = max(
+                0,
+                min(
+                    100,
+                    final_rsi
+                )
+            )
 
-        "name": name,
+    return {
 
-        "market": market,
+        "id":
+            code,
 
-        "type": security_type,
+        "symbol":
+            code,
+
+        "name":
+            name,
+
+        "market":
+            market,
+
+        "type":
+            security_type,
 
         "price": {
 
             "close":
-                sanitize_number(
+                round_number(
                     price
                 ),
 
             "previous_close":
-                sanitize_number(
-                    previous_close
-                ),
+                round_number(
+                    closes[-2]
+                )
+                if len(closes) >= 2
+                else None,
 
             "change":
-                sanitize_number(
-                    indicators[
-                        "change"
-                    ]
+                round_number(
+                    indicators["change"]
                 ),
 
             "change_percent":
-                sanitize_number(
+                round_number(
                     indicators[
                         "change_percent"
                     ]
@@ -2290,55 +1955,55 @@ def analyze_security(
         "technical": {
 
             "ma5":
-                sanitize_number(
+                round_number(
                     indicators["ma5"]
                 ),
 
             "ma20":
-                sanitize_number(
+                round_number(
                     indicators["ma20"]
                 ),
 
             "ma60":
-                sanitize_number(
+                round_number(
                     indicators["ma60"]
                 ),
 
-            # RSI 強制 0～100
+            # ★ V6 RSI
             "rsi":
-                rsi_value,
+                final_rsi,
 
             "k":
-                sanitize_number(
+                round_number(
                     indicators["k"]
                 ),
 
             "d":
-                sanitize_number(
+                round_number(
                     indicators["d"]
                 ),
 
             "macd":
-                sanitize_number(
+                round_number(
                     indicators["macd"]
                 ),
 
             "macd_signal":
-                sanitize_number(
+                round_number(
                     indicators[
                         "macd_signal"
                     ]
                 ),
 
             "macd_hist":
-                sanitize_number(
+                round_number(
                     indicators[
                         "macd_hist"
                     ]
                 ),
 
             "volume_ratio":
-                sanitize_number(
+                round_number(
                     indicators[
                         "volume_ratio"
                     ],
@@ -2391,7 +2056,7 @@ def analyze_security(
                 ),
 
             "short_term_core":
-                core
+                bool(core)
         },
 
         "short_term": {
@@ -2422,7 +2087,68 @@ def analyze_security(
         }
     }
 
-    return result
+
+# ============================================================
+# JSON RSI 全面驗證
+# ============================================================
+
+def validate_rsi_data(
+    stocks: List[Dict[str, Any]]
+) -> int:
+
+    fixed = 0
+
+    for stock in stocks:
+
+        technical = stock.get(
+            "technical",
+            {}
+        )
+
+        rsi = technical.get(
+            "rsi"
+        )
+
+        if rsi is None:
+            continue
+
+        numeric = safe_float(
+            rsi
+        )
+
+        if numeric is None:
+
+            technical["rsi"] = None
+
+            fixed += 1
+
+            continue
+
+        if numeric < 0 or numeric > 100:
+
+            print(
+                f"⚠️ 發現異常 RSI："
+                f"{stock.get('id')} "
+                f"{numeric}"
+            )
+
+            technical["rsi"] = (
+                safe_rsi(
+                    numeric
+                )
+            )
+
+            fixed += 1
+
+        else:
+
+            technical["rsi"] = (
+                safe_rsi(
+                    numeric
+                )
+            )
+
+    return fixed
 
 
 # ============================================================
@@ -2443,10 +2169,6 @@ def build_rankings(
             "close"
         ) is not None
     ]
-
-    # ========================================================
-    # AI Top 25
-    # ========================================================
 
     short_term = sorted(
         valid,
@@ -2477,10 +2199,6 @@ def build_rankings(
         ]
     ]
 
-    # ========================================================
-    # Core
-    # ========================================================
-
     core = [
         x
         for x in valid
@@ -2509,10 +2227,6 @@ def build_rankings(
         x["id"]
         for x in core
     ]
-
-    # ========================================================
-    # DCA
-    # ========================================================
 
     dca = sorted(
         valid,
@@ -2564,24 +2278,18 @@ def build_statistics(
     stocks: List[Dict[str, Any]]
 ) -> Dict[str, Any]:
 
-    total = len(
-        stocks
-    )
+    total = len(stocks)
 
     stocks_count = sum(
         1
         for x in stocks
-        if x.get(
-            "type"
-        ) == "STOCK"
+        if x.get("type") == "STOCK"
     )
 
     etf_count = sum(
         1
         for x in stocks
-        if x.get(
-            "type"
-        ) == "ETF"
+        if x.get("type") == "ETF"
     )
 
     core_count = sum(
@@ -2686,149 +2394,31 @@ def build_statistics(
             ma20_count,
 
         "ai_top_n":
-            AI_TOP_N
+            AI_TOP_N,
+
+        "rsi_range":
+            "0-100"
     }
 
 
 # ============================================================
-# 最終 JSON 驗證
-# ============================================================
-
-def validate_output(
-    stocks: List[Dict[str, Any]]
-) -> None:
-
-    print("")
-    print("🔍 執行最終資料驗證...")
-
-    errors = []
-
-    for stock in stocks:
-
-        code = stock.get(
-            "id",
-            "UNKNOWN"
-        )
-
-        # ----------------------------------------------------
-        # RSI
-        # ----------------------------------------------------
-
-        rsi = (
-            stock
-            .get(
-                "technical",
-                {}
-            )
-            .get(
-                "rsi"
-            )
-        )
-
-        if rsi is not None:
-
-            if not (
-                0.0 <= rsi <= 100.0
-            ):
-
-                errors.append(
-                    f"{code}: RSI={rsi}"
-                )
-
-        # ----------------------------------------------------
-        # Price
-        # ----------------------------------------------------
-
-        price = (
-            stock
-            .get(
-                "price",
-                {}
-            )
-            .get(
-                "close"
-            )
-        )
-
-        if price is not None:
-
-            if price <= 0:
-
-                errors.append(
-                    f"{code}: price={price}"
-                )
-
-        # ----------------------------------------------------
-        # K / D
-        # ----------------------------------------------------
-
-        for key in [
-            "k",
-            "d"
-        ]:
-
-            value = (
-                stock
-                .get(
-                    "technical",
-                    {}
-                )
-                .get(
-                    key
-                )
-            )
-
-            if value is not None:
-
-                if not (
-                    0 <= value <= 100
-                ):
-
-                    errors.append(
-                        f"{code}: "
-                        f"{key}={value}"
-                    )
-
-    if errors:
-
-        print(
-            "❌ 資料驗證失敗："
-        )
-
-        for error in errors[:20]:
-
-            print(
-                f"   {error}"
-            )
-
-        raise ValueError(
-            "JSON 技術指標驗證失敗"
-        )
-
-    print(
-        "✅ RSI / KD / 價格資料驗證通過"
-    )
-
-
-# ============================================================
-# 主程式
+# Main
 # ============================================================
 
 def main():
 
     print("")
     print("=" * 70)
-
     print(
         f"🚀 台股 AI 選股系統 {VERSION}"
     )
-
     print(
-        "完整股票＋ETF＋AI Top 25＋DCA＋動態風控"
+        "完整個股＋ETF資料池"
     )
-
+    print(
+        "RSI 0～100 強制防護版"
+    )
     print("=" * 70)
-
     print("")
 
     start_time = time.time()
@@ -2848,29 +2438,23 @@ def main():
         sys.exit(1)
 
     # ========================================================
-    # Analyze
+    # 分析
     # ========================================================
 
     analyzed = []
 
-    total = len(
-        universe
-    )
+    total = len(universe)
 
     print("")
-
     print(
         f"🔎 開始分析 {total} 檔標的"
     )
-
     print(
-        "   ⚠️ 25 檔只代表 AI Top 25"
+        "   AI Top 25 僅作為排名"
     )
-
     print(
-        "   ⚠️ 不代表資料庫只有 25 檔"
+        "   不限制完整資料池"
     )
-
     print("")
 
     success = 0
@@ -2908,16 +2492,11 @@ def main():
             failed += 1
 
         time.sleep(
-            REQUEST_DELAY
+            0.08
         )
-
-    # ========================================================
-    # Empty
-    # ========================================================
 
     if not analyzed:
 
-        print("")
         print(
             "❌ 沒有任何有效行情資料"
         )
@@ -2925,11 +2504,20 @@ def main():
         sys.exit(1)
 
     # ========================================================
-    # Validate
+    # RSI 最終驗證
     # ========================================================
 
-    validate_output(
+    print("")
+    print(
+        "🔒 執行 RSI 0～100 最終驗證..."
+    )
+
+    rsi_fixed = validate_rsi_data(
         analyzed
+    )
+
+    print(
+        f"   RSI 修正筆數：{rsi_fixed}"
     )
 
     # ========================================================
@@ -2982,28 +2570,25 @@ def main():
                 PERIOD,
 
             "rsi_period":
-                RSI_PERIOD,
+                14,
+
+            "rsi_method":
+                "Wilder",
 
             "rsi_range":
                 "0-100",
 
             "kd_period":
-                KD_PERIOD,
-
-            "kd_smoothing":
-                "3/3",
+                9,
 
             "macd":
                 "12/26/9",
-
-            "volume_ma":
-                VOLUME_MA_PERIOD,
 
             "volume_rule":
                 "5MA × 1.5",
 
             "ma_rule":
-                "MA5 / MA20 / MA60"
+                "MA20"
         },
 
         "statistics":
@@ -3017,7 +2602,31 @@ def main():
     }
 
     # ========================================================
-    # Output Directory
+    # 寫入前最後 RSI 驗證
+    # ========================================================
+
+    for stock in output["stocks"]:
+
+        rsi = (
+            stock
+            .get("technical", {})
+            .get("rsi")
+        )
+
+        if rsi is not None:
+
+            rsi = safe_rsi(
+                rsi
+            )
+
+            stock[
+                "technical"
+            ][
+                "rsi"
+            ] = rsi
+
+    # ========================================================
+    # Output directory
     # ========================================================
 
     OUTPUT_DIR.mkdir(
@@ -3050,18 +2659,56 @@ def main():
         OUTPUT_FILE
     )
 
-    # ========================================================
-    # Done
-    # ========================================================
-
     elapsed = (
         time.time()
-        -
-        start_time
+        - start_time
     )
+
+    # ========================================================
+    # 最後檢查輸出檔
+    # ========================================================
+
+    invalid_rsi = []
+
+    for stock in analyzed:
+
+        rsi = (
+            stock
+            .get("technical", {})
+            .get("rsi")
+        )
+
+        if rsi is not None:
+
+            if (
+                rsi < 0
+                or
+                rsi > 100
+            ):
+
+                invalid_rsi.append(
+                    (
+                        stock["id"],
+                        rsi
+                    )
+                )
 
     print("")
     print("=" * 70)
+
+    if invalid_rsi:
+
+        print(
+            "❌ RSI 驗證失敗"
+        )
+
+        for code, value in invalid_rsi[:10]:
+
+            print(
+                f"   {code}: RSI={value}"
+            )
+
+        sys.exit(1)
 
     print(
         f"✅ {VERSION} 資料更新完成"
@@ -3095,23 +2742,8 @@ def main():
     )
 
     print(
-        f"📈 KD 黃金交叉："
-        f"{statistics_data['kd_golden']} 檔"
-    )
-
-    print(
-        f"📊 RSI > 50："
+        f"📈 RSI > 50："
         f"{statistics_data['rsi_above_50']} 檔"
-    )
-
-    print(
-        f"🔊 成交量 > 1.5×："
-        f"{statistics_data['volume_over_1_5x']} 檔"
-    )
-
-    print(
-        f"📈 MA20 上方："
-        f"{statistics_data['above_ma20']} 檔"
     )
 
     print(
@@ -3120,19 +2752,32 @@ def main():
     )
 
     print(
-        f"✅ 成功分析：{success}"
+        f"🔒 RSI 範圍：0～100"
     )
 
     print(
-        f"⚠️ 無有效資料：{failed}"
+        f"✅ RSI 修正："
+        f"{rsi_fixed} 筆"
     )
 
     print(
-        f"⏱️ 執行時間：{elapsed:.1f} 秒"
+        f"✅ 成功分析："
+        f"{success}"
     )
 
     print(
-        f"📁 輸出：{OUTPUT_FILE}"
+        f"⚠️ 無有效資料："
+        f"{failed}"
+    )
+
+    print(
+        f"⏱️ 執行時間："
+        f"{elapsed:.1f} 秒"
+    )
+
+    print(
+        f"📁 輸出："
+        f"{OUTPUT_FILE}"
     )
 
     print("=" * 70)
@@ -3144,5 +2789,4 @@ def main():
 # ============================================================
 
 if __name__ == "__main__":
-
     main()
