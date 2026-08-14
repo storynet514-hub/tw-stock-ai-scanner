@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>台股 AI 選股與動態風控系統</title>
+  <title>台股 AI 選股儀表板</title>
   <style>
     :root {
       --bg-color: #0f172a;
@@ -22,10 +22,7 @@
     /* 頂部總覽儀表板 */
     .dashboard-header { background: var(--card-bg); border: 1px solid var(--card-border); border-radius: 12px; padding: 16px; margin-bottom: 20px; }
     .dashboard-title { font-size: 1.25rem; font-weight: bold; margin-bottom: 6px; }
-    .update-time { color: var(--accent-blue); font-size: 0.85rem; margin-bottom: 12px; }
-    
-    .stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; font-size: 0.9rem; color: var(--text-muted); }
-    .stats-grid span { color: var(--text-main); font-weight: 600; }
+    .update-time { color: var(--accent-blue); font-size: 0.85rem; }
 
     /* 個股卡片列表 */
     .stock-list { display: flex; flex-direction: column; gap: 16px; }
@@ -40,125 +37,84 @@
     .symbol-text { font-size: 0.8rem; color: var(--text-muted); margin-bottom: 12px; }
 
     /* 核心訊號與風控區塊 */
-    .signal-box { background: rgba(255, 255, 255, 0.03); border: 1px solid var(--card-border); border-radius: 8px; padding: 12px; margin-bottom: 12px; }
+    .signal-box { background: rgba(255, 255, 255, 0.03); border: 1px solid var(--card-border); border-radius: 8px; padding: 12px; }
     .signal-row { display: flex; justify-content: space-between; font-size: 0.85rem; margin-bottom: 6px; }
     .signal-row:last-child { margin-bottom: 0; }
-
-    /* 定投與持股損益區塊 */
-    .user-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; font-size: 0.8rem; background: rgba(0, 0, 0, 0.2); padding: 10px; border-radius: 8px; }
-    .user-stats div { color: var(--text-muted); }
-    .user-stats span { font-weight: 600; }
   </style>
 </head>
 <body>
 
   <!-- 頂部儀表板總覽 -->
   <div class="dashboard-header">
-    <div class="dashboard-title">台股 AI 選股與風控儀表板</div>
-    <div class="update-time" id="updateTime">正在讀取後台 JSON 數據...</div>
-    <div class="stats-grid">
-      <div>總投入成本：<span id="totalCost">NT --</span></div>
-      <div>總當前市值：<span id="totalValue">NT --</span></div>
-      <div>未實現損益：<span id="totalPnl">NT --</span></div>
-      <div>整體報酬率：<span id="totalRoi">--%</span></div>
-    </div>
+    <div class="dashboard-title">台股 AI 選股儀表板</div>
+    <div class="update-time" id="updateTime">正在讀取 Data/prices.json...</div>
   </div>
 
   <!-- 個股卡片容器 -->
   <div class="stock-list" id="stockListContainer"></div>
 
   <script>
-    // 貫徹「前台純讀取」原則：僅從 Data/ 資料夾抓取 JSON，不做二次計算與條件判斷
+    // 只精準抓取 Data/prices.json 單一檔案
     async function loadDashboardData() {
       try {
-        // 並行請求三個後台產出的 JSON 資料檔
-        const [resPrices, resPortfolio, resRisk] = await Promise.all([
-          fetch('./Data/prices.json'),
-          fetch('./Data/portfolio.json'),
-          fetch('./Data/risk.json')
-        ]);
-
-        const pricesData = await resPrices.json();
-        const portfolioData = await resPortfolio.json();
-        const riskData = await resRisk.json();
-
-        // 1. 顯示後台紀錄的更新時間
-        document.getElementById('updateTime').innerText = `資料更新時間：${pricesData.update_time || '未知'}`;
-
-        // 2. 顯示頂部總計（直接讀取 portfolio.json 後台彙整好的 summary）
-        if (portfolioData.summary) {
-          const summary = portfolioData.summary;
-          document.getElementById('totalCost').innerText = `NT ${summary.total_cost.toLocaleString()}`;
-          document.getElementById('totalValue').innerText = `NT ${summary.total_market_value.toLocaleString()}`;
-          
-          const pnlElem = document.getElementById('totalPnl');
-          pnlElem.innerText = `NT ${summary.total_pnl > 0 ? '+' : ''}${summary.total_pnl.toLocaleString()}`;
-          pnlElem.className = summary.total_pnl > 0 ? 'price-up' : (summary.total_pnl < 0 ? 'price-down' : '');
-
-          const roiElem = document.getElementById('totalRoi');
-          roiElem.innerText = `${summary.total_roi}%`;
-          roiElem.className = summary.total_pnl > 0 ? 'price-up' : (summary.total_pnl < 0 ? 'price-down' : '');
+        const res = await fetch('./Data/prices.json');
+        
+        if (!res.ok) {
+          throw new Error(`HTTP 錯誤! 狀態碼: ${res.status}`);
         }
 
-        // 3. 渲染個股列表
-        renderStockCards(pricesData.stocks, portfolioData.stocks, riskData.stocks);
+        const data = await res.json();
+
+        // 1. 顯示資料更新時間
+        document.getElementById('updateTime').innerText = `資料更新時間：${data.update_time || '最新'}`;
+
+        // 2. 渲染個股資料
+        renderStockCards(data.stocks || data);
 
       } catch (error) {
-        console.error("讀取後台 JSON 資料失敗:", error);
-        document.getElementById('updateTime').innerText = "數據讀取失敗，請確認 Data/ 內已有 prices.json, portfolio.json, risk.json 檔案。";
+        console.error("讀取 prices.json 失敗:", error);
+        document.getElementById('updateTime').innerText = "數據讀取失敗，請確認 Data/prices.json 路徑與內容格式是否正確。";
       }
     }
 
-    // 渲染 UI（純 DOM 寫入，無條件判斷）
-    function renderStockCards(prices, portfolio, risk) {
+    // 100% 照後台 JSON 結果顯示，零二次計算
+    function renderStockCards(stocks) {
       const container = document.getElementById("stockListContainer");
       let html = "";
 
-      Object.keys(prices).forEach(symbol => {
-        const p = prices[symbol];
-        const pf = portfolio[symbol] || {};
-        const r = risk[symbol] || {};
-
-        const priceClass = p.change >= 0 ? "price-up" : "price-down";
-        const pnlClass = pf.pnl > 0 ? "price-up" : (pf.pnl < 0 ? "price-down" : "");
+      Object.keys(stocks).forEach(symbol => {
+        const item = stocks[symbol];
+        const priceClass = (item.change && item.change >= 0) ? "price-up" : "price-down";
 
         html += `
           <div class="stock-card">
-            <!-- 股名、最新價、AI Score -->
+            <!-- 標題：股票名稱、現價、AI分數 -->
             <div class="card-header">
               <div class="stock-name">
-                ${p.name} <span class="${priceClass}">${p.price}</span>
+                ${item.name || symbol} <span class="${priceClass}">${item.price || '--'}</span>
               </div>
-              <div class="ai-score-badge">AI SCORE: ${p.ai_score} / 100</div>
+              <div class="ai-score-badge">AI SCORE: ${item.ai_score ?? '--'} / 100</div>
             </div>
             <div class="symbol-text">${symbol}</div>
 
-            <!-- 後台算好的訊號與風控數據 -->
+            <!-- 後台計算好的訊號結果 -->
             <div class="signal-box">
               <div class="signal-row">
                 <span>核心買入訊號：</span>
-                <span style="font-weight: bold;">${p.core_signal ? '🟢 通過 (' + p.core_conditions_passed + '/6 條件)' : '⚪ 未滿足'}</span>
+                <span style="font-weight: bold;">
+                  ${item.core_signal ? '🟢 通過 (' + (item.core_conditions_passed || 0) + '/6 條件)' : '⚪ 未滿足'}
+                </span>
               </div>
+              ${item.risk_level ? `
               <div class="signal-row">
-                <span>風控等級：</span>
-                <span>${r.risk_level || '未判定'}</span>
-              </div>
+                <span>風控狀態：</span>
+                <span>${item.risk_level}</span>
+              </div>` : ''}
+              ${item.stop_loss ? `
               <div class="signal-row">
-                <span>策略停損點 (-2.5%)：</span>
-                <span class="price-down">${r.stop_loss || '--'}</span>
-              </div>
-              <div class="signal-row">
-                <span>目標停利點 (+6% / +10%)：</span>
-                <span class="price-up">${r.take_profit_1 || '--'} / ${r.take_profit_2 || '--'}</span>
-              </div>
-            </div>
-
-            <!-- 後台算好的定投持股損益 -->
-            <div class="user-stats">
-              <div>累積股數：<span>${pf.accumulated_shares || 0} 股</span></div>
-              <div>平均成本：<span>${pf.avg_cost || 0}</span></div>
-              <div>目前市值：<span>NT ${(pf.market_value || 0).toLocaleString()}</span></div>
-              <div>未實現損益：<span class="${pnlClass}">NT ${(pf.pnl || 0).toLocaleString()} (${pf.roi || '0.00'}%)</span></div>
+                <span>策略停損點：</span>
+                <span class="price-down">${item.stop_loss}</span>
+              </div>` : ''}
             </div>
           </div>
         `;
@@ -167,7 +123,6 @@
       container.innerHTML = html;
     }
 
-    // 頁面加載時自動讀取資料
     window.onload = loadDashboardData;
   </script>
 </body>
