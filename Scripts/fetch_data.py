@@ -1,65 +1,76 @@
 # ============================================================
 # 台股 AI 選股・零股定投・動態風控
-# fetch_data.py V7.3 正式版
+# fetch_data.py V7.4 正式版
 #
-# V7.3 核心修正：
+# V7.4 核心修正：
 #
 # 1. 官方市場清單優先
-#    - TWSE ISIN / Securities List
-#    - 上市股票
-#    - 上櫃股票
-#    - 上市 ETF
+#    - TWSE ISIN
+#    - TWSE 上市
+#    - TPEx 上櫃
+#    - ETF
 #
-# 2. 不再依賴單一 TPEx API 欄位名稱
+# 2. 不依賴單一 TPEx API 欄位名稱
 #
 # 3. 支援：
 #    - 4 碼股票
 #    - 5 碼股票
 #    - 6 碼 ETF
-#    - A / B / L / R / U / T 等 ETF 代號
+#    - A / B / L / R / U / T 等代號
 #
-# 4. 0050 / 0056 / 00713 / 00878 / 00919
-#    等關鍵標的強制驗證
+# 4. 關鍵標的強制驗證
 #
 # 5. Yahoo Finance：
 #    - 上市 STOCK -> .TW
 #    - 上市 ETF   -> .TW
 #    - 上櫃 STOCK -> .TWO
 #
-# 6. 平行下載 Yahoo Finance
-#    - 大幅降低 2,000+ 標的掃描時間
+# 6. Yahoo Finance 重試機制
 #
-# 7. 單一標的失敗不影響其他標的
+# 7. Yahoo Finance MultiIndex / Series 防護
 #
-# 8. RSI 強制限制 0~100
+# 8. 單一標的失敗不影響其他標的
 #
-# 9. KD 強制限制 0~100
+# 9. RSI 強制限制 0~100
 #
-# 10. AI SCORE 保留 V7.2 邏輯
+# 10. KD 強制限制 0~100
 #
 # 11. MACD 黃金交叉
+#
 # 12. RSI > 50
+#
 # 13. KD 黃金交叉
+#
 # 14. 成交量 >= 1.5x MA5
+#
 # 15. 站上 MA20
+#
 # 16. MA20 向上
 #
-# 17. DCA 四段式
+# 17. AI SCORE 保留 V7.3 邏輯
 #
-# 18. rankings / statistics / failed 保留
+# 18. DCA 四段式
 #
-# 19. JSON 結構維持 V7.2 相容
+# 19. rankings / statistics / failed 保留
 #
-# 20. V7.3 市場清單完整性驗證
+# 20. JSON 結構維持 V7.3 相容
+#
+# 21. V7.4 強化資料型態驗證
+#
+# 22. V7.4 強化 Yahoo 資料完整性驗證
+#
+# 23. V7.4 防止 RSI / KD / Price 欄位錯位
+#
+# 24. V7.4 防止無效 ISIN 被當成股票代號
 #
 # ============================================================
+
 
 import os
 import sys
 import json
 import math
 import time
-import traceback
 from datetime import datetime, timezone, timedelta
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
@@ -77,7 +88,7 @@ except ImportError:
 # 基本設定
 # ============================================================
 
-VERSION = "V7.3"
+VERSION = "V7.4"
 
 BASE_DIR = os.path.dirname(
     os.path.dirname(
@@ -111,7 +122,7 @@ TW_TZ = timezone(
 
 
 # ============================================================
-# Yahoo Finance 設定
+# Yahoo Finance
 # ============================================================
 
 REQUEST_TIMEOUT = 20
@@ -120,20 +131,19 @@ YF_PERIOD = "1y"
 
 YF_INTERVAL = "1d"
 
-MAX_RETRY = 2
+MAX_RETRY = 3
 
-# V7.3 平行工作數
-#
-# 不建議設太高，避免 Yahoo throttling。
-#
-MAX_WORKERS = 8
+RETRY_DELAY = 1.2
+
+MAX_WORKERS = 6
 
 
 # ============================================================
-# HTTP
+# HTTP Headers
 # ============================================================
 
 HEADERS = {
+
     "User-Agent":
         (
             "Mozilla/5.0 "
@@ -142,18 +152,18 @@ HEADERS = {
             "(KHTML, like Gecko) "
             "Chrome/126.0 Safari/537.36"
         ),
+
     "Accept":
         "application/json,text/plain,*/*",
+
     "Accept-Language":
         "zh-TW,zh;q=0.9,en;q=0.8"
+
 }
 
 
 # ============================================================
 # 關鍵標的
-#
-# 不是主要市場清單。
-# 只用於驗證市場清單是否正常。
 # ============================================================
 
 KEY_SYMBOLS = {
@@ -178,7 +188,7 @@ KEY_SYMBOLS = {
 
 
 # ============================================================
-# 安全數字
+# 安全浮點數
 # ============================================================
 
 def safe_float(
@@ -189,6 +199,7 @@ def safe_float(
     try:
 
         if value is None:
+
             return default
 
         if isinstance(
@@ -222,6 +233,34 @@ def safe_float(
 
 
 # ============================================================
+# 安全整數
+# ============================================================
+
+def safe_int(
+    value,
+    default=None
+):
+
+    number = safe_float(
+        value
+    )
+
+    if number is None:
+
+        return default
+
+    try:
+
+        return int(
+            number
+        )
+
+    except Exception:
+
+        return default
+
+
+# ============================================================
 # 四捨五入
 # ============================================================
 
@@ -235,6 +274,7 @@ def round_value(
     )
 
     if number is None:
+
         return None
 
     return round(
@@ -252,6 +292,7 @@ def clean_code(
 ):
 
     if value is None:
+
         return None
 
     text = str(
@@ -304,12 +345,22 @@ def valid_taiwan_code(
     )
 
     if not code:
+
         return False
 
     if len(code) < 4:
+
         return False
 
     if len(code) > 6:
+
+        return False
+
+    # 排除 ISIN
+    if code.upper().startswith(
+        "TW"
+    ):
+
         return False
 
     for char in code:
@@ -402,20 +453,14 @@ def http_get_json(
             ):
 
                 time.sleep(
-                    1
+                    RETRY_DELAY
                 )
 
     return None
 
 
 # ============================================================
-# TWSE ISIN 市場清單
-#
-# 官方：
-# https://isin.twse.com.tw/isin/
-#
-# 使用公開證券清單，
-# 避免依賴單一行情 API。
+# TWSE ISIN
 # ============================================================
 
 def fetch_twse_isin_list(
@@ -457,11 +502,6 @@ def fetch_twse_isin_list(
 
         if not tables:
 
-            print(
-                f"ISIN mode={mode} "
-                f"沒有表格"
-            )
-
             return []
 
         table = tables[0]
@@ -470,47 +510,41 @@ def fetch_twse_isin_list(
 
             return []
 
-        # ----------------------------------------------------
-        # 正規化欄位
-        # ----------------------------------------------------
-
-        table.columns = [
-            str(column)
-            for column in table.columns
-        ]
-
         result = []
-
-        # ----------------------------------------------------
-        # 尋找欄位
-        # ----------------------------------------------------
 
         for _, row in table.iterrows():
 
-            values = [
-                str(x).strip()
-                for x in row.tolist()
-            ]
+            values = []
 
-            if len(values) < 5:
+            for value in row.tolist():
+
+                if pd.isna(
+                    value
+                ):
+
+                    continue
+
+                text = str(
+                    value
+                ).strip()
+
+                if text:
+
+                    values.append(
+                        text
+                    )
+
+            if not values:
+
                 continue
-
-            # 常見格式：
-            #
-            # ISIN
-            # 證券代號
-            # 證券名稱
-            # 市場
-            # 有價證券類別
-            #
-            # 因不同頁面可能有空欄，
-            # 所以採內容判斷。
-            # ------------------------------------------------
 
             code = None
             name = None
-            market_text = ""
-            type_text = ""
+
+            # ------------------------------------------------
+            # 第一優先：
+            # 找真正股票代號
+            # ------------------------------------------------
 
             for value in values:
 
@@ -518,87 +552,45 @@ def fetch_twse_isin_list(
                     value
                 )
 
-                if (
+                if not valid_taiwan_code(
                     candidate
+                ):
+
+                    continue
+
+                # 股票代號一般為純數字
+                # 或特殊英文代號
+                if (
+                    candidate.isdigit()
                     and
-                    valid_taiwan_code(
-                        candidate
+                    4 <= len(candidate) <= 6
+                ):
+
+                    code = candidate
+
+                    break
+
+                if (
+                    any(
+                        char.isalpha()
+                        for char in candidate
                     )
+                    and
+                    4 <= len(candidate) <= 6
                 ):
 
-                    # 排除純數字但不是證券代號的內容
-                    if (
-                        len(candidate)
-                        >= 4
-                        and
-                        len(candidate)
-                        <= 6
-                    ):
+                    code = candidate
 
-                        if (
-                            code is None
-                            or
-                            candidate.startswith(
-                                "0"
-                            )
-                        ):
-
-                            code = candidate
-
-            # ------------------------------------------------
-            # 找市場 / 類別
-            # ------------------------------------------------
-
-            lower_values = [
-                value.lower()
-                for value in values
-            ]
-
-            for value in lower_values:
-
-                if (
-                    "twse listed"
-                    in value
-                    or
-                    "上市"
-                    in value
-                ):
-
-                    market_text = value
-
-                elif (
-                    "tpex"
-                    in value
-                    or
-                    "上櫃"
-                    in value
-                ):
-
-                    market_text = value
-
-                if (
-                    "etf"
-                    in value
-                    or
-                    "股票"
-                    in value
-                    or
-                    "stock"
-                    in value
-                ):
-
-                    type_text = value
-
-            # ------------------------------------------------
-            # 第二階段：
-            # 根據原始表格位置判斷
-            # ------------------------------------------------
+                    break
 
             if code is None:
 
                 continue
 
-            # 證券名稱通常在代號之後
+            # ------------------------------------------------
+            # 找名稱
+            # ------------------------------------------------
+
             try:
 
                 code_index = values.index(
@@ -611,21 +603,21 @@ def fetch_twse_isin_list(
                     len(values)
                 ):
 
-                    name_candidate = values[
-                        code_index + 1
-                    ]
+                    candidate_name = (
+                        values[
+                            code_index + 1
+                        ]
+                    )
 
                     if (
-                        name_candidate
+                        candidate_name
                         and
                         not valid_taiwan_code(
-                            name_candidate
+                            candidate_name
                         )
                     ):
 
-                        name = (
-                            name_candidate
-                        )
+                        name = candidate_name
 
             except Exception:
 
@@ -633,40 +625,22 @@ def fetch_twse_isin_list(
 
             if not name:
 
-                for value in values:
-
-                    if (
-                        value
-                        and
-                        value != code
-                        and
-                        not valid_taiwan_code(
-                            value
-                        )
-                        and
-                        "TW000" not in value
-                        and
-                        "ISIN" not in value.upper()
-                    ):
-
-                        name = value
-
-                        break
-
-            if not name:
-
                 name = code
+
+            combined = " ".join(
+                values
+            ).lower()
 
             # ------------------------------------------------
             # 判斷市場
             # ------------------------------------------------
 
             if (
-                "tpex"
-                in market_text
-                or
                 "上櫃"
-                in market_text
+                in combined
+                or
+                "tpex"
+                in combined
             ):
 
                 market = "上櫃"
@@ -676,14 +650,19 @@ def fetch_twse_isin_list(
                 market = "上市"
 
             # ------------------------------------------------
-            # 判斷類別
+            # 判斷 ETF
             # ------------------------------------------------
 
-            combined = " ".join(
-                lower_values
-            )
-
-            if "etf" in combined:
+            if (
+                "etf"
+                in combined
+                or
+                "指數股票型"
+                in combined
+                or
+                "受益憑證"
+                in combined
+            ):
 
                 security_type = "ETF"
 
@@ -692,48 +671,85 @@ def fetch_twse_isin_list(
                 security_type = "STOCK"
 
             # ------------------------------------------------
-            # 排除非股票/ETF
+            # 排除不需要的金融商品
             # ------------------------------------------------
 
             invalid_keywords = [
-                "warrant",
+
                 "權證",
-                "受益證券",
-                "認購",
-                "認售",
+
+                "認購權證",
+
+                "認售權證",
+
                 "公司債",
+
                 "債券",
-                "convertible",
-                "call",
-                "put"
+
+                "海外存託",
+
+                "存託憑證",
+
+                "受益證券"
+
             ]
 
-            is_invalid = any(
-                keyword in combined
-                for keyword
-                in invalid_keywords
-            )
+            invalid = False
 
-            if is_invalid:
+            for keyword in invalid_keywords:
+
+                if keyword in combined:
+
+                    invalid = True
+
+                    break
+
+            if invalid:
 
                 continue
 
             result.append(
                 {
-                    "id": code,
-                    "name": name,
-                    "market": market,
-                    "type": security_type,
-                    "source": (
+                    "id":
+                        code,
+
+                    "name":
+                        name,
+
+                    "market":
+                        market,
+
+                    "type":
+                        security_type,
+
+                    "source":
                         "TWSE ISIN"
-                        if mode == 2
-                        else
-                        "TWSE ISIN/OTC"
-                    )
                 }
             )
 
-        return result
+        # ----------------------------------------------------
+        # 去重
+        # ----------------------------------------------------
+
+        unique = {}
+
+        for item in result:
+
+            code = item.get(
+                "id"
+            )
+
+            if not code:
+
+                continue
+
+            unique[
+                code
+            ] = item
+
+        return list(
+            unique.values()
+        )
 
     except Exception as error:
 
@@ -768,9 +784,13 @@ def fetch_twse_stock_list():
     for item in data:
 
         if (
-            item["market"] == "上市"
+            item.get(
+                "market"
+            ) == "上市"
             and
-            item["type"] == "STOCK"
+            item.get(
+                "type"
+            ) == "STOCK"
         ):
 
             result.append(
@@ -778,14 +798,14 @@ def fetch_twse_stock_list():
             )
 
     # --------------------------------------------------------
-    # 若 ISIN 解析不足，使用 TWSE STOCK_DAY_ALL
+    # TWSE API 備援
     # --------------------------------------------------------
 
     if len(result) < 900:
 
         print(
             "上市 ISIN 清單不足，"
-            "啟用 TWSE 行情備援..."
+            "啟用 TWSE STOCK_DAY_ALL 備援..."
         )
 
         url = (
@@ -803,6 +823,13 @@ def fetch_twse_stock_list():
         ):
 
             for row in backup:
+
+                if not isinstance(
+                    row,
+                    dict
+                ):
+
+                    continue
 
                 code = clean_code(
                     row.get(
@@ -824,29 +851,41 @@ def fetch_twse_stock_list():
                     continue
 
                 if not name:
+
                     continue
 
                 result.append(
                     {
-                        "id": code,
-                        "name": name,
-                        "market": "上市",
-                        "type": "STOCK",
-                        "source": "TWSE"
+                        "id":
+                            code,
+
+                        "name":
+                            name,
+
+                        "market":
+                            "上市",
+
+                        "type":
+                            "STOCK",
+
+                        "source":
+                            "TWSE"
                     }
                 )
-
-    # --------------------------------------------------------
-    # 去重
-    # --------------------------------------------------------
 
     unique = {}
 
     for item in result:
 
-        unique[
-            item["id"]
-        ] = item
+        code = item.get(
+            "id"
+        )
+
+        if code:
+
+            unique[
+                code
+            ] = item
 
     result = list(
         unique.values()
@@ -862,12 +901,6 @@ def fetch_twse_stock_list():
 
 # ============================================================
 # TPEx 上櫃股票
-#
-# 第一來源：
-# TPEx 公開 API
-#
-# 第二來源：
-# TWSE/ISIN 公開證券清單
 # ============================================================
 
 def fetch_tpex_stock_list():
@@ -881,10 +914,6 @@ def fetch_tpex_stock_list():
     )
 
     result = []
-
-    # --------------------------------------------------------
-    # TPEx 公開 API
-    # --------------------------------------------------------
 
     urls = [
 
@@ -933,30 +962,47 @@ def fetch_tpex_stock_list():
             name = None
 
             code_keys = [
+
                 "SecuritiesCompanyCode",
+
                 "Code",
+
                 "證券代號",
-                "公司代號"
+
+                "公司代號",
+
+                "SecuritiesCode"
+
             ]
 
             name_keys = [
+
                 "CompanyName",
+
                 "Name",
+
                 "證券名稱",
+
                 "公司名稱"
+
             ]
 
             for key in code_keys:
 
                 if key in row:
 
-                    code = clean_code(
+                    candidate = clean_code(
                         row.get(
                             key
                         )
                     )
 
-                    if code:
+                    if valid_taiwan_code(
+                        candidate
+                    ):
+
+                        code = candidate
+
                         break
 
             for key in name_keys:
@@ -991,11 +1037,20 @@ def fetch_tpex_stock_list():
 
             temp.append(
                 {
-                    "id": code,
-                    "name": name,
-                    "market": "上櫃",
-                    "type": "STOCK",
-                    "source": "TPEx"
+                    "id":
+                        code,
+
+                    "name":
+                        name,
+
+                    "market":
+                        "上櫃",
+
+                    "type":
+                        "STOCK",
+
+                    "source":
+                        "TPEx"
                 }
             )
 
@@ -1010,7 +1065,7 @@ def fetch_tpex_stock_list():
             break
 
     # --------------------------------------------------------
-    # ISIN / 官方證券清單備援
+    # 官方 ISIN 補齊
     # --------------------------------------------------------
 
     if len(result) < 700:
@@ -1020,27 +1075,25 @@ def fetch_tpex_stock_list():
             "使用官方 ISIN 清單補齊..."
         )
 
-        isin_otc = (
-            fetch_twse_isin_list(
-                4
-            )
+        isin_otc = fetch_twse_isin_list(
+            4
         )
 
         for item in isin_otc:
 
             if (
-                item["market"] == "上櫃"
+                item.get(
+                    "market"
+                ) == "上櫃"
                 and
-                item["type"] == "STOCK"
+                item.get(
+                    "type"
+                ) == "STOCK"
             ):
 
                 result.append(
                     item
                 )
-
-    # --------------------------------------------------------
-    # 最終去重
-    # --------------------------------------------------------
 
     unique = {}
 
@@ -1050,12 +1103,11 @@ def fetch_tpex_stock_list():
             "id"
         )
 
-        if not code:
-            continue
+        if code:
 
-        unique[
-            code
-        ] = item
+            unique[
+                code
+            ] = item
 
     result = list(
         unique.values()
@@ -1070,9 +1122,7 @@ def fetch_tpex_stock_list():
 
 
 # ============================================================
-# ETF 官方清單
-#
-# 優先使用 TWSE ETF e添富 / ISIN。
+# ETF
 # ============================================================
 
 def fetch_twse_etf_list():
@@ -1087,10 +1137,6 @@ def fetch_twse_etf_list():
 
     result = []
 
-    # --------------------------------------------------------
-    # ISIN
-    # --------------------------------------------------------
-
     for mode in [
         2,
         4
@@ -1104,18 +1150,14 @@ def fetch_twse_etf_list():
 
             if item.get(
                 "type"
-            ) != "ETF":
+            ) == "ETF":
 
-                continue
-
-            result.append(
-                item
-            )
+                result.append(
+                    item
+                )
 
     # --------------------------------------------------------
-    # 重要 ETF 最低保證
-    #
-    # 只作保底，不是主要掃描來源。
+    # 關鍵 ETF 保底
     # --------------------------------------------------------
 
     fallback = [
@@ -1148,28 +1190,36 @@ def fetch_twse_etf_list():
     ]
 
     existing = {
-        item["id"]
+        item.get(
+            "id"
+        )
         for item in result
     }
 
     for code, name in fallback:
 
         if code in existing:
+
             continue
 
         result.append(
             {
-                "id": code,
-                "name": name,
-                "market": "上市",
-                "type": "ETF",
-                "source": "ETF fallback"
+                "id":
+                    code,
+
+                "name":
+                    name,
+
+                "market":
+                    "上市",
+
+                "type":
+                    "ETF",
+
+                "source":
+                    "ETF fallback"
             }
         )
-
-    # --------------------------------------------------------
-    # 去重
-    # --------------------------------------------------------
 
     unique = {}
 
@@ -1180,6 +1230,7 @@ def fetch_twse_etf_list():
         )
 
         if not code:
+
             continue
 
         unique[
@@ -1224,12 +1275,6 @@ def build_market_list():
         etf
     )
 
-    # --------------------------------------------------------
-    # 去重
-    #
-    # ETF 優先。
-    # --------------------------------------------------------
-
     unique = {}
 
     for item in all_items:
@@ -1240,11 +1285,15 @@ def build_market_list():
             )
         )
 
-        if not code:
+        if not valid_taiwan_code(
+            code
+        ):
+
             continue
 
         item["id"] = code
 
+        # ETF 優先
         if (
             code not in unique
             or
@@ -1265,54 +1314,52 @@ def build_market_list():
     # 排序
     # --------------------------------------------------------
 
-    def sort_key(
-        item
-    ):
+    market_order = {
+        "上市": 1,
+        "上櫃": 2
+    }
 
-        market_order = {
-            "上市": 1,
-            "上櫃": 2
-        }
+    type_order = {
+        "STOCK": 1,
+        "ETF": 2
+    }
 
-        type_order = {
-            "STOCK": 1,
-            "ETF": 2
-        }
-
-        return (
+    market_list.sort(
+        key=lambda item: (
             market_order.get(
                 item.get(
                     "market"
                 ),
                 9
             ),
+
             type_order.get(
                 item.get(
                     "type"
                 ),
                 9
             ),
-            item.get(
-                "id",
-                ""
+
+            str(
+                item.get(
+                    "id",
+                    ""
+                )
             )
         )
-
-    market_list.sort(
-        key=sort_key
     )
-
-    # --------------------------------------------------------
-    # 統計
-    # --------------------------------------------------------
 
     listed = sum(
         1
         for item in market_list
         if (
-            item["market"] == "上市"
+            item.get(
+                "market"
+            ) == "上市"
             and
-            item["type"] == "STOCK"
+            item.get(
+                "type"
+            ) == "STOCK"
         )
     )
 
@@ -1320,16 +1367,22 @@ def build_market_list():
         1
         for item in market_list
         if (
-            item["market"] == "上櫃"
+            item.get(
+                "market"
+            ) == "上櫃"
             and
-            item["type"] == "STOCK"
+            item.get(
+                "type"
+            ) == "STOCK"
         )
     )
 
     etf_count = sum(
         1
         for item in market_list
-        if item["type"] == "ETF"
+        if item.get(
+            "type"
+        ) == "ETF"
     )
 
     print(
@@ -1341,7 +1394,7 @@ def build_market_list():
     )
 
     print(
-        "V7.3 全市場清單完成"
+        "V7.4 全市場清單完成"
     )
 
     print(
@@ -1372,7 +1425,7 @@ def build_market_list():
 
 
 # ============================================================
-# 市場清單關鍵驗證
+# 市場清單驗證
 # ============================================================
 
 def validate_market_list(
@@ -1384,11 +1437,13 @@ def validate_market_list(
     )
 
     print(
-        "V7.3 市場清單完整性驗證："
+        "V7.4 市場清單完整性驗證："
     )
 
     code_map = {
-        item["id"]:
+        item.get(
+            "id"
+        ):
             item
         for item in market_list
     }
@@ -1415,10 +1470,10 @@ def validate_market_list(
 
             print(
                 f"✓ {code} "
-                f"{item['name']} "
+                f"{item.get('name')} "
                 f"| "
-                f"{item['market']} "
-                f"{item['type']}"
+                f"{item.get('market')} "
+                f"{item.get('type')}"
             )
 
     if passed:
@@ -1472,15 +1527,29 @@ def calculate_rsi(
         adjust=False
     ).mean()
 
-    rs = (
-        avg_gain /
-        avg_loss.replace(
-            0,
-            np.nan
-        )
+    # --------------------------------------------------------
+    # RSI 防止除以 0
+    # --------------------------------------------------------
+
+    rsi = pd.Series(
+        np.nan,
+        index=close.index,
+        dtype=float
     )
 
-    rsi = (
+    normal = (
+        avg_loss > 0
+    )
+
+    rs = (
+        avg_gain[normal]
+        /
+        avg_loss[normal]
+    )
+
+    rsi.loc[
+        normal
+    ] = (
         100 -
         (
             100 /
@@ -1488,14 +1557,18 @@ def calculate_rsi(
         )
     )
 
-    rsi = rsi.where(
-        avg_loss != 0,
-        100
+    # 沒有下跌時 RSI = 100
+    no_loss = (
+        avg_loss == 0
     )
 
+    rsi.loc[
+        no_loss
+    ] = 100
+
     return rsi.clip(
-        0,
-        100
+        lower=0,
+        upper=100
     )
 
 
@@ -1509,6 +1582,21 @@ def calculate_kd(
     close,
     period=9
 ):
+
+    high = pd.to_numeric(
+        high,
+        errors="coerce"
+    )
+
+    low = pd.to_numeric(
+        low,
+        errors="coerce"
+    )
+
+    close = pd.to_numeric(
+        close,
+        errors="coerce"
+    )
 
     lowest_low = low.rolling(
         period
@@ -1553,8 +1641,15 @@ def calculate_kd(
     ).mean()
 
     return (
-        k.clip(0, 100),
-        d.clip(0, 100)
+        k.clip(
+            0,
+            100
+        ),
+
+        d.clip(
+            0,
+            100
+        )
     )
 
 
@@ -1568,6 +1663,11 @@ def calculate_macd(
     slow=26,
     signal=9
 ):
+
+    close = pd.to_numeric(
+        close,
+        errors="coerce"
+    )
 
     ema_fast = close.ewm(
         span=fast,
@@ -1602,7 +1702,7 @@ def calculate_macd(
 
 
 # ============================================================
-# Series 最新值
+# 最新值
 # ============================================================
 
 def get_last_value(
@@ -1611,17 +1711,35 @@ def get_last_value(
 
     try:
 
+        if isinstance(
+            series,
+            pd.DataFrame
+        ):
+
+            if series.shape[1] != 1:
+
+                return None
+
+            series = series.iloc[
+                :,
+                0
+            ]
+
         series = pd.to_numeric(
             series,
             errors="coerce"
-        ).dropna()
+        )
+
+        series = series.dropna()
 
         if len(series) == 0:
 
             return None
 
-        return float(
-            series.iloc[-1]
+        value = series.iloc[-1]
+
+        return safe_float(
+            value
         )
 
     except Exception:
@@ -1630,7 +1748,180 @@ def get_last_value(
 
 
 # ============================================================
-# Yahoo 下載
+# Yahoo DataFrame 正規化
+# ============================================================
+
+def normalize_yahoo_dataframe(
+    df
+):
+
+    if df is None:
+
+        return None
+
+    if not isinstance(
+        df,
+        pd.DataFrame
+    ):
+
+        return None
+
+    if df.empty:
+
+        return None
+
+    try:
+
+        # ----------------------------------------------------
+        # MultiIndex
+        # ----------------------------------------------------
+
+        if isinstance(
+            df.columns,
+            pd.MultiIndex
+        ):
+
+            # 常見：
+            #
+            # Price / Ticker
+            #
+            # 或：
+            #
+            # Ticker / Price
+            #
+            # 只取第一層中符合 OHLCV 的欄位。
+            # ------------------------------------------------
+
+            wanted = {
+                "open",
+                "high",
+                "low",
+                "close",
+                "adj close",
+                "volume"
+            }
+
+            new_columns = []
+
+            for column in df.columns:
+
+                parts = [
+                    str(x).strip().lower()
+                    for x in column
+                ]
+
+                found = None
+
+                for part in parts:
+
+                    if part in wanted:
+
+                        found = part
+
+                        break
+
+                if found is None:
+
+                    new_columns.append(
+                        str(
+                            parts[-1]
+                        )
+                    )
+
+                else:
+
+                    new_columns.append(
+                        found
+                    )
+
+            df = df.copy()
+
+            df.columns = new_columns
+
+        else:
+
+            df = df.copy()
+
+            df.columns = [
+                str(column)
+                .strip()
+                .lower()
+                for column in df.columns
+            ]
+
+        # ----------------------------------------------------
+        # 去除重複欄位
+        # ----------------------------------------------------
+
+        if df.columns.duplicated().any():
+
+            df = df.loc[
+                :,
+                ~df.columns.duplicated()
+            ]
+
+        required = [
+            "open",
+            "high",
+            "low",
+            "close",
+            "volume"
+        ]
+
+        for column in required:
+
+            if column not in df.columns:
+
+                return None
+
+            df[column] = pd.to_numeric(
+                df[column],
+                errors="coerce"
+            )
+
+        # ----------------------------------------------------
+        # 清理
+        # ----------------------------------------------------
+
+        df = df.dropna(
+            subset=[
+                "close"
+            ]
+        )
+
+        df = df[
+            df["close"] > 0
+        ]
+
+        # ----------------------------------------------------
+        # 日期排序
+        # ----------------------------------------------------
+
+        try:
+
+            df = df.sort_index()
+
+        except Exception:
+
+            pass
+
+        # ----------------------------------------------------
+        # 最低歷史資料
+        # ----------------------------------------------------
+
+        if len(df) < 80:
+
+            return None
+
+        return df
+
+    except Exception:
+
+        return None
+
+
+# ============================================================
+# Yahoo Finance 下載
 # ============================================================
 
 def download_stock(
@@ -1655,102 +1946,62 @@ def download_stock(
                 interval=YF_INTERVAL,
                 auto_adjust=False,
                 progress=False,
-                threads=False
+                threads=False,
+                timeout=REQUEST_TIMEOUT
+            )
+
+            df = normalize_yahoo_dataframe(
+                df
             )
 
             if df is None:
 
                 raise ValueError(
-                    "Yahoo 回傳 None"
-                )
-
-            if df.empty:
-
-                raise ValueError(
-                    "Yahoo 無資料"
+                    "Yahoo 資料無效或欄位不足"
                 )
 
             # ------------------------------------------------
-            # MultiIndex
+            # 最後收盤價
             # ------------------------------------------------
 
-            if isinstance(
-                df.columns,
-                pd.MultiIndex
-            ):
-
-                df.columns = [
-                    column[0]
-                    for column in df.columns
-                ]
-
-            # ------------------------------------------------
-            # 欄位名稱
-            # ------------------------------------------------
-
-            df.columns = [
-                str(column)
-                .strip()
-                .lower()
-                for column in df.columns
-            ]
-
-            required = [
-                "open",
-                "high",
-                "low",
-                "close",
-                "volume"
-            ]
-
-            for column in required:
-
-                if column not in df.columns:
-
-                    raise ValueError(
-                        f"缺少欄位 {column}"
-                    )
-
-            # ------------------------------------------------
-            # 數字
-            # ------------------------------------------------
-
-            for column in required:
-
-                df[column] = pd.to_numeric(
-                    df[column],
-                    errors="coerce"
-                )
-
-            df = df.dropna(
-                subset=[
-                    "close"
-                ]
+            last_close = get_last_value(
+                df["close"]
             )
 
-            # MA60 + RSI/KD/MACD
-            if len(df) < 80:
+            if (
+                last_close is None
+                or
+                last_close <= 0
+            ):
 
                 raise ValueError(
-                    f"歷史資料不足："
-                    f"{len(df)}"
+                    "Yahoo 收盤價無效"
                 )
 
             return df
 
         except Exception as error:
 
+            print(
+                f"{code} "
+                f"Yahoo下載失敗 "
+                f"{attempt + 1}/{MAX_RETRY} "
+                f"| {error}"
+            )
+
             if (
                 attempt + 1
-                >=
+                <
                 MAX_RETRY
             ):
 
-                return None
-
-            time.sleep(
-                0.5
-            )
+                time.sleep(
+                    RETRY_DELAY
+                    *
+                    (
+                        attempt + 1
+                    )
+                )
 
     return None
 
@@ -1765,23 +2016,66 @@ def analyze_stock(
 ):
 
     code = item["id"]
+
     name = item["name"]
+
     market = item["market"]
+
     stock_type = item["type"]
 
     try:
 
-        close = df["close"]
+        close = pd.to_numeric(
+            df["close"],
+            errors="coerce"
+        )
 
-        high = df["high"]
+        high = pd.to_numeric(
+            df["high"],
+            errors="coerce"
+        )
 
-        low = df["low"]
+        low = pd.to_numeric(
+            df["low"],
+            errors="coerce"
+        )
 
-        volume = df["volume"]
+        volume = pd.to_numeric(
+            df["volume"],
+            errors="coerce"
+        )
 
-        # ----------------------------------------------------
+        valid_mask = (
+            close.notna()
+            &
+            high.notna()
+            &
+            low.notna()
+        )
+
+        close = close[
+            valid_mask
+        ]
+
+        high = high[
+            valid_mask
+        ]
+
+        low = low[
+            valid_mask
+        ]
+
+        volume = volume[
+            valid_mask
+        ]
+
+        if len(close) < 80:
+
+            return None
+
+        # ====================================================
         # MA
-        # ----------------------------------------------------
+        # ====================================================
 
         ma5 = close.rolling(
             5
@@ -1795,18 +2089,18 @@ def analyze_stock(
             60
         ).mean()
 
-        # ----------------------------------------------------
+        # ====================================================
         # RSI
-        # ----------------------------------------------------
+        # ====================================================
 
         rsi = calculate_rsi(
             close,
             14
         )
 
-        # ----------------------------------------------------
+        # ====================================================
         # KD
-        # ----------------------------------------------------
+        # ====================================================
 
         k, d = calculate_kd(
             high,
@@ -1814,9 +2108,9 @@ def analyze_stock(
             close
         )
 
-        # ----------------------------------------------------
+        # ====================================================
         # MACD
-        # ----------------------------------------------------
+        # ====================================================
 
         macd, macd_signal, macd_hist = (
             calculate_macd(
@@ -1824,9 +2118,9 @@ def analyze_stock(
             )
         )
 
-        # ----------------------------------------------------
+        # ====================================================
         # Volume
-        # ----------------------------------------------------
+        # ====================================================
 
         volume_ma5 = volume.rolling(
             5
@@ -1893,29 +2187,29 @@ def analyze_stock(
         )
 
         # ====================================================
-        # RSI 防呆
+        # RSI 強制 0~100
         # ====================================================
 
         if current_rsi is not None:
 
             current_rsi = max(
-                0,
+                0.0,
                 min(
-                    100,
+                    100.0,
                     current_rsi
                 )
             )
 
         # ====================================================
-        # KD 防呆
+        # KD 強制 0~100
         # ====================================================
 
         if current_k is not None:
 
             current_k = max(
-                0,
+                0.0,
                 min(
-                    100,
+                    100.0,
                     current_k
                 )
             )
@@ -1923,9 +2217,9 @@ def analyze_stock(
         if current_d is not None:
 
             current_d = max(
-                0,
+                0.0,
                 min(
-                    100,
+                    100.0,
                     current_d
                 )
             )
@@ -1943,7 +2237,8 @@ def analyze_stock(
         ):
 
             volume_ratio = (
-                current_volume /
+                current_volume
+                /
                 current_volume_ma5
             )
 
@@ -1962,14 +2257,16 @@ def analyze_stock(
         ):
 
             change = (
-                current_price -
+                current_price
+                -
                 previous_price
             )
 
             if previous_price != 0:
 
                 change_percent = (
-                    change /
+                    change
+                    /
                     previous_price
                     *
                     100
@@ -1986,7 +2283,7 @@ def analyze_stock(
             change_percent = None
 
         # ====================================================
-        # 前一日資料
+        # 前一日
         # ====================================================
 
         previous_k = (
@@ -2080,7 +2377,7 @@ def analyze_stock(
             )
 
         # ====================================================
-        # 條件
+        # 核心條件
         # ====================================================
 
         rsi_above_50 = (
@@ -2123,14 +2420,16 @@ def analyze_stock(
         # 核心訊號
         # ====================================================
 
-        short_term_core = all([
-            macd_golden_cross,
-            kd_golden_cross,
-            rsi_above_50,
-            volume_over_1_5x,
-            above_ma20,
-            ma20_up
-        ])
+        short_term_core = all(
+            [
+                macd_golden_cross,
+                kd_golden_cross,
+                rsi_above_50,
+                volume_over_1_5x,
+                above_ma20,
+                ma20_up
+            ]
+        )
 
         # ====================================================
         # AI SCORE
@@ -2208,7 +2507,7 @@ def analyze_stock(
         )
 
         # ====================================================
-        # 訊號
+        # Signal
         # ====================================================
 
         if short_term_core:
@@ -2237,20 +2536,25 @@ def analyze_stock(
 
         if current_ma20 is not None:
 
-            buy_1 = current_ma20
+            buy_1 = (
+                current_ma20
+            )
 
             buy_2 = (
-                current_ma20 *
+                current_ma20
+                *
                 0.97
             )
 
             buy_3 = (
-                current_ma20 *
+                current_ma20
+                *
                 0.94
             )
 
             buy_4 = (
-                current_ma20 *
+                current_ma20
+                *
                 0.90
             )
 
@@ -2277,8 +2581,10 @@ def analyze_stock(
         ):
 
             distance = (
-                current_price /
-                current_ma20 -
+                current_price
+                /
+                current_ma20
+                -
                 1
             ) * 100
 
@@ -2312,6 +2618,8 @@ def analyze_stock(
 
         # ====================================================
         # JSON
+        #
+        # 保留 V7.3 結構
         # ====================================================
 
         return {
@@ -2535,14 +2843,17 @@ def analyze_stock(
 
 
 # ============================================================
-# 驗證股票資料
+# 股票資料驗證
 # ============================================================
 
 def validate_stock(
     stock
 ):
 
-    if not stock:
+    if not isinstance(
+        stock,
+        dict
+    ):
 
         return False
 
@@ -2559,13 +2870,24 @@ def validate_stock(
         {}
     )
 
+    if not isinstance(
+        price,
+        dict
+    ):
+
+        return False
+
     close = safe_float(
         price.get(
             "close"
         )
     )
 
-    if close is None:
+    if (
+        close is None
+        or
+        close <= 0
+    ):
 
         return False
 
@@ -2573,6 +2895,13 @@ def validate_stock(
         "technical",
         {}
     )
+
+    if not isinstance(
+        technical,
+        dict
+    ):
+
+        return False
 
     # --------------------------------------------------------
     # RSI
@@ -2619,6 +2948,24 @@ def validate_stock(
 
                 return False
 
+    # --------------------------------------------------------
+    # Volume Ratio
+    # --------------------------------------------------------
+
+    volume_ratio = safe_float(
+        technical.get(
+            "volume_ratio"
+        )
+    )
+
+    if (
+        volume_ratio is not None
+        and
+        volume_ratio < 0
+    ):
+
+        return False
+
     return True
 
 
@@ -2631,8 +2978,11 @@ def build_rankings(
 ):
 
     ranking_data = sorted(
+
         stocks,
+
         key=lambda stock: (
+
             safe_float(
                 stock.get(
                     "short_term",
@@ -2642,6 +2992,7 @@ def build_rankings(
                 ),
                 0
             ),
+
             safe_float(
                 stock.get(
                     "technical",
@@ -2651,15 +3002,20 @@ def build_rankings(
                 ),
                 0
             )
+
         ),
+
         reverse=True
     )
 
     short_term = [
+
         str(
             stock["id"]
         )
+
         for stock in ranking_data
+
     ]
 
     # --------------------------------------------------------
@@ -2683,16 +3039,19 @@ def build_rankings(
     ]
 
     core_stocks.sort(
+
         key=lambda stock:
-            safe_float(
-                stock.get(
-                    "short_term",
-                    {}
-                ).get(
-                    "score"
-                ),
-                0
+
+        safe_float(
+            stock.get(
+                "short_term",
+                {}
+            ).get(
+                "score"
             ),
+            0
+        ),
+
         reverse=True
     )
 
@@ -2757,7 +3116,8 @@ def build_rankings(
 
             distance = abs(
                 price /
-                ma20 -
+                ma20
+                -
                 1
             )
 
@@ -2995,9 +3355,7 @@ def build_statistics(
 
 
 # ============================================================
-# 單檔工作
-#
-# 給 ThreadPoolExecutor 使用
+# 單檔處理
 # ============================================================
 
 def process_one(
@@ -3022,10 +3380,13 @@ def process_one(
                 {
                     "id":
                         code,
+
                     "name":
                         item["name"],
+
                     "market":
                         market,
+
                     "type":
                         item["type"]
                 }
@@ -3043,10 +3404,13 @@ def process_one(
                 {
                     "id":
                         code,
+
                     "name":
                         item["name"],
+
                     "market":
                         market,
+
                     "type":
                         item["type"]
                 }
@@ -3061,10 +3425,13 @@ def process_one(
                 {
                     "id":
                         code,
+
                     "name":
                         item["name"],
+
                     "market":
                         market,
+
                     "type":
                         item["type"]
                 }
@@ -3082,10 +3449,13 @@ def process_one(
             {
                 "id":
                     code,
+
                 "name":
                     item["name"],
+
                 "market":
                     market,
+
                 "type":
                     item["type"]
             }
@@ -3103,7 +3473,8 @@ def save_json(
     try:
 
         temp_file = (
-            OUTPUT_FILE +
+            OUTPUT_FILE
+            +
             ".tmp"
         )
 
@@ -3117,7 +3488,8 @@ def save_json(
                 data,
                 file,
                 ensure_ascii=False,
-                indent=2
+                indent=2,
+                allow_nan=False
             )
 
         os.replace(
@@ -3205,7 +3577,7 @@ def main():
     )
 
     # ========================================================
-    # 3. 平行分析
+    # 3. 全市場分析
     # ========================================================
 
     stocks = []
@@ -3285,18 +3657,17 @@ def main():
                     {
                         "id":
                             item["id"],
+
                         "name":
                             item["name"],
+
                         "market":
                             item["market"],
+
                         "type":
                             item["type"]
                     }
                 )
-
-            # ------------------------------------------------
-            # 進度
-            # ------------------------------------------------
 
             if (
                 completed % 25 == 0
@@ -3319,22 +3690,22 @@ def main():
 
     stocks.sort(
         key=lambda stock:
-            str(
-                stock.get(
-                    "id",
-                    ""
-                )
+        str(
+            stock.get(
+                "id",
+                ""
             )
+        )
     )
 
     failed.sort(
         key=lambda item:
-            str(
-                item.get(
-                    "id",
-                    ""
-                )
+        str(
+            item.get(
+                "id",
+                ""
             )
+        )
     )
 
     # ========================================================
@@ -3379,9 +3750,13 @@ def main():
         1
         for item in market_list
         if (
-            item["market"] == "上市"
+            item.get(
+                "market"
+            ) == "上市"
             and
-            item["type"] == "STOCK"
+            item.get(
+                "type"
+            ) == "STOCK"
         )
     )
 
@@ -3389,25 +3764,35 @@ def main():
         1
         for item in market_list
         if (
-            item["market"] == "上櫃"
+            item.get(
+                "market"
+            ) == "上櫃"
             and
-            item["type"] == "STOCK"
+            item.get(
+                "type"
+            ) == "STOCK"
         )
     )
 
     market_etf = sum(
         1
         for item in market_list
-        if item["type"] == "ETF"
+        if item.get(
+            "type"
+        ) == "ETF"
     )
 
     listed_success = sum(
         1
         for stock in stocks
         if (
-            stock["market"] == "上市"
+            stock.get(
+                "market"
+            ) == "上市"
             and
-            stock["type"] == "STOCK"
+            stock.get(
+                "type"
+            ) == "STOCK"
         )
     )
 
@@ -3415,20 +3800,26 @@ def main():
         1
         for stock in stocks
         if (
-            stock["market"] == "上櫃"
+            stock.get(
+                "market"
+            ) == "上櫃"
             and
-            stock["type"] == "STOCK"
+            stock.get(
+                "type"
+            ) == "STOCK"
         )
     )
 
     etf_success = sum(
         1
         for stock in stocks
-        if stock["type"] == "ETF"
+        if stock.get(
+            "type"
+        ) == "ETF"
     )
 
     # ========================================================
-    # 9. Output JSON
+    # 9. Output
     # ========================================================
 
     output = {
@@ -3529,7 +3920,7 @@ def main():
     )
 
     print(
-        "V7.3 全市場掃描完成"
+        "V7.4 全市場掃描完成"
     )
 
     print(
@@ -3655,7 +4046,7 @@ def main():
     )
 
     print(
-        "V7.3 關鍵標的驗證："
+        "V7.4 關鍵標的驗證："
     )
 
     stock_map = {
@@ -3688,15 +4079,28 @@ def main():
 
         if stock:
 
+            price = stock.get(
+                "price",
+                {}
+            )
+
+            technical = stock.get(
+                "technical",
+                {}
+            )
+
             print(
                 f"✓ {code} "
-                f"{stock['name']} "
+                f"{stock.get('name')} "
                 f"| "
-                f"{stock['market']} "
-                f"{stock['type']} "
+                f"{stock.get('market')} "
+                f"{stock.get('type')} "
                 f"| "
                 f"價格="
-                f"{stock['price']['close']}"
+                f"{price.get('close')} "
+                f"| "
+                f"RSI="
+                f"{technical.get('rsi')}"
             )
 
         elif code in market_map:
@@ -3707,10 +4111,10 @@ def main():
 
             print(
                 f"△ {code} "
-                f"{item['name']} "
+                f"{item.get('name')} "
                 f"| "
-                f"{item['market']} "
-                f"{item['type']} "
+                f"{item.get('market')} "
+                f"{item.get('type')} "
                 f"| "
                 f"已在市場清單但 Yahoo "
                 f"本次抓取失敗"
@@ -3728,13 +4132,19 @@ def main():
     # 14. 失敗率
     # ========================================================
 
-    failure_rate = (
-        len(failed)
-        /
-        len(market_list)
-        *
-        100
-    )
+    if len(market_list) > 0:
+
+        failure_rate = (
+            len(failed)
+            /
+            len(market_list)
+            *
+            100
+        )
+
+    else:
+
+        failure_rate = 100
 
     print(
         ""
@@ -3750,7 +4160,7 @@ def main():
     )
 
     print(
-        "V7.3 執行結束。"
+        "V7.4 執行結束。"
     )
 
 
