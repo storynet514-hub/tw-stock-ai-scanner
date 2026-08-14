@@ -1,1 +1,53 @@
+name: 更新台股資料
 
+on:
+  workflow_dispatch:
+
+  schedule:
+    - cron: "30 6 * * 1-5"
+
+permissions:
+  contents: write
+
+jobs:
+  update-stock-data:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 取得專案
+        uses: actions/checkout@v4
+
+      - name: 設定 Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: 安裝套件
+        run: |
+          python -m pip install --upgrade pip
+          pip install yfinance pandas numpy
+
+      - name: 執行股票資料更新
+        run: |
+          python Scripts/fetch_data.py
+
+      - name: 檢查資料
+        run: |
+          echo "確認 Data/prices.json..."
+          test -f Data/prices.json
+          echo "Data/prices.json 已產生"
+          wc -c Data/prices.json
+
+      - name: 提交最新資料
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git add Data/prices.json
+
+          if git diff --cached --quiet; then
+            echo "沒有新的資料需要提交"
+          else
+            git commit -m "自動更新台股資料"
+            git push
+          fi
