@@ -1,1472 +1,718 @@
 <!DOCTYPE html>
 <html lang="zh-TW">
-
 <head>
-
 <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-<meta
-  name="viewport"
-  content="width=device-width, initial-scale=1.0"
->
-
-<title>
-  台股 AI 選股・零股定投・動態風控
-</title>
-
+<title>台股 AI 選股・零股定投・動態風控 V6.2</title>
 
 <style>
 
-/* =========================================================
-   ROOT
-========================================================= */
-
 :root{
-
-  --bg:#08111f;
-  --bg2:#0d1728;
-
-  --card:#101d30;
-  --card2:#14243a;
-
-  --border:rgba(255,255,255,.09);
-
-  --text:#eef4ff;
-  --muted:#8fa2bd;
-
-  --blue:#4da3ff;
-  --green:#35d39a;
-  --red:#ff6575;
-  --yellow:#ffc857;
-  --purple:#9b7cff;
-
-  --shadow:
-    0 12px 35px rgba(0,0,0,.28);
-
+    --bg:#f4f6f9;
+    --card:#ffffff;
+    --text:#1f2937;
+    --muted:#6b7280;
+    --border:#e5e7eb;
+    --primary:#2563eb;
+    --primary-dark:#1d4ed8;
+    --green:#16a34a;
+    --red:#dc2626;
+    --orange:#ea580c;
+    --yellow:#ca8a04;
+    --gray:#64748b;
+    --shadow:0 4px 16px rgba(0,0,0,.07);
+    --radius:16px;
 }
-
-
-/* =========================================================
-   GLOBAL
-========================================================= */
 
 *{
-
-  box-sizing:border-box;
-
+    box-sizing:border-box;
 }
 
+html{
+    scroll-behavior:smooth;
+}
 
 body{
-
-  margin:0;
-
-  font-family:
-    -apple-system,
-    BlinkMacSystemFont,
-    "Segoe UI",
-    "Noto Sans TC",
-    Arial,
-    sans-serif;
-
-  background:
-    radial-gradient(
-      circle at top left,
-      #122846 0,
-      #08111f 38%,
-      #050b14 100%
-    );
-
-  color:var(--text);
-
-  min-height:100vh;
-
+    margin:0;
+    background:var(--bg);
+    color:var(--text);
+    font-family:
+        -apple-system,
+        BlinkMacSystemFont,
+        "Segoe UI",
+        "Noto Sans TC",
+        "Microsoft JhengHei",
+        Arial,
+        sans-serif;
 }
-
 
 button,
-input{
-
-  font:inherit;
-
+input,
+select{
+    font:inherit;
 }
-
 
 button{
-
-  cursor:pointer;
-
+    cursor:pointer;
 }
-
-
-/* =========================================================
-   APP
-========================================================= */
-
-.app{
-
-  width:min(1500px,94%);
-
-  margin:auto;
-
-  padding:
-    24px 0 50px;
-
-}
-
 
 /* =========================================================
    HEADER
 ========================================================= */
 
 .header{
-
-  display:flex;
-
-  justify-content:space-between;
-
-  align-items:center;
-
-  gap:20px;
-
-  margin-bottom:22px;
-
+    background:linear-gradient(
+        135deg,
+        #111827,
+        #1e3a8a
+    );
+    color:#fff;
+    padding:22px 16px;
+    position:sticky;
+    top:0;
+    z-index:100;
+    box-shadow:0 4px 15px rgba(0,0,0,.18);
 }
 
-
-.brand h1{
-
-  margin:0;
-
-  font-size:28px;
-
-  letter-spacing:.5px;
-
+.header-inner{
+    max-width:1400px;
+    margin:auto;
 }
 
-
-.brand p{
-
-  margin:
-    7px 0 0;
-
-  color:var(--muted);
-
-  font-size:14px;
-
+.title{
+    font-size:25px;
+    font-weight:800;
+    letter-spacing:.5px;
 }
 
-
-.status{
-
-  display:flex;
-
-  align-items:center;
-
-  gap:9px;
-
-  padding:
-    10px 15px;
-
-  border:
-    1px solid var(--border);
-
-  border-radius:999px;
-
-  background:
-    rgba(255,255,255,.04);
-
-  color:var(--muted);
-
-  font-size:13px;
-
+.subtitle{
+    margin-top:6px;
+    font-size:13px;
+    opacity:.82;
 }
 
-
-.status-dot{
-
-  width:9px;
-
-  height:9px;
-
-  border-radius:50%;
-
-  background:var(--green);
-
-  box-shadow:
-    0 0 12px rgba(53,211,154,.7);
-
+.header-status{
+    margin-top:12px;
+    display:flex;
+    flex-wrap:wrap;
+    gap:8px;
 }
 
+.status-pill{
+    display:inline-flex;
+    align-items:center;
+    gap:5px;
+    background:rgba(255,255,255,.13);
+    border:1px solid rgba(255,255,255,.18);
+    padding:6px 10px;
+    border-radius:999px;
+    font-size:12px;
+}
 
 /* =========================================================
-   SEARCH
+   CONTAINER
 ========================================================= */
 
-.search-panel{
-
-  background:
-    linear-gradient(
-      135deg,
-      rgba(20,36,58,.95),
-      rgba(10,22,38,.95)
-    );
-
-  border:
-    1px solid var(--border);
-
-  border-radius:20px;
-
-  padding:20px;
-
-  box-shadow:var(--shadow);
-
-  margin-bottom:22px;
-
+.container{
+    width:min(1400px,calc(100% - 24px));
+    margin:18px auto 50px;
 }
 
+/* =========================================================
+   SUMMARY
+========================================================= */
 
-.search-title{
-
-  font-size:16px;
-
-  font-weight:700;
-
-  margin-bottom:12px;
-
+.summary-grid{
+    display:grid;
+    grid-template-columns:
+        repeat(4,minmax(0,1fr));
+    gap:12px;
+    margin-bottom:18px;
 }
 
-
-.search-row{
-
-  display:flex;
-
-  gap:10px;
-
+.summary-card{
+    background:var(--card);
+    border:1px solid var(--border);
+    border-radius:var(--radius);
+    padding:17px;
+    box-shadow:var(--shadow);
 }
 
-
-.search-row input{
-
-  flex:1;
-
-  min-width:0;
-
-  padding:
-    14px 16px;
-
-  border:
-    1px solid rgba(255,255,255,.1);
-
-  border-radius:12px;
-
-  background:#081321;
-
-  color:white;
-
-  outline:none;
-
+.summary-label{
+    font-size:13px;
+    color:var(--muted);
 }
 
-
-.search-row input:focus{
-
-  border-color:var(--blue);
-
-  box-shadow:
-    0 0 0 3px rgba(77,163,255,.12);
-
+.summary-value{
+    margin-top:7px;
+    font-size:28px;
+    font-weight:800;
 }
 
+.summary-sub{
+    margin-top:5px;
+    font-size:12px;
+    color:var(--muted);
+}
+
+/* =========================================================
+   CONTROL BAR
+========================================================= */
+
+.control-card{
+    background:var(--card);
+    border:1px solid var(--border);
+    border-radius:var(--radius);
+    padding:14px;
+    box-shadow:var(--shadow);
+    margin-bottom:18px;
+}
+
+.controls{
+    display:flex;
+    flex-wrap:wrap;
+    gap:9px;
+    align-items:center;
+}
+
+.search-box{
+    flex:1;
+    min-width:190px;
+}
+
+.search-box input{
+    width:100%;
+    height:42px;
+    border:1px solid var(--border);
+    border-radius:10px;
+    padding:0 13px;
+    outline:none;
+}
+
+.search-box input:focus{
+    border-color:var(--primary);
+    box-shadow:0 0 0 3px rgba(37,99,235,.1);
+}
+
+.select{
+    height:42px;
+    border:1px solid var(--border);
+    border-radius:10px;
+    padding:0 11px;
+    background:#fff;
+    min-width:130px;
+}
 
 .btn{
-
-  border:0;
-
-  border-radius:12px;
-
-  padding:
-    12px 18px;
-
-  font-weight:700;
-
-  transition:.2s;
-
+    height:42px;
+    padding:0 15px;
+    border-radius:10px;
+    border:1px solid var(--border);
+    background:#fff;
+    color:var(--text);
+    font-weight:600;
 }
-
 
 .btn:hover{
-
-  transform:
-    translateY(-1px);
-
+    background:#f8fafc;
 }
-
 
 .btn-primary{
-
-  background:var(--blue);
-
-  color:#03101d;
-
+    background:var(--primary);
+    color:#fff;
+    border-color:var(--primary);
 }
 
-
-.btn-secondary{
-
-  background:
-    rgba(255,255,255,.07);
-
-  color:var(--text);
-
-  border:
-    1px solid var(--border);
-
+.btn-primary:hover{
+    background:var(--primary-dark);
 }
 
-
-.btn-danger{
-
-  background:
-    rgba(255,101,117,.12);
-
-  color:var(--red);
-
-  border:
-    1px solid rgba(255,101,117,.2);
-
+.filter-info{
+    margin-top:10px;
+    font-size:12px;
+    color:var(--muted);
 }
-
-
-.search-result{
-
-  margin-top:12px;
-
-  display:none;
-
-}
-
-
-.search-result.show{
-
-  display:block;
-
-}
-
-
-.result-card{
-
-  display:flex;
-
-  justify-content:space-between;
-
-  align-items:center;
-
-  gap:15px;
-
-  background:#0a1627;
-
-  border:
-    1px solid var(--border);
-
-  border-radius:14px;
-
-  padding:14px;
-
-}
-
-
-.result-info strong{
-
-  font-size:18px;
-
-  font-weight:900;
-
-}
-
-
-.result-info span{
-
-  display:block;
-
-  color:var(--muted);
-
-  margin-top:5px;
-
-  font-size:12px;
-
-}
-
-
-/* =========================================================
-   STATISTICS
-========================================================= */
-
-.stats{
-
-  display:grid;
-
-  grid-template-columns:
-    repeat(5,1fr);
-
-  gap:14px;
-
-  margin-bottom:22px;
-
-}
-
-
-.stat{
-
-  background:
-    rgba(16,29,48,.92);
-
-  border:
-    1px solid var(--border);
-
-  border-radius:17px;
-
-  padding:17px;
-
-  box-shadow:var(--shadow);
-
-}
-
-
-.stat-label{
-
-  color:var(--muted);
-
-  font-size:13px;
-
-}
-
-
-.stat-value{
-
-  margin-top:7px;
-
-  font-size:26px;
-
-  font-weight:800;
-
-}
-
-
-.stat-small{
-
-  margin-top:5px;
-
-  font-size:12px;
-
-  color:var(--muted);
-
-}
-
-
-/* =========================================================
-   NAVIGATION
-========================================================= */
-
-.tabs{
-
-  display:flex;
-
-  gap:8px;
-
-  overflow-x:auto;
-
-  margin-bottom:18px;
-
-  scrollbar-width:none;
-
-}
-
-
-.tabs::-webkit-scrollbar{
-
-  display:none;
-
-}
-
-
-.tab{
-
-  white-space:nowrap;
-
-  border:
-    1px solid var(--border);
-
-  background:
-    rgba(255,255,255,.04);
-
-  color:var(--muted);
-
-  padding:
-    10px 16px;
-
-  border-radius:999px;
-
-}
-
-
-.tab.active{
-
-  background:var(--blue);
-
-  color:#06111e;
-
-  border-color:var(--blue);
-
-  font-weight:800;
-
-}
-
 
 /* =========================================================
    SECTION
 ========================================================= */
 
 .section{
-
-  display:none;
-
+    margin-top:20px;
 }
-
-
-.section.active{
-
-  display:block;
-
-}
-
-
-.section-header{
-
-  display:flex;
-
-  justify-content:space-between;
-
-  align-items:center;
-
-  gap:15px;
-
-  margin:
-    20px 0 13px;
-
-}
-
 
 .section-title{
-
-  font-size:20px;
-
-  font-weight:800;
-
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:10px;
+    margin-bottom:11px;
 }
 
-
-.section-subtitle{
-
-  color:var(--muted);
-
-  font-size:13px;
-
-  margin-top:4px;
-
+.section-title h2{
+    margin:0;
+    font-size:19px;
 }
 
+.section-title span{
+    color:var(--muted);
+    font-size:12px;
+}
 
 /* =========================================================
-   WATCHLIST
+   STOCK GRID
 ========================================================= */
-
-.watchlist-empty{
-
-  grid-column:1/-1;
-
-  padding:
-    50px 20px;
-
-  text-align:center;
-
-  border:
-    1px dashed rgba(255,255,255,.14);
-
-  border-radius:18px;
-
-  color:var(--muted);
-
-  background:
-    rgba(255,255,255,.025);
-
-}
-
-
-.watchlist-empty-icon{
-
-  font-size:40px;
-
-  margin-bottom:12px;
-
-}
-
 
 .stock-grid{
-
-  display:grid;
-
-  grid-template-columns:
-    repeat(3,1fr);
-
-  gap:16px;
-
+    display:grid;
+    grid-template-columns:
+        repeat(3,minmax(0,1fr));
+    gap:14px;
 }
-
-
-/* =========================================================
-   STOCK CARD
-========================================================= */
 
 .stock-card{
-
-  background:
-    linear-gradient(
-      145deg,
-      rgba(20,36,58,.96),
-      rgba(10,21,36,.96)
-    );
-
-  border:
-    1px solid var(--border);
-
-  border-radius:18px;
-
-  padding:18px;
-
-  box-shadow:var(--shadow);
-
-  position:relative;
-
-  overflow:hidden;
-
-  transition:
-    transform .2s,
-    border-color .2s,
-    box-shadow .2s;
-
+    background:var(--card);
+    border:1px solid var(--border);
+    border-radius:var(--radius);
+    padding:16px;
+    box-shadow:var(--shadow);
+    transition:
+        transform .15s ease,
+        box-shadow .15s ease;
 }
-
 
 .stock-card:hover{
-
-  transform:
-    translateY(-2px);
-
-  border-color:
-    rgba(77,163,255,.25);
-
-  box-shadow:
-    0 16px 40px rgba(0,0,0,.34);
-
+    transform:translateY(-2px);
+    box-shadow:0 7px 22px rgba(0,0,0,.09);
 }
-
-
-.stock-card::before{
-
-  content:"";
-
-  position:absolute;
-
-  left:0;
-
-  top:0;
-
-  bottom:0;
-
-  width:3px;
-
-  background:var(--blue);
-
-}
-
-
-.stock-card.core::before{
-
-  background:var(--green);
-
-}
-
-
-.stock-card.warning::before{
-
-  background:var(--yellow);
-
-}
-
-
-.stock-card.danger::before{
-
-  background:var(--red);
-
-}
-
 
 .stock-top{
-
-  display:flex;
-
-  justify-content:space-between;
-
-  align-items:flex-start;
-
-  gap:10px;
-
+    display:flex;
+    justify-content:space-between;
+    gap:10px;
+    align-items:flex-start;
 }
-
-
-.stock-identity{
-
-  min-width:0;
-
-}
-
 
 .stock-name{
-
-  font-size:21px;
-
-  font-weight:900;
-
-  line-height:1.2;
-
-  letter-spacing:.3px;
-
-  color:var(--text);
-
-  white-space:nowrap;
-
-  overflow:hidden;
-
-  text-overflow:ellipsis;
-
+    font-size:17px;
+    font-weight:800;
 }
-
 
 .stock-code{
-
-  display:flex;
-
-  align-items:center;
-
-  gap:6px;
-
-  margin-top:6px;
-
+    margin-top:3px;
+    color:var(--muted);
+    font-size:12px;
 }
-
-
-.stock-symbol{
-
-  color:var(--muted);
-
-  font-size:11px;
-
-  font-weight:700;
-
-  letter-spacing:.6px;
-
-}
-
 
 .stock-type{
-
-  padding:
-    2px 6px;
-
-  border-radius:5px;
-
-  background:
-    rgba(77,163,255,.08);
-
-  color:var(--muted);
-
-  font-size:9px;
-
-  font-weight:700;
-
+    font-size:11px;
+    padding:4px 8px;
+    border-radius:999px;
+    background:#eff6ff;
+    color:#1d4ed8;
+    white-space:nowrap;
 }
 
+.price-row{
+    display:flex;
+    align-items:baseline;
+    gap:10px;
+    margin-top:13px;
+}
+
+.price{
+    font-size:27px;
+    font-weight:850;
+}
+
+.change{
+    font-size:13px;
+    font-weight:700;
+}
+
+.up{
+    color:var(--red);
+}
+
+.down{
+    color:var(--green);
+}
+
+.flat{
+    color:var(--gray);
+}
+
+/* =========================================================
+   SCORE
+========================================================= */
+
+.score-box{
+    margin-top:14px;
+    padding:11px;
+    border-radius:12px;
+    background:#f8fafc;
+    border:1px solid var(--border);
+}
+
+.score-row{
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+}
+
+.score-label{
+    font-size:12px;
+    color:var(--muted);
+}
+
+.score{
+    font-size:24px;
+    font-weight:850;
+}
+
+.score-bar{
+    margin-top:8px;
+    height:7px;
+    border-radius:999px;
+    background:#e5e7eb;
+    overflow:hidden;
+}
+
+.score-fill{
+    height:100%;
+    border-radius:999px;
+    background:var(--primary);
+}
 
 /* =========================================================
    SIGNAL
 ========================================================= */
 
 .signal{
-
-  padding:
-    6px 9px;
-
-  border-radius:8px;
-
-  font-size:11px;
-
-  font-weight:800;
-
-  white-space:nowrap;
-
+    display:inline-block;
+    margin-top:10px;
+    padding:6px 10px;
+    border-radius:8px;
+    font-size:12px;
+    font-weight:800;
 }
 
-
-.signal-green{
-
-  background:
-    rgba(53,211,154,.12);
-
-  color:var(--green);
-
+.signal-core{
+    background:#fee2e2;
+    color:#b91c1c;
 }
 
-
-.signal-blue{
-
-  background:
-    rgba(77,163,255,.12);
-
-  color:var(--blue);
-
+.signal-strong{
+    background:#ffedd5;
+    color:#c2410c;
 }
 
-
-.signal-yellow{
-
-  background:
-    rgba(255,200,87,.12);
-
-  color:var(--yellow);
-
+.signal-bull{
+    background:#dcfce7;
+    color:#15803d;
 }
 
-
-.signal-red{
-
-  background:
-    rgba(255,101,117,.12);
-
-  color:var(--red);
-
+.signal-watch{
+    background:#fef3c7;
+    color:#a16207;
 }
 
+.signal-weak{
+    background:#f1f5f9;
+    color:#64748b;
+}
 
 /* =========================================================
-   PRICE
+   TECHNICAL
 ========================================================= */
 
-.price-row{
-
-  display:flex;
-
-  justify-content:space-between;
-
-  align-items:end;
-
-  margin:
-    19px 0;
-
+.tech-grid{
+    display:grid;
+    grid-template-columns:
+        repeat(4,minmax(0,1fr));
+    gap:7px;
+    margin-top:13px;
 }
 
-
-.price{
-
-  font-size:28px;
-
-  font-weight:900;
-
+.tech-item{
+    background:#f8fafc;
+    border-radius:9px;
+    padding:8px;
 }
 
-
-.change.up{
-
-  color:var(--red);
-
-  font-weight:800;
-
+.tech-label{
+    font-size:10px;
+    color:var(--muted);
 }
 
-
-.change.down{
-
-  color:var(--green);
-
-  font-weight:800;
-
+.tech-value{
+    margin-top:3px;
+    font-size:13px;
+    font-weight:750;
 }
-
-
-.change.flat{
-
-  color:var(--muted);
-
-  font-weight:700;
-
-}
-
-
-.score{
-
-  text-align:right;
-
-}
-
-
-.score-number{
-
-  font-size:24px;
-
-  font-weight:900;
-
-}
-
-
-.score-label{
-
-  color:var(--muted);
-
-  font-size:11px;
-
-}
-
-
-/* =========================================================
-   METRICS
-========================================================= */
-
-.metrics{
-
-  display:grid;
-
-  grid-template-columns:
-    repeat(3,1fr);
-
-  gap:7px;
-
-}
-
-
-.metric{
-
-  background:
-    rgba(255,255,255,.04);
-
-  border-radius:10px;
-
-  padding:9px;
-
-}
-
-
-.metric-label{
-
-  color:var(--muted);
-
-  font-size:10px;
-
-}
-
-
-.metric-value{
-
-  margin-top:4px;
-
-  font-weight:700;
-
-  font-size:13px;
-
-}
-
 
 /* =========================================================
    CONDITIONS
 ========================================================= */
 
 .conditions{
-
-  display:flex;
-
-  flex-wrap:wrap;
-
-  gap:6px;
-
-  margin-top:13px;
-
+    display:flex;
+    flex-wrap:wrap;
+    gap:6px;
+    margin-top:12px;
 }
-
 
 .condition{
-
-  padding:
-    5px 7px;
-
-  border-radius:7px;
-
-  background:
-    rgba(255,255,255,.045);
-
-  color:var(--muted);
-
-  font-size:10px;
-
+    font-size:10px;
+    padding:5px 7px;
+    border-radius:7px;
+    background:#f1f5f9;
+    color:#64748b;
 }
 
-
-.condition.good{
-
-  background:
-    rgba(53,211,154,.1);
-
-  color:var(--green);
-
+.condition.ok{
+    background:#dcfce7;
+    color:#15803d;
+    font-weight:700;
 }
-
-
-.condition.bad{
-
-  background:
-    rgba(255,101,117,.1);
-
-  color:var(--red);
-
-}
-
 
 /* =========================================================
    DCA
 ========================================================= */
 
-.dca-box{
-
-  margin-top:14px;
-
-  border-top:
-    1px solid var(--border);
-
-  padding-top:13px;
-
+.dca{
+    margin-top:13px;
+    padding-top:13px;
+    border-top:1px solid var(--border);
 }
-
 
 .dca-title{
-
-  font-size:12px;
-
-  font-weight:800;
-
-  margin-bottom:8px;
-
+    font-size:12px;
+    font-weight:800;
 }
 
-
-.dca-levels{
-
-  display:grid;
-
-  grid-template-columns:
-    repeat(4,1fr);
-
-  gap:5px;
-
+.dca-grid{
+    display:grid;
+    grid-template-columns:
+        repeat(4,1fr);
+    gap:6px;
+    margin-top:8px;
 }
 
-
-.dca-level{
-
-  background:#081321;
-
-  border-radius:7px;
-
-  padding:
-    7px 3px;
-
-  text-align:center;
-
-  font-size:10px;
-
+.dca-item{
+    background:#f8fafc;
+    border-radius:8px;
+    padding:7px 4px;
+    text-align:center;
 }
 
-
-.dca-level span{
-
-  display:block;
-
-  color:var(--muted);
-
-  margin-bottom:3px;
-
+.dca-label{
+    font-size:9px;
+    color:var(--muted);
 }
 
-
-/* =========================================================
-   CARD ACTIONS
-========================================================= */
-
-.card-actions{
-
-  display:flex;
-
-  gap:8px;
-
-  margin-top:13px;
-
+.dca-price{
+    margin-top:3px;
+    font-size:12px;
+    font-weight:800;
 }
-
-
-.card-actions button{
-
-  flex:1;
-
-  padding:8px;
-
-  border-radius:9px;
-
-  border:
-    1px solid var(--border);
-
-  background:
-    rgba(255,255,255,.04);
-
-  color:var(--muted);
-
-  font-size:11px;
-
-}
-
-
-.card-actions button:hover{
-
-  color:white;
-
-}
-
 
 /* =========================================================
    TABLE
 ========================================================= */
 
 .table-wrap{
-
-  overflow-x:auto;
-
-  border:
-    1px solid var(--border);
-
-  border-radius:16px;
-
-  background:
-    rgba(16,29,48,.9);
-
+    overflow-x:auto;
+    background:#fff;
+    border:1px solid var(--border);
+    border-radius:var(--radius);
+    box-shadow:var(--shadow);
 }
-
 
 table{
-
-  width:100%;
-
-  border-collapse:collapse;
-
-  min-width:800px;
-
+    width:100%;
+    min-width:900px;
+    border-collapse:collapse;
 }
-
 
 th,
 td{
-
-  padding:
-    13px 12px;
-
-  border-bottom:
-    1px solid var(--border);
-
-  text-align:left;
-
-  font-size:13px;
-
+    padding:11px 9px;
+    border-bottom:1px solid var(--border);
+    text-align:center;
+    font-size:12px;
+    white-space:nowrap;
 }
-
 
 th{
-
-  color:var(--muted);
-
-  font-size:11px;
-
-  font-weight:700;
-
-  background:
-    rgba(255,255,255,.025);
-
+    background:#f8fafc;
+    color:#475569;
+    font-weight:800;
 }
 
-
-tr:last-child td{
-
-  border-bottom:0;
-
+tbody tr:hover{
+    background:#f8fafc;
 }
 
-
-.rank{
-
-  font-weight:900;
-
-  color:var(--blue);
-
+td:first-child,
+th:first-child{
+    text-align:left;
 }
-
-
-.table-stock-name{
-
-  font-size:14px;
-
-  font-weight:800;
-
-  color:var(--text);
-
-  line-height:1.3;
-
-}
-
-
-.table-stock-code{
-
-  margin-top:3px;
-
-  color:var(--muted);
-
-  font-size:10px;
-
-  font-weight:600;
-
-  letter-spacing:.5px;
-
-}
-
 
 /* =========================================================
-   INFO
+   STATISTICS
 ========================================================= */
 
-.info-grid{
-
-  display:grid;
-
-  grid-template-columns:
-    repeat(2,1fr);
-
-  gap:16px;
-
+.statistics-grid{
+    display:grid;
+    grid-template-columns:
+        repeat(6,minmax(0,1fr));
+    gap:10px;
 }
 
-
-.info-card{
-
-  background:
-    rgba(16,29,48,.9);
-
-  border:
-    1px solid var(--border);
-
-  border-radius:18px;
-
-  padding:20px;
-
+.stat-card{
+    background:#fff;
+    border:1px solid var(--border);
+    border-radius:13px;
+    padding:13px;
+    box-shadow:var(--shadow);
 }
 
-
-.info-card h3{
-
-  margin:
-    0 0 10px;
-
+.stat-label{
+    color:var(--muted);
+    font-size:11px;
 }
 
-
-.info-card p{
-
-  color:var(--muted);
-
-  line-height:1.7;
-
-  font-size:13px;
-
+.stat-value{
+    margin-top:5px;
+    font-size:22px;
+    font-weight:850;
 }
-
-
-.info-card code{
-
-  font-family:
-    ui-monospace,
-    SFMono-Regular,
-    Menlo,
-    Monaco,
-    Consolas,
-    monospace;
-
-}
-
 
 /* =========================================================
-   DIAGNOSTIC
-========================================================= */
-
-.diagnostic-line{
-
-  margin-top:8px;
-
-}
-
-
-.diagnostic-value{
-
-  display:block;
-
-  margin-top:6px;
-
-  padding:9px 10px;
-
-  border-radius:9px;
-
-  background:#081321;
-
-  color:var(--blue);
-
-  word-break:break-all;
-
-  font-family:
-    ui-monospace,
-    SFMono-Regular,
-    Menlo,
-    Monaco,
-    Consolas,
-    monospace;
-
-  font-size:11px;
-
-}
-
-
-.diagnostic-success{
-
-  color:var(--green);
-
-}
-
-
-.diagnostic-error{
-
-  color:var(--red);
-
-}
-
-
-/* =========================================================
-   TOAST
-========================================================= */
-
-.toast{
-
-  position:fixed;
-
-  left:50%;
-
-  bottom:25px;
-
-  transform:
-    translate(-50%,30px);
-
-  opacity:0;
-
-  pointer-events:none;
-
-  background:#14243a;
-
-  border:
-    1px solid var(--border);
-
-  box-shadow:var(--shadow);
-
-  padding:
-    12px 18px;
-
-  border-radius:12px;
-
-  font-size:13px;
-
-  transition:.25s;
-
-  z-index:999;
-
-}
-
-
-.toast.show{
-
-  opacity:1;
-
-  transform:
-    translate(-50%,0);
-
-}
-
-
-/* =========================================================
-   LOADING
+   EMPTY / LOADING
 ========================================================= */
 
 .loading{
-
-  text-align:center;
-
-  padding:50px;
-
-  color:var(--muted);
-
+    text-align:center;
+    padding:50px 20px;
+    color:var(--muted);
 }
 
-
-.spinner{
-
-  width:30px;
-
-  height:30px;
-
-  border:
-    3px solid rgba(255,255,255,.1);
-
-  border-top-color:var(--blue);
-
-  border-radius:50%;
-
-  animation:
-    spin .8s linear infinite;
-
-  margin:
-    0 auto 12px;
-
+.empty{
+    background:#fff;
+    border:1px dashed #cbd5e1;
+    border-radius:14px;
+    padding:40px 20px;
+    text-align:center;
+    color:var(--muted);
 }
 
-
-@keyframes spin{
-
-  to{
-
-    transform:
-      rotate(360deg);
-
-  }
-
+.error{
+    background:#fff;
+    border:1px solid #fecaca;
+    color:#b91c1c;
+    border-radius:14px;
+    padding:20px;
 }
 
+/* =========================================================
+   MODAL
+========================================================= */
+
+.modal{
+    display:none;
+    position:fixed;
+    inset:0;
+    z-index:300;
+    background:rgba(15,23,42,.55);
+    padding:20px;
+    overflow:auto;
+}
+
+.modal.show{
+    display:flex;
+    align-items:center;
+    justify-content:center;
+}
+
+.modal-content{
+    width:min(760px,100%);
+    max-height:90vh;
+    overflow:auto;
+    background:#fff;
+    border-radius:18px;
+    box-shadow:0 20px 60px rgba(0,0,0,.2);
+    padding:20px;
+}
+
+.modal-header{
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    gap:10px;
+}
+
+.modal-header h3{
+    margin:0;
+}
+
+.close{
+    width:38px;
+    height:38px;
+    border:0;
+    border-radius:10px;
+    background:#f1f5f9;
+    font-size:20px;
+}
+
+.add-row{
+    display:flex;
+    gap:8px;
+    margin-top:15px;
+}
+
+.add-row input{
+    flex:1;
+    height:42px;
+    border:1px solid var(--border);
+    border-radius:9px;
+    padding:0 11px;
+}
+
+.watch-list{
+    margin-top:15px;
+}
+
+.watch-item{
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    gap:10px;
+    padding:10px;
+    border-bottom:1px solid var(--border);
+}
+
+.remove-btn{
+    border:0;
+    background:#fee2e2;
+    color:#b91c1c;
+    border-radius:7px;
+    padding:6px 9px;
+}
+
+/* =========================================================
+   FOOTER
+========================================================= */
+
+.footer{
+    text-align:center;
+    margin-top:30px;
+    color:var(--muted);
+    font-size:11px;
+    line-height:1.7;
+}
 
 /* =========================================================
    RESPONSIVE
@@ -1474,3763 +720,2268 @@ tr:last-child td{
 
 @media(max-width:1100px){
 
-  .stock-grid{
+    .stock-grid{
+        grid-template-columns:
+            repeat(2,minmax(0,1fr));
+    }
 
-    grid-template-columns:
-      repeat(2,1fr);
+    .summary-grid{
+        grid-template-columns:
+            repeat(2,minmax(0,1fr));
+    }
 
-  }
-
-
-  .stats{
-
-    grid-template-columns:
-      repeat(3,1fr);
-
-  }
+    .statistics-grid{
+        grid-template-columns:
+            repeat(3,minmax(0,1fr));
+    }
 
 }
-
 
 @media(max-width:700px){
 
-  .app{
-
-    width:94%;
-
-    padding-top:16px;
-
-  }
-
-
-  .header{
-
-    align-items:flex-start;
-
-  }
-
-
-  .brand h1{
-
-    font-size:21px;
-
-  }
-
-
-  .brand p{
-
-    font-size:12px;
-
-  }
-
-
-  .status{
-
-    font-size:10px;
-
-    padding:
-      8px 10px;
-
-  }
-
-
-  .search-row{
-
-    flex-direction:column;
-
-  }
-
-
-  .stats{
-
-    grid-template-columns:
-      repeat(2,1fr);
-
-  }
-
-
-  .stock-grid{
-
-    grid-template-columns:1fr;
-
-  }
-
-
-  .info-grid{
-
-    grid-template-columns:1fr;
-
-  }
-
-
-  .price{
-
-    font-size:25px;
-
-  }
-
-
-  .metrics{
-
-    grid-template-columns:
-      repeat(3,1fr);
-
-  }
-
-
-  .stock-name{
-
-    font-size:20px;
-
-  }
-
-
-  .section-header{
-
-    align-items:flex-start;
-
-  }
-
-}
-
-
-@media(max-width:420px){
-
-  .app{
-
-    width:95%;
-
-  }
-
-
-  .brand h1{
-
-    font-size:19px;
-
-  }
-
-
-  .status{
-
-    display:none;
-
-  }
-
-
-  .stock-card{
-
-    padding:16px;
-
-  }
-
-
-  .stock-name{
-
-    font-size:19px;
-
-  }
-
-
-  .price{
-
-    font-size:24px;
-
-  }
-
-
-  .score-number{
-
-    font-size:21px;
-
-  }
+    .container{
+        width:min(
+            100% - 14px,
+            1400px
+        );
+    }
+
+    .header{
+        padding:17px 12px;
+    }
+
+    .title{
+        font-size:20px;
+    }
+
+    .stock-grid{
+        grid-template-columns:1fr;
+    }
+
+    .summary-grid{
+        grid-template-columns:
+            repeat(2,minmax(0,1fr));
+        gap:8px;
+    }
+
+    .summary-card{
+        padding:13px;
+    }
+
+    .summary-value{
+        font-size:23px;
+    }
+
+    .statistics-grid{
+        grid-template-columns:
+            repeat(2,minmax(0,1fr));
+    }
+
+    .tech-grid{
+        grid-template-columns:
+            repeat(4,minmax(0,1fr));
+    }
+
+    .controls{
+        align-items:stretch;
+    }
+
+    .search-box{
+        flex-basis:100%;
+    }
+
+    .select,
+    .btn{
+        flex:1;
+    }
 
 }
 
 </style>
-
 </head>
 
 
 <body>
 
-
-<div class="app">
-
-
-<!-- =======================================================
+<!-- ========================================================
      HEADER
-======================================================= -->
+========================================================= -->
 
 <header class="header">
 
-  <div class="brand">
+    <div class="header-inner">
 
-    <h1>
-      📊 台股 AI 選股・零股定投
-    </h1>
+        <div class="title">
+            台股 AI 選股・零股定投・動態風控
+        </div>
 
-    <p>
-      個股＋ETF｜短線動能｜定投策略｜動態風控
-    </p>
+        <div class="subtitle">
+            V6.2 正式版｜全市場動態掃描｜技術指標｜AI Score｜零股定投
+        </div>
 
-  </div>
+        <div class="header-status">
 
+            <div class="status-pill">
+                ● 系統
+                <span id="systemStatus">
+                    載入中
+                </span>
+            </div>
 
-  <div class="status">
+            <div class="status-pill">
+                資料：
+                <span id="dataTime">
+                    --
+                </span>
+            </div>
 
-    <span class="status-dot"></span>
+            <div class="status-pill">
+                掃描：
+                <span id="scanCount">
+                    --
+                </span>
+            </div>
 
-    <span id="systemStatus">
-      正在載入資料
-    </span>
+        </div>
 
-  </div>
+    </div>
 
 </header>
 
 
-<!-- =======================================================
-     SEARCH
-======================================================= -->
+<!-- ========================================================
+     MAIN
+========================================================= -->
 
-<section class="search-panel">
+<main class="container">
 
-  <div class="search-title">
-    🔎 搜尋股票／ETF
-  </div>
 
+    <!-- ====================================================
+         SUMMARY
+    ===================================================== -->
 
-  <div class="search-row">
+    <section class="summary-grid">
 
-    <input
-      id="searchInput"
-      type="text"
-      placeholder="輸入股票代號或名稱，例如：2330、台積電"
-      autocomplete="off"
-    >
+        <div class="summary-card">
 
+            <div class="summary-label">
+                掃描標的
+            </div>
 
-    <button
-      class="btn btn-primary"
-      onclick="searchStock()"
-    >
-      搜尋
-    </button>
+            <div
+                class="summary-value"
+                id="totalStocks"
+            >
+                --
+            </div>
 
-  </div>
-
-
-  <div
-    id="searchResult"
-    class="search-result"
-  ></div>
-
-</section>
-
-
-<!-- =======================================================
-     STATISTICS
-======================================================= -->
-
-<section class="stats">
-
-
-  <div class="stat">
-
-    <div class="stat-label">
-      系統資料
-    </div>
-
-    <div
-      class="stat-value"
-      id="totalStocks"
-    >
-      -
-    </div>
-
-    <div class="stat-small">
-      個股＋ETF
-    </div>
-
-  </div>
-
-
-  <div class="stat">
-
-    <div class="stat-label">
-      我的觀察
-    </div>
-
-    <div
-      class="stat-value"
-      id="watchCount"
-    >
-      0
-    </div>
-
-    <div class="stat-small">
-      瀏覽器自動保存
-    </div>
-
-  </div>
-
-
-  <div class="stat">
-
-    <div class="stat-label">
-      核心訊號
-    </div>
-
-    <div
-      class="stat-value"
-      id="coreCount"
-    >
-      -
-    </div>
-
-    <div class="stat-small">
-      全部核心條件
-    </div>
-
-  </div>
-
-
-  <div class="stat">
-
-    <div class="stat-label">
-      MACD
-    </div>
-
-    <div
-      class="stat-value"
-      id="macdCount"
-    >
-      -
-    </div>
-
-    <div class="stat-small">
-      黃金交叉
-    </div>
-
-  </div>
-
-
-  <div class="stat">
-
-    <div class="stat-label">
-      RSI
-    </div>
-
-    <div
-      class="stat-value"
-      id="rsiCount"
-    >
-      -
-    </div>
-
-    <div class="stat-small">
-      RSI ＞ 50
-    </div>
-
-  </div>
-
-
-</section>
-
-
-<!-- =======================================================
-     NAVIGATION
-======================================================= -->
-
-<nav class="tabs">
-
-
-  <button
-    class="tab active"
-    onclick="switchTab('watchlist',this)"
-  >
-    ⭐ 我的觀察
-  </button>
-
-
-  <button
-    class="tab"
-    onclick="switchTab('ranking',this)"
-  >
-    🏆 AI 排名
-  </button>
-
-
-  <button
-    class="tab"
-    onclick="switchTab('core',this)"
-  >
-    🚀 核心訊號
-  </button>
-
-
-  <button
-    class="tab"
-    onclick="switchTab('dca',this)"
-  >
-    💰 定投候選
-  </button>
-
-
-  <button
-    class="tab"
-    onclick="switchTab('system',this)"
-  >
-    ⚙️ 系統資訊
-  </button>
-
-
-</nav>
-
-
-<!-- =======================================================
-     WATCHLIST
-======================================================= -->
-
-<section
-  id="section-watchlist"
-  class="section active"
->
-
-
-  <div class="section-header">
-
-
-    <div>
-
-      <div class="section-title">
-        ⭐ 我的觀察清單
-      </div>
-
-      <div class="section-subtitle">
-        你加入的股票會保存在目前裝置的瀏覽器中
-      </div>
-
-    </div>
-
-
-    <button
-      class="btn btn-secondary"
-      onclick="clearWatchlist()"
-    >
-      清空清單
-    </button>
-
-
-  </div>
-
-
-  <div
-    id="watchlistContainer"
-    class="stock-grid"
-  >
-
-
-    <div class="watchlist-empty">
-
-      <div class="watchlist-empty-icon">
-        ⭐
-      </div>
-
-      尚未加入任何股票。
-
-      <br><br>
-
-      上方搜尋股票後即可加入觀察清單。
-
-    </div>
-
-
-  </div>
-
-
-</section>
-
-
-<!-- =======================================================
-     RANKING
-======================================================= -->
-
-<section
-  id="section-ranking"
-  class="section"
->
-
-
-  <div class="section-header">
-
-
-    <div>
-
-      <div class="section-title">
-        🏆 AI 短期排名
-      </div>
-
-      <div class="section-subtitle">
-        根據 MACD、KD、RSI、成交量與均線條件計算
-      </div>
-
-    </div>
-
-
-  </div>
-
-
-  <div
-    id="rankingContainer"
-    class="table-wrap"
-  ></div>
-
-
-</section>
-
-
-<!-- =======================================================
-     CORE
-======================================================= -->
-
-<section
-  id="section-core"
-  class="section"
->
-
-
-  <div class="section-header">
-
-
-    <div>
-
-      <div class="section-title">
-        🚀 短期核心訊號
-      </div>
-
-      <div class="section-subtitle">
-        MACD＋KD＋RSI＋量能＋20MA 全部符合
-      </div>
-
-    </div>
-
-
-  </div>
-
-
-  <div
-    id="coreContainer"
-    class="stock-grid"
-  ></div>
-
-
-</section>
-
-
-<!-- =======================================================
-     DCA
-======================================================= -->
-
-<section
-  id="section-dca"
-  class="section"
->
-
-
-  <div class="section-header">
-
-
-    <div>
-
-      <div class="section-title">
-        💰 定投候選
-      </div>
-
-      <div class="section-subtitle">
-        以20MA為核心計算分批進場區間
-      </div>
-
-    </div>
-
-
-  </div>
-
-
-  <div
-    id="dcaContainer"
-    class="table-wrap"
-  ></div>
-
-
-</section>
-
-
-<!-- =======================================================
-     SYSTEM
-======================================================= -->
-
-<section
-  id="section-system"
-  class="section"
->
-
-
-  <div class="info-grid">
-
-
-    <!-- DATA DIAGNOSTIC -->
-
-    <div class="info-card">
-
-      <h3>
-        📡 資料讀取診斷
-      </h3>
-
-
-      <p>
-
-
-        <strong>
-          📁 設定讀取路徑
-        </strong>
-
-
-        <code
-          id="dataPath"
-          class="diagnostic-value"
-        >
-          ./Data/prices.json
-        </code>
-
-
-        <br>
-
-
-        <strong>
-          🌐 實際讀取網址
-        </strong>
-
-
-        <code
-          id="dataFullUrl"
-          class="diagnostic-value"
-        >
-          -
-        </code>
-
-
-        <br>
-
-
-        <strong>
-          📡 HTTP 狀態
-        </strong>
-
-
-        <span
-          id="dataHttpStatus"
-          class="diagnostic-value"
-        >
-          尚未讀取
-        </span>
-
-
-        <br>
-
-
-        <strong>
-          📊 實際載入股票數量
-        </strong>
-
-
-        <span
-          id="dataStockCount"
-          class="diagnostic-value"
-        >
-          -
-        </span>
-
-
-        <br>
-
-
-        <strong>
-          🕐 資料更新時間
-        </strong>
-
-
-        <span
-          id="dataUpdatedAt"
-          class="diagnostic-value"
-        >
-          -
-        </span>
-
-
-      </p>
-
-
-    </div>
-
-
-    <!-- WATCHLIST -->
-
-    <div class="info-card">
-
-      <h3>
-        ⭐ 我的觀察清單
-      </h3>
-
-
-      <p>
-
-        觀察清單使用瀏覽器 localStorage
-        儲存，因此不會因為 GitHub Actions
-        更新資料而被覆蓋。
-
-      </p>
-
-    </div>
-
-
-    <!-- CONDITIONS -->
-
-    <div class="info-card">
-
-      <h3>
-        📈 短線核心條件
-      </h3>
-
-
-      <p>
-
-        MACD 黃金交叉、KD 黃金交叉、
-        RSI ＞ 50、成交量 ＞ 5日均量
-        × 1.5、股價站上20MA、
-        20MA 向上。
-
-      </p>
-
-    </div>
-
-
-    <!-- DCA -->
-
-    <div class="info-card">
-
-      <h3>
-        💰 定投策略
-      </h3>
-
-
-      <p>
-
-        以20MA作為核心參考，
-        建立 MA20 附近、
-        -3%、-6%、-10%
-        四段式分批進場區間。
-
-      </p>
-
-    </div>
-
-
-  </div>
-
-
-</section>
-
-
-</div>
-
-
-<!-- =======================================================
-     TOAST
-======================================================= -->
-
-<div
-  id="toast"
-  class="toast"
-></div>
-
-
-<script>
-
-
-/* =========================================================
-   BASIC SETTINGS
-========================================================= */
-
-
-/*
- * GitHub Repository 預期結構：
- *
- * tw-stock-ai-scanner/
- *
- * ├── index.html
- * │
- * ├── Data/
- * │   └── prices.json
- * │
- * └── Scripts/
- *     └── fetch_data.py
- *
- */
-
-
-const DATA_URL =
-  "./Data/prices.json";
-
-
-const DATA_PATH_DISPLAY =
-  "./Data/prices.json";
-
-
-/*
- * 取得 index.html 所在位置，
- * 再計算真正要 fetch 的完整 URL。
- */
-
-const DATA_FULL_URL =
-  new URL(
-    DATA_URL,
-    window.location.href
-  ).href;
-
-
-const STORAGE_KEY =
-  "tw_stock_ai_watchlist_v6";
-
-
-let systemData =
-  null;
-
-
-let stocks =
-  [];
-
-
-let watchlist =
-  [];
-
-
-/* =========================================================
-   INITIALIZE
-========================================================= */
-
-document.addEventListener(
-  "DOMContentLoaded",
-  () => {
-
-
-    initializeDataPathDisplay();
-
-
-    loadWatchlist();
-
-
-    loadData();
-
-
-    const searchInput =
-      document.getElementById(
-        "searchInput"
-      );
-
-
-    if(searchInput){
-
-      searchInput.addEventListener(
-        "keydown",
-        function(event){
-
-          if(
-            event.key === "Enter"
-          ){
-
-            searchStock();
-
-          }
-
-        }
-      );
-
-    }
-
-
-  }
-);
-
-
-/* =========================================================
-   DATA PATH DISPLAY
-========================================================= */
-
-function initializeDataPathDisplay(){
-
-
-  const pathElement =
-    document.getElementById(
-      "dataPath"
-    );
-
-
-  const urlElement =
-    document.getElementById(
-      "dataFullUrl"
-    );
-
-
-  if(pathElement){
-
-    pathElement.textContent =
-      DATA_PATH_DISPLAY;
-
-  }
-
-
-  if(urlElement){
-
-    urlElement.textContent =
-      DATA_FULL_URL;
-
-  }
-
-
-}
-
-
-/* =========================================================
-   DATA DIAGNOSTIC
-========================================================= */
-
-function updateDataDiagnostic(
-  status,
-  stockCount = null,
-  updatedAt = null
-){
-
-
-  const statusElement =
-    document.getElementById(
-      "dataHttpStatus"
-    );
-
-
-  const countElement =
-    document.getElementById(
-      "dataStockCount"
-    );
-
-
-  const updatedElement =
-    document.getElementById(
-      "dataUpdatedAt"
-    );
-
-
-  if(statusElement){
-
-    statusElement.textContent =
-      status;
-
-
-    if(
-      String(status)
-        .startsWith("✅")
-    ){
-
-      statusElement.className =
-        "diagnostic-value diagnostic-success";
-
-    }else if(
-      String(status)
-        .startsWith("❌")
-    ){
-
-      statusElement.className =
-        "diagnostic-value diagnostic-error";
-
-    }else{
-
-      statusElement.className =
-        "diagnostic-value";
-
-    }
-
-  }
-
-
-  if(countElement){
-
-    countElement.textContent =
-      stockCount !== null
-        ? Number(stockCount)
-            .toLocaleString("zh-TW")
-        : "-";
-
-  }
-
-
-  if(updatedElement){
-
-    updatedElement.textContent =
-      updatedAt || "-";
-
-  }
-
-
-}
-
-
-/* =========================================================
-   LOAD WATCHLIST
-========================================================= */
-
-function loadWatchlist(){
-
-
-  try{
-
-
-    const saved =
-      localStorage.getItem(
-        STORAGE_KEY
-      );
-
-
-    if(saved){
-
-
-      const parsed =
-        JSON.parse(saved);
-
-
-      if(
-        Array.isArray(parsed)
-      ){
-
-        watchlist =
-          parsed.map(
-            item =>
-              String(item)
-          );
-
-      }
-
-    }
-
-
-  }catch(error){
-
-
-    console.error(
-      "讀取觀察清單失敗",
-      error
-    );
-
-
-    watchlist = [];
-
-
-  }
-
-
-  updateWatchCount();
-
-
-}
-
-
-/* =========================================================
-   SAVE WATCHLIST
-========================================================= */
-
-function saveWatchlist(){
-
-
-  try{
-
-
-    localStorage.setItem(
-      STORAGE_KEY,
-      JSON.stringify(watchlist)
-    );
-
-
-  }catch(error){
-
-
-    console.error(
-      "儲存觀察清單失敗",
-      error
-    );
-
-
-  }
-
-
-  updateWatchCount();
-
-
-}
-
-
-/* =========================================================
-   ADD WATCHLIST
-========================================================= */
-
-function addToWatchlist(
-  stockId
-){
-
-
-  const id =
-    String(stockId);
-
-
-  if(
-    !watchlist.includes(id)
-  ){
-
-
-    watchlist.push(id);
-
-
-    saveWatchlist();
-
-
-    showToast(
-      "⭐ 已加入我的觀察清單"
-    );
-
-
-  }else{
-
-
-    showToast(
-      "這檔股票已經在觀察清單"
-    );
-
-
-  }
-
-
-  renderWatchlist();
-
-
-  renderSearchResult(
-    getStockById(id)
-  );
-
-
-}
-
-
-/* =========================================================
-   REMOVE WATCHLIST
-========================================================= */
-
-function removeFromWatchlist(
-  stockId
-){
-
-
-  const id =
-    String(stockId);
-
-
-  watchlist =
-    watchlist.filter(
-      item =>
-        item !== id
-    );
-
-
-  saveWatchlist();
-
-
-  renderWatchlist();
-
-
-  renderSearchResult(
-    getStockById(id)
-  );
-
-
-  showToast(
-    "已從觀察清單移除"
-  );
-
-
-}
-
-
-/* =========================================================
-   CLEAR WATCHLIST
-========================================================= */
-
-function clearWatchlist(){
-
-
-  if(
-    watchlist.length === 0
-  ){
-
-    showToast(
-      "觀察清單目前是空的"
-    );
-
-    return;
-
-  }
-
-
-  const confirmed =
-    confirm(
-      "確定要清空全部觀察清單嗎？"
-    );
-
-
-  if(!confirmed){
-
-    return;
-
-  }
-
-
-  watchlist = [];
-
-
-  saveWatchlist();
-
-
-  renderWatchlist();
-
-
-  showToast(
-    "觀察清單已清空"
-  );
-
-
-}
-
-
-/* =========================================================
-   LOAD DATA
-========================================================= */
-
-async function loadData(){
-
-
-  setSystemStatus(
-    "正在讀取最新資料"
-  );
-
-
-  updateDataDiagnostic(
-    "正在連線..."
-  );
-
-
-  console.log(
-    "================================="
-  );
-
-
-  console.log(
-    "📁 DATA_URL:",
-    DATA_URL
-  );
-
-
-  console.log(
-    "🌐 DATA_FULL_URL:",
-    DATA_FULL_URL
-  );
-
-
-  console.log(
-    "================================="
-  );
-
-
-  try{
-
-
-    const requestURL =
-      DATA_URL +
-      "?t=" +
-      Date.now();
-
-
-    const response =
-      await fetch(
-        requestURL,
-        {
-          cache:"no-store"
-        }
-      );
-
-
-    console.log(
-      "📡 HTTP Status:",
-      response.status
-    );
-
-
-    console.log(
-      "📡 Response URL:",
-      response.url
-    );
-
-
-    if(!response.ok){
-
-
-      updateDataDiagnostic(
-        "❌ HTTP " +
-        response.status +
-        "｜" +
-        response.statusText
-      );
-
-
-      throw new Error(
-        "HTTP " +
-        response.status +
-        " - " +
-        response.statusText
-      );
-
-
-    }
-
-
-    systemData =
-      await response.json();
-
-
-    console.log(
-      "📦 JSON:",
-      systemData
-    );
-
-
-    /*
-     * V6.2：
-     *
-     * 嚴格確認 stocks 是否為陣列。
-     */
-
-    if(
-      !Array.isArray(
-        systemData.stocks
-      )
-    ){
-
-      throw new Error(
-        "prices.json 缺少 stocks 陣列"
-      );
-
-    }
-
-
-    stocks =
-      systemData.stocks;
-
-
-    /*
-     * V6 RSI 防呆
-     *
-     * 只修正 RSI。
-     *
-     * 絕對不修改：
-     *
-     * stock.price.close
-     * stock.price.change
-     * stock.price.change_percent
-     *
-     */
-
-    stocks.forEach(
-      stock => {
-
-
-        if(
-          !stock.technical
-        ){
-
-          stock.technical = {};
-
-        }
-
-
-        stock.technical.rsi =
-          normalizeRSI(
-            stock.technical.rsi
-          );
-
-
-      }
-    );
-
-
-    /*
-     * 嘗試取得後端資料更新時間。
-     */
-
-    const updatedAt =
-      systemData.updated_at
-      ||
-      systemData.update_time
-      ||
-      systemData.last_updated
-      ||
-      systemData.generated_at
-      ||
-      systemData.timestamp
-      ||
-      "-";
-
-
-    updateDataDiagnostic(
-      "✅ HTTP " +
-      response.status +
-      "｜讀取成功",
-      stocks.length,
-      updatedAt
-    );
-
-
-    /*
-     * V6.2：
-     *
-     * 補上完整 renderAll()
-     */
-
-    renderAll();
-
-
-    setSystemStatus(
-      "資料已更新｜" +
-      stocks.length +
-      " 檔"
-    );
-
-
-  }catch(error){
-
-
-    console.error(
-      "❌ Data Load Error:",
-      error
-    );
-
-
-    updateDataDiagnostic(
-      "❌ 讀取失敗：" +
-      error.message,
-      0,
-      "-"
-    );
-
-
-    setSystemStatus(
-      "資料讀取失敗"
-    );
-
-
-    const container =
-      document.getElementById(
-        "watchlistContainer"
-      );
-
-
-    if(container){
-
-
-      container.innerHTML = `
-
-        <div class="watchlist-empty">
-
-          <div class="watchlist-empty-icon">
-            ⚠️
-          </div>
-
-          <strong>
-            無法讀取 Data/prices.json
-          </strong>
-
-          <br><br>
-
-          <strong>
-            實際讀取網址：
-          </strong>
-
-          <code
-            style="
-              display:block;
-              margin:10px 0;
-              padding:10px;
-              background:#081321;
-              border-radius:8px;
-              color:#4da3ff;
-              word-break:break-all;
-            "
-          >
-            ${escapeHTML(DATA_FULL_URL)}
-          </code>
-
-          <br>
-
-          <strong>
-            錯誤：
-          </strong>
-
-          <br>
-
-          <span
-            style="
-              color:#ff6575;
-            "
-          >
-            ${escapeHTML(
-              error.message
-            )}
-          </span>
-
-          <br><br>
-
-          請到「⚙️ 系統資訊」
-          查看完整資料讀取診斷。
+            <div class="summary-sub">
+                上市・上櫃・ETF
+            </div>
 
         </div>
 
-      `;
 
-    }
-
-
-  }
-
-
-}
-
-
-/* =========================================================
-   V6 RSI NORMALIZER
-========================================================= */
-
-function normalizeRSI(
-  value
-){
-
-
-  if(
-    value === null ||
-    value === undefined ||
-    value === ""
-  ){
-
-    return null;
-
-  }
-
-
-  let number =
-    Number(value);
-
-
-  if(
-    !Number.isFinite(number)
-  ){
-
-    return null;
-
-  }
-
-
-  /*
-   * 正常 RSI：
-   *
-   * 0 ～ 100
-   */
-
-  if(
-    number >= 0 &&
-    number <= 100
-  ){
-
-    return number;
-
-  }
-
-
-  /*
-   * 例如：
-   *
-   * 560  → 56
-   * 785  → 78.5
-   * 432  → 43.2
-   */
-
-  if(
-    number > 100 &&
-    number <= 1000
-  ){
-
-
-    const divided10 =
-      number / 10;
-
-
-    if(
-      divided10 >= 0 &&
-      divided10 <= 100
-    ){
-
-      return divided10;
-
-    }
-
-  }
-
-
-  /*
-   * 例如：
-   *
-   * 5600 → 56
-   */
-
-  if(
-    number > 1000 &&
-    number <= 10000
-  ){
-
-
-    const divided100 =
-      number / 100;
-
-
-    if(
-      divided100 >= 0 &&
-      divided100 <= 100
-    ){
-
-      return divided100;
-
-    }
-
-  }
-
-
-  return null;
-
-
-}
-
-
-/* =========================================================
-   RENDER ALL
-========================================================= */
-
-function renderAll(){
-
-
-  /*
-   * 先更新統計。
-   */
-
-  updateStatistics();
-
-
-  /*
-   * 我的觀察清單。
-   */
-
-  renderWatchlist();
-
-
-  /*
-   * AI 排名。
-   */
-
-  renderRanking();
-
-
-  /*
-   * 核心訊號。
-   */
-
-  renderCore();
-
-
-  /*
-   * 定投候選。
-   */
-
-  renderDCA();
-
-
-}
-
-
-/* =========================================================
-   GET STOCK
-========================================================= */
-
-function getStockById(
-  id
-){
-
-
-  return stocks.find(
-    stock =>
-      String(stock.id) ===
-      String(id)
-  );
-
-
-}
-
-
-/* =========================================================
-   SEARCH
-========================================================= */
-
-function searchStock(){
-
-
-  const input =
-    document
-      .getElementById(
-        "searchInput"
-      )
-      .value
-      .trim()
-      .toLowerCase();
-
-
-  if(!input){
-
-
-    document
-      .getElementById(
-        "searchResult"
-      )
-      .classList.remove(
-        "show"
-      );
-
-
-    return;
-
-  }
-
-
-  const result =
-    stocks.find(
-      stock => {
-
-
-        const id =
-          String(
-            stock.id || ""
-          )
-          .toLowerCase();
-
-
-        const name =
-          String(
-            stock.name || ""
-          )
-          .toLowerCase();
-
-
-        const symbol =
-          String(
-            stock.symbol || ""
-          )
-          .toLowerCase();
-
-
-        return (
-          id === input ||
-          name.includes(input) ||
-          symbol.includes(input)
-        );
-
-
-      }
-    );
-
-
-  renderSearchResult(
-    result
-  );
-
-
-}
-
-
-/* =========================================================
-   SEARCH RESULT
-========================================================= */
-
-function renderSearchResult(
-  stock
-){
-
-
-  const container =
-    document.getElementById(
-      "searchResult"
-    );
-
-
-  if(!container){
-
-    return;
-
-  }
-
-
-  if(!stock){
-
-
-    container.innerHTML = `
-
-      <div class="result-card">
-
-        <div class="result-info">
-
-          <strong>
-            找不到資料
-          </strong>
-
-          <span>
-            請確認股票代號或名稱是否存在於目前系統資料庫。
-          </span>
+        <div class="summary-card">
+
+            <div class="summary-label">
+                核心訊號
+            </div>
+
+            <div
+                class="summary-value"
+                id="coreStocks"
+            >
+                --
+            </div>
+
+            <div class="summary-sub">
+                六項條件全部成立
+            </div>
 
         </div>
 
-      </div>
 
-    `;
+        <div class="summary-card">
 
+            <div class="summary-label">
+                RSI > 50
+            </div>
 
-    container.classList.add(
-      "show"
-    );
+            <div
+                class="summary-value"
+                id="rsiStocks"
+            >
+                --
+            </div>
 
+            <div class="summary-sub">
+                多方動能
+            </div>
 
-    return;
-
-  }
-
-
-  const id =
-    String(stock.id);
-
-
-  const exists =
-    watchlist.includes(id);
-
-
-  container.innerHTML = `
-
-    <div class="result-card">
-
-      <div class="result-info">
-
-        <strong>
-          ${escapeHTML(
-            stock.name || "-"
-          )}
-        </strong>
-
-        <span>
-
-          ${escapeHTML(
-            stock.id || "-"
-          )}
-
-         　
-
-          ${isETF(stock)
-            ? "ETF"
-            : "個股"
-          }
-
-         　
-
-          現價
-
-          ${formatNumber(
-            stock.price?.close
-          )}
-
-         　
-
-          RSI
-
-          ${formatRSI(
-            stock.technical?.rsi
-          )}
-
-         　
-
-          AI評分
-
-          ${stock.short_term?.score ?? "-"}
-
-        </span>
-
-      </div>
-
-
-      ${
-        exists
-
-        ? `
-
-          <button
-            class="btn btn-danger"
-            onclick="removeFromWatchlist('${escapeJS(id)}')"
-          >
-            ★ 移除觀察
-          </button>
-
-        `
-
-        : `
-
-          <button
-            class="btn btn-primary"
-            onclick="addToWatchlist('${escapeJS(id)}')"
-          >
-            ＋ 加入觀察
-          </button>
-
-        `
-      }
-
-
-    </div>
-
-  `;
-
-
-  container.classList.add(
-    "show"
-  );
-
-
-}
-
-
-/* =========================================================
-   WATCHLIST
-========================================================= */
-
-function renderWatchlist(){
-
-
-  const container =
-    document.getElementById(
-      "watchlistContainer"
-    );
-
-
-  if(!container){
-
-    return;
-
-  }
-
-
-  if(
-    watchlist.length === 0
-  ){
-
-
-    container.innerHTML = `
-
-      <div class="watchlist-empty">
-
-        <div class="watchlist-empty-icon">
-          ⭐
         </div>
 
-        尚未加入任何股票。
 
-        <br><br>
+        <div class="summary-card">
 
-        使用上方搜尋功能加入你的第一檔股票。
+            <div class="summary-label">
+                量能 ≥ 1.5 倍
+            </div>
 
-      </div>
+            <div
+                class="summary-value"
+                id="volumeStocks"
+            >
+                --
+            </div>
 
-    `;
+            <div class="summary-sub">
+                成交量放大
+            </div>
 
-
-    return;
-
-  }
-
-
-  const selected =
-    watchlist
-      .map(
-        id =>
-          getStockById(id)
-      )
-      .filter(Boolean);
-
-
-  if(
-    selected.length === 0
-  ){
-
-
-    container.innerHTML = `
-
-      <div class="watchlist-empty">
-
-        <div class="watchlist-empty-icon">
-          ⚠️
         </div>
 
-        觀察清單中的股票目前沒有對應資料。
+    </section>
 
-        <br><br>
 
-        等待下一次資料更新即可。
+    <!-- ====================================================
+         CONTROL
+    ===================================================== -->
 
-      </div>
+    <section class="control-card">
 
-    `;
+        <div class="controls">
 
+            <div class="search-box">
 
-    return;
+                <input
+                    id="searchInput"
+                    type="search"
+                    placeholder="搜尋股票代號或名稱，例如 2330、台積電"
+                >
 
-  }
+            </div>
 
 
-  container.innerHTML =
-    selected
-      .map(
-        stock =>
-          createStockCard(
-            stock,
-            true
-          )
-      )
-      .join("");
+            <select
+                id="typeFilter"
+                class="select"
+            >
 
+                <option value="ALL">
+                    全部標的
+                </option>
 
-}
+                <option value="STOCK">
+                    個股
+                </option>
 
+                <option value="ETF">
+                    ETF
+                </option>
 
-/* =========================================================
-   STOCK CARD
-========================================================= */
+            </select>
 
-function createStockCard(
-  stock,
-  showRemove = false
-){
 
+            <select
+                id="signalFilter"
+                class="select"
+            >
 
-  const close =
-    stock.price?.close;
+                <option value="ALL">
+                    全部訊號
+                </option>
 
+                <option value="核心">
+                    強勢核心
+                </option>
 
-  const change =
-    stock.price?.change;
+                <option value="強勢">
+                    強勢
+                </option>
 
+                <option value="偏多">
+                    偏多
+                </option>
 
-  const changePercent =
-    stock.price?.change_percent;
+                <option value="觀察">
+                    觀察
+                </option>
 
+                <option value="弱勢">
+                    弱勢
+                </option>
 
-  const score =
-    stock.short_term?.score;
+            </select>
 
 
-  const signal =
-    stock.short_term?.signal ||
-    "無訊號";
+            <select
+                id="sortSelect"
+                class="select"
+            >
 
+                <option value="score">
+                    AI Score 高→低
+                </option>
 
-  const conditions =
-    stock.conditions || {};
+                <option value="price">
+                    股價 高→低
+                </option>
 
+                <option value="rsi">
+                    RSI 高→低
+                </option>
 
-  const dca =
-    stock.dca || {};
+                <option value="volume">
+                    量比 高→低
+                </option>
 
+                <option value="code">
+                    代號排序
+                </option>
 
-  let cardClass = "";
+            </select>
 
 
-  if(
-    conditions.short_term_core
-  ){
+            <button
+                class="btn"
+                onclick="showWatchlist()"
+            >
+                我的追蹤
+            </button>
 
-    cardClass =
-      "core";
 
-
-  }else if(
-    Number(score) >= 60
-  ){
-
-    cardClass =
-      "warning";
-
-
-  }else if(
-    Number(score) < 30
-  ){
-
-    cardClass =
-      "danger";
-
-  }
-
-
-  let signalClass =
-    "signal-blue";
-
-
-  if(
-    conditions.short_term_core
-  ){
-
-    signalClass =
-      "signal-green";
-
-
-  }else if(
-    Number(score) >= 60
-  ){
-
-    signalClass =
-      "signal-yellow";
-
-
-  }else if(
-    Number(score) < 30
-  ){
-
-    signalClass =
-      "signal-red";
-
-  }
-
-
-  const changeNumber =
-    Number(change);
-
-
-  let changeClass =
-    "flat";
-
-
-  if(
-    changeNumber > 0
-  ){
-
-    changeClass =
-      "up";
-
-
-  }else if(
-    changeNumber < 0
-  ){
-
-    changeClass =
-      "down";
-
-  }
-
-
-  return `
-
-    <article
-      class="stock-card ${cardClass}"
-    >
-
-
-      <div class="stock-top">
-
-
-        <div class="stock-identity">
-
-
-          <div class="stock-name">
-
-            ${escapeHTML(
-              stock.name || "-"
-            )}
-
-          </div>
-
-
-          <div class="stock-code">
-
-
-            <span class="stock-symbol">
-
-              ${escapeHTML(
-                stock.id || "-"
-              )}
-
-            </span>
-
-
-            <span class="stock-type">
-
-              ${
-                isETF(stock)
-                  ? "ETF"
-                  : "個股"
-              }
-
-            </span>
-
-
-          </div>
-
+            <button
+                class="btn btn-primary"
+                onclick="loadData()"
+            >
+                重新整理
+            </button>
 
         </div>
 
 
         <div
-          class="signal ${signalClass}"
+            class="filter-info"
+            id="filterInfo"
+        >
+            載入資料中……
+        </div>
+
+    </section>
+
+
+    <!-- ====================================================
+         CORE SIGNAL
+    ===================================================== -->
+
+    <section class="section">
+
+        <div class="section-title">
+
+            <h2>
+                🔥 AI 核心訊號
+            </h2>
+
+            <span>
+                MACD + KD + RSI + 成交量 + MA20 + MA20向上
+            </span>
+
+        </div>
+
+        <div
+            id="coreGrid"
+            class="stock-grid"
         >
 
-          ${escapeHTML(
-            signal
-          )}
+            <div class="loading">
+                正在分析……
+            </div>
+
+        </div>
+
+    </section>
+
+
+    <!-- ====================================================
+         STOCK GRID
+    ===================================================== -->
+
+    <section class="section">
+
+        <div class="section-title">
+
+            <h2>
+                📊 全市場掃描
+            </h2>
+
+            <span id="marketCount">
+                --
+            </span>
+
+        </div>
+
+        <div
+            id="stockGrid"
+            class="stock-grid"
+        >
+
+            <div class="loading">
+                正在載入市場資料……
+            </div>
+
+        </div>
+
+    </section>
+
+
+    <!-- ====================================================
+         TABLE
+    ===================================================== -->
+
+    <section class="section">
+
+        <div class="section-title">
+
+            <h2>
+                📋 AI 排名總表
+            </h2>
+
+            <span>
+                可依 AI Score、RSI、量比排序
+            </span>
+
+        </div>
+
+        <div class="table-wrap">
+
+            <table>
+
+                <thead>
+
+                    <tr>
+
+                        <th>
+                            股票
+                        </th>
+
+                        <th>
+                            類型
+                        </th>
+
+                        <th>
+                            股價
+                        </th>
+
+                        <th>
+                            漲跌
+                        </th>
+
+                        <th>
+                            AI
+                        </th>
+
+                        <th>
+                            RSI
+                        </th>
+
+                        <th>
+                            K
+                        </th>
+
+                        <th>
+                            D
+                        </th>
+
+                        <th>
+                            MACD
+                        </th>
+
+                        <th>
+                            MA20
+                        </th>
+
+                        <th>
+                            量比
+                        </th>
+
+                        <th>
+                            訊號
+                        </th>
+
+                    </tr>
+
+                </thead>
+
+                <tbody id="stockTable">
+
+                    <tr>
+
+                        <td colspan="12">
+                            載入中……
+                        </td>
+
+                    </tr>
+
+                </tbody>
+
+            </table>
+
+        </div>
+
+    </section>
+
+
+    <!-- ====================================================
+         STATISTICS
+    ===================================================== -->
+
+    <section class="section">
+
+        <div class="section-title">
+
+            <h2>
+                📈 市場統計
+            </h2>
 
         </div>
 
 
-      </div>
+        <div
+            class="statistics-grid"
+            id="statisticsGrid"
+        >
+
+        </div>
+
+    </section>
 
 
-      <div class="price-row">
+    <!-- ====================================================
+         FOOTER
+    ===================================================== -->
+
+    <div class="footer">
+
+        台股 AI 選股・零股定投・動態風控 V6.2<br>
+
+        技術指標僅供策略分析，不構成投資建議。<br>
+
+        資料來源：Yahoo Finance
+
+    </div>
+
+</main>
 
 
-        <div>
+<!-- ========================================================
+     WATCHLIST MODAL
+========================================================= -->
+
+<div
+    id="watchModal"
+    class="modal"
+>
+
+    <div class="modal-content">
+
+        <div class="modal-header">
+
+            <h3>
+                ⭐ 我的追蹤清單
+            </h3>
+
+            <button
+                class="close"
+                onclick="closeWatchlist()"
+            >
+                ×
+            </button>
+
+        </div>
 
 
-          <div class="price">
+        <div style="margin-top:8px;color:#64748b;font-size:12px;line-height:1.6;">
 
-            ${formatNumber(
-              close
-            )}
+            這裡只是使用者自己的追蹤清單。
+            <br>
+            不會限制或改變全市場掃描結果。
 
-          </div>
-
-
-          <div
-            class="change ${changeClass}"
-          >
+        </div>
 
 
-            ${
-              change !== null &&
-              change !== undefined
+        <div class="add-row">
 
-              ? (
+            <input
+                id="watchInput"
+                type="text"
+                placeholder="輸入股票代號，例如 2330"
+            >
 
-                  Number(change) >= 0
-                    ? "+"
-                    : ""
+            <button
+                class="btn btn-primary"
+                onclick="addWatchlist()"
+            >
+                加入
+            </button>
 
-                ) +
+        </div>
 
-                formatNumber(
-                  change
-                ) +
 
-                " (" +
+        <div
+            id="watchList"
+            class="watch-list"
+        >
+        </div>
 
-                (
-                  Number(changePercent) >= 0
-                    ? "+"
-                    : ""
-                ) +
+    </div>
 
-                formatNumber(
-                  changePercent
-                ) +
+</div>
 
-                "%)"
 
-              : "-"
+<script>
+
+/* ============================================================
+   V6.2 GLOBAL
+============================================================ */
+
+const DATA_URL =
+    "./Data/prices.json";
+
+let allStocks = [];
+
+let rankings = {};
+
+let statistics = {};
+
+let metadata = {};
+
+let watchlist =
+    JSON.parse(
+        localStorage.getItem(
+            "tw_stock_watchlist_v62"
+        ) || "[]"
+    );
+
+
+/* ============================================================
+   SAFE NUMBER
+============================================================ */
+
+function num(
+    value,
+    fallback = null
+){
+
+    const n =
+        Number(value);
+
+    if(
+        value === null ||
+        value === undefined ||
+        Number.isNaN(n) ||
+        !Number.isFinite(n)
+    ){
+
+        return fallback;
+
+    }
+
+    return n;
+
+}
+
+
+/* ============================================================
+   FORMAT NUMBER
+============================================================ */
+
+function fmt(
+    value,
+    digits = 2
+){
+
+    const n =
+        num(value);
+
+    if(n === null){
+        return "--";
+    }
+
+    return n.toFixed(digits);
+
+}
+
+
+/* ============================================================
+   FORMAT INTEGER
+============================================================ */
+
+function fmtInt(value){
+
+    const n =
+        num(value);
+
+    if(n === null){
+        return "--";
+    }
+
+    return Math.round(n)
+        .toLocaleString();
+
+}
+
+
+/* ============================================================
+   PRICE
+============================================================ */
+
+function price(value){
+
+    const n =
+        num(value);
+
+    if(n === null){
+        return "--";
+    }
+
+    return n.toLocaleString(
+        "zh-TW",
+        {
+            minimumFractionDigits:2,
+            maximumFractionDigits:2
+        }
+    );
+
+}
+
+
+/* ============================================================
+   CHANGE CLASS
+============================================================ */
+
+function changeClass(value){
+
+    const n =
+        num(value,0);
+
+    if(n > 0){
+        return "up";
+    }
+
+    if(n < 0){
+        return "down";
+    }
+
+    return "flat";
+
+}
+
+
+/* ============================================================
+   SIGNAL CLASS
+============================================================ */
+
+function signalClass(signal){
+
+    if(signal === "強勢核心"){
+        return "signal-core";
+    }
+
+    if(signal === "強勢"){
+        return "signal-strong";
+    }
+
+    if(signal === "偏多"){
+        return "signal-bull";
+    }
+
+    if(signal === "觀察"){
+        return "signal-watch";
+    }
+
+    return "signal-weak";
+
+}
+
+
+/* ============================================================
+   SIGNAL TEXT
+============================================================ */
+
+function signalText(signal){
+
+    return signal || "未知";
+
+}
+
+
+/* ============================================================
+   CONDITION
+============================================================ */
+
+function condition(
+    label,
+    value
+){
+
+    return `
+        <span class="condition ${value ? "ok" : ""}">
+            ${value ? "✓" : "－"} ${label}
+        </span>
+    `;
+
+}
+
+
+/* ============================================================
+   STOCK CARD
+============================================================ */
+
+function createStockCard(stock){
+
+    const p =
+        stock.price || {};
+
+    const t =
+        stock.technical || {};
+
+    const c =
+        stock.conditions || {};
+
+    const s =
+        stock.short_term || {};
+
+    const d =
+        stock.dca || {};
+
+    const score =
+        Math.max(
+            0,
+            Math.min(
+                100,
+                num(s.score,0)
+            )
+        );
+
+    const change =
+        num(p.change,0);
+
+    const changePercent =
+        num(
+            p.change_percent,
+            0
+        );
+
+    return `
+
+        <article class="stock-card">
+
+            <div class="stock-top">
+
+                <div>
+
+                    <div class="stock-name">
+                        ${escapeHTML(stock.name || "未知")}
+                    </div>
+
+                    <div class="stock-code">
+                        ${escapeHTML(stock.id || stock.symbol || "--")}
+                    </div>
+
+                </div>
+
+                <div class="stock-type">
+                    ${stock.type === "ETF"
+                        ? "ETF"
+                        : "個股"}
+                </div>
+
+            </div>
+
+
+            <div class="price-row">
+
+                <div class="price">
+                    ${price(p.close)}
+                </div>
+
+                <div class="change ${changeClass(change)}">
+                    ${change > 0 ? "+" : ""}
+                    ${fmt(change)}
+                    /
+                    ${changePercent > 0 ? "+" : ""}
+                    ${fmt(changePercent)}%
+                </div>
+
+            </div>
+
+
+            <div class="score-box">
+
+                <div class="score-row">
+
+                    <div class="score-label">
+                        AI SCORE
+                    </div>
+
+                    <div class="score">
+                        ${score}
+                    </div>
+
+                </div>
+
+                <div class="score-bar">
+
+                    <div
+                        class="score-fill"
+                        style="width:${score}%"
+                    ></div>
+
+                </div>
+
+                <div>
+
+                    <span
+                        class="signal ${signalClass(s.signal)}"
+                    >
+                        ${signalText(s.signal)}
+                    </span>
+
+                </div>
+
+            </div>
+
+
+            <div class="tech-grid">
+
+                <div class="tech-item">
+
+                    <div class="tech-label">
+                        RSI
+                    </div>
+
+                    <div class="tech-value">
+                        ${fmt(
+                            Math.max(
+                                0,
+                                Math.min(
+                                    100,
+                                    num(t.rsi,0)
+                                )
+                            )
+                        )}
+                    </div>
+
+                </div>
+
+
+                <div class="tech-item">
+
+                    <div class="tech-label">
+                        K
+                    </div>
+
+                    <div class="tech-value">
+                        ${fmt(t.k)}
+                    </div>
+
+                </div>
+
+
+                <div class="tech-item">
+
+                    <div class="tech-label">
+                        D
+                    </div>
+
+                    <div class="tech-value">
+                        ${fmt(t.d)}
+                    </div>
+
+                </div>
+
+
+                <div class="tech-item">
+
+                    <div class="tech-label">
+                        量比
+                    </div>
+
+                    <div class="tech-value">
+                        ${fmt(t.volume_ratio)}x
+                    </div>
+
+                </div>
+
+
+                <div class="tech-item">
+
+                    <div class="tech-label">
+                        MA5
+                    </div>
+
+                    <div class="tech-value">
+                        ${price(t.ma5)}
+                    </div>
+
+                </div>
+
+
+                <div class="tech-item">
+
+                    <div class="tech-label">
+                        MA20
+                    </div>
+
+                    <div class="tech-value">
+                        ${price(t.ma20)}
+                    </div>
+
+                </div>
+
+
+                <div class="tech-item">
+
+                    <div class="tech-label">
+                        MA60
+                    </div>
+
+                    <div class="tech-value">
+                        ${price(t.ma60)}
+                    </div>
+
+                </div>
+
+
+                <div class="tech-item">
+
+                    <div class="tech-label">
+                        MACD
+                    </div>
+
+                    <div class="tech-value">
+                        ${fmt(t.macd,4)}
+                    </div>
+
+                </div>
+
+            </div>
+
+
+            <div class="conditions">
+
+                ${condition(
+                    "MACD金叉",
+                    c.macd_golden_cross
+                )}
+
+                ${condition(
+                    "KD金叉",
+                    c.kd_golden_cross
+                )}
+
+                ${condition(
+                    "RSI>50",
+                    c.rsi_above_50
+                )}
+
+                ${condition(
+                    "量≥1.5x",
+                    c.volume_over_1_5x
+                )}
+
+                ${condition(
+                    "站上MA20",
+                    c.above_ma20
+                )}
+
+                ${condition(
+                    "MA20向上",
+                    c.ma20_up
+                )}
+
+            </div>
+
+
+            <div class="dca">
+
+                <div class="dca-title">
+                    零股定投｜${escapeHTML(d.action || "資料不足")}
+                </div>
+
+                <div class="dca-grid">
+
+                    <div class="dca-item">
+
+                        <div class="dca-label">
+                            第一批
+                        </div>
+
+                        <div class="dca-price">
+                            ${price(d.buy_1)}
+                        </div>
+
+                    </div>
+
+
+                    <div class="dca-item">
+
+                        <div class="dca-label">
+                            第二批
+                        </div>
+
+                        <div class="dca-price">
+                            ${price(d.buy_2)}
+                        </div>
+
+                    </div>
+
+
+                    <div class="dca-item">
+
+                        <div class="dca-label">
+                            第三批
+                        </div>
+
+                        <div class="dca-price">
+                            ${price(d.buy_3)}
+                        </div>
+
+                    </div>
+
+
+                    <div class="dca-item">
+
+                        <div class="dca-label">
+                            第四批
+                        </div>
+
+                        <div class="dca-price">
+                            ${price(d.buy_4)}
+                        </div>
+
+                    </div>
+
+                </div>
+
+            </div>
+
+        </article>
+
+    `;
+
+}
+
+
+/* ============================================================
+   ESCAPE HTML
+============================================================ */
+
+function escapeHTML(value){
+
+    return String(value)
+        .replaceAll("&","&amp;")
+        .replaceAll("<","&lt;")
+        .replaceAll(">","&gt;")
+        .replaceAll('"',"&quot;")
+        .replaceAll("'","&#039;");
+
+}
+
+
+/* ============================================================
+   FILTER
+============================================================ */
+
+function getFilteredStocks(){
+
+    const search =
+        document
+        .getElementById(
+            "searchInput"
+        )
+        .value
+        .trim()
+        .toLowerCase();
+
+    const type =
+        document
+        .getElementById(
+            "typeFilter"
+        )
+        .value;
+
+    const signal =
+        document
+        .getElementById(
+            "signalFilter"
+        )
+        .value;
+
+    const sort =
+        document
+        .getElementById(
+            "sortSelect"
+        )
+        .value;
+
+
+    let stocks =
+        [...allStocks];
+
+
+    if(search){
+
+        stocks =
+            stocks.filter(
+                stock => {
+
+                    const code =
+                        String(
+                            stock.id || ""
+                        )
+                        .toLowerCase();
+
+                    const name =
+                        String(
+                            stock.name || ""
+                        )
+                        .toLowerCase();
+
+                    return (
+                        code.includes(search)
+                        ||
+                        name.includes(search)
+                    );
+
+                }
+            );
+
+    }
+
+
+    if(type !== "ALL"){
+
+        stocks =
+            stocks.filter(
+                stock =>
+                    (
+                        stock.type ||
+                        "STOCK"
+                    ) === type
+            );
+
+    }
+
+
+    if(signal !== "ALL"){
+
+        stocks =
+            stocks.filter(
+                stock => {
+
+                    const value =
+                        stock
+                        .short_term
+                        ?.signal || "";
+
+                    if(signal === "核心"){
+                        return value === "強勢核心";
+                    }
+
+                    return value === signal;
+
+                }
+            );
+
+    }
+
+
+    stocks.sort(
+        (a,b) => {
+
+            const as =
+                a.short_term || {};
+
+            const bs =
+                b.short_term || {};
+
+            const at =
+                a.technical || {};
+
+            const bt =
+                b.technical || {};
+
+            const ap =
+                a.price || {};
+
+            const bp =
+                b.price || {};
+
+
+            if(sort === "score"){
+
+                return num(bs.score,0)
+                    - num(as.score,0);
 
             }
 
 
-          </div>
+            if(sort === "price"){
 
+                return num(bp.close,0)
+                    - num(ap.close,0);
 
-        </div>
+            }
 
 
-        <div class="score">
+            if(sort === "rsi"){
 
+                return num(bt.rsi,0)
+                    - num(at.rsi,0);
 
-          <div class="score-number">
+            }
 
-            ${score ?? "-"}
 
-          </div>
+            if(sort === "volume"){
 
+                return num(bt.volume_ratio,0)
+                    - num(at.volume_ratio,0);
 
-          <div class="score-label">
+            }
 
-            AI SCORE
 
-          </div>
+            if(sort === "code"){
 
+                return String(
+                    a.id || ""
+                ).localeCompare(
+                    String(
+                        b.id || ""
+                    )
+                );
 
-        </div>
+            }
 
 
-      </div>
-
-
-      <div class="metrics">
-
-
-        ${metric(
-          "RSI",
-          stock.technical?.rsi,
-          "",
-          true
-        )}
-
-
-        ${metric(
-          "KD K",
-          stock.technical?.k
-        )}
-
-
-        ${metric(
-          "KD D",
-          stock.technical?.d
-        )}
-
-
-        ${metric(
-          "MACD",
-          stock.technical?.macd_hist
-        )}
-
-
-        ${metric(
-          "量比",
-          stock.technical?.volume_ratio,
-          "x"
-        )}
-
-
-        ${metric(
-          "20MA",
-          stock.technical?.ma20
-        )}
-
-
-      </div>
-
-
-      <div class="conditions">
-
-
-        ${condition(
-          "MACD",
-          conditions.macd_golden_cross
-        )}
-
-
-        ${condition(
-          "KD",
-          conditions.kd_golden_cross
-        )}
-
-
-        ${condition(
-          "RSI > 50",
-          conditions.rsi_above_50
-        )}
-
-
-        ${condition(
-          "量 > 1.5x",
-          conditions.volume_over_1_5x
-        )}
-
-
-        ${condition(
-          "站上20MA",
-          conditions.above_ma20
-        )}
-
-
-        ${condition(
-          "20MA向上",
-          conditions.ma20_up
-        )}
-
-
-      </div>
-
-
-      <div class="dca-box">
-
-
-        <div class="dca-title">
-
-          💰 定投區間
-
-        </div>
-
-
-        <div class="dca-levels">
-
-
-          ${dcaLevel(
-            "第1批",
-            dca.buy_1
-          )}
-
-
-          ${dcaLevel(
-            "第2批",
-            dca.buy_2
-          )}
-
-
-          ${dcaLevel(
-            "第3批",
-            dca.buy_3
-          )}
-
-
-          ${dcaLevel(
-            "第4批",
-            dca.buy_4
-          )}
-
-
-        </div>
-
-
-      </div>
-
-
-      <div class="card-actions">
-
-
-        ${
-          showRemove
-
-          ? `
-
-            <button
-              onclick="removeFromWatchlist('${escapeJS(
-                String(stock.id)
-              )}')"
-            >
-
-              ★ 移除觀察
-
-            </button>
-
-          `
-
-          : `
-
-            <button
-              onclick="addToWatchlist('${escapeJS(
-                String(stock.id)
-              )}')"
-            >
-
-              ＋ 加入觀察
-
-            </button>
-
-          `
-        }
-
-
-        <button
-          onclick="focusSearch('${escapeJS(
-            String(stock.id)
-          )}')"
-        >
-
-          🔎 搜尋
-
-        </button>
-
-
-      </div>
-
-
-    </article>
-
-  `;
-
-
-}
-
-
-/* =========================================================
-   METRIC
-========================================================= */
-
-function metric(
-  label,
-  value,
-  suffix = "",
-  isRSI = false
-){
-
-
-  let displayValue;
-
-
-  if(isRSI){
-
-
-    displayValue =
-      formatRSI(value);
-
-
-  }else{
-
-
-    displayValue =
-      (
-        value !== null &&
-        value !== undefined
-      )
-
-      ? formatNumber(value) + suffix
-
-      : "-";
-
-
-  }
-
-
-  return `
-
-    <div class="metric">
-
-
-      <div class="metric-label">
-
-        ${label}
-
-      </div>
-
-
-      <div class="metric-value">
-
-        ${displayValue}
-
-      </div>
-
-
-    </div>
-
-  `;
-
-
-}
-
-
-/* =========================================================
-   RSI DISPLAY
-========================================================= */
-
-function formatRSI(
-  value
-){
-
-
-  const rsi =
-    normalizeRSI(value);
-
-
-  if(
-    rsi === null
-  ){
-
-    return "-";
-
-  }
-
-
-  return rsi.toLocaleString(
-    "zh-TW",
-    {
-      minimumFractionDigits:2,
-      maximumFractionDigits:2
-    }
-  );
-
-
-}
-
-
-/* =========================================================
-   CONDITION
-========================================================= */
-
-function condition(
-  label,
-  value
-){
-
-
-  return `
-
-    <span
-      class="condition ${
-        value
-          ? "good"
-          : "bad"
-      }"
-    >
-
-      ${
-        value
-          ? "✓"
-          : "×"
-      }
-
-      ${label}
-
-    </span>
-
-  `;
-
-
-}
-
-
-/* =========================================================
-   DCA LEVEL
-========================================================= */
-
-function dcaLevel(
-  label,
-  value
-){
-
-
-  return `
-
-    <div class="dca-level">
-
-
-      <span>
-
-        ${label}
-
-      </span>
-
-
-      <strong>
-
-
-        ${
-          value !== null &&
-          value !== undefined
-
-            ? formatNumber(value)
-
-            : "-"
+            return 0;
 
         }
+    );
 
 
-      </strong>
-
-
-    </div>
-
-  `;
-
+    return stocks;
 
 }
 
 
-/* =========================================================
-   RANKING
-========================================================= */
+/* ============================================================
+   RENDER STOCKS
+============================================================ */
 
-function renderRanking(){
+function renderStocks(){
 
+    const stocks =
+        getFilteredStocks();
 
-  const container =
-    document.getElementById(
-      "rankingContainer"
-    );
 
-
-  if(!container){
-
-    return;
-
-  }
-
-
-  const ranking =
-    Array.isArray(
-      systemData?.rankings?.short_term
-    )
-
-      ? systemData.rankings.short_term
-
-      : [];
-
-
-  if(
-    ranking.length === 0
-  ){
-
-
-    container.innerHTML =
-      emptyTable(
-        "目前沒有排名資料"
-      );
-
-
-    return;
-
-  }
-
-
-  container.innerHTML = `
-
-    <table>
-
-
-      <thead>
-
-        <tr>
-
-          <th>
-            排名
-          </th>
-
-          <th>
-            股票
-          </th>
-
-          <th>
-            現價
-          </th>
-
-          <th>
-            AI評分
-          </th>
-
-          <th>
-            訊號
-          </th>
-
-          <th>
-            RSI
-          </th>
-
-          <th>
-            量比
-          </th>
-
-          <th>
-            操作
-          </th>
-
-        </tr>
-
-      </thead>
-
-
-      <tbody>
-
-
-        ${
-          ranking
-            .map(
-              (id,index) => {
-
-
-                const stock =
-                  getStockById(id);
-
-
-                if(!stock){
-
-                  return "";
-
-                }
-
-
-                return `
-
-                  <tr>
-
-
-                    <td class="rank">
-
-                      #${index + 1}
-
-                    </td>
-
-
-                    <td>
-
-
-                      <div
-                        class="table-stock-name"
-                      >
-
-                        ${escapeHTML(
-                          stock.name || "-"
-                        )}
-
-                      </div>
-
-
-                      <div
-                        class="table-stock-code"
-                      >
-
-                        ${escapeHTML(
-                          stock.id || "-"
-                        )}
-
-                      </div>
-
-
-                    </td>
-
-
-                    <td>
-
-                      ${formatNumber(
-                        stock.price?.close
-                      )}
-
-                    </td>
-
-
-                    <td>
-
-                      <strong>
-
-                        ${
-                          stock.short_term?.score
-                          ?? "-"
-                        }
-
-                      </strong>
-
-                    </td>
-
-
-                    <td>
-
-                      ${
-                        escapeHTML(
-                          stock.short_term?.signal
-                          || "-"
-                        )
-                      }
-
-                    </td>
-
-
-                    <td>
-
-                      ${formatRSI(
-                        stock.technical?.rsi
-                      )}
-
-                    </td>
-
-
-                    <td>
-
-                      ${
-                        formatNumber(
-                          stock.technical?.volume_ratio
-                        )
-                      }x
-
-                    </td>
-
-
-                    <td>
-
-
-                      <button
-                        class="btn btn-secondary"
-                        style="
-                          padding:6px 10px;
-                          font-size:11px
-                        "
-                        onclick="addToWatchlist('${escapeJS(
-                          String(stock.id)
-                        )}')"
-                      >
-
-                        ＋觀察
-
-                      </button>
-
-
-                    </td>
-
-
-                  </tr>
-
-                `;
-
-
-              }
-            )
-            .join("")
-        }
-
-
-      </tbody>
-
-
-    </table>
-
-  `;
-
-
-}
-
-
-/* =========================================================
-   CORE
-========================================================= */
-
-function renderCore(){
-
-
-  const container =
-    document.getElementById(
-      "coreContainer"
-    );
-
-
-  if(!container){
-
-    return;
-
-  }
-
-
-  const core =
-    stocks.filter(
-      stock =>
-        stock.conditions?.short_term_core
-    );
-
-
-  if(
-    core.length === 0
-  ){
-
-
-    container.innerHTML = `
-
-      <div class="watchlist-empty">
-
-
-        <div class="watchlist-empty-icon">
-          🔎
-        </div>
-
-
-        目前沒有股票完全符合短期核心條件。
-
-
-      </div>
-
-    `;
-
-
-    return;
-
-  }
-
-
-  container.innerHTML =
-    core
-      .map(
-        stock =>
-          createStockCard(
-            stock,
-            watchlist.includes(
-              String(stock.id)
-            )
-          )
-      )
-      .join("");
-
-
-}
-
-
-/* =========================================================
-   DCA
-========================================================= */
-
-function renderDCA(){
-
-
-  const container =
-    document.getElementById(
-      "dcaContainer"
-    );
-
-
-  if(!container){
-
-    return;
-
-  }
-
-
-  const list =
-    Array.isArray(
-      systemData?.rankings?.dca
-    )
-
-      ? systemData.rankings.dca
-
-      : [];
-
-
-  if(
-    list.length === 0
-  ){
-
-
-    container.innerHTML =
-      emptyTable(
-        "目前沒有定投資料"
-      );
-
-
-    return;
-
-  }
-
-
-  container.innerHTML = `
-
-    <table>
-
-
-      <thead>
-
-        <tr>
-
-          <th>
-            排名
-          </th>
-
-          <th>
-            股票
-          </th>
-
-          <th>
-            現價
-          </th>
-
-          <th>
-            MA20
-          </th>
-
-          <th>
-            第1批
-          </th>
-
-          <th>
-            第2批
-          </th>
-
-          <th>
-            第3批
-          </th>
-
-          <th>
-            第4批
-          </th>
-
-          <th>
-            建議
-          </th>
-
-        </tr>
-
-      </thead>
-
-
-      <tbody>
-
-
-        ${
-          list
-            .map(
-              (id,index) => {
-
-
-                const stock =
-                  getStockById(id);
-
-
-                if(!stock){
-
-                  return "";
-
-                }
-
-
-                return `
-
-                  <tr>
-
-
-                    <td class="rank">
-
-                      #${index + 1}
-
-                    </td>
-
-
-                    <td>
-
-
-                      <div
-                        class="table-stock-name"
-                      >
-
-                        ${escapeHTML(
-                          stock.name || "-"
-                        )}
-
-                      </div>
-
-
-                      <div
-                        class="table-stock-code"
-                      >
-
-                        ${escapeHTML(
-                          stock.id || "-"
-                        )}
-
-                      </div>
-
-
-                    </td>
-
-
-                    <td>
-
-                      ${formatNumber(
-                        stock.price?.close
-                      )}
-
-                    </td>
-
-
-                    <td>
-
-                      ${formatNumber(
-                        stock.technical?.ma20
-                      )}
-
-                    </td>
-
-
-                    <td>
-
-                      ${formatNumber(
-                        stock.dca?.buy_1
-                      )}
-
-                    </td>
-
-
-                    <td>
-
-                      ${formatNumber(
-                        stock.dca?.buy_2
-                      )}
-
-                    </td>
-
-
-                    <td>
-
-                      ${formatNumber(
-                        stock.dca?.buy_3
-                      )}
-
-                    </td>
-
-
-                    <td>
-
-                      ${formatNumber(
-                        stock.dca?.buy_4
-                      )}
-
-                    </td>
-
-
-                    <td>
-
-                      ${escapeHTML(
-                        stock.dca?.action
-                        || "-"
-                      )}
-
-                    </td>
-
-
-                  </tr>
-
-                `;
-
-
-              }
-            )
-            .join("")
-        }
-
-
-      </tbody>
-
-
-    </table>
-
-  `;
-
-
-}
-
-
-/* =========================================================
-   STATISTICS
-========================================================= */
-
-function updateStatistics(){
-
-
-  const statistics =
-    systemData?.statistics
-    || {};
-
-
-  document.getElementById(
-    "totalStocks"
-  ).textContent =
-
-    statistics.total_stocks
-    ??
-    stocks.length;
-
-
-  document.getElementById(
-    "coreCount"
-  ).textContent =
-
-    statistics.core_stocks
-    ??
-    stocks.filter(
-      stock =>
-        stock.conditions?.short_term_core
-    ).length;
-
-
-  document.getElementById(
-    "macdCount"
-  ).textContent =
-
-    statistics.macd_golden
-    ?? "-";
-
-
-  document.getElementById(
-    "rsiCount"
-  ).textContent =
-
-    statistics.rsi_above_50
-    ?? "-";
-
-
-  updateWatchCount();
-
-
-}
-
-
-/* =========================================================
-   WATCH COUNT
-========================================================= */
-
-function updateWatchCount(){
-
-
-  const element =
-    document.getElementById(
-      "watchCount"
-    );
-
-
-  if(element){
-
-    element.textContent =
-      watchlist.length;
-
-  }
-
-
-}
-
-
-/* =========================================================
-   TABS
-========================================================= */
-
-function switchTab(
-  tab,
-  button
-){
-
-
-  document
-    .querySelectorAll(
-      ".tab"
-    )
-    .forEach(
-      item =>
-        item.classList.remove(
-          "active"
-        )
-    );
-
-
-  if(button){
-
-    button.classList.add(
-      "active"
-    );
-
-  }
-
-
-  document
-    .querySelectorAll(
-      ".section"
-    )
-    .forEach(
-      section =>
-        section.classList.remove(
-          "active"
-        )
-    );
-
-
-  const target =
-    document.getElementById(
-      "section-" + tab
-    );
-
-
-  if(target){
-
-    target.classList.add(
-      "active"
-    );
-
-  }
-
-
-}
-
-
-/* =========================================================
-   FOCUS SEARCH
-========================================================= */
-
-function focusSearch(
-  id
-){
-
-
-  const input =
-    document.getElementById(
-      "searchInput"
-    );
-
-
-  if(!input){
-
-    return;
-
-  }
-
-
-  input.value =
-    id;
-
-
-  input.focus();
-
-
-  searchStock();
-
-
-  window.scrollTo({
-
-    top:0,
-
-    behavior:"smooth"
-
-  });
-
-
-}
-
-
-/* =========================================================
-   TOAST
-========================================================= */
-
-let toastTimer =
-  null;
-
-
-function showToast(
-  message
-){
-
-
-  const toast =
-    document.getElementById(
-      "toast"
-    );
-
-
-  if(!toast){
-
-    return;
-
-  }
-
-
-  toast.textContent =
-    message;
-
-
-  toast.classList.add(
-    "show"
-  );
-
-
-  clearTimeout(
-    toastTimer
-  );
-
-
-  toastTimer =
-    setTimeout(
-      () => {
-
-
-        toast.classList.remove(
-          "show"
+    const grid =
+        document.getElementById(
+            "stockGrid"
         );
 
 
-      },
-      2200
-    );
+    const table =
+        document.getElementById(
+            "stockTable"
+        );
 
 
-}
-
-
-/* =========================================================
-   SYSTEM STATUS
-========================================================= */
-
-function setSystemStatus(
-  text
-){
-
-
-  const element =
     document.getElementById(
-      "systemStatus"
-    );
+        "marketCount"
+    ).textContent =
+        `目前顯示 ${stocks.length} 檔`;
 
 
-  if(element){
-
-    element.textContent =
-      text;
-
-  }
+    document.getElementById(
+        "filterInfo"
+    ).textContent =
+        `資料庫共 ${allStocks.length} 檔，目前符合條件 ${stocks.length} 檔`;
 
 
-}
+    if(stocks.length === 0){
 
+        grid.innerHTML = `
 
-/* =========================================================
-   EMPTY TABLE
-========================================================= */
+            <div class="empty">
 
-function emptyTable(
-  text
-){
+                找不到符合條件的標的。
 
+                <br><br>
 
-  return `
+                請調整搜尋或篩選條件。
 
-    <div class="watchlist-empty">
+            </div>
 
-      ${escapeHTML(text)}
+        `;
 
-    </div>
+        table.innerHTML = `
 
-  `;
+            <tr>
 
+                <td colspan="12">
+                    無符合條件的資料
+                </td>
 
-}
+            </tr>
 
+        `;
 
-/* =========================================================
-   ETF
-========================================================= */
+        return;
 
-function isETF(
-  stock
-){
-
-
-  const id =
-    String(
-      stock?.id || ""
-    );
-
-
-  const name =
-    String(
-      stock?.name || ""
-    );
-
-
-  return (
-
-    stock?.type === "ETF"
-
-    ||
-
-    id.startsWith("00")
-
-    ||
-
-    /ETF/i.test(name)
-
-  );
-
-
-}
-
-
-/* =========================================================
-   FORMAT NUMBER
-========================================================= */
-
-function formatNumber(
-  value
-){
-
-
-  if(
-
-    value === null ||
-
-    value === undefined ||
-
-    value === "" ||
-
-    Number.isNaN(
-      Number(value)
-    )
-
-  ){
-
-    return "-";
-
-  }
-
-
-  const number =
-    Number(value);
-
-
-  if(
-    !Number.isFinite(number)
-  ){
-
-    return "-";
-
-  }
-
-
-  if(
-    Number.isInteger(number)
-  ){
-
-    return number.toLocaleString(
-      "zh-TW"
-    );
-
-  }
-
-
-  return number.toLocaleString(
-    "zh-TW",
-    {
-      minimumFractionDigits:0,
-      maximumFractionDigits:2
     }
-  );
 
+
+    grid.innerHTML =
+        stocks
+        .map(createStockCard)
+        .join("");
+
+
+    table.innerHTML =
+        stocks
+        .map(createTableRow)
+        .join("");
 
 }
 
 
-/* =========================================================
-   HTML ESCAPE
-========================================================= */
+/* ============================================================
+   TABLE ROW
+============================================================ */
 
-function escapeHTML(
-  value
-){
+function createTableRow(stock){
 
+    const p =
+        stock.price || {};
 
-  return String(
-    value ?? ""
-  )
+    const t =
+        stock.technical || {};
 
-
-    .replace(
-      /&/g,
-      "&amp;"
-    )
+    const s =
+        stock.short_term || {};
 
 
-    .replace(
-      /</g,
-      "&lt;"
-    )
+    const change =
+        num(p.change,0);
+
+    const changePercent =
+        num(
+            p.change_percent,
+            0
+        );
 
 
-    .replace(
-      />/g,
-      "&gt;"
-    )
+    return `
+
+        <tr>
+
+            <td>
+
+                <strong>
+                    ${escapeHTML(stock.name || "--")}
+                </strong>
+
+                <br>
+
+                <span style="color:#64748b;font-size:10px;">
+                    ${escapeHTML(stock.id || "--")}
+                </span>
+
+            </td>
 
 
-    .replace(
-      /"/g,
-      "&quot;"
-    )
+            <td>
+                ${stock.type === "ETF"
+                    ? "ETF"
+                    : "個股"}
+            </td>
 
 
-    .replace(
-      /'/g,
-      "&#039;"
+            <td>
+                ${price(p.close)}
+            </td>
+
+
+            <td class="${changeClass(change)}">
+
+                ${change > 0 ? "+" : ""}
+                ${fmt(change)}
+
+                <br>
+
+                (${changePercent > 0 ? "+" : ""}
+                ${fmt(changePercent)}%)
+
+            </td>
+
+
+            <td>
+                <strong>
+                    ${num(s.score,0)}
+                </strong>
+            </td>
+
+
+            <td>
+                ${fmt(t.rsi)}
+            </td>
+
+
+            <td>
+                ${fmt(t.k)}
+            </td>
+
+
+            <td>
+                ${fmt(t.d)}
+            </td>
+
+
+            <td>
+                ${fmt(t.macd,4)}
+            </td>
+
+
+            <td>
+                ${price(t.ma20)}
+            </td>
+
+
+            <td>
+                ${fmt(t.volume_ratio)}x
+            </td>
+
+
+            <td>
+
+                <span
+                    class="signal ${signalClass(s.signal)}"
+                    style="margin-top:0;"
+                >
+                    ${signalText(s.signal)}
+                </span>
+
+            </td>
+
+        </tr>
+
+    `;
+
+}
+
+
+/* ============================================================
+   CORE RENDER
+============================================================ */
+
+function renderCore(){
+
+    const grid =
+        document.getElementById(
+            "coreGrid"
+        );
+
+
+    const core =
+        allStocks.filter(
+            stock =>
+                stock
+                .conditions
+                ?.short_term_core === true
+        );
+
+
+    core.sort(
+        (a,b) =>
+            num(
+                b.short_term?.score,
+                0
+            )
+            -
+            num(
+                a.short_term?.score,
+                0
+            )
     );
 
 
+    if(core.length === 0){
+
+        grid.innerHTML = `
+
+            <div class="empty">
+
+                目前沒有符合六項核心條件的標的。
+
+                <br><br>
+
+                系統仍會持續掃描全市場。
+
+            </div>
+
+        `;
+
+        return;
+
+    }
+
+
+    grid.innerHTML =
+        core
+        .map(createStockCard)
+        .join("");
+
 }
 
 
-/* =========================================================
-   JS ESCAPE
-========================================================= */
+/* ============================================================
+   STATISTICS
+============================================================ */
 
-function escapeJS(
-  value
-){
+function renderStatistics(){
 
-
-  return String(
-    value ?? ""
-  )
+    const box =
+        document.getElementById(
+            "statisticsGrid"
+        );
 
 
-    .replace(
-      /\\/g,
-      "\\\\"
+    const data =
+        statistics || {};
+
+
+    const items = [
+
+        [
+            "掃描標的",
+            data.total_stocks
+        ],
+
+        [
+            "核心訊號",
+            data.core_stocks
+        ],
+
+        [
+            "MACD 黃金交叉",
+            data.macd_golden
+        ],
+
+        [
+            "RSI > 50",
+            data.rsi_above_50
+        ],
+
+        [
+            "KD 黃金交叉",
+            data.kd_golden
+        ],
+
+        [
+            "量能 ≥ 1.5x",
+            data.volume_over_1_5x
+        ],
+
+        [
+            "站上 MA20",
+            data.above_ma20
+        ]
+
+    ];
+
+
+    box.innerHTML =
+        items
+        .map(
+            item => `
+
+                <div class="stat-card">
+
+                    <div class="stat-label">
+                        ${item[0]}
+                    </div>
+
+                    <div class="stat-value">
+                        ${fmtInt(item[1])}
+                    </div>
+
+                </div>
+
+            `
+        )
+        .join("");
+
+}
+
+
+/* ============================================================
+   SUMMARY
+============================================================ */
+
+function renderSummary(){
+
+    document.getElementById(
+        "totalStocks"
+    ).textContent =
+        fmtInt(
+            statistics.total_stocks ??
+            allStocks.length
+        );
+
+
+    document.getElementById(
+        "coreStocks"
+    ).textContent =
+        fmtInt(
+            statistics.core_stocks
+        );
+
+
+    document.getElementById(
+        "rsiStocks"
+    ).textContent =
+        fmtInt(
+            statistics.rsi_above_50
+        );
+
+
+    document.getElementById(
+        "volumeStocks"
+    ).textContent =
+        fmtInt(
+            statistics.volume_over_1_5x
+        );
+
+}
+
+
+/* ============================================================
+   LOAD DATA
+============================================================ */
+
+async function loadData(){
+
+    const systemStatus =
+        document.getElementById(
+            "systemStatus"
+        );
+
+
+    systemStatus.textContent =
+        "讀取中";
+
+
+    try{
+
+        const response =
+            await fetch(
+                DATA_URL +
+                "?t=" +
+                Date.now(),
+                {
+                    cache:"no-store"
+                }
+            );
+
+
+        if(!response.ok){
+
+            throw new Error(
+                `HTTP ${response.status}`
+            );
+
+        }
+
+
+        const data =
+            await response.json();
+
+
+        if(
+            !data ||
+            !Array.isArray(
+                data.stocks
+            )
+        ){
+
+            throw new Error(
+                "prices.json 格式錯誤：找不到 stocks"
+            );
+
+        }
+
+
+        allStocks =
+            data.stocks
+            .filter(
+                stock =>
+                    stock &&
+                    stock.id
+            );
+
+
+        rankings =
+            data.rankings || {};
+
+
+        statistics =
+            data.statistics || {};
+
+
+        metadata = data;
+
+
+        /* ----------------------------------------------
+           更新時間
+        ---------------------------------------------- */
+
+        document.getElementById(
+            "dataTime"
+        ).textContent =
+            data.updated_at || "--";
+
+
+        document.getElementById(
+            "scanCount"
+        ).textContent =
+            `${allStocks.length} 檔`;
+
+
+        document.getElementById(
+            "systemStatus"
+        ).textContent =
+            "正常";
+
+
+        /* ----------------------------------------------
+           Render
+        ---------------------------------------------- */
+
+        renderSummary();
+
+        renderCore();
+
+        renderStocks();
+
+        renderStatistics();
+
+        renderWatchlist();
+
+
+    }catch(error){
+
+        console.error(error);
+
+
+        systemStatus.textContent =
+            "讀取失敗";
+
+
+        document.getElementById(
+            "coreGrid"
+        ).innerHTML = `
+
+            <div class="error">
+
+                <strong>
+                    資料載入失敗
+                </strong>
+
+                <br><br>
+
+                ${escapeHTML(
+                    error.message
+                )}
+
+                <br><br>
+
+                請確認：
+
+                <br>
+
+                1. Data/prices.json 是否存在
+
+                <br>
+
+                2. GitHub Actions 是否成功執行
+
+                <br>
+
+                3. fetch_data.py 是否成功產生 JSON
+
+            </div>
+
+        `;
+
+
+        document.getElementById(
+            "stockGrid"
+        ).innerHTML = "";
+
+
+        document.getElementById(
+            "stockTable"
+        ).innerHTML = `
+
+            <tr>
+
+                <td colspan="12">
+                    無法取得資料
+                </td>
+
+            </tr>
+
+        `;
+
+    }
+
+}
+
+
+/* ============================================================
+   WATCHLIST
+============================================================ */
+
+function saveWatchlist(){
+
+    localStorage.setItem(
+        "tw_stock_watchlist_v62",
+        JSON.stringify(
+            watchlist
+        )
+    );
+
+}
+
+
+/* ============================================================
+   ADD WATCHLIST
+============================================================ */
+
+function addWatchlist(){
+
+    const input =
+        document.getElementById(
+            "watchInput"
+        );
+
+
+    const code =
+        input.value
+        .trim()
+        .replace(
+            /\s/g,
+            ""
+        );
+
+
+    if(!code){
+
+        return;
+
+    }
+
+
+    if(
+        !watchlist.includes(code)
+    ){
+
+        watchlist.push(code);
+
+        saveWatchlist();
+
+    }
+
+
+    input.value = "";
+
+    renderWatchlist();
+
+}
+
+
+/* ============================================================
+   REMOVE WATCHLIST
+============================================================ */
+
+function removeWatchlist(code){
+
+    watchlist =
+        watchlist.filter(
+            item =>
+                item !== code
+        );
+
+
+    saveWatchlist();
+
+    renderWatchlist();
+
+}
+
+
+/* ============================================================
+   RENDER WATCHLIST
+============================================================ */
+
+function renderWatchlist(){
+
+    const box =
+        document.getElementById(
+            "watchList"
+        );
+
+
+    if(!box){
+        return;
+    }
+
+
+    if(
+        watchlist.length === 0
+    ){
+
+        box.innerHTML = `
+
+            <div class="empty">
+
+                尚未加入任何追蹤標的。
+
+            </div>
+
+        `;
+
+        return;
+
+    }
+
+
+    box.innerHTML =
+        watchlist
+        .map(
+            code => {
+
+                const stock =
+                    allStocks.find(
+                        item =>
+                            String(
+                                item.id
+                            ) ===
+                            String(code)
+                    );
+
+
+                return `
+
+                    <div class="watch-item">
+
+                        <div>
+
+                            <strong>
+                                ${escapeHTML(code)}
+                            </strong>
+
+                            ${
+                                stock
+                                ? `
+                                    <span
+                                        style="
+                                        margin-left:8px;
+                                        color:#64748b;
+                                        font-size:12px;
+                                        "
+                                    >
+                                        ${escapeHTML(
+                                            stock.name || ""
+                                        )}
+
+                                        · AI
+                                        ${num(
+                                            stock.short_term?.score,
+                                            0
+                                        )}
+
+                                    </span>
+                                `
+                                : `
+                                    <span
+                                        style="
+                                        margin-left:8px;
+                                        color:#94a3b8;
+                                        font-size:12px;
+                                        "
+                                    >
+                                        尚未出現在掃描資料
+                                    </span>
+                                `
+                            }
+
+                        </div>
+
+
+                        <button
+                            class="remove-btn"
+                            onclick="removeWatchlist('${escapeHTML(code)}')"
+                        >
+                            移除
+                        </button>
+
+                    </div>
+
+                `;
+
+            }
+        )
+        .join("");
+
+}
+
+
+/* ============================================================
+   SHOW WATCHLIST
+============================================================ */
+
+function showWatchlist(){
+
+    document
+        .getElementById(
+            "watchModal"
+        )
+        .classList.add(
+            "show"
+        );
+
+
+    renderWatchlist();
+
+}
+
+
+/* ============================================================
+   CLOSE WATCHLIST
+============================================================ */
+
+function closeWatchlist(){
+
+    document
+        .getElementById(
+            "watchModal"
+        )
+        .classList.remove(
+            "show"
+        );
+
+}
+
+
+/* ============================================================
+   KEYBOARD
+============================================================ */
+
+document
+    .getElementById(
+        "searchInput"
     )
-
-
-    .replace(
-      /'/g,
-      "\\'"
-    )
-
-
-    .replace(
-      /\n/g,
-      "\\n"
-    )
-
-
-    .replace(
-      /\r/g,
-      "\\r"
+    .addEventListener(
+        "input",
+        renderStocks
     );
 
 
-}
+document
+    .getElementById(
+        "typeFilter"
+    )
+    .addEventListener(
+        "change",
+        renderStocks
+    );
 
 
-/* =========================================================
-   END
-========================================================= */
+document
+    .getElementById(
+        "signalFilter"
+    )
+    .addEventListener(
+        "change",
+        renderStocks
+    );
+
+
+document
+    .getElementById(
+        "sortSelect"
+    )
+    .addEventListener(
+        "change",
+        renderStocks
+    );
+
+
+document
+    .getElementById(
+        "watchInput"
+    )
+    .addEventListener(
+        "keydown",
+        event => {
+
+            if(
+                event.key === "Enter"
+            ){
+
+                addWatchlist();
+
+            }
+
+        }
+    );
+
+
+/* ============================================================
+   MODAL CLICK OUTSIDE
+============================================================ */
+
+document
+    .getElementById(
+        "watchModal"
+    )
+    .addEventListener(
+        "click",
+        event => {
+
+            if(
+                event.target.id ===
+                "watchModal"
+            ){
+
+                closeWatchlist();
+
+            }
+
+        }
+    );
+
+
+/* ============================================================
+   START
+============================================================ */
+
+loadData();
 
 </script>
 
-
 </body>
-
 </html>
