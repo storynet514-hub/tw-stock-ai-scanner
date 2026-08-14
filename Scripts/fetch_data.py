@@ -1,32 +1,36 @@
 # ============================================================
-# 台股 AI 選股・全市場掃描・零股定投・動態風控
-# fetch_data.py V6.2 FULL MARKET FINAL
+# 台股 AI 選股・零股定投・動態風控
+# fetch_data.py V6.2
+#
+# 【正式版｜全市場掃描修正版】
 #
 # 功能：
-# 1. 自動取得台股上市股票
-# 2. 自動取得台股上櫃股票
-# 3. 自動取得台股 ETF
+#
+# 1. 自動取得 TWSE 上市股票清單
+# 2. 自動取得 TPEx 上櫃股票清單
+# 3. 自動納入 ETF
 # 4. 不再使用固定 STOCK_LIST
-# 5. 全市場自動掃描
-# 6. 計算 RSI / KD / MACD / MA5 / MA20 / MA60
-# 7. 計算成交量比
-# 8. 計算 AI SCORE
-# 9. 計算核心訊號
-# 10. 計算四段式定投價格
-# 11. 建立全市場排名
-# 12. 建立統計資料
-# 13. RSI 強制限制 0~100
-# 14. KD 強制限制 0~100
-# 15. 單一股票失敗不影響其他股票
-# 16. 保留 index.html V6.2 JSON 結構
+# 5. 上市使用 XXXX.TW
+# 6. 上櫃使用 XXXX.TWO
+# 7. RSI / KD / MACD / MA5 / MA20 / MA60
+# 8. 成交量 / 5日均量 / 成交量比
+# 9. MACD 黃金交叉
+# 10. KD 黃金交叉
+# 11. RSI > 50
+# 12. 成交量 > 1.5倍5日均量
+# 13. 股價站上 MA20
+# 14. MA20 向上
+# 15. AI SCORE 0~100
+# 16. 核心訊號
+# 17. 四段式 DCA
+# 18. 全市場排名
+# 19. 統計資料
+# 20. 單檔失敗不影響其他股票
+# 21. RSI 強制限制 0~100
+# 22. KD 強制限制 0~100
+# 23. 自動辨識 TWSE / TPEx / ETF
+# 24. 保留 index.html V6.2 JSON 結構
 #
-# 資料來源：
-# - TWSE
-# - TPEx
-# - Yahoo Finance
-#
-# 輸出：
-# Data/prices.json
 # ============================================================
 
 import os
@@ -37,9 +41,9 @@ import time
 import traceback
 from datetime import datetime, timezone, timedelta
 
+import requests
 import numpy as np
 import pandas as pd
-import requests
 import yfinance as yf
 
 
@@ -81,40 +85,58 @@ TW_TZ = timezone(
 
 
 # ============================================================
+# 官方 API
+# ============================================================
+
+TWSE_BASE_URL = (
+    "https://openapi.twse.com.tw/v1"
+)
+
+TWSE_LIST_URL = (
+    TWSE_BASE_URL +
+    "/opendata/t187ap03_L"
+)
+
+TPEx_BASE_URL = (
+    "https://www.tpex.org.tw/openapi/v1"
+)
+
+TPEx_QUOTES_URL = (
+    TPEx_BASE_URL +
+    "/tpex_mainboard_quotes"
+)
+
+
+# ============================================================
 # HTTP Session
 # ============================================================
 
 SESSION = requests.Session()
 
 SESSION.headers.update({
+
     "User-Agent":
         "Mozilla/5.0 "
         "(Windows NT 10.0; Win64; x64) "
         "AppleWebKit/537.36 "
         "(KHTML, like Gecko) "
-        "Chrome/120.0 Safari/537.36"
+        "Chrome/131.0 Safari/537.36",
+
+    "Accept":
+        "application/json,text/plain,*/*"
+
 })
 
 
 # ============================================================
-# Yahoo Finance ticker
+# Yahoo Finance Session
 # ============================================================
 
-def yahoo_symbol(
-    code,
-    market="TW"
-):
-
-    code = str(code).strip()
-
-    if market == "TWO":
-        return code + ".TWO"
-
-    return code + ".TW"
+YF_TIMEOUT = 30
 
 
 # ============================================================
-# 安全數字轉換
+# 安全數字
 # ============================================================
 
 def safe_float(
@@ -181,95 +203,162 @@ def clean_code(
     if not code:
         return None
 
-    # 台股一般股票 / ETF
-    if not code.isdigit():
-        return None
-
-    if len(code) < 4:
-        return None
+    # 去掉可能存在的空白
+    code = code.replace(
+        " ",
+        ""
+    )
 
     return code
 
 
 # ============================================================
-# 判斷 ETF
+# 判斷是否為 ETF
 # ============================================================
 
 def is_etf_code(
     code
 ):
 
-    code = str(code)
+    code = clean_code(code)
 
-    # 台灣 ETF 大多為 00 開頭
+    if not code:
+        return False
+
+    # 台股 ETF 大多以 00 開頭
     return code.startswith("00")
 
 
 # ============================================================
-# 取得上市股票清單
+# Yahoo symbol
 #
-# TWSE 公開資訊
+# TWSE → .TW
+# TPEx → .TWO
 # ============================================================
 
-def get_twse_stock_list():
+def yahoo_symbol(
+    code,
+    market
+):
 
-    print("")
-    print("================================================")
-    print("取得上市股票清單")
-    print("================================================")
+    code = clean_code(code)
 
-    url = (
-        "https://openapi.twse.com.tw/"
-        "v1/opendata/t187ap03_L"
-    )
+    if market == "TPEx":
+        return code + ".TWO"
+
+    return code + ".TW"
+
+
+# ============================================================
+# HTTP JSON
+# ============================================================
+
+def get_json(
+    url,
+    timeout=30
+):
 
     try:
 
         response = SESSION.get(
             url,
-            timeout=30
+            timeout=timeout
         )
 
         response.raise_for_status()
 
-        data = response.json()
+        return response.json()
 
-        stocks = []
+    except Exception as error:
 
-        if not isinstance(
-            data,
-            list
-        ):
-            return stocks
+        print(
+            f"API 取得失敗：{url}"
+        )
 
-        for item in data:
+        print(
+            f"原因：{error}"
+        )
 
-            if not isinstance(
-                item,
-                dict
-            ):
-                continue
+        return None
 
-            code = (
+
+# ============================================================
+# TWSE 上市清單
+#
+# 官方來源：
+# TWSE OpenAPI
+# t187ap03_L
+# ============================================================
+
+def get_twse_stocks():
+
+    print(
+        ""
+    )
+
+    print(
+        "================================================"
+    )
+
+    print(
+        "取得 TWSE 上市股票清單..."
+    )
+
+    print(
+        "================================================"
+    )
+
+    data = get_json(
+        TWSE_LIST_URL
+    )
+
+    if not data:
+
+        print(
+            "TWSE 清單取得失敗"
+        )
+
+        return []
+
+    stocks = []
+
+    for item in data:
+
+        try:
+
+            code = clean_code(
                 item.get("公司代號")
                 or item.get("Code")
+                or item.get("股票代號")
             )
 
             name = (
                 item.get("公司簡稱")
-                or item.get("CompanyName")
+                or item.get("Name")
                 or item.get("公司名稱")
-            )
-
-            code = clean_code(
-                code
+                or ""
             )
 
             if not code:
                 continue
 
-            if not name:
-                name = code
+            # ------------------------------------------------
+            # 排除非股票類型
+            #
+            # 主要保留：
+            # 普通股、ETF 等可交易標的
+            #
+            # 排除權證
+            # ------------------------------------------------
+
+            if len(code) < 4:
+                continue
+
+            stock_type = (
+                "ETF"
+                if is_etf_code(code)
+                else "STOCK"
+            )
 
             stocks.append({
 
@@ -279,237 +368,202 @@ def get_twse_stock_list():
 
                 "market": "TWSE",
 
-                "type": (
-                    "ETF"
-                    if is_etf_code(code)
-                    else "STOCK"
-                )
+                "type": stock_type
 
             })
 
-        print(
-            f"上市市場取得：{len(stocks)} 檔"
-        )
+        except Exception:
 
-        return stocks
-
-    except Exception as error:
-
-        print(
-            f"上市清單取得失敗：{error}"
-        )
-
-        return []
-
-
-# ============================================================
-# 取得上櫃股票清單
-#
-# TPEx 公開資訊
-# ============================================================
-
-def get_tpex_stock_list():
-
-    print("")
-    print("================================================")
-    print("取得上櫃股票清單")
-    print("================================================")
-
-    url = (
-        "https://www.tpex.org.tw/"
-        "web/stock/aftertrading/"
-        "daily_close_quotes/"
-        "st43.php?l=zh-tw&o=json"
-    )
-
-    try:
-
-        response = SESSION.get(
-            url,
-            timeout=30
-        )
-
-        response.raise_for_status()
-
-        data = response.json()
-
-        stocks = []
-
-        # ----------------------------------------------------
-        # TPEx JSON 結構可能不同
-        # ----------------------------------------------------
-
-        tables = []
-
-        if isinstance(
-            data,
-            dict
-        ):
-
-            tables = data.get(
-                "tables",
-                []
-            )
-
-        for table in tables:
-
-            if not isinstance(
-                table,
-                dict
-            ):
-                continue
-
-            fields = table.get(
-                "fields",
-                []
-            )
-
-            rows = table.get(
-                "data",
-                []
-            )
-
-            if not fields:
-                continue
-
-            for row in rows:
-
-                if not row:
-                    continue
-
-                row_data = dict(
-                    zip(
-                        fields,
-                        row
-                    )
-                )
-
-                code = (
-                    row_data.get("代號")
-                    or row_data.get("證券代號")
-                )
-
-                name = (
-                    row_data.get("名稱")
-                    or row_data.get("證券名稱")
-                )
-
-                code = clean_code(
-                    code
-                )
-
-                if not code:
-                    continue
-
-                if not name:
-                    name = code
-
-                stocks.append({
-
-                    "id": code,
-
-                    "name": str(name).strip(),
-
-                    "market": "TPEX",
-
-                    "type": (
-                        "ETF"
-                        if is_etf_code(code)
-                        else "STOCK"
-                    )
-
-                })
-
-        # ----------------------------------------------------
-        # 去除重複
-        # ----------------------------------------------------
-
-        unique = {}
-
-        for stock in stocks:
-
-            unique[
-                stock["id"]
-            ] = stock
-
-        stocks = list(
-            unique.values()
-        )
-
-        print(
-            f"上櫃市場取得：{len(stocks)} 檔"
-        )
-
-        return stocks
-
-    except Exception as error:
-
-        print(
-            f"上櫃清單取得失敗：{error}"
-        )
-
-        return []
-
-
-# ============================================================
-# 取得 ETF 清單
-#
-# ETF 主要透過 TWSE / TPEx 清單中
-# 00 開頭代號自動分類。
-# ============================================================
-
-def split_market_list(
-    twse,
-    tpex
-):
-
-    stocks = []
-    etfs = []
-
-    for item in (
-        twse + tpex
-    ):
-
-        code = item.get(
-            "id"
-        )
-
-        if not code:
             continue
 
-        if is_etf_code(code):
+    # --------------------------------------------------------
+    # 去重
+    # --------------------------------------------------------
 
-            etfs.append(item)
+    unique = {}
 
-        else:
+    for stock in stocks:
 
-            stocks.append(item)
+        unique[
+            stock["id"]
+        ] = stock
 
-    return stocks, etfs
+    stocks = list(
+        unique.values()
+    )
+
+    print(
+        f"TWSE 清單：{len(stocks)} 檔"
+    )
+
+    return stocks
 
 
 # ============================================================
-# 建立全市場清單
+# TPEx 上櫃清單
+#
+# 官方來源：
+# Taipei Exchange OpenAPI
+# tpex_mainboard_quotes
+# ============================================================
+
+def get_tpex_stocks():
+
+    print(
+        ""
+    )
+
+    print(
+        "================================================"
+    )
+
+    print(
+        "取得 TPEx 上櫃股票清單..."
+    )
+
+    print(
+        "================================================"
+    )
+
+    data = get_json(
+        TPEx_QUOTES_URL
+    )
+
+    if not data:
+
+        print(
+            "TPEx 清單取得失敗"
+        )
+
+        return []
+
+    stocks = []
+
+    for item in data:
+
+        try:
+
+            code = clean_code(
+
+                item.get(
+                    "SecuritiesCompanyCode"
+                )
+
+                or item.get(
+                    "SecuritiesCompanyCode"
+                )
+
+                or item.get(
+                    "Code"
+                )
+
+                or item.get(
+                    "股票代號"
+                )
+
+            )
+
+            name = (
+
+                item.get(
+                    "CompanyName"
+                )
+
+                or item.get(
+                    "Name"
+                )
+
+                or item.get(
+                    "公司名稱"
+                )
+
+                or item.get(
+                    "股票名稱"
+                )
+
+                or ""
+
+            )
+
+            if not code:
+                continue
+
+            if len(code) < 4:
+                continue
+
+            stock_type = (
+                "ETF"
+                if is_etf_code(code)
+                else "STOCK"
+            )
+
+            stocks.append({
+
+                "id": code,
+
+                "name":
+                    str(name).strip(),
+
+                "market":
+                    "TPEx",
+
+                "type":
+                    stock_type
+
+            })
+
+        except Exception:
+
+            continue
+
+    unique = {}
+
+    for stock in stocks:
+
+        unique[
+            stock["id"]
+        ] = stock
+
+    stocks = list(
+        unique.values()
+    )
+
+    print(
+        f"TPEx 清單：{len(stocks)} 檔"
+    )
+
+    return stocks
+
+
+# ============================================================
+# 建立全市場股票清單
 # ============================================================
 
 def build_market_list():
 
-    twse = get_twse_stock_list()
-
-    tpex = get_tpex_stock_list()
-
-    stocks, etfs = split_market_list(
-        twse,
-        tpex
+    print(
+        ""
     )
 
-    # --------------------------------------------------------
-    # 所有清單
-    # --------------------------------------------------------
+    print(
+        "################################################"
+    )
 
-    all_items = (
-        stocks +
-        etfs
+    print(
+        "# 建立全市場 AI 掃描清單"
+    )
+
+    print(
+        "################################################"
+    )
+
+    twse = get_twse_stocks()
+
+    tpex = get_tpex_stocks()
+
+    all_stocks = (
+        twse +
+        tpex
     )
 
     # --------------------------------------------------------
@@ -518,18 +572,16 @@ def build_market_list():
 
     unique = {}
 
-    for item in all_items:
+    for stock in all_stocks:
 
-        code = item.get(
-            "id"
+        key = (
+            stock["market"],
+            stock["id"]
         )
 
-        if not code:
-            continue
+        unique[key] = stock
 
-        unique[code] = item
-
-    all_items = list(
+    all_stocks = list(
         unique.values()
     )
 
@@ -537,53 +589,59 @@ def build_market_list():
     # 排序
     # --------------------------------------------------------
 
-    all_items.sort(
-        key=lambda x: x["id"]
+    all_stocks.sort(
+        key=lambda x: (
+            x["market"],
+            x["id"]
+        )
     )
-
-    # --------------------------------------------------------
-    # 顯示
-    # --------------------------------------------------------
 
     twse_count = sum(
         1
-        for x in all_items
-        if x.get("market") == "TWSE"
+        for x in all_stocks
+        if x["market"] == "TWSE"
     )
 
     tpex_count = sum(
         1
-        for x in all_items
-        if x.get("market") == "TPEX"
+        for x in all_stocks
+        if x["market"] == "TPEx"
     )
 
     etf_count = sum(
         1
-        for x in all_items
-        if x.get("type") == "ETF"
+        for x in all_stocks
+        if x["type"] == "ETF"
     )
 
     stock_count = sum(
         1
-        for x in all_items
-        if x.get("type") == "STOCK"
-    )
-
-    print("")
-    print("================================================")
-    print("全市場清單完成")
-    print("================================================")
-
-    print(
-        f"市場清單：{len(all_items)} 檔"
+        for x in all_stocks
+        if x["type"] == "STOCK"
     )
 
     print(
-        f"上市市場：{twse_count} 檔"
+        ""
     )
 
     print(
-        f"上櫃市場：{tpex_count} 檔"
+        "================================================"
+    )
+
+    print(
+        "全市場清單建立完成"
+    )
+
+    print(
+        f"上市：{twse_count} 檔"
+    )
+
+    print(
+        f"上櫃：{tpex_count} 檔"
+    )
+
+    print(
+        f"ETF：{etf_count} 檔"
     )
 
     print(
@@ -591,10 +649,14 @@ def build_market_list():
     )
 
     print(
-        f"ETF：{etf_count} 檔"
+        f"市場清單總數：{len(all_stocks)} 檔"
     )
 
-    return all_items
+    print(
+        "================================================"
+    )
+
+    return all_stocks
 
 
 # ============================================================
@@ -634,31 +696,48 @@ def calculate_rsi(
     ).mean()
 
     # --------------------------------------------------------
-    # Wilder RSI
+    # RSI 特殊情況
     # --------------------------------------------------------
 
-    rs = (
-        avg_gain /
-        avg_loss.replace(
-            0,
-            np.nan
+    rsi = pd.Series(
+        np.nan,
+        index=close.index
+    )
+
+    normal = (
+        avg_loss > 0
+    )
+
+    rsi.loc[normal] = (
+        100 -
+        (
+            100 /
+            (
+                1 +
+                avg_gain.loc[normal] /
+                avg_loss.loc[normal]
+            )
         )
     )
 
-    rsi = (
-        100 -
-        100 / (1 + rs)
+    no_loss = (
+        (avg_loss == 0)
+        &
+        (avg_gain > 0)
     )
 
-    # 沒有跌幅
-    rsi = rsi.where(
-        avg_loss != 0,
-        100
+    rsi.loc[no_loss] = 100
+
+    flat = (
+        (avg_loss == 0)
+        &
+        (avg_gain == 0)
     )
+
+    rsi.loc[flat] = 50
 
     # --------------------------------------------------------
-    # 最重要防呆
-    # RSI 絕對只能 0~100
+    # 強制限制 0~100
     # --------------------------------------------------------
 
     rsi = rsi.clip(
@@ -702,7 +781,8 @@ def calculate_kd(
         (
             close -
             lowest_low
-        ) /
+        )
+        /
         denominator
     ) * 100
 
@@ -778,7 +858,7 @@ def calculate_macd(
 
 
 # ============================================================
-# 最新值
+# 取得 Series 最新值
 # ============================================================
 
 def get_last_value(
@@ -805,13 +885,16 @@ def get_last_value(
 
 
 # ============================================================
-# 下載股票資料
+# 下載個股歷史資料
 # ============================================================
 
 def download_stock(
-    code,
-    market
+    stock
 ):
+
+    code = stock["id"]
+
+    market = stock["market"]
 
     symbol = yahoo_symbol(
         code,
@@ -820,13 +903,29 @@ def download_stock(
 
     try:
 
+        print(
+            f"抓取 {code} "
+            f"{stock['name']} "
+            f"[{market}] "
+            f"{symbol}"
+        )
+
         df = yf.download(
+
             symbol,
+
             period="1y",
+
             interval="1d",
+
             auto_adjust=False,
+
             progress=False,
-            threads=False
+
+            threads=False,
+
+            timeout=YF_TIMEOUT
+
         )
 
         if df is None:
@@ -836,7 +935,7 @@ def download_stock(
             return None
 
         # ----------------------------------------------------
-        # MultiIndex
+        # Yahoo MultiIndex
         # ----------------------------------------------------
 
         if isinstance(
@@ -868,27 +967,38 @@ def download_stock(
             df.columns = new_columns
 
         # ----------------------------------------------------
-        # 小寫欄位
+        # 欄位名稱
         # ----------------------------------------------------
 
         df.columns = [
+
             str(column)
             .strip()
             .lower()
-            for column in df.columns
+
+            for column
+            in df.columns
+
         ]
 
         required = [
+
             "open",
             "high",
             "low",
             "close",
             "volume"
+
         ]
 
         for column in required:
 
             if column not in df.columns:
+
+                print(
+                    f"{code}: "
+                    f"缺少欄位 {column}"
+                )
 
                 return None
 
@@ -909,37 +1019,44 @@ def download_stock(
             ]
         )
 
-        # ----------------------------------------------------
-        # 技術指標至少需要歷史資料
-        # ----------------------------------------------------
-
         if len(df) < 35:
+
+            print(
+                f"{code}: "
+                f"歷史資料不足 "
+                f"({len(df)} 筆)"
+            )
 
             return None
 
         return df
 
-    except Exception:
+    except Exception as error:
+
+        print(
+            f"{code}: "
+            f"下載失敗：{error}"
+        )
 
         return None
 
 
 # ============================================================
-# 分析單一股票
+# 分析個股
 # ============================================================
 
 def analyze_stock(
-    item,
+    stock,
     df
 ):
 
-    code = item["id"]
+    code = stock["id"]
 
-    name = item["name"]
+    name = stock["name"]
 
-    market = item["market"]
+    market = stock["market"]
 
-    stock_type = item["type"]
+    stock_type = stock["type"]
 
     try:
 
@@ -951,9 +1068,9 @@ def analyze_stock(
 
         volume = df["volume"]
 
-        # ----------------------------------------------------
-        # MA
-        # ----------------------------------------------------
+        # ====================================================
+        # 技術指標
+        # ====================================================
 
         ma5 = close.rolling(
             5
@@ -967,17 +1084,10 @@ def analyze_stock(
             60
         ).mean()
 
-        # ----------------------------------------------------
-        # RSI
-        # ----------------------------------------------------
-
         rsi = calculate_rsi(
-            close
+            close,
+            14
         )
-
-        # ----------------------------------------------------
-        # KD
-        # ----------------------------------------------------
 
         k, d = calculate_kd(
             high,
@@ -985,21 +1095,11 @@ def analyze_stock(
             close
         )
 
-        # ----------------------------------------------------
-        # MACD
-        # ----------------------------------------------------
-
-        (
-            macd,
-            macd_signal,
-            macd_hist
-        ) = calculate_macd(
-            close
+        macd, macd_signal, macd_hist = (
+            calculate_macd(
+                close
+            )
         )
-
-        # ----------------------------------------------------
-        # Volume
-        # ----------------------------------------------------
 
         volume_ma5 = volume.rolling(
             5
@@ -1014,11 +1114,15 @@ def analyze_stock(
         )
 
         previous_price = (
+
             safe_float(
                 close.iloc[-2]
             )
+
             if len(close) >= 2
+
             else None
+
         )
 
         current_ma5 = get_last_value(
@@ -1066,7 +1170,7 @@ def analyze_stock(
         )
 
         # ====================================================
-        # 防呆
+        # RSI 防呆
         # ====================================================
 
         if current_rsi is not None:
@@ -1078,6 +1182,10 @@ def analyze_stock(
                     current_rsi
                 )
             )
+
+        # ====================================================
+        # KD 防呆
+        # ====================================================
 
         if current_k is not None:
 
@@ -1104,14 +1212,24 @@ def analyze_stock(
         # ====================================================
 
         if (
+
             current_volume is not None
-            and current_volume_ma5 is not None
-            and current_volume_ma5 > 0
+
+            and
+
+            current_volume_ma5 is not None
+
+            and
+
+            current_volume_ma5 > 0
+
         ):
 
             volume_ratio = (
+
                 current_volume /
                 current_volume_ma5
+
             )
 
         else:
@@ -1123,21 +1241,30 @@ def analyze_stock(
         # ====================================================
 
         if (
+
             current_price is not None
-            and previous_price is not None
+
+            and
+
+            previous_price is not None
+
         ):
 
             change = (
+
                 current_price -
                 previous_price
+
             )
 
             if previous_price != 0:
 
                 change_percent = (
+
                     change /
                     previous_price *
                     100
+
                 )
 
             else:
@@ -1151,47 +1278,75 @@ def analyze_stock(
             change_percent = None
 
         # ====================================================
-        # 前一天
+        # 前一日 KD
         # ====================================================
 
         previous_k = (
+
             safe_float(
                 k.iloc[-2]
             )
+
             if len(k) >= 2
+
             else None
+
         )
 
         previous_d = (
+
             safe_float(
                 d.iloc[-2]
             )
+
             if len(d) >= 2
+
             else None
+
         )
 
+        # ====================================================
+        # 前一日 MACD
+        # ====================================================
+
         previous_macd = (
+
             safe_float(
                 macd.iloc[-2]
             )
+
             if len(macd) >= 2
+
             else None
+
         )
 
         previous_signal = (
+
             safe_float(
                 macd_signal.iloc[-2]
             )
+
             if len(macd_signal) >= 2
+
             else None
+
         )
 
+        # ====================================================
+        # 前一日 MA20
+        # ====================================================
+
         previous_ma20 = (
+
             safe_float(
                 ma20.iloc[-2]
             )
+
             if len(ma20) >= 2
+
             else None
+
         )
 
         # ====================================================
@@ -1201,18 +1356,33 @@ def analyze_stock(
         macd_golden_cross = False
 
         if (
+
+            current_macd is not None
+
+            and
+
+            current_macd_signal is not None
+
+            and
+
             previous_macd is not None
-            and previous_signal is not None
-            and current_macd is not None
-            and current_macd_signal is not None
+
+            and
+
+            previous_signal is not None
+
         ):
 
             macd_golden_cross = (
+
                 previous_macd <=
                 previous_signal
+
                 and
+
                 current_macd >
                 current_macd_signal
+
             )
 
         # ====================================================
@@ -1222,16 +1392,33 @@ def analyze_stock(
         kd_golden_cross = False
 
         if (
+
+            current_k is not None
+
+            and
+
+            current_d is not None
+
+            and
+
             previous_k is not None
-            and previous_d is not None
-            and current_k is not None
-            and current_d is not None
+
+            and
+
+            previous_d is not None
+
         ):
 
             kd_golden_cross = (
-                previous_k <= previous_d
+
+                previous_k <=
+                previous_d
+
                 and
-                current_k > current_d
+
+                current_k >
+                current_d
+
             )
 
         # ====================================================
@@ -1239,18 +1426,27 @@ def analyze_stock(
         # ====================================================
 
         rsi_above_50 = (
+
             current_rsi is not None
-            and current_rsi > 50
+
+            and
+
+            current_rsi > 50
+
         )
 
         # ====================================================
-        # 成交量 > 1.5 倍
+        # 成交量 >= 1.5倍
         # ====================================================
 
         volume_over_1_5x = (
+
             volume_ratio is not None
+
             and
+
             volume_ratio >= 1.5
+
         )
 
         # ====================================================
@@ -1258,11 +1454,18 @@ def analyze_stock(
         # ====================================================
 
         above_ma20 = (
+
             current_price is not None
-            and current_ma20 is not None
+
             and
+
+            current_ma20 is not None
+
+            and
+
             current_price >
             current_ma20
+
         )
 
         # ====================================================
@@ -1270,11 +1473,18 @@ def analyze_stock(
         # ====================================================
 
         ma20_up = (
+
             current_ma20 is not None
-            and previous_ma20 is not None
+
             and
+
+            previous_ma20 is not None
+
+            and
+
             current_ma20 >
             previous_ma20
+
         )
 
         # ====================================================
@@ -1282,9 +1492,13 @@ def analyze_stock(
         # ====================================================
 
         macd_positive = (
+
             current_macd_hist is not None
+
             and
+
             current_macd_hist > 0
+
         )
 
         # ====================================================
@@ -1292,26 +1506,33 @@ def analyze_stock(
         # ====================================================
 
         short_term_core = all([
+
             macd_golden_cross,
+
             kd_golden_cross,
+
             rsi_above_50,
+
             volume_over_1_5x,
+
             above_ma20,
+
             ma20_up
+
         ])
 
         # ====================================================
         # AI SCORE
         #
-        # MACD 黃金交叉：20
-        # KD 黃金交叉：15
-        # RSI > 50：15
-        # Volume：15
-        # MA20：15
-        # MA20 UP：10
-        # MACD 正柱：10
+        # MACD 20
+        # KD 15
+        # RSI 15
+        # Volume 15
+        # MA20 15
+        # MA20 UP 10
+        # MACD positive 10
         #
-        # 總分：100
+        # 最大 100
         # ====================================================
 
         score = 0
@@ -1329,12 +1550,18 @@ def analyze_stock(
             score += 15
 
         elif (
+
             current_k is not None
+
             and
+
             current_d is not None
+
             and
+
             current_k >
             current_d
+
         ):
 
             score += 8
@@ -1344,17 +1571,25 @@ def analyze_stock(
             score += 15
 
         if (
+
             volume_ratio is not None
+
             and
+
             volume_ratio >= 1.5
+
         ):
 
             score += 15
 
         elif (
+
             volume_ratio is not None
+
             and
+
             volume_ratio >= 1
+
         ):
 
             score += 8
@@ -1367,9 +1602,17 @@ def analyze_stock(
 
             score += 10
 
-        if macd_positive:
-
-            score += 10
+        # ----------------------------------------------------
+        # 注意：
+        #
+        # macd_positive 與 macd_golden_cross
+        # 不再重複加分。
+        #
+        # 如果黃金交叉 → 20
+        # 否則柱體正值 → 10
+        #
+        # 因此最大分數保持 100。
+        # ----------------------------------------------------
 
         score = max(
             0,
@@ -1404,27 +1647,18 @@ def analyze_stock(
             signal = "弱勢"
 
         # ====================================================
-        # 四段式 DCA
+        # DCA
         # ====================================================
 
         if current_ma20 is not None:
 
             buy_1 = current_ma20
 
-            buy_2 = (
-                current_ma20 *
-                0.97
-            )
+            buy_2 = current_ma20 * 0.97
 
-            buy_3 = (
-                current_ma20 *
-                0.94
-            )
+            buy_3 = current_ma20 * 0.94
 
-            buy_4 = (
-                current_ma20 *
-                0.90
-            )
+            buy_4 = current_ma20 * 0.90
 
         else:
 
@@ -1437,19 +1671,29 @@ def analyze_stock(
             buy_4 = None
 
         # ====================================================
-        # DCA 行動
+        # DCA 建議
         # ====================================================
 
         if (
+
             current_price is not None
-            and current_ma20 is not None
-            and current_ma20 > 0
+
+            and
+
+            current_ma20 is not None
+
+            and
+
+            current_ma20 > 0
+
         ):
 
             distance = (
+
                 current_price /
                 current_ma20 -
                 1
+
             ) * 100
 
             if distance <= -10:
@@ -1481,20 +1725,38 @@ def analyze_stock(
             dca_action = "資料不足"
 
         # ====================================================
-        # 最終 JSON
+        # JSON
         # ====================================================
 
-        stock = {
+        return {
 
-            "id": str(code),
+            "id":
+                str(code),
 
-            "name": str(name),
+            "name":
+                str(name),
 
-            "symbol": str(code),
+            "symbol":
+                str(code),
 
-            "type": str(stock_type),
+            "type":
+                stock_type,
 
-            "market": str(market),
+            "market":
+                market,
+
+            "exchange":
+                (
+                    "上市"
+                    if market == "TWSE"
+                    else "上櫃"
+                ),
+
+            "yahoo_symbol":
+                yahoo_symbol(
+                    code,
+                    market
+                ),
 
             "price": {
 
@@ -1682,13 +1944,14 @@ def analyze_stock(
 
         }
 
-        return stock
-
     except Exception as error:
 
         print(
-            f"{code}: 分析失敗：{error}"
+            f"{code}: "
+            f"分析失敗：{error}"
         )
+
+        traceback.print_exc()
 
         return None
 
@@ -1730,9 +1993,9 @@ def validate_stock(
         {}
     )
 
-    # --------------------------------------------------------
+    # ========================================================
     # RSI
-    # --------------------------------------------------------
+    # ========================================================
 
     rsi = technical.get(
         "rsi"
@@ -1745,22 +2008,29 @@ def validate_stock(
         )
 
         if (
+
             rsi is None
+
             or
+
             rsi < 0
+
             or
+
             rsi > 100
+
         ):
 
             print(
-                f"{stock_id}: RSI 異常"
+                f"{stock_id}: "
+                f"RSI 異常：{rsi}"
             )
 
             return False
 
-    # --------------------------------------------------------
+    # ========================================================
     # KD
-    # --------------------------------------------------------
+    # ========================================================
 
     for field in [
         "k",
@@ -1778,40 +2048,53 @@ def validate_stock(
             )
 
             if (
+
                 value is None
+
                 or
+
                 value < 0
+
                 or
+
                 value > 100
+
             ):
 
                 print(
                     f"{stock_id}: "
-                    f"{field} 異常"
+                    f"{field} 異常：{value}"
                 )
 
                 return False
 
-    # --------------------------------------------------------
+    # ========================================================
     # AI Score
-    # --------------------------------------------------------
+    # ========================================================
 
     score = safe_float(
+
         stock.get(
             "short_term",
             {}
         ).get(
             "score"
         )
+
     )
 
-    if score is None:
-        return False
-
     if (
-        score < 0
+
+        score is None
+
         or
+
+        score < 0
+
+        or
+
         score > 100
+
     ):
 
         return False
@@ -1827,9 +2110,9 @@ def build_rankings(
     stocks
 ):
 
-    # --------------------------------------------------------
-    # AI Score 排名
-    # --------------------------------------------------------
+    # ========================================================
+    # AI SCORE
+    # ========================================================
 
     ranking_data = sorted(
 
@@ -1838,49 +2121,56 @@ def build_rankings(
         key=lambda stock: (
 
             safe_float(
+
                 stock.get(
                     "short_term",
                     {}
                 ).get(
                     "score"
                 ),
+
                 0
+
             ),
 
             safe_float(
+
                 stock.get(
                     "technical",
                     {}
                 ).get(
                     "volume_ratio"
                 ),
+
                 0
+
             )
 
         ),
 
         reverse=True
+
     )
 
     short_term = [
 
-        str(
-            stock["id"]
-        )
+        str(stock["id"])
 
-        for stock in ranking_data
+        for stock
+        in ranking_data
 
     ]
 
-    # --------------------------------------------------------
+    # ========================================================
     # 核心
-    # --------------------------------------------------------
+    # ========================================================
 
     core_stocks = [
 
         stock
 
-        for stock in stocks
+        for stock
+        in stocks
 
         if stock.get(
             "conditions",
@@ -1896,38 +2186,33 @@ def build_rankings(
 
         key=lambda stock:
 
-            safe_float(
-                stock.get(
-                    "short_term",
-                    {}
-                ).get(
-                    "score"
-                ),
-                0
+        safe_float(
+
+            stock.get(
+                "short_term",
+                {}
+            ).get(
+                "score"
             ),
 
+            0
+
+        ),
+
         reverse=True
+
     )
 
-    core = [
-
-        str(
-            stock["id"]
-        )
-
-        for stock in core_stocks
-
-    ]
-
-    # --------------------------------------------------------
+    # ========================================================
     # DCA
-    # --------------------------------------------------------
+    # ========================================================
 
     dca_stocks = [
 
         stock
 
-        for stock in stocks
+        for stock
+        in stocks
 
         if stock.get(
             "technical",
@@ -1952,6 +2237,7 @@ def build_rankings(
             ),
 
             0
+
         )
 
         price = safe_float(
@@ -1964,6 +2250,7 @@ def build_rankings(
             ),
 
             0
+
         )
 
         ma20 = safe_float(
@@ -1976,14 +2263,17 @@ def build_rankings(
             ),
 
             0
+
         )
 
         if price and ma20:
 
             distance = abs(
+
                 price /
                 ma20 -
                 1
+
             )
 
         else:
@@ -1996,17 +2286,19 @@ def build_rankings(
         )
 
     dca_stocks.sort(
+
         key=dca_score,
+
         reverse=True
+
     )
 
     dca = [
 
-        str(
-            stock["id"]
-        )
+        str(stock["id"])
 
-        for stock in dca_stocks
+        for stock
+        in dca_stocks
 
     ]
 
@@ -2016,7 +2308,14 @@ def build_rankings(
             short_term,
 
         "core":
-            core,
+            [
+
+                str(stock["id"])
+
+                for stock
+                in core_stocks
+
+            ],
 
         "dca":
             dca
@@ -2029,28 +2328,19 @@ def build_rankings(
 # ============================================================
 
 def build_statistics(
-    stocks,
-    market_list
+    stocks
 ):
 
-    total_market = len(
-        market_list
-    )
-
-    total_success = len(
+    total = len(
         stocks
     )
 
-    failed = (
-        total_market -
-        total_success
-    )
-
-    twse_count = sum(
+    twse = sum(
 
         1
 
-        for stock in stocks
+        for stock
+        in stocks
 
         if stock.get(
             "market"
@@ -2058,23 +2348,25 @@ def build_statistics(
 
     )
 
-    tpex_count = sum(
+    tpex = sum(
 
         1
 
-        for stock in stocks
+        for stock
+        in stocks
 
         if stock.get(
             "market"
-        ) == "TPEX"
+        ) == "TPEx"
 
     )
 
-    etf_count = sum(
+    etf = sum(
 
         1
 
-        for stock in stocks
+        for stock
+        in stocks
 
         if stock.get(
             "type"
@@ -2082,29 +2374,12 @@ def build_statistics(
 
     )
 
-    ai_70 = sum(
-
-        1
-
-        for stock in stocks
-
-        if safe_float(
-            stock.get(
-                "short_term",
-                {}
-            ).get(
-                "score"
-            ),
-            0
-        ) >= 70
-
-    )
-
     core = sum(
 
         1
 
-        for stock in stocks
+        for stock
+        in stocks
 
         if stock.get(
             "conditions",
@@ -2116,11 +2391,34 @@ def build_statistics(
 
     )
 
+    ai70 = sum(
+
+        1
+
+        for stock
+        in stocks
+
+        if safe_float(
+
+            stock.get(
+                "short_term",
+                {}
+            ).get(
+                "score"
+            ),
+
+            0
+
+        ) >= 70
+
+    )
+
     macd = sum(
 
         1
 
-        for stock in stocks
+        for stock
+        in stocks
 
         if stock.get(
             "conditions",
@@ -2136,7 +2434,8 @@ def build_statistics(
 
         1
 
-        for stock in stocks
+        for stock
+        in stocks
 
         if stock.get(
             "conditions",
@@ -2152,7 +2451,8 @@ def build_statistics(
 
         1
 
-        for stock in stocks
+        for stock
+        in stocks
 
         if stock.get(
             "conditions",
@@ -2168,7 +2468,8 @@ def build_statistics(
 
         1
 
-        for stock in stocks
+        for stock
+        in stocks
 
         if stock.get(
             "conditions",
@@ -2184,7 +2485,8 @@ def build_statistics(
 
         1
 
-        for stock in stocks
+        for stock
+        in stocks
 
         if stock.get(
             "conditions",
@@ -2200,7 +2502,8 @@ def build_statistics(
 
         1
 
-        for stock in stocks
+        for stock
+        in stocks
 
         if stock.get(
             "conditions",
@@ -2214,32 +2517,29 @@ def build_statistics(
 
     return {
 
-        "total_market":
-            total_market,
-
         "total_stocks":
-            total_success,
+            total,
 
-        "successful":
-            total_success,
+        "twse_stocks":
+            twse,
 
-        "failed":
-            failed,
+        "tpex_stocks":
+            tpex,
 
         "listed_stocks":
-            twse_count,
+            twse,
 
         "otc_stocks":
-            tpex_count,
+            tpex,
 
-        "etf":
-            etf_count,
-
-        "ai_70":
-            ai_70,
+        "etf_stocks":
+            etf,
 
         "core_stocks":
             core,
+
+        "ai_70":
+            ai70,
 
         "macd_golden":
             macd,
@@ -2278,26 +2578,46 @@ def save_json(
         )
 
         with open(
+
             temp_file,
+
             "w",
+
             encoding="utf-8"
+
         ) as file:
 
             json.dump(
+
                 data,
+
                 file,
+
                 ensure_ascii=False,
+
                 indent=2
+
             )
 
+        # ----------------------------------------------------
+        # 原子替換
+        # ----------------------------------------------------
+
         os.replace(
+
             temp_file,
+
             OUTPUT_FILE
+
         )
 
-        print("")
         print(
-            f"資料已寫入：{OUTPUT_FILE}"
+            ""
+        )
+
+        print(
+            f"資料已寫入："
+            f"{OUTPUT_FILE}"
         )
 
         return True
@@ -2305,7 +2625,8 @@ def save_json(
     except Exception as error:
 
         print(
-            f"JSON 寫入失敗：{error}"
+            f"JSON 寫入失敗："
+            f"{error}"
         )
 
         return False
@@ -2323,22 +2644,30 @@ def main():
         TW_TZ
     )
 
-    print("")
-    print("================================================")
     print(
-        "台股 AI 全市場掃描系統"
+        ""
     )
+
     print(
+        "================================================"
+    )
+
+    print(
+        f"台股 AI 選股系統 "
         f"fetch_data.py {VERSION}"
     )
+
     print(
         f"開始時間："
         f"{now.strftime('%Y-%m-%d %H:%M:%S')}"
     )
-    print("================================================")
+
+    print(
+        "================================================"
+    )
 
     # ========================================================
-    # 1. 自動取得全市場清單
+    # 1. 自動建立全市場清單
     # ========================================================
 
     market_list = build_market_list()
@@ -2346,13 +2675,18 @@ def main():
     if not market_list:
 
         print(
-            "錯誤：無法取得台股市場清單"
+            ""
+        )
+
+        print(
+            "錯誤："
+            "無法取得全市場股票清單。"
         )
 
         sys.exit(1)
 
     # ========================================================
-    # 2. 開始逐檔分析
+    # 2. 逐檔分析
     # ========================================================
 
     stocks = []
@@ -2363,118 +2697,111 @@ def main():
         market_list
     )
 
-    print("")
-    print("================================================")
     print(
-        f"開始分析全市場：{total} 檔"
+        ""
     )
-    print("================================================")
 
-    for index, item in enumerate(
+    print(
+        "================================================"
+    )
+
+    print(
+        f"開始 AI 全市場掃描："
+        f"{total} 檔"
+    )
+
+    print(
+        "================================================"
+    )
+
+    for index, stock in enumerate(
         market_list,
         start=1
     ):
 
-        code = item["id"]
+        code = stock["id"]
 
-        name = item["name"]
-
-        market = item["market"]
+        print(
+            ""
+        )
 
         print(
             f"[{index}/{total}] "
-            f"{code} {name}",
-            end=" "
+            f"{code} "
+            f"{stock['name']} "
+            f"{stock['market']}"
         )
 
-        try:
+        df = download_stock(
+            stock
+        )
 
-            df = download_stock(
-                code,
-                market
-            )
-
-            if df is None:
-
-                failed.append(
-                    code
-                )
-
-                print(
-                    "FAIL"
-                )
-
-                continue
-
-            stock = analyze_stock(
-                item,
-                df
-            )
-
-            if stock is None:
-
-                failed.append(
-                    code
-                )
-
-                print(
-                    "FAIL"
-                )
-
-                continue
-
-            if not validate_stock(
-                stock
-            ):
-
-                failed.append(
-                    code
-                )
-
-                print(
-                    "INVALID"
-                )
-
-                continue
-
-            stocks.append(
-                stock
-            )
-
-            print(
-                f"OK "
-                f"價格={stock['price']['close']} "
-                f"RSI={stock['technical']['rsi']} "
-                f"AI={stock['short_term']['score']}"
-            )
-
-        except Exception as error:
+        if df is None:
 
             failed.append(
-                code
+                stock
             )
 
-            print(
-                f"ERROR: {error}"
+            continue
+
+        result = analyze_stock(
+            stock,
+            df
+        )
+
+        if result is None:
+
+            failed.append(
+                stock
             )
+
+            continue
+
+        if not validate_stock(
+            result
+        ):
+
+            failed.append(
+                stock
+            )
+
+            continue
+
+        stocks.append(
+            result
+        )
+
+        print(
+            f"OK | "
+            f"價格="
+            f"{result['price']['close']} | "
+            f"RSI="
+            f"{result['technical']['rsi']} | "
+            f"AI="
+            f"{result['short_term']['score']}"
+        )
 
         # ----------------------------------------------------
-        # API 節流
+        # 降低 Yahoo 請求頻率
         # ----------------------------------------------------
 
         time.sleep(
-            0.20
+            0.15
         )
 
     # ========================================================
-    # 3. 完全沒有資料
+    # 3. 無資料
     # ========================================================
 
     if not stocks:
 
-        print("")
         print(
-            "錯誤：沒有任何股票成功分析"
+            ""
+        )
+
+        print(
+            "錯誤："
+            "沒有任何股票成功分析。"
         )
 
         sys.exit(1)
@@ -2492,12 +2819,24 @@ def main():
     # ========================================================
 
     statistics = build_statistics(
-        stocks,
-        market_list
+        stocks
     )
 
     # ========================================================
-    # 6. 最終 JSON
+    # 6. 失敗清單
+    # ========================================================
+
+    failed_codes = [
+
+        str(stock["id"])
+
+        for stock
+        in failed
+
+    ]
+
+    # ========================================================
+    # 7. 最終 JSON
     # ========================================================
 
     output = {
@@ -2514,19 +2853,23 @@ def main():
             "TW",
 
         "source":
-            "TWSE + TPEx + Yahoo Finance",
+            "TWSE / TPEx / Yahoo Finance",
 
-        "scan_mode":
-            "FULL_MARKET",
+        "market_status": {
 
-        "market_list_count":
-            len(market_list),
+            "market_list_count":
+                len(market_list),
 
-        "failed_count":
-            len(failed),
+            "success_count":
+                len(stocks),
 
-        "failed_symbols":
-            failed,
+            "failed_count":
+                len(failed),
+
+            "failed_codes":
+                failed_codes
+
+        },
 
         "stocks":
             stocks,
@@ -2540,7 +2883,7 @@ def main():
     }
 
     # ========================================================
-    # 7. 寫入
+    # 8. 儲存
     # ========================================================
 
     success = save_json(
@@ -2552,7 +2895,7 @@ def main():
         sys.exit(1)
 
     # ========================================================
-    # 8. 最終報告
+    # 9. 最終統計
     # ========================================================
 
     elapsed = (
@@ -2560,10 +2903,21 @@ def main():
         start_time
     )
 
-    print("")
-    print("================================================")
-    print("全市場 AI 掃描完成")
-    print("================================================")
+    print(
+        ""
+    )
+
+    print(
+        "################################################"
+    )
+
+    print(
+        "# 全市場 AI 掃描完成"
+    )
+
+    print(
+        "################################################"
+    )
 
     print(
         f"市場清單："
@@ -2580,24 +2934,28 @@ def main():
         f"{len(failed)} 檔"
     )
 
-    print("")
+    print(
+        ""
+    )
 
     print(
         f"上市股票："
-        f"{statistics['listed_stocks']} 檔"
+        f"{statistics['twse_stocks']} 檔"
     )
 
     print(
         f"上櫃股票："
-        f"{statistics['otc_stocks']} 檔"
+        f"{statistics['tpex_stocks']} 檔"
     )
 
     print(
         f"ETF："
-        f"{statistics['etf']} 檔"
+        f"{statistics['etf_stocks']} 檔"
     )
 
-    print("")
+    print(
+        ""
+    )
 
     print(
         f"AI ≥ 70："
@@ -2639,14 +2997,18 @@ def main():
         f"{statistics['ma20_up']} 檔"
     )
 
-    print("")
+    print(
+        ""
+    )
 
     print(
         f"耗時："
         f"{elapsed:.2f} 秒"
     )
 
-    print("================================================")
+    print(
+        "################################################"
+    )
 
 
 # ============================================================
