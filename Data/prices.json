@@ -1,1 +1,2079 @@
-{}
+{
+  "system": {
+    "name": "台股 AI 選股與零股定投動態風控儀表板",
+    "version": "2.0",
+    "generated_at": "2026-08-14T09:36:40.879573+08:00",
+    "timezone": "Asia/Taipei",
+    "data_source": "Yahoo Finance"
+  },
+  "strategy": {
+    "short_term": {
+      "macd_golden_cross": true,
+      "kd_golden_cross": true,
+      "rsi_above": 50,
+      "volume_multiplier": 1.5,
+      "above_ma20": true,
+      "ma20_up": true
+    },
+    "dca": {
+      "reference": "20MA",
+      "levels": [
+        "MA20附近",
+        "MA20下方3%",
+        "MA20下方6%",
+        "MA20下方10%"
+      ]
+    }
+  },
+  "statistics": {
+    "total_stocks": 25,
+    "core_stocks": 0,
+    "macd_golden": 0,
+    "kd_golden": 1,
+    "rsi_above_50": 18,
+    "volume_breakout": 1,
+    "above_ma20": 22
+  },
+  "rankings": {
+    "short_term": [
+      "3356",
+      "6669",
+      "3231",
+      "2454",
+      "3017",
+      "2376",
+      "3042",
+      "3044",
+      "3006",
+      "3450"
+    ],
+    "core": [],
+    "dca": [
+      "3356",
+      "6669",
+      "3017",
+      "3006",
+      "3231",
+      "2454",
+      "3044",
+      "2376",
+      "3450",
+      "3042"
+    ]
+  },
+  "stocks": [
+    {
+      "id": "2330",
+      "symbol": "2330.TW",
+      "name": "台積電",
+      "date": "2026-08-14",
+      "price": {
+        "open": 2435.0,
+        "high": 2440.0,
+        "low": 2425.0,
+        "close": 2425.0,
+        "previous_close": 2435.0,
+        "change": -10.0,
+        "change_percent": -0.41,
+        "volume": 2826296.0
+      },
+      "technical": {
+        "ma5": 2410.0,
+        "ma10": 2388.0,
+        "ma20": 2361.25,
+        "ma60": 2374.58,
+        "ma20_slope": 0.29,
+        "rsi": 54.57,
+        "dif": 10.1858,
+        "dem": -0.6725,
+        "macd_hist": 10.8583,
+        "k": 86.0,
+        "d": 81.23,
+        "volume_ma5": 15304731.0,
+        "volume_ratio": 0.18
+      },
+      "conditions": {
+        "macd_golden_cross": false,
+        "macd_red": true,
+        "kd_golden_cross": false,
+        "kd_low_golden_cross": false,
+        "rsi_above_50": true,
+        "volume_over_1_5x": false,
+        "above_ma20": true,
+        "ma20_up": true,
+        "ma20_turn_up": false,
+        "short_term_core": false
+      },
+      "short_term": {
+        "score": 41,
+        "signal": "弱勢",
+        "reasons": [
+          "MACD柱狀圖翻紅",
+          "KD多方",
+          "RSI站上50",
+          "站上20MA",
+          "20MA向上"
+        ],
+        "core_conditions": {
+          "macd": false,
+          "kd": false,
+          "rsi": true,
+          "volume": false,
+          "ma20": true,
+          "ma20_up": true
+        }
+      },
+      "dca": {
+        "status": "高於第一定投區",
+        "action": "觀察 / 小額",
+        "buy_1": 2337.64,
+        "buy_2": 2290.41,
+        "buy_3": 2219.57,
+        "buy_4": 2125.12
+      },
+      "risk_control": {
+        "risk_level": "低～中",
+        "stop_loss": 2255.25,
+        "take_profit_1": 2619.0,
+        "take_profit_2": 2788.75
+      },
+      "strategy": {
+        "short_term": "尚未完全符合短期核心條件",
+        "dca_action": "觀察 / 小額",
+        "risk_level": "低～中"
+      }
+    },
+    {
+      "id": "2317",
+      "symbol": "2317.TW",
+      "name": "鴻海",
+      "date": "2026-08-14",
+      "price": {
+        "open": 262.0,
+        "high": 264.5,
+        "low": 260.0,
+        "close": 262.5,
+        "previous_close": 262.0,
+        "change": 0.5,
+        "change_percent": 0.19,
+        "volume": 8820542.0
+      },
+      "technical": {
+        "ma5": 264.4,
+        "ma10": 260.8,
+        "ma20": 252.9,
+        "ma60": 257.09,
+        "ma20_slope": 0.57,
+        "rsi": 56.21,
+        "dif": 4.6308,
+        "dem": 2.7789,
+        "macd_hist": 1.8519,
+        "k": 73.26,
+        "d": 79.74,
+        "volume_ma5": 43463425.0,
+        "volume_ratio": 0.2
+      },
+      "conditions": {
+        "macd_golden_cross": false,
+        "macd_red": true,
+        "kd_golden_cross": false,
+        "kd_low_golden_cross": false,
+        "rsi_above_50": true,
+        "volume_over_1_5x": false,
+        "above_ma20": true,
+        "ma20_up": true,
+        "ma20_turn_up": true,
+        "short_term_core": false
+      },
+      "short_term": {
+        "score": 45,
+        "signal": "觀察",
+        "reasons": [
+          "MACD柱狀圖翻紅",
+          "RSI多方",
+          "站上20MA",
+          "20MA向上",
+          "20MA向上勾"
+        ],
+        "core_conditions": {
+          "macd": false,
+          "kd": false,
+          "rsi": true,
+          "volume": false,
+          "ma20": true,
+          "ma20_up": true
+        }
+      },
+      "dca": {
+        "status": "高於第一定投區",
+        "action": "觀察 / 小額",
+        "buy_1": 250.37,
+        "buy_2": 245.31,
+        "buy_3": 237.73,
+        "buy_4": 227.61
+      },
+      "risk_control": {
+        "risk_level": "低～中",
+        "stop_loss": 244.12,
+        "take_profit_1": 283.5,
+        "take_profit_2": 301.88
+      },
+      "strategy": {
+        "short_term": "尚未完全符合短期核心條件",
+        "dca_action": "觀察 / 小額",
+        "risk_level": "低～中"
+      }
+    },
+    {
+      "id": "2454",
+      "symbol": "2454.TW",
+      "name": "聯發科",
+      "date": "2026-08-14",
+      "price": {
+        "open": 4400.0,
+        "high": 4400.0,
+        "low": 4250.0,
+        "close": 4285.0,
+        "previous_close": 4225.0,
+        "change": 60.0,
+        "change_percent": 1.42,
+        "volume": 2942123.0
+      },
+      "technical": {
+        "ma5": 4101.0,
+        "ma10": 4010.0,
+        "ma20": 3776.0,
+        "ma60": 4054.17,
+        "ma20_slope": 1.23,
+        "rsi": 62.34,
+        "dif": 80.0987,
+        "dem": 1.3151,
+        "macd_hist": 78.7836,
+        "k": 82.71,
+        "d": 80.62,
+        "volume_ma5": 6313944.0,
+        "volume_ratio": 0.47
+      },
+      "conditions": {
+        "macd_golden_cross": false,
+        "macd_red": true,
+        "kd_golden_cross": false,
+        "kd_low_golden_cross": false,
+        "rsi_above_50": true,
+        "volume_over_1_5x": false,
+        "above_ma20": true,
+        "ma20_up": true,
+        "ma20_turn_up": true,
+        "short_term_core": false
+      },
+      "short_term": {
+        "score": 53,
+        "signal": "觀察",
+        "reasons": [
+          "MACD柱狀圖翻紅",
+          "KD多方",
+          "RSI多方",
+          "站上20MA",
+          "20MA向上",
+          "20MA向上勾"
+        ],
+        "core_conditions": {
+          "macd": false,
+          "kd": false,
+          "rsi": true,
+          "volume": false,
+          "ma20": true,
+          "ma20_up": true
+        }
+      },
+      "dca": {
+        "status": "高於第一定投區",
+        "action": "觀察 / 小額",
+        "buy_1": 3738.24,
+        "buy_2": 3662.72,
+        "buy_3": 3549.44,
+        "buy_4": 3398.4
+      },
+      "risk_control": {
+        "risk_level": "低～中",
+        "stop_loss": 3985.05,
+        "take_profit_1": 4627.8,
+        "take_profit_2": 4927.75
+      },
+      "strategy": {
+        "short_term": "尚未完全符合短期核心條件",
+        "dca_action": "觀察 / 小額",
+        "risk_level": "低～中"
+      }
+    },
+    {
+      "id": "2303",
+      "symbol": "2303.TW",
+      "name": "聯電",
+      "date": "2026-08-14",
+      "price": {
+        "open": 125.0,
+        "high": 125.5,
+        "low": 123.0,
+        "close": 123.5,
+        "previous_close": 124.5,
+        "change": -1.0,
+        "change_percent": -0.8,
+        "volume": 19963803.0
+      },
+      "technical": {
+        "ma5": 123.4,
+        "ma10": 121.3,
+        "ma20": 122.8,
+        "ma60": 139.63,
+        "ma20_slope": -0.83,
+        "rsi": 45.6,
+        "dif": -5.4114,
+        "dem": -6.6194,
+        "macd_hist": 1.208,
+        "k": 61.35,
+        "d": 59.51,
+        "volume_ma5": 112819202.0,
+        "volume_ratio": 0.18
+      },
+      "conditions": {
+        "macd_golden_cross": false,
+        "macd_red": true,
+        "kd_golden_cross": false,
+        "kd_low_golden_cross": false,
+        "rsi_above_50": false,
+        "volume_over_1_5x": false,
+        "above_ma20": true,
+        "ma20_up": false,
+        "ma20_turn_up": false,
+        "short_term_core": false
+      },
+      "short_term": {
+        "score": 26,
+        "signal": "不符合",
+        "reasons": [
+          "MACD柱狀圖翻紅",
+          "KD多方",
+          "站上20MA"
+        ],
+        "core_conditions": {
+          "macd": false,
+          "kd": false,
+          "rsi": false,
+          "volume": false,
+          "ma20": true,
+          "ma20_up": false
+        }
+      },
+      "dca": {
+        "status": "高於第一定投區",
+        "action": "觀察 / 小額",
+        "buy_1": 121.57,
+        "buy_2": 119.12,
+        "buy_3": 115.43,
+        "buy_4": 110.52
+      },
+      "risk_control": {
+        "risk_level": "中",
+        "stop_loss": 114.86,
+        "take_profit_1": 133.38,
+        "take_profit_2": 142.02
+      },
+      "strategy": {
+        "short_term": "尚未完全符合短期核心條件",
+        "dca_action": "觀察 / 小額",
+        "risk_level": "中"
+      }
+    },
+    {
+      "id": "2382",
+      "symbol": "2382.TW",
+      "name": "廣達",
+      "date": "2026-08-14",
+      "price": {
+        "open": 325.0,
+        "high": 336.5,
+        "low": 318.0,
+        "close": 333.5,
+        "previous_close": 325.0,
+        "change": 8.5,
+        "change_percent": 2.62,
+        "volume": 15301106.0
+      },
+      "technical": {
+        "ma5": 322.6,
+        "ma10": 311.4,
+        "ma20": 313.12,
+        "ma60": 348.49,
+        "ma20_slope": 0.13,
+        "rsi": 54.32,
+        "dif": -7.2275,
+        "dem": -12.0783,
+        "macd_hist": 4.8507,
+        "k": 84.35,
+        "d": 71.41,
+        "volume_ma5": 19047085.0,
+        "volume_ratio": 0.8
+      },
+      "conditions": {
+        "macd_golden_cross": false,
+        "macd_red": true,
+        "kd_golden_cross": false,
+        "kd_low_golden_cross": false,
+        "rsi_above_50": true,
+        "volume_over_1_5x": false,
+        "above_ma20": true,
+        "ma20_up": true,
+        "ma20_turn_up": false,
+        "short_term_core": false
+      },
+      "short_term": {
+        "score": 41,
+        "signal": "弱勢",
+        "reasons": [
+          "MACD柱狀圖翻紅",
+          "KD多方",
+          "RSI站上50",
+          "站上20MA",
+          "20MA向上"
+        ],
+        "core_conditions": {
+          "macd": false,
+          "kd": false,
+          "rsi": true,
+          "volume": false,
+          "ma20": true,
+          "ma20_up": true
+        }
+      },
+      "dca": {
+        "status": "高於第一定投區",
+        "action": "觀察 / 小額",
+        "buy_1": 309.99,
+        "buy_2": 303.73,
+        "buy_3": 294.33,
+        "buy_4": 281.81
+      },
+      "risk_control": {
+        "risk_level": "低～中",
+        "stop_loss": 310.16,
+        "take_profit_1": 360.18,
+        "take_profit_2": 383.52
+      },
+      "strategy": {
+        "short_term": "尚未完全符合短期核心條件",
+        "dca_action": "觀察 / 小額",
+        "risk_level": "低～中"
+      }
+    },
+    {
+      "id": "3231",
+      "symbol": "3231.TW",
+      "name": "緯創",
+      "date": "2026-08-14",
+      "price": {
+        "open": 198.0,
+        "high": 206.0,
+        "low": 195.5,
+        "close": 201.0,
+        "previous_close": 197.0,
+        "change": 4.0,
+        "change_percent": 2.03,
+        "volume": 35443197.0
+      },
+      "technical": {
+        "ma5": 195.1,
+        "ma10": 192.25,
+        "ma20": 179.22,
+        "ma60": 164.41,
+        "ma20_slope": 1.76,
+        "rsi": 67.64,
+        "dif": 10.6386,
+        "dem": 8.9543,
+        "macd_hist": 1.6842,
+        "k": 78.44,
+        "d": 76.48,
+        "volume_ma5": 50451799.0,
+        "volume_ratio": 0.7
+      },
+      "conditions": {
+        "macd_golden_cross": false,
+        "macd_red": true,
+        "kd_golden_cross": false,
+        "kd_low_golden_cross": false,
+        "rsi_above_50": true,
+        "volume_over_1_5x": false,
+        "above_ma20": true,
+        "ma20_up": true,
+        "ma20_turn_up": true,
+        "short_term_core": false
+      },
+      "short_term": {
+        "score": 53,
+        "signal": "觀察",
+        "reasons": [
+          "MACD柱狀圖翻紅",
+          "KD多方",
+          "RSI多方",
+          "站上20MA",
+          "20MA向上",
+          "20MA向上勾"
+        ],
+        "core_conditions": {
+          "macd": false,
+          "kd": false,
+          "rsi": true,
+          "volume": false,
+          "ma20": true,
+          "ma20_up": true
+        }
+      },
+      "dca": {
+        "status": "高於第一定投區",
+        "action": "觀察 / 小額",
+        "buy_1": 177.43,
+        "buy_2": 173.84,
+        "buy_3": 168.47,
+        "buy_4": 161.3
+      },
+      "risk_control": {
+        "risk_level": "低～中",
+        "stop_loss": 186.93,
+        "take_profit_1": 217.08,
+        "take_profit_2": 231.15
+      },
+      "strategy": {
+        "short_term": "尚未完全符合短期核心條件",
+        "dca_action": "觀察 / 小額",
+        "risk_level": "低～中"
+      }
+    },
+    {
+      "id": "6669",
+      "symbol": "6669.TW",
+      "name": "緯穎",
+      "date": "2026-08-14",
+      "price": {
+        "open": 6145.0,
+        "high": 6470.0,
+        "low": 6140.0,
+        "close": 6405.0,
+        "previous_close": 6070.0,
+        "change": 335.0,
+        "change_percent": 5.52,
+        "volume": 641592.0
+      },
+      "technical": {
+        "ma5": 6088.0,
+        "ma10": 6111.0,
+        "ma20": 5699.0,
+        "ma60": 5276.92,
+        "ma20_slope": 1.59,
+        "rsi": 65.74,
+        "dif": 293.9541,
+        "dem": 251.5393,
+        "macd_hist": 42.4148,
+        "k": 76.69,
+        "d": 74.69,
+        "volume_ma5": 1214036.0,
+        "volume_ratio": 0.53
+      },
+      "conditions": {
+        "macd_golden_cross": false,
+        "macd_red": true,
+        "kd_golden_cross": true,
+        "kd_low_golden_cross": false,
+        "rsi_above_50": true,
+        "volume_over_1_5x": false,
+        "above_ma20": true,
+        "ma20_up": true,
+        "ma20_turn_up": true,
+        "short_term_core": false
+      },
+      "short_term": {
+        "score": 65,
+        "signal": "偏多",
+        "reasons": [
+          "MACD柱狀圖翻紅",
+          "KD黃金交叉",
+          "RSI多方",
+          "站上20MA",
+          "20MA向上",
+          "20MA向上勾"
+        ],
+        "core_conditions": {
+          "macd": false,
+          "kd": true,
+          "rsi": true,
+          "volume": false,
+          "ma20": true,
+          "ma20_up": true
+        }
+      },
+      "dca": {
+        "status": "高於第一定投區",
+        "action": "觀察 / 小額",
+        "buy_1": 5642.01,
+        "buy_2": 5528.03,
+        "buy_3": 5357.06,
+        "buy_4": 5129.1
+      },
+      "risk_control": {
+        "risk_level": "低～中",
+        "stop_loss": 5956.65,
+        "take_profit_1": 6917.4,
+        "take_profit_2": 7365.75
+      },
+      "strategy": {
+        "short_term": "尚未完全符合短期核心條件",
+        "dca_action": "觀察 / 小額",
+        "risk_level": "低～中"
+      }
+    },
+    {
+      "id": "3037",
+      "symbol": "3037.TW",
+      "name": "欣興",
+      "date": "2026-08-14",
+      "price": {
+        "open": 1020.0,
+        "high": 1020.0,
+        "low": 995.0,
+        "close": 1000.0,
+        "previous_close": 1000.0,
+        "change": 0.0,
+        "change_percent": 0.0,
+        "volume": 905078.0
+      },
+      "technical": {
+        "ma5": 996.8,
+        "ma10": 967.0,
+        "ma20": 884.5,
+        "ma60": 932.32,
+        "ma20_slope": 1.18,
+        "rsi": 59.58,
+        "dif": 31.3376,
+        "dem": 11.1432,
+        "macd_hist": 20.1944,
+        "k": 82.21,
+        "d": 83.29,
+        "volume_ma5": 5583892.0,
+        "volume_ratio": 0.16
+      },
+      "conditions": {
+        "macd_golden_cross": false,
+        "macd_red": true,
+        "kd_golden_cross": false,
+        "kd_low_golden_cross": false,
+        "rsi_above_50": true,
+        "volume_over_1_5x": false,
+        "above_ma20": true,
+        "ma20_up": true,
+        "ma20_turn_up": true,
+        "short_term_core": false
+      },
+      "short_term": {
+        "score": 45,
+        "signal": "觀察",
+        "reasons": [
+          "MACD柱狀圖翻紅",
+          "RSI多方",
+          "站上20MA",
+          "20MA向上",
+          "20MA向上勾"
+        ],
+        "core_conditions": {
+          "macd": false,
+          "kd": false,
+          "rsi": true,
+          "volume": false,
+          "ma20": true,
+          "ma20_up": true
+        }
+      },
+      "dca": {
+        "status": "高於第一定投區",
+        "action": "觀察 / 小額",
+        "buy_1": 875.65,
+        "buy_2": 857.97,
+        "buy_3": 831.43,
+        "buy_4": 796.05
+      },
+      "risk_control": {
+        "risk_level": "低～中",
+        "stop_loss": 930.0,
+        "take_profit_1": 1080.0,
+        "take_profit_2": 1150.0
+      },
+      "strategy": {
+        "short_term": "尚未完全符合短期核心條件",
+        "dca_action": "觀察 / 小額",
+        "risk_level": "低～中"
+      }
+    },
+    {
+      "id": "3044",
+      "symbol": "3044.TW",
+      "name": "健鼎",
+      "date": "2026-08-14",
+      "price": {
+        "open": 492.0,
+        "high": 497.0,
+        "low": 488.5,
+        "close": 488.5,
+        "previous_close": 495.0,
+        "change": -6.5,
+        "change_percent": -1.31,
+        "volume": 736508.0
+      },
+      "technical": {
+        "ma5": 462.4,
+        "ma10": 426.8,
+        "ma20": 403.88,
+        "ma60": 466.23,
+        "ma20_slope": 1.14,
+        "rsi": 65.45,
+        "dif": 5.8216,
+        "dem": -11.592,
+        "macd_hist": 17.4136,
+        "k": 84.16,
+        "d": 82.28,
+        "volume_ma5": 5601133.0,
+        "volume_ratio": 0.13
+      },
+      "conditions": {
+        "macd_golden_cross": false,
+        "macd_red": true,
+        "kd_golden_cross": false,
+        "kd_low_golden_cross": false,
+        "rsi_above_50": true,
+        "volume_over_1_5x": false,
+        "above_ma20": true,
+        "ma20_up": true,
+        "ma20_turn_up": true,
+        "short_term_core": false
+      },
+      "short_term": {
+        "score": 53,
+        "signal": "觀察",
+        "reasons": [
+          "MACD柱狀圖翻紅",
+          "KD多方",
+          "RSI多方",
+          "站上20MA",
+          "20MA向上",
+          "20MA向上勾"
+        ],
+        "core_conditions": {
+          "macd": false,
+          "kd": false,
+          "rsi": true,
+          "volume": false,
+          "ma20": true,
+          "ma20_up": true
+        }
+      },
+      "dca": {
+        "status": "高於第一定投區",
+        "action": "觀察 / 小額",
+        "buy_1": 399.84,
+        "buy_2": 391.76,
+        "buy_3": 379.65,
+        "buy_4": 363.49
+      },
+      "risk_control": {
+        "risk_level": "低～中",
+        "stop_loss": 454.31,
+        "take_profit_1": 527.58,
+        "take_profit_2": 561.77
+      },
+      "strategy": {
+        "short_term": "尚未完全符合短期核心條件",
+        "dca_action": "觀察 / 小額",
+        "risk_level": "低～中"
+      }
+    },
+    {
+      "id": "2449",
+      "symbol": "2449.TW",
+      "name": "京元電子",
+      "date": "2026-08-14",
+      "price": {
+        "open": 256.0,
+        "high": 256.5,
+        "low": 250.0,
+        "close": 250.5,
+        "previous_close": 253.5,
+        "change": -3.0,
+        "change_percent": -1.18,
+        "volume": 2710377.0
+      },
+      "technical": {
+        "ma5": 251.5,
+        "ma10": 247.45,
+        "ma20": 247.38,
+        "ma60": 280.11,
+        "ma20_slope": -0.45,
+        "rsi": 47.11,
+        "dif": -8.0921,
+        "dem": -11.4074,
+        "macd_hist": 3.3153,
+        "k": 75.17,
+        "d": 71.48,
+        "volume_ma5": 20353027.0,
+        "volume_ratio": 0.13
+      },
+      "conditions": {
+        "macd_golden_cross": false,
+        "macd_red": true,
+        "kd_golden_cross": false,
+        "kd_low_golden_cross": false,
+        "rsi_above_50": false,
+        "volume_over_1_5x": false,
+        "above_ma20": true,
+        "ma20_up": false,
+        "ma20_turn_up": false,
+        "short_term_core": false
+      },
+      "short_term": {
+        "score": 26,
+        "signal": "不符合",
+        "reasons": [
+          "MACD柱狀圖翻紅",
+          "KD多方",
+          "站上20MA"
+        ],
+        "core_conditions": {
+          "macd": false,
+          "kd": false,
+          "rsi": false,
+          "volume": false,
+          "ma20": true,
+          "ma20_up": false
+        }
+      },
+      "dca": {
+        "status": "高於第一定投區",
+        "action": "觀察 / 小額",
+        "buy_1": 244.91,
+        "buy_2": 239.96,
+        "buy_3": 232.54,
+        "buy_4": 222.64
+      },
+      "risk_control": {
+        "risk_level": "中",
+        "stop_loss": 232.97,
+        "take_profit_1": 270.54,
+        "take_profit_2": 288.07
+      },
+      "strategy": {
+        "short_term": "尚未完全符合短期核心條件",
+        "dca_action": "觀察 / 小額",
+        "risk_level": "中"
+      }
+    },
+    {
+      "id": "3481",
+      "symbol": "3481.TW",
+      "name": "群創",
+      "date": "2026-08-14",
+      "price": {
+        "open": 50.2,
+        "high": 51.4,
+        "low": 50.0,
+        "close": 50.9,
+        "previous_close": 49.4,
+        "change": 1.5,
+        "change_percent": 3.04,
+        "volume": 64266379.0
+      },
+      "technical": {
+        "ma5": 50.62,
+        "ma10": 49.2,
+        "ma20": 48.41,
+        "ma60": 54.85,
+        "ma20_slope": -0.18,
+        "rsi": 49.63,
+        "dif": -1.4367,
+        "dem": -2.161,
+        "macd_hist": 0.7243,
+        "k": 76.49,
+        "d": 72.73,
+        "volume_ma5": 204627551.0,
+        "volume_ratio": 0.31
+      },
+      "conditions": {
+        "macd_golden_cross": false,
+        "macd_red": true,
+        "kd_golden_cross": false,
+        "kd_low_golden_cross": false,
+        "rsi_above_50": false,
+        "volume_over_1_5x": false,
+        "above_ma20": true,
+        "ma20_up": false,
+        "ma20_turn_up": false,
+        "short_term_core": false
+      },
+      "short_term": {
+        "score": 26,
+        "signal": "不符合",
+        "reasons": [
+          "MACD柱狀圖翻紅",
+          "KD多方",
+          "站上20MA"
+        ],
+        "core_conditions": {
+          "macd": false,
+          "kd": false,
+          "rsi": false,
+          "volume": false,
+          "ma20": true,
+          "ma20_up": false
+        }
+      },
+      "dca": {
+        "status": "高於第一定投區",
+        "action": "觀察 / 小額",
+        "buy_1": 47.93,
+        "buy_2": 46.96,
+        "buy_3": 45.51,
+        "buy_4": 43.57
+      },
+      "risk_control": {
+        "risk_level": "中",
+        "stop_loss": 47.34,
+        "take_profit_1": 54.97,
+        "take_profit_2": 58.53
+      },
+      "strategy": {
+        "short_term": "尚未完全符合短期核心條件",
+        "dca_action": "觀察 / 小額",
+        "risk_level": "中"
+      }
+    },
+    {
+      "id": "2409",
+      "symbol": "2409.TW",
+      "name": "友達",
+      "date": "2026-08-14",
+      "price": {
+        "open": 26.05,
+        "high": 26.4,
+        "low": 25.85,
+        "close": 26.25,
+        "previous_close": 25.75,
+        "change": 0.5,
+        "change_percent": 1.94,
+        "volume": 31339217.0
+      },
+      "technical": {
+        "ma5": 26.27,
+        "ma10": 25.32,
+        "ma20": 24.98,
+        "ma60": 26.42,
+        "ma20_slope": 0.09,
+        "rsi": 52.16,
+        "dif": -0.2345,
+        "dem": -0.5198,
+        "macd_hist": 0.2853,
+        "k": 62.69,
+        "d": 63.45,
+        "volume_ma5": 200665378.0,
+        "volume_ratio": 0.16
+      },
+      "conditions": {
+        "macd_golden_cross": false,
+        "macd_red": true,
+        "kd_golden_cross": false,
+        "kd_low_golden_cross": false,
+        "rsi_above_50": true,
+        "volume_over_1_5x": false,
+        "above_ma20": true,
+        "ma20_up": true,
+        "ma20_turn_up": false,
+        "short_term_core": false
+      },
+      "short_term": {
+        "score": 33,
+        "signal": "弱勢",
+        "reasons": [
+          "MACD柱狀圖翻紅",
+          "RSI站上50",
+          "站上20MA",
+          "20MA向上"
+        ],
+        "core_conditions": {
+          "macd": false,
+          "kd": false,
+          "rsi": true,
+          "volume": false,
+          "ma20": true,
+          "ma20_up": true
+        }
+      },
+      "dca": {
+        "status": "高於第一定投區",
+        "action": "觀察 / 小額",
+        "buy_1": 24.73,
+        "buy_2": 24.23,
+        "buy_3": 23.48,
+        "buy_4": 22.48
+      },
+      "risk_control": {
+        "risk_level": "低～中",
+        "stop_loss": 24.41,
+        "take_profit_1": 28.35,
+        "take_profit_2": 30.19
+      },
+      "strategy": {
+        "short_term": "尚未完全符合短期核心條件",
+        "dca_action": "觀察 / 小額",
+        "risk_level": "低～中"
+      }
+    },
+    {
+      "id": "2301",
+      "symbol": "2301.TW",
+      "name": "光寶科",
+      "date": "2026-08-14",
+      "price": {
+        "open": 274.5,
+        "high": 278.0,
+        "low": 269.5,
+        "close": 271.0,
+        "previous_close": 269.5,
+        "change": 1.5,
+        "change_percent": 0.56,
+        "volume": 6478959.0
+      },
+      "technical": {
+        "ma5": 268.0,
+        "ma10": 257.0,
+        "ma20": 230.55,
+        "ma60": 223.8,
+        "ma20_slope": 1.64,
+        "rsi": 65.68,
+        "dif": 15.0972,
+        "dem": 9.8587,
+        "macd_hist": 5.2385,
+        "k": 80.34,
+        "d": 80.52,
+        "volume_ma5": 30692746.0,
+        "volume_ratio": 0.21
+      },
+      "conditions": {
+        "macd_golden_cross": false,
+        "macd_red": true,
+        "kd_golden_cross": false,
+        "kd_low_golden_cross": false,
+        "rsi_above_50": true,
+        "volume_over_1_5x": false,
+        "above_ma20": true,
+        "ma20_up": true,
+        "ma20_turn_up": true,
+        "short_term_core": false
+      },
+      "short_term": {
+        "score": 45,
+        "signal": "觀察",
+        "reasons": [
+          "MACD柱狀圖翻紅",
+          "RSI多方",
+          "站上20MA",
+          "20MA向上",
+          "20MA向上勾"
+        ],
+        "core_conditions": {
+          "macd": false,
+          "kd": false,
+          "rsi": true,
+          "volume": false,
+          "ma20": true,
+          "ma20_up": true
+        }
+      },
+      "dca": {
+        "status": "高於第一定投區",
+        "action": "觀察 / 小額",
+        "buy_1": 228.24,
+        "buy_2": 223.63,
+        "buy_3": 216.72,
+        "buy_4": 207.5
+      },
+      "risk_control": {
+        "risk_level": "低～中",
+        "stop_loss": 252.03,
+        "take_profit_1": 292.68,
+        "take_profit_2": 311.65
+      },
+      "strategy": {
+        "short_term": "尚未完全符合短期核心條件",
+        "dca_action": "觀察 / 小額",
+        "risk_level": "低～中"
+      }
+    },
+    {
+      "id": "2376",
+      "symbol": "2376.TW",
+      "name": "技嘉",
+      "date": "2026-08-14",
+      "price": {
+        "open": 390.0,
+        "high": 398.0,
+        "low": 386.5,
+        "close": 389.0,
+        "previous_close": 393.5,
+        "change": -4.5,
+        "change_percent": -1.14,
+        "volume": 2323388.0
+      },
+      "technical": {
+        "ma5": 371.6,
+        "ma10": 354.45,
+        "ma20": 346.32,
+        "ma60": 344.89,
+        "ma20_slope": 0.93,
+        "rsi": 68.81,
+        "dif": 10.3278,
+        "dem": 4.1153,
+        "macd_hist": 6.2125,
+        "k": 88.92,
+        "d": 82.05,
+        "volume_ma5": 9604072.0,
+        "volume_ratio": 0.24
+      },
+      "conditions": {
+        "macd_golden_cross": false,
+        "macd_red": true,
+        "kd_golden_cross": false,
+        "kd_low_golden_cross": false,
+        "rsi_above_50": true,
+        "volume_over_1_5x": false,
+        "above_ma20": true,
+        "ma20_up": true,
+        "ma20_turn_up": true,
+        "short_term_core": false
+      },
+      "short_term": {
+        "score": 53,
+        "signal": "觀察",
+        "reasons": [
+          "MACD柱狀圖翻紅",
+          "KD多方",
+          "RSI多方",
+          "站上20MA",
+          "20MA向上",
+          "20MA向上勾"
+        ],
+        "core_conditions": {
+          "macd": false,
+          "kd": false,
+          "rsi": true,
+          "volume": false,
+          "ma20": true,
+          "ma20_up": true
+        }
+      },
+      "dca": {
+        "status": "高於第一定投區",
+        "action": "觀察 / 小額",
+        "buy_1": 342.86,
+        "buy_2": 335.93,
+        "buy_3": 325.54,
+        "buy_4": 311.69
+      },
+      "risk_control": {
+        "risk_level": "低～中",
+        "stop_loss": 361.77,
+        "take_profit_1": 420.12,
+        "take_profit_2": 447.35
+      },
+      "strategy": {
+        "short_term": "尚未完全符合短期核心條件",
+        "dca_action": "觀察 / 小額",
+        "risk_level": "低～中"
+      }
+    },
+    {
+      "id": "2421",
+      "symbol": "2421.TW",
+      "name": "建準",
+      "date": "2026-08-14",
+      "price": {
+        "open": 150.5,
+        "high": 150.5,
+        "low": 149.0,
+        "close": 149.0,
+        "previous_close": 149.5,
+        "change": -0.5,
+        "change_percent": -0.33,
+        "volume": 236680.0
+      },
+      "technical": {
+        "ma5": 150.0,
+        "ma10": 146.85,
+        "ma20": 137.6,
+        "ma60": 145.18,
+        "ma20_slope": 0.81,
+        "rsi": 58.22,
+        "dif": 3.2416,
+        "dem": 1.0352,
+        "macd_hist": 2.2064,
+        "k": 73.49,
+        "d": 77.93,
+        "volume_ma5": 2227064.0,
+        "volume_ratio": 0.11
+      },
+      "conditions": {
+        "macd_golden_cross": false,
+        "macd_red": true,
+        "kd_golden_cross": false,
+        "kd_low_golden_cross": false,
+        "rsi_above_50": true,
+        "volume_over_1_5x": false,
+        "above_ma20": true,
+        "ma20_up": true,
+        "ma20_turn_up": true,
+        "short_term_core": false
+      },
+      "short_term": {
+        "score": 45,
+        "signal": "觀察",
+        "reasons": [
+          "MACD柱狀圖翻紅",
+          "RSI多方",
+          "站上20MA",
+          "20MA向上",
+          "20MA向上勾"
+        ],
+        "core_conditions": {
+          "macd": false,
+          "kd": false,
+          "rsi": true,
+          "volume": false,
+          "ma20": true,
+          "ma20_up": true
+        }
+      },
+      "dca": {
+        "status": "高於第一定投區",
+        "action": "觀察 / 小額",
+        "buy_1": 136.22,
+        "buy_2": 133.47,
+        "buy_3": 129.34,
+        "buy_4": 123.84
+      },
+      "risk_control": {
+        "risk_level": "低～中",
+        "stop_loss": 138.57,
+        "take_profit_1": 160.92,
+        "take_profit_2": 171.35
+      },
+      "strategy": {
+        "short_term": "尚未完全符合短期核心條件",
+        "dca_action": "觀察 / 小額",
+        "risk_level": "低～中"
+      }
+    },
+    {
+      "id": "2425",
+      "symbol": "2425.TW",
+      "name": "承啟",
+      "date": "2026-08-14",
+      "price": {
+        "open": 41.95,
+        "high": 42.2,
+        "low": 41.15,
+        "close": 41.3,
+        "previous_close": 41.95,
+        "change": -0.65,
+        "change_percent": -1.55,
+        "volume": 781657.0
+      },
+      "technical": {
+        "ma5": 44.13,
+        "ma10": 46.93,
+        "ma20": 45.67,
+        "ma60": 41.14,
+        "ma20_slope": 0.01,
+        "rsi": 43.28,
+        "dif": 0.5918,
+        "dem": 1.5361,
+        "macd_hist": -0.9442,
+        "k": 21.84,
+        "d": 42.13,
+        "volume_ma5": 7714212.0,
+        "volume_ratio": 0.1
+      },
+      "conditions": {
+        "macd_golden_cross": false,
+        "macd_red": false,
+        "kd_golden_cross": false,
+        "kd_low_golden_cross": false,
+        "rsi_above_50": false,
+        "volume_over_1_5x": false,
+        "above_ma20": false,
+        "ma20_up": true,
+        "ma20_turn_up": false,
+        "short_term_core": false
+      },
+      "short_term": {
+        "score": 5,
+        "signal": "不符合",
+        "reasons": [
+          "20MA向上"
+        ],
+        "core_conditions": {
+          "macd": false,
+          "kd": false,
+          "rsi": false,
+          "volume": false,
+          "ma20": false,
+          "ma20_up": true
+        }
+      },
+      "dca": {
+        "status": "第三定投區",
+        "action": "第三批",
+        "buy_1": 45.21,
+        "buy_2": 44.3,
+        "buy_3": 42.93,
+        "buy_4": 41.1
+      },
+      "risk_control": {
+        "risk_level": "中～高",
+        "stop_loss": 39.23,
+        "take_profit_1": 44.6,
+        "take_profit_2": 47.49
+      },
+      "strategy": {
+        "short_term": "尚未完全符合短期核心條件",
+        "dca_action": "第三批",
+        "risk_level": "中～高"
+      }
+    },
+    {
+      "id": "3356",
+      "symbol": "3356.TW",
+      "name": "奇偶",
+      "date": "2026-08-14",
+      "price": {
+        "open": 64.9,
+        "high": 67.3,
+        "low": 64.0,
+        "close": 66.1,
+        "previous_close": 62.9,
+        "change": 3.2,
+        "change_percent": 5.09,
+        "volume": 1327638.0
+      },
+      "technical": {
+        "ma5": 61.04,
+        "ma10": 59.02,
+        "ma20": 57.88,
+        "ma60": 59.57,
+        "ma20_slope": 0.86,
+        "rsi": 69.14,
+        "dif": 0.7773,
+        "dem": -0.1965,
+        "macd_hist": 0.9739,
+        "k": 81.61,
+        "d": 74.19,
+        "volume_ma5": 819237.0,
+        "volume_ratio": 1.62
+      },
+      "conditions": {
+        "macd_golden_cross": false,
+        "macd_red": true,
+        "kd_golden_cross": false,
+        "kd_low_golden_cross": false,
+        "rsi_above_50": true,
+        "volume_over_1_5x": true,
+        "above_ma20": true,
+        "ma20_up": true,
+        "ma20_turn_up": true,
+        "short_term_core": false
+      },
+      "short_term": {
+        "score": 68,
+        "signal": "偏多",
+        "reasons": [
+          "MACD柱狀圖翻紅",
+          "KD多方",
+          "RSI多方",
+          "成交量放大",
+          "站上20MA",
+          "20MA向上",
+          "20MA向上勾"
+        ],
+        "core_conditions": {
+          "macd": false,
+          "kd": false,
+          "rsi": true,
+          "volume": true,
+          "ma20": true,
+          "ma20_up": true
+        }
+      },
+      "dca": {
+        "status": "高於第一定投區",
+        "action": "觀察 / 小額",
+        "buy_1": 57.3,
+        "buy_2": 56.14,
+        "buy_3": 54.41,
+        "buy_4": 52.09
+      },
+      "risk_control": {
+        "risk_level": "低～中",
+        "stop_loss": 61.47,
+        "take_profit_1": 71.39,
+        "take_profit_2": 76.01
+      },
+      "strategy": {
+        "short_term": "尚未完全符合短期核心條件",
+        "dca_action": "觀察 / 小額",
+        "risk_level": "低～中"
+      }
+    },
+    {
+      "id": "6117",
+      "symbol": "6117.TW",
+      "name": "迎廣",
+      "date": "2026-08-14",
+      "price": {
+        "open": 63.8,
+        "high": 63.8,
+        "low": 62.5,
+        "close": 63.4,
+        "previous_close": 65.3,
+        "change": -1.9,
+        "change_percent": -2.91,
+        "volume": 98764.0
+      },
+      "technical": {
+        "ma5": 65.66,
+        "ma10": 65.42,
+        "ma20": 65.88,
+        "ma60": 73.5,
+        "ma20_slope": -0.21,
+        "rsi": 34.64,
+        "dif": -1.6261,
+        "dem": -1.94,
+        "macd_hist": 0.314,
+        "k": 52.92,
+        "d": 61.1,
+        "volume_ma5": 174785.0,
+        "volume_ratio": 0.57
+      },
+      "conditions": {
+        "macd_golden_cross": false,
+        "macd_red": true,
+        "kd_golden_cross": false,
+        "kd_low_golden_cross": false,
+        "rsi_above_50": false,
+        "volume_over_1_5x": false,
+        "above_ma20": false,
+        "ma20_up": false,
+        "ma20_turn_up": false,
+        "short_term_core": false
+      },
+      "short_term": {
+        "score": 10,
+        "signal": "不符合",
+        "reasons": [
+          "MACD柱狀圖翻紅"
+        ],
+        "core_conditions": {
+          "macd": false,
+          "kd": false,
+          "rsi": false,
+          "volume": false,
+          "ma20": false,
+          "ma20_up": false
+        }
+      },
+      "dca": {
+        "status": "第二定投區",
+        "action": "第二批",
+        "buy_1": 65.22,
+        "buy_2": 63.9,
+        "buy_3": 61.93,
+        "buy_4": 59.29
+      },
+      "risk_control": {
+        "risk_level": "中～高",
+        "stop_loss": 60.23,
+        "take_profit_1": 68.47,
+        "take_profit_2": 72.91
+      },
+      "strategy": {
+        "short_term": "尚未完全符合短期核心條件",
+        "dca_action": "第二批",
+        "risk_level": "中～高"
+      }
+    },
+    {
+      "id": "3017",
+      "symbol": "3017.TW",
+      "name": "奇鋐",
+      "date": "2026-08-14",
+      "price": {
+        "open": 3250.0,
+        "high": 3255.0,
+        "low": 3170.0,
+        "close": 3220.0,
+        "previous_close": 3200.0,
+        "change": 20.0,
+        "change_percent": 0.62,
+        "volume": 1944171.0
+      },
+      "technical": {
+        "ma5": 2971.0,
+        "ma10": 2846.0,
+        "ma20": 2558.25,
+        "ma60": 2508.75,
+        "ma20_slope": 2.03,
+        "rsi": 71.0,
+        "dif": 183.004,
+        "dem": 98.5829,
+        "macd_hist": 84.4211,
+        "k": 91.45,
+        "d": 86.38,
+        "volume_ma5": 4296972.0,
+        "volume_ratio": 0.45
+      },
+      "conditions": {
+        "macd_golden_cross": false,
+        "macd_red": true,
+        "kd_golden_cross": false,
+        "kd_low_golden_cross": false,
+        "rsi_above_50": true,
+        "volume_over_1_5x": false,
+        "above_ma20": true,
+        "ma20_up": true,
+        "ma20_turn_up": true,
+        "short_term_core": false
+      },
+      "short_term": {
+        "score": 53,
+        "signal": "觀察",
+        "reasons": [
+          "MACD柱狀圖翻紅",
+          "KD多方",
+          "RSI多方",
+          "站上20MA",
+          "20MA向上",
+          "20MA向上勾"
+        ],
+        "core_conditions": {
+          "macd": false,
+          "kd": false,
+          "rsi": true,
+          "volume": false,
+          "ma20": true,
+          "ma20_up": true
+        }
+      },
+      "dca": {
+        "status": "高於第一定投區",
+        "action": "觀察 / 小額",
+        "buy_1": 2532.67,
+        "buy_2": 2481.5,
+        "buy_3": 2404.75,
+        "buy_4": 2302.43
+      },
+      "risk_control": {
+        "risk_level": "低～中",
+        "stop_loss": 2994.6,
+        "take_profit_1": 3477.6,
+        "take_profit_2": 3703.0
+      },
+      "strategy": {
+        "short_term": "尚未完全符合短期核心條件",
+        "dca_action": "觀察 / 小額",
+        "risk_level": "低～中"
+      }
+    },
+    {
+      "id": "3450",
+      "symbol": "3450.TW",
+      "name": "聯鈞",
+      "date": "2026-08-14",
+      "price": {
+        "open": 516.0,
+        "high": 516.0,
+        "low": 505.0,
+        "close": 510.0,
+        "previous_close": 527.0,
+        "change": -17.0,
+        "change_percent": -3.23,
+        "volume": 245069.0
+      },
+      "technical": {
+        "ma5": 508.3,
+        "ma10": 482.6,
+        "ma20": 446.0,
+        "ma60": 488.93,
+        "ma20_slope": 0.88,
+        "rsi": 55.53,
+        "dif": 10.4358,
+        "dem": -2.686,
+        "macd_hist": 13.1217,
+        "k": 81.01,
+        "d": 77.99,
+        "volume_ma5": 4229507.0,
+        "volume_ratio": 0.06
+      },
+      "conditions": {
+        "macd_golden_cross": false,
+        "macd_red": true,
+        "kd_golden_cross": false,
+        "kd_low_golden_cross": false,
+        "rsi_above_50": true,
+        "volume_over_1_5x": false,
+        "above_ma20": true,
+        "ma20_up": true,
+        "ma20_turn_up": true,
+        "short_term_core": false
+      },
+      "short_term": {
+        "score": 53,
+        "signal": "觀察",
+        "reasons": [
+          "MACD柱狀圖翻紅",
+          "KD多方",
+          "RSI多方",
+          "站上20MA",
+          "20MA向上",
+          "20MA向上勾"
+        ],
+        "core_conditions": {
+          "macd": false,
+          "kd": false,
+          "rsi": true,
+          "volume": false,
+          "ma20": true,
+          "ma20_up": true
+        }
+      },
+      "dca": {
+        "status": "高於第一定投區",
+        "action": "觀察 / 小額",
+        "buy_1": 441.54,
+        "buy_2": 432.62,
+        "buy_3": 419.24,
+        "buy_4": 401.4
+      },
+      "risk_control": {
+        "risk_level": "低～中",
+        "stop_loss": 474.3,
+        "take_profit_1": 550.8,
+        "take_profit_2": 586.5
+      },
+      "strategy": {
+        "short_term": "尚未完全符合短期核心條件",
+        "dca_action": "觀察 / 小額",
+        "risk_level": "低～中"
+      }
+    },
+    {
+      "id": "3338",
+      "symbol": "3338.TW",
+      "name": "泰碩",
+      "date": "2026-08-14",
+      "price": {
+        "open": 65.2,
+        "high": 65.2,
+        "low": 64.3,
+        "close": 64.3,
+        "previous_close": 64.6,
+        "change": -0.3,
+        "change_percent": -0.46,
+        "volume": 24035.0
+      },
+      "technical": {
+        "ma5": 63.88,
+        "ma10": 64.03,
+        "ma20": 63.12,
+        "ma60": 70.13,
+        "ma20_slope": 0.04,
+        "rsi": 48.68,
+        "dif": -1.0888,
+        "dem": -1.7416,
+        "macd_hist": 0.6528,
+        "k": 67.93,
+        "d": 70.52,
+        "volume_ma5": 289813.0,
+        "volume_ratio": 0.08
+      },
+      "conditions": {
+        "macd_golden_cross": false,
+        "macd_red": true,
+        "kd_golden_cross": false,
+        "kd_low_golden_cross": false,
+        "rsi_above_50": false,
+        "volume_over_1_5x": false,
+        "above_ma20": true,
+        "ma20_up": true,
+        "ma20_turn_up": false,
+        "short_term_core": false
+      },
+      "short_term": {
+        "score": 23,
+        "signal": "不符合",
+        "reasons": [
+          "MACD柱狀圖翻紅",
+          "站上20MA",
+          "20MA向上"
+        ],
+        "core_conditions": {
+          "macd": false,
+          "kd": false,
+          "rsi": false,
+          "volume": false,
+          "ma20": true,
+          "ma20_up": true
+        }
+      },
+      "dca": {
+        "status": "高於第一定投區",
+        "action": "觀察 / 小額",
+        "buy_1": 62.49,
+        "buy_2": 61.23,
+        "buy_3": 59.33,
+        "buy_4": 56.81
+      },
+      "risk_control": {
+        "risk_level": "低～中",
+        "stop_loss": 59.8,
+        "take_profit_1": 69.44,
+        "take_profit_2": 73.94
+      },
+      "strategy": {
+        "short_term": "尚未完全符合短期核心條件",
+        "dca_action": "觀察 / 小額",
+        "risk_level": "低～中"
+      }
+    },
+    {
+      "id": "6176",
+      "symbol": "6176.TW",
+      "name": "瑞儀",
+      "date": "2026-08-13",
+      "price": {
+        "open": 108.4,
+        "high": 108.4,
+        "low": 108.4,
+        "close": 108.4,
+        "previous_close": 108.4,
+        "change": 0.0,
+        "change_percent": 0.0,
+        "volume": 0.0
+      },
+      "technical": {
+        "ma5": 109.33,
+        "ma10": 111.27,
+        "ma20": 112.71,
+        "ma60": 121.03,
+        "ma20_slope": -0.43,
+        "rsi": 36.33,
+        "dif": -2.6413,
+        "dem": -2.3842,
+        "macd_hist": -0.2571,
+        "k": 17.6,
+        "d": 28.11,
+        "volume_ma5": 2383012.0,
+        "volume_ratio": 0.0
+      },
+      "conditions": {
+        "macd_golden_cross": false,
+        "macd_red": false,
+        "kd_golden_cross": false,
+        "kd_low_golden_cross": false,
+        "rsi_above_50": false,
+        "volume_over_1_5x": false,
+        "above_ma20": false,
+        "ma20_up": false,
+        "ma20_turn_up": false,
+        "short_term_core": false
+      },
+      "short_term": {
+        "score": 0,
+        "signal": "不符合",
+        "reasons": [],
+        "core_conditions": {
+          "macd": false,
+          "kd": false,
+          "rsi": false,
+          "volume": false,
+          "ma20": false,
+          "ma20_up": false
+        }
+      },
+      "dca": {
+        "status": "第二定投區",
+        "action": "第二批",
+        "buy_1": 111.58,
+        "buy_2": 109.33,
+        "buy_3": 105.95,
+        "buy_4": 101.44
+      },
+      "risk_control": {
+        "risk_level": "中～高",
+        "stop_loss": 102.98,
+        "take_profit_1": 117.07,
+        "take_profit_2": 124.66
+      },
+      "strategy": {
+        "short_term": "尚未完全符合短期核心條件",
+        "dca_action": "第二批",
+        "risk_level": "中～高"
+      }
+    },
+    {
+      "id": "3042",
+      "symbol": "3042.TW",
+      "name": "晶技",
+      "date": "2026-08-14",
+      "price": {
+        "open": 185.0,
+        "high": 187.5,
+        "low": 182.5,
+        "close": 186.5,
+        "previous_close": 186.5,
+        "change": 0.0,
+        "change_percent": 0.0,
+        "volume": 2700683.0
+      },
+      "technical": {
+        "ma5": 182.8,
+        "ma10": 175.7,
+        "ma20": 165.57,
+        "ma60": 192.78,
+        "ma20_slope": 0.55,
+        "rsi": 55.94,
+        "dif": -0.4301,
+        "dem": -4.9702,
+        "macd_hist": 4.5401,
+        "k": 79.59,
+        "d": 77.36,
+        "volume_ma5": 12076926.0,
+        "volume_ratio": 0.22
+      },
+      "conditions": {
+        "macd_golden_cross": false,
+        "macd_red": true,
+        "kd_golden_cross": false,
+        "kd_low_golden_cross": false,
+        "rsi_above_50": true,
+        "volume_over_1_5x": false,
+        "above_ma20": true,
+        "ma20_up": true,
+        "ma20_turn_up": true,
+        "short_term_core": false
+      },
+      "short_term": {
+        "score": 53,
+        "signal": "觀察",
+        "reasons": [
+          "MACD柱狀圖翻紅",
+          "KD多方",
+          "RSI多方",
+          "站上20MA",
+          "20MA向上",
+          "20MA向上勾"
+        ],
+        "core_conditions": {
+          "macd": false,
+          "kd": false,
+          "rsi": true,
+          "volume": false,
+          "ma20": true,
+          "ma20_up": true
+        }
+      },
+      "dca": {
+        "status": "高於第一定投區",
+        "action": "觀察 / 小額",
+        "buy_1": 163.91,
+        "buy_2": 160.6,
+        "buy_3": 155.64,
+        "buy_4": 149.01
+      },
+      "risk_control": {
+        "risk_level": "低～中",
+        "stop_loss": 173.45,
+        "take_profit_1": 201.42,
+        "take_profit_2": 214.47
+      },
+      "strategy": {
+        "short_term": "尚未完全符合短期核心條件",
+        "dca_action": "觀察 / 小額",
+        "risk_level": "低～中"
+      }
+    },
+    {
+      "id": "3006",
+      "symbol": "3006.TW",
+      "name": "晶豪科",
+      "date": "2026-08-14",
+      "price": {
+        "open": 282.0,
+        "high": 282.0,
+        "low": 279.5,
+        "close": 281.0,
+        "previous_close": 277.5,
+        "change": 3.5,
+        "change_percent": 1.26,
+        "volume": 811546.0
+      },
+      "technical": {
+        "ma5": 275.1,
+        "ma10": 254.45,
+        "ma20": 224.38,
+        "ma60": 227.48,
+        "ma20_slope": 1.88,
+        "rsi": 66.16,
+        "dif": 16.5405,
+        "dem": 7.8181,
+        "macd_hist": 8.7224,
+        "k": 91.68,
+        "d": 87.47,
+        "volume_ma5": 7287364.0,
+        "volume_ratio": 0.11
+      },
+      "conditions": {
+        "macd_golden_cross": false,
+        "macd_red": true,
+        "kd_golden_cross": false,
+        "kd_low_golden_cross": false,
+        "rsi_above_50": true,
+        "volume_over_1_5x": false,
+        "above_ma20": true,
+        "ma20_up": true,
+        "ma20_turn_up": true,
+        "short_term_core": false
+      },
+      "short_term": {
+        "score": 53,
+        "signal": "觀察",
+        "reasons": [
+          "MACD柱狀圖翻紅",
+          "KD多方",
+          "RSI多方",
+          "站上20MA",
+          "20MA向上",
+          "20MA向上勾"
+        ],
+        "core_conditions": {
+          "macd": false,
+          "kd": false,
+          "rsi": true,
+          "volume": false,
+          "ma20": true,
+          "ma20_up": true
+        }
+      },
+      "dca": {
+        "status": "高於第一定投區",
+        "action": "觀察 / 小額",
+        "buy_1": 222.14,
+        "buy_2": 217.65,
+        "buy_3": 210.92,
+        "buy_4": 201.94
+      },
+      "risk_control": {
+        "risk_level": "低～中",
+        "stop_loss": 261.33,
+        "take_profit_1": 303.48,
+        "take_profit_2": 323.15
+      },
+      "strategy": {
+        "short_term": "尚未完全符合短期核心條件",
+        "dca_action": "觀察 / 小額",
+        "risk_level": "低～中"
+      }
+    },
+    {
+      "id": "2426",
+      "symbol": "2426.TW",
+      "name": "鼎元",
+      "date": "2026-08-14",
+      "price": {
+        "open": 69.3,
+        "high": 69.5,
+        "low": 66.1,
+        "close": 66.4,
+        "previous_close": 68.6,
+        "change": -2.2,
+        "change_percent": -3.21,
+        "volume": 3544787.0
+      },
+      "technical": {
+        "ma5": 67.24,
+        "ma10": 64.65,
+        "ma20": 60.13,
+        "ma60": 69.53,
+        "ma20_slope": 0.9,
+        "rsi": 53.2,
+        "dif": 0.2873,
+        "dem": -1.4372,
+        "macd_hist": 1.7245,
+        "k": 74.15,
+        "d": 76.52,
+        "volume_ma5": 15418211.0,
+        "volume_ratio": 0.23
+      },
+      "conditions": {
+        "macd_golden_cross": false,
+        "macd_red": true,
+        "kd_golden_cross": false,
+        "kd_low_golden_cross": false,
+        "rsi_above_50": true,
+        "volume_over_1_5x": false,
+        "above_ma20": true,
+        "ma20_up": true,
+        "ma20_turn_up": true,
+        "short_term_core": false
+      },
+      "short_term": {
+        "score": 40,
+        "signal": "弱勢",
+        "reasons": [
+          "MACD柱狀圖翻紅",
+          "RSI站上50",
+          "站上20MA",
+          "20MA向上",
+          "20MA向上勾"
+        ],
+        "core_conditions": {
+          "macd": false,
+          "kd": false,
+          "rsi": true,
+          "volume": false,
+          "ma20": true,
+          "ma20_up": true
+        }
+      },
+      "dca": {
+        "status": "高於第一定投區",
+        "action": "觀察 / 小額",
+        "buy_1": 59.53,
+        "buy_2": 58.33,
+        "buy_3": 56.52,
+        "buy_4": 54.12
+      },
+      "risk_control": {
+        "risk_level": "低～中",
+        "stop_loss": 61.75,
+        "take_profit_1": 71.71,
+        "take_profit_2": 76.36
+      },
+      "strategy": {
+        "short_term": "尚未完全符合短期核心條件",
+        "dca_action": "觀察 / 小額",
+        "risk_level": "低～中"
+      }
+    }
+  ]
+}
