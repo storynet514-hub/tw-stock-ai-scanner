@@ -1,0 +1,267 @@
+name: 台股 AI 選股系統自動更新
+
+on:
+
+  schedule:
+
+    # 台灣時間約每日 18:30
+    # UTC 10:30
+    - cron: "30 10 * * 1-5"
+
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+
+  group: tw-stock-ai-scanner-main
+
+  cancel-in-progress: false
+
+
+jobs:
+
+  update:
+
+    runs-on: ubuntu-latest
+
+    steps:
+
+      # ==========================================================
+      # 1. Checkout
+      # ==========================================================
+
+      - name: Checkout main
+        uses: actions/checkout@v4
+
+        with:
+
+          fetch-depth: 0
+
+          ref: main
+
+
+      # ==========================================================
+      # 2. 同步遠端
+      #
+      # 注意：
+      # 必須在 Python 修改任何檔案之前完成。
+      # ==========================================================
+
+      - name: Sync latest main
+        shell: bash
+        run: |
+
+          set -e
+
+          git config user.name \
+            "github-actions[bot]"
+
+          git config user.email \
+            "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git fetch origin main
+
+          git checkout main
+
+          git reset --hard origin/main
+
+          git clean -fd
+
+
+      # ==========================================================
+      # 3. Python
+      # ==========================================================
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+
+        with:
+
+          python-version: "3.11"
+
+          cache: "pip"
+
+
+      # ==========================================================
+      # 4. 安裝套件
+      # ==========================================================
+
+      - name: Install dependencies
+        shell: bash
+        run: |
+
+          python -m pip install \
+            --upgrade \
+            pip
+
+          pip install \
+            numpy \
+            pandas \
+            requests \
+            yfinance
+
+
+      # ==========================================================
+      # 5. 執行後台
+      # ==========================================================
+
+      - name: Run fetch_data.py
+        shell: bash
+        run: |
+
+          set -e
+
+          python Scripts/fetch_data.py
+
+
+      # ==========================================================
+      # 6. 驗證輸出檔
+      # ==========================================================
+
+      - name: Validate generated JSON
+        shell: bash
+        run: |
+
+          set -e
+
+          test -f Data/prices.json
+
+          test -f Data/backtest.json
+
+          python - <<'PY'
+
+          import json
+
+          with open(
+              "Data/prices.json",
+              "r",
+              encoding="utf-8"
+          ) as f:
+
+              prices = json.load(f)
+
+          with open(
+              "Data/backtest.json",
+              "r",
+              encoding="utf-8"
+          ) as f:
+
+              backtest = json.load(f)
+
+          if prices.get("status") != "success":
+              raise RuntimeError(
+                  "prices.json status 不是 success"
+              )
+
+          if backtest.get("status") != "completed":
+              raise RuntimeError(
+                  "backtest.json status 不是 completed"
+              )
+
+          stocks = prices.get(
+              "stocks",
+              []
+          )
+
+          top30 = prices.get(
+              "top30",
+              []
+          )
+
+          if len(stocks) < 50:
+              raise RuntimeError(
+                  f"股票資料不足：{len(stocks)}"
+              )
+
+          if not top30:
+              raise RuntimeError(
+                  "top30 為空"
+              )
+
+          print(
+              f"stocks={len(stocks)}"
+          )
+
+          print(
+              f"top30={len(top30)}"
+          )
+
+          print(
+              "JSON validation OK"
+          )
+
+          PY
+
+
+      # ==========================================================
+      # 7. Git 狀態
+      # ==========================================================
+
+      - name: Show git status
+        shell: bash
+        run: |
+
+          git status --short
+
+
+      # ==========================================================
+      # 8. 提交資料
+      #
+      # 注意：
+      # 這裡不再 git pull --rebase。
+      #
+      # 因為 workflow 一開始已經 reset 到最新 origin/main。
+      # ==========================================================
+
+      - name: Commit updated data
+        shell: bash
+        run: |
+
+          set -e
+
+          git config user.name \
+            "github-actions[bot]"
+
+          git config user.email \
+            "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git add \
+            Data/prices.json \
+            Data/backtest.json
+
+          if git diff --cached --quiet; then
+
+            echo "沒有新的資料需要提交"
+
+          else
+
+            git commit \
+              -m "自動更新台股資料 V8.0"
+
+          fi
+
+
+      # ==========================================================
+      # 9. Push
+      # ==========================================================
+
+      - name: Push updated data
+        shell: bash
+        run: |
+
+          set -e
+
+          if git log -1 \
+            --pretty=%B \
+            | grep -q \
+            "自動更新台股資料 V8.0"; then
+
+            git push origin HEAD:main
+
+          else
+
+            echo "沒有新的 commit，不需要 push"
+
+          fi
