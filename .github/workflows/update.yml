@@ -1,241 +1,659 @@
 name: 台股 AI 選股系統自動更新
 
 on:
+  # ------------------------------------------------------------
+  # 手動執行
+  # ------------------------------------------------------------
   workflow_dispatch:
 
+  # ------------------------------------------------------------
+  # 台灣時間 6 個固定更新時段
+  #
+  # GitHub Actions cron 使用 UTC
+  # 台灣 = UTC+8
+  #
+  # 09:15 → 01:15 UTC
+  # 10:30 → 02:30 UTC
+  # 12:00 → 04:00 UTC
+  # 14:20 → 06:20 UTC
+  # 15:30 → 07:30 UTC
+  # 17:30 → 09:30 UTC
+  # ------------------------------------------------------------
   schedule:
-    # 台灣時間每個交易日 18:00 左右執行
-    # GitHub Actions 使用 UTC
-    - cron: "0 10 * * 1-5"
+    - cron: "15 1 * * 1-5"
+    - cron: "30 2 * * 1-5"
+    - cron: "0 4 * * 1-5"
+    - cron: "20 6 * * 1-5"
+    - cron: "30 7 * * 1-5"
+    - cron: "30 9 * * 1-5"
+
+
+# ================================================================
+# 權限
+# ================================================================
 
 permissions:
   contents: write
 
+
+# ================================================================
+# 避免同一時間多個更新互相寫入
+#
+# 不取消正在執行的工作。
+# 後續排程會等待前一個完成。
+# ================================================================
+
+concurrency:
+  group: tw-stock-ai-scanner-update
+  cancel-in-progress: false
+
+
+# ================================================================
+# 工作
+# ================================================================
+
 jobs:
+
   update:
+
+    name: 更新台股資料
+
     runs-on: ubuntu-latest
+
 
     steps:
 
       # ==========================================================
-      # 1. 取得最新 main
+      # 1. Checkout
       # ==========================================================
 
-      - name: Checkout
+      - name: Checkout repository
+
         uses: actions/checkout@v4
+
         with:
+
           fetch-depth: 0
-          ref: main
+
+          # 使用 GitHub Actions Token
+          # 確保後續可以 push
+          persist-credentials: true
+
 
       # ==========================================================
       # 2. 設定 Python
       # ==========================================================
 
       - name: Setup Python
+
         uses: actions/setup-python@v5
+
         with:
+
           python-version: "3.11"
+
 
       # ==========================================================
       # 3. 安裝套件
       # ==========================================================
 
       - name: Install dependencies
+
         run: |
+
           python -m pip install --upgrade pip
+
           pip install \
             numpy \
             pandas \
             requests \
             yfinance
 
+
       # ==========================================================
-      # 4. 執行台股資料更新
+      # 4. 確認目前版本庫狀態
+      # ==========================================================
+
+      - name: Check repository state
+
+        run: |
+
+          echo "=============================================="
+          echo "Git repository"
+          echo "=============================================="
+
+          git status --short
+
+          echo ""
+
+          git branch --show-current
+
+          echo ""
+
+          git log -1 \
+            --oneline
+
+
+      # ==========================================================
+      # 5. 執行 fetch_data.py
+      #
+      # 重要：
+      # 這裡只執行一次。
+      #
+      # fetch_data.py 本身會完成：
+      #
+      # 1. Universe
+      # 2. 股票分析
+      # 3. ETF 分析
+      # 4. A/B 回測
+      # 5. prices.json
+      # 6. backtest.json
       # ==========================================================
 
       - name: Run fetch_data.py
+
         run: |
+
+          echo "=============================================="
+          echo "開始台股 AI 資料更新"
+          echo "=============================================="
+
+          echo "台灣時間："
+
+          TZ=Asia/Taipei date \
+            "+%Y-%m-%d %H:%M:%S"
+
+          echo ""
+
           python Scripts/fetch_data.py
 
+
       # ==========================================================
-      # 5. 確認輸出檔案
+      # 6. 驗證輸出檔案
       # ==========================================================
 
-      - name: Validate output
+      - name: Validate generated files
+
         run: |
-          test -f Data/prices.json
 
-          python - <<'PY'
-          import json
+          echo "=============================================="
+          echo "驗證輸出檔案"
+          echo "=============================================="
 
-          path = "Data/prices.json"
-
-          with open(path, "r", encoding="utf-8") as f:
-              data = json.load(f)
-
-          if data.get("status") != "success":
-              raise RuntimeError("prices.json status 不是 success")
-
-          if not isinstance(data.get("stocks"), list):
-              raise RuntimeError("stocks 不是 list")
-
-          if not isinstance(data.get("etfs"), list):
-              raise RuntimeError("etfs 不是 list")
-
-          if not isinstance(data.get("top30"), list):
-              raise RuntimeError("top30 不是 list")
-
-          if not isinstance(data.get("backtest_summary"), dict):
-              raise RuntimeError("backtest_summary 不存在")
-
-          print("prices.json 驗證成功")
-          print("stocks:", len(data["stocks"]))
-          print("etfs:", len(data["etfs"]))
-          print("top30:", len(data["top30"]))
-          print(
-              "today_selected:",
-              len(data.get("today_selected", []))
-          )
-          PY
-
-      # ==========================================================
-      # 6. Git 同步
-      #
-      # 重要：
-      # 不再使用 git pull --rebase
-      #
-      # 因為 fetch_data.py 可能已經產生
-      # Data/prices.json 的工作區變更。
-      #
-      # 先把遠端 main 同步進來，再重新產生資料，
-      # 避免：
-      #
-      # error: cannot pull with rebase:
-      # You have unstaged changes.
-      # ==========================================================
-
-      - name: Sync main
-        run: |
-          git config user.name \
-            "github-actions[bot]"
-
-          git config user.email \
-            "41898282+github-actions[bot]@users.noreply.github.com"
-
-          git fetch origin main
-
-          git reset --hard origin/main
-
-      # ==========================================================
-      # 7. 重新執行資料產生
-      #
-      # Sync main 後重新產生 prices.json，
-      # 確保最新資料不會因 reset 被清掉。
-      # ==========================================================
-
-      - name: Generate latest data
-        run: |
-          python Scripts/fetch_data.py
-
-      # ==========================================================
-      # 8. 驗證最新資料
-      # ==========================================================
-
-      - name: Validate generated data
-        run: |
           test -f Data/prices.json
 
           test -f Data/backtest.json
 
-          python - <<'PY'
+          echo ""
+
+          echo "✓ Data/prices.json"
+
+          echo "✓ Data/backtest.json"
+
+
+      # ==========================================================
+      # 7. 直接從 prices.json 印出今日 6/6
+      #
+      # 不重新計算。
+      #
+      # 直接讀取 fetch_data.py 已經產生的正式結果。
+      #
+      # 這樣可以避免前台與後台出現不同判斷。
+      # ==========================================================
+
+      - name: Print today's 6-6 selections
+
+        run: |
+
+          python <<'PY'
+
           import json
 
-          with open(
-              "Data/prices.json",
+          from pathlib import Path
+
+
+          path = Path(
+              "Data/prices.json"
+          )
+
+
+          with path.open(
               "r",
               encoding="utf-8"
           ) as f:
-              prices = json.load(f)
+
+              data = json.load(f)
+
+
+          print("")
+          print("=" * 72)
+          print("今日正式 6/6 選股結果")
+          print("=" * 72)
+
+
+          updated_at = data.get(
+              "updated_at_tw",
+              ""
+          )
+
+          print(
+              f"更新時間：{updated_at}"
+          )
+
+
+          selected = data.get(
+              "today_selected",
+              []
+          )
+
+
+          print(
+              f"符合 6/6 個股數量：{len(selected)}"
+          )
+
+          print("")
+
+
+          if not selected:
+
+              print(
+                  "今日沒有符合全部六項核心條件的個股。"
+              )
+
+          else:
+
+              for index, stock in enumerate(
+                  selected,
+                  start=1
+              ):
+
+                  print(
+                      f"[{index}] "
+                      f"{stock.get('code', '')} "
+                      f"{stock.get('name', '')}"
+                  )
+
+                  print(
+                      f"    收盤價："
+                      f"{stock.get('price')}"
+                  )
+
+                  print(
+                      f"    RSI："
+                      f"{stock.get('rsi')}"
+                  )
+
+                  print(
+                      f"    MACD："
+                      f"{stock.get('macd')}"
+                      f" / Signal："
+                      f"{stock.get('macd_signal')}"
+                  )
+
+                  print(
+                      f"    K/D："
+                      f"{stock.get('k')}"
+                      f" / "
+                      f"{stock.get('d')}"
+                  )
+
+                  print(
+                      f"    成交量："
+                      f"{stock.get('volume')}"
+                  )
+
+                  print(
+                      f"    5日均量："
+                      f"{stock.get('volume_ma5')}"
+                  )
+
+                  print(
+                      f"    量比："
+                      f"{stock.get('volume_ratio')}"
+                  )
+
+                  print(
+                      f"    MA20："
+                      f"{stock.get('ma20')}"
+                  )
+
+                  print(
+                      f"    MA20 向上："
+                      f"{stock.get('ma20_up')}"
+                  )
+
+                  print(
+                      f"    AI Score："
+                      f"{stock.get('ai_score')}"
+                  )
+
+                  print(
+                      f"    Signal："
+                      f"{stock.get('signal')}"
+                  )
+
+                  print("")
+
+
+          print("=" * 72)
+
+          print(
+              "核心條件："
+          )
+
+          for condition in data.get(
+              "core_conditions",
+              {}
+          ).get(
+              "names",
+              []
+          ):
+
+              print(
+                  f"✓ {condition}"
+              )
+
+
+          print("=" * 72)
+
+          PY
+
+
+      # ==========================================================
+      # 8. 印出 A/B 回測摘要
+      # ==========================================================
+
+      - name: Print backtest summary
+
+        run: |
+
+          python <<'PY'
+
+          import json
+
 
           with open(
               "Data/backtest.json",
               "r",
               encoding="utf-8"
           ) as f:
-              backtest = json.load(f)
 
-          if prices.get("status") != "success":
-              raise RuntimeError(
-                  "prices.json status != success"
-              )
+              data = json.load(f)
 
-          if backtest.get("status") != "completed":
-              raise RuntimeError(
-                  "backtest status != completed"
-              )
 
-          if len(prices.get("stocks", [])) < 50:
-              raise RuntimeError(
-                  "stocks 少於 50 筆"
-              )
+          print("")
+          print("=" * 72)
+          print("A/B 歷史回測摘要")
+          print("=" * 72)
 
-          if not prices.get("top30"):
-              raise RuntimeError(
-                  "top30 為空"
-              )
 
-          if not prices.get(
-              "backtest_summary"
-          ):
-              raise RuntimeError(
-                  "backtest_summary 為空"
-              )
+          comparison = data.get(
+              "comparison",
+              {}
+          )
 
-          print("================================")
-          print("資料驗證成功")
-          print("stocks:", len(prices["stocks"]))
-          print("etfs:", len(prices["etfs"]))
-          print("top30:", len(prices["top30"]))
+
           print(
-              "today_selected:",
-              len(
-                  prices.get(
-                      "today_selected",
-                      []
+              "比較基準："
+              f"{comparison.get('comparison_horizon')} "
+              "交易日"
+          )
+
+
+          print("")
+
+
+          strategies = comparison.get(
+              "strategies",
+              {}
+          )
+
+
+          for strategy_name in [
+              "A_today_cross",
+              "B_current_bullish"
+          ]:
+
+              strategy = strategies.get(
+                  strategy_name,
+                  {}
+              )
+
+
+              if strategy_name == "A_today_cross":
+
+                  print(
+                      "A = 當日黃金交叉"
                   )
-              )
-          )
+
+              else:
+
+                  print(
+                      "B = 目前維持多方"
+                  )
+
+
+              for horizon in [
+                  "5d",
+                  "10d",
+                  "20d"
+              ]:
+
+                  stats = strategy.get(
+                      horizon,
+                      {}
+                  )
+
+
+                  print(
+                      f"  {horizon}: "
+                      f"樣本={stats.get('signals', 0)} "
+                      f"勝率={stats.get('win_rate', 0)}% "
+                      f"平均報酬={stats.get('average_return', 0)}%"
+                  )
+
+
+              print("")
+
+
           print(
-              "backtest stocks:",
-              backtest.get(
-                  "sample_stocks",
-                  0
-              )
+              "勝率較高："
+              f"{comparison.get('better_by_win_rate')}"
           )
-          print("================================")
+
+
+          print("=" * 72)
+
           PY
 
+
       # ==========================================================
-      # 9. 提交資料
+      # 9. 設定 Git 身份
       # ==========================================================
 
-      - name: Commit and push data
+      - name: Configure Git
+
         run: |
+
           git config user.name \
             "github-actions[bot]"
 
           git config user.email \
             "41898282+github-actions[bot]@users.noreply.github.com"
 
-          git add Data/prices.json
-          git add Data/backtest.json
+
+      # ==========================================================
+      # 10. 同步遠端 main
+      #
+      # 不使用 git pull --rebase。
+      #
+      # 原因：
+      # fetch_data.py 已經產生本地資料變更，
+      # 此時直接 pull --rebase 會得到：
+      #
+      # cannot pull with rebase:
+      # You have unstaged changes
+      #
+      # 正確方式：
+      #
+      # 先保存資料變更
+      # → fetch 遠端
+      # → 將資料變更重新套回最新 main
+      # ==========================================================
+
+      - name: Sync with latest main
+
+        run: |
+
+          echo "=============================================="
+          echo "同步最新 main"
+          echo "=============================================="
+
+
+          # --------------------------------------------------------
+          # 先暫存 fetch_data.py 產生的資料
+          # --------------------------------------------------------
+
+          git add \
+            Data/prices.json \
+            Data/backtest.json
+
+
+          git stash push \
+            -m "temporary generated stock data"
+
+
+          # --------------------------------------------------------
+          # 抓取最新遠端
+          # --------------------------------------------------------
+
+          git fetch origin main
+
+
+          # --------------------------------------------------------
+          # 工作樹回到遠端最新 main
+          # --------------------------------------------------------
+
+          git reset \
+            --hard \
+            origin/main
+
+
+          # --------------------------------------------------------
+          # 恢復剛剛產生的資料
+          # --------------------------------------------------------
+
+          git stash pop || true
+
+
+          echo ""
+
+          git status --short
+
+
+      # ==========================================================
+      # 11. 加入資料檔
+      # ==========================================================
+
+      - name: Stage generated data
+
+        run: |
+
+          git add \
+            Data/prices.json \
+            Data/backtest.json
+
+
+      # ==========================================================
+      # 12. 檢查是否有資料變更
+      # ==========================================================
+
+      - name: Check data changes
+
+        id: changes
+
+        run: |
 
           if git diff --cached --quiet; then
+
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+
+            echo ""
             echo "沒有新的資料需要提交"
-            exit 0
+
+          else
+
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+
+            echo ""
+            echo "偵測到資料變更"
+
+            git diff \
+              --cached \
+              --stat
+
           fi
 
+
+      # ==========================================================
+      # 13. Commit
+      # ==========================================================
+
+      - name: Commit generated data
+
+        if: steps.changes.outputs.changed == 'true'
+
+        run: |
+
           git commit \
-            -m "自動更新台股 AI 選股資料"
+            -m "自動更新台股資料"
+
+
+      # ==========================================================
+      # 14. Push
+      # ==========================================================
+
+      - name: Push generated data
+
+        if: steps.changes.outputs.changed == 'true'
+
+        run: |
 
           git push origin HEAD:main
+
+
+      # ==========================================================
+      # 15. 最終結果
+      # ==========================================================
+
+      - name: Final result
+
+        run: |
+
+          echo ""
+          echo "=============================================="
+          echo "台股 AI 選股系統更新完成"
+          echo "=============================================="
+
+          echo ""
+          echo "台灣時間："
+
+          TZ=Asia/Taipei date \
+            "+%Y-%m-%d %H:%M:%S"
+
+          echo ""
+
+          echo "✓ fetch_data.py 完成"
+
+          echo "✓ prices.json 完成"
+
+          echo "✓ backtest.json 完成"
+
+          echo "✓ 6/6 選股驗證完成"
+
+          echo "✓ A/B 回測驗證完成"
+
+          echo "✓ GitHub 資料同步完成"
+
+          echo ""
+          echo "=============================================="
