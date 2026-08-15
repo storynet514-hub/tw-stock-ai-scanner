@@ -1,0 +1,38 @@
+{
+  "version": "V8.0",
+  "status": "initializing",
+  "updated_at": null,
+  "updated_at_tw": null,
+  "date": null,
+  "stocks": [],
+  "etfs": [],
+  "top30": [],
+  "strong_stocks": [],
+  "strong_etfs": [],
+  "top_stocks": [],
+  "top_etfs": [],
+  "today_selected": [],
+  "today_picks": [],
+  "featured_stocks": [],
+  "backtest_summary": {},
+  "statistics": {
+    "stock_count": 0,
+    "etf_count": 0,
+    "top30_count": 0,
+    "today_selected_count": 0,
+    "core_6_count": 0,
+    "backtest_stock_count": 0
+  },
+  "core_conditions": {
+    "total": 6,
+    "names": [
+      "MACD 多方",
+      "RSI > 50",
+      "KD 多方",
+      "成交量放大",
+      "股價 > MA20",
+      "MA20 向上"
+    ],
+    "definition": "目前維持多方"
+  }
+}
