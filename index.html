@@ -1,146 +1,3506 @@
 <!DOCTYPE html>
 <html lang="zh-TW">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>台股 AI 選股儀表板</title>
-  <style>
-    :root {
-      --bg-color: #0f172a;
-      --card-bg: #1e293b;
-      --card-border: #334155;
-      --text-main: #f8fafc;
-      --text-muted: #94a3b8;
-      --accent-blue: #38bdf8;
-      --price-up: #ef4444;   /* 台股：紅漲 */
-      --price-down: #10b981; /* 台股：綠跌 */
-      --badge-core: #10b981;
-    }
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="theme-color" content="#07111f">
 
-    * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
-    body { background-color: var(--bg-color); color: var(--text-main); padding: 16px; max-width: 600px; margin: 0 auto; }
+<title>台股 AI 投資儀表板</title>
 
-    /* 頂部總覽區 */
-    .dashboard-header { background: var(--card-bg); border: 1px solid var(--card-border); border-radius: 12px; padding: 16px; margin-bottom: 20px; }
-    .dashboard-title { font-size: 1.25rem; font-weight: bold; margin-bottom: 6px; }
-    .update-time { color: var(--accent-blue); font-size: 0.85rem; margin-bottom: 12px; }
+<style>
+:root{
+  --bg:#07111f;
+  --panel:#0d1929;
+  --panel2:#122238;
+  --panel3:#182b43;
+  --border:rgba(255,255,255,.08);
+  --text:#f4f7fb;
+  --muted:#91a0b5;
+  --blue:#4da3ff;
+  --green:#36d399;
+  --yellow:#f5c451;
+  --orange:#ff9f43;
+  --red:#ff667a;
+  --shadow:0 12px 35px rgba(0,0,0,.24);
+  --radius:18px;
+}
 
-    .stats-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; font-size: 0.8rem; background: rgba(0, 0, 0, 0.2); padding: 10px; border-radius: 8px; text-align: center; }
-    .stats-item span { display: block; font-weight: bold; color: var(--accent-blue); font-size: 1rem; margin-top: 2px; }
+*{
+  box-sizing:border-box;
+}
 
-    /* 個股卡片列表 */
-    .stock-list { display: flex; flex-direction: column; gap: 16px; }
-    .stock-card { background: var(--card-bg); border: 1px solid var(--card-border); border-radius: 12px; padding: 16px; }
+html{
+  scroll-behavior:smooth;
+}
 
-    .card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
-    .stock-title { font-size: 1.15rem; font-weight: bold; }
-    .stock-code { font-size: 0.85rem; color: var(--text-muted); font-weight: normal; }
-    
-    .ai-score-badge { background: rgba(56, 189, 248, 0.15); color: var(--accent-blue); padding: 4px 10px; border-radius: 6px; font-size: 0.85rem; font-weight: bold; }
+body{
+  margin:0;
+  min-height:100vh;
+  background:
+    radial-gradient(circle at 100% 0,
+      rgba(77,163,255,.08),
+      transparent 30%),
+    var(--bg);
+  color:var(--text);
+  font-family:
+    -apple-system,
+    BlinkMacSystemFont,
+    "Noto Sans TC",
+    "PingFang TC",
+    "Microsoft JhengHei",
+    sans-serif;
+}
 
-    .price-row { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 12px; }
-    .current-price { font-size: 1.3rem; font-weight: bold; }
-    .price-change { font-size: 0.95rem; font-weight: bold; }
-    .price-up { color: var(--price-up); }
-    .price-down { color: var(--price-down); }
+button,
+input{
+  font:inherit;
+}
 
-    /* 技術指標網格 */
-    .tech-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; font-size: 0.85rem; background: rgba(0, 0, 0, 0.2); padding: 12px; border-radius: 8px; }
-    .tech-item { color: var(--text-muted); }
-    .tech-item span { color: var(--text-main); font-weight: 600; float: right; }
+button{
+  cursor:pointer;
+}
 
-    .signal-badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 0.75rem; font-weight: bold; background: rgba(16, 185, 129, 0.2); color: var(--badge-core); margin-left: 6px; }
-  </style>
+.app{
+  width:min(1180px,calc(100% - 28px));
+  margin:auto;
+  padding:20px 0 100px;
+}
+
+/* =========================
+   HEADER
+========================= */
+
+.topbar{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:15px;
+  margin-bottom:18px;
+}
+
+.brand{
+  display:flex;
+  align-items:center;
+  gap:12px;
+}
+
+.logo{
+  width:46px;
+  height:46px;
+  display:grid;
+  place-items:center;
+  border-radius:15px;
+  background:linear-gradient(145deg,#2876c6,#164c83);
+  font-weight:900;
+  box-shadow:0 8px 24px rgba(35,112,190,.28);
+}
+
+.brand-title{
+  font-size:19px;
+  font-weight:900;
+}
+
+.brand-subtitle{
+  margin-top:3px;
+  color:var(--muted);
+  font-size:11px;
+}
+
+.status{
+  display:flex;
+  align-items:center;
+  gap:7px;
+  color:var(--muted);
+  font-size:11px;
+}
+
+.status-dot{
+  width:8px;
+  height:8px;
+  border-radius:50%;
+  background:var(--green);
+  box-shadow:0 0 10px rgba(54,211,153,.5);
+}
+
+.status-dot.error{
+  background:var(--red);
+  box-shadow:none;
+}
+
+/* =========================
+   NAV
+========================= */
+
+.desktop-nav{
+  display:flex;
+  gap:6px;
+  padding:5px;
+  margin-bottom:18px;
+  overflow-x:auto;
+  background:rgba(13,25,41,.88);
+  border:1px solid var(--border);
+  border-radius:14px;
+}
+
+.nav-btn{
+  flex:0 0 auto;
+  border:0;
+  padding:10px 15px;
+  border-radius:10px;
+  background:transparent;
+  color:var(--muted);
+  font-size:13px;
+  font-weight:800;
+}
+
+.nav-btn.active{
+  background:#205a91;
+  color:#fff;
+}
+
+/* =========================
+   PAGE
+========================= */
+
+.page{
+  display:none;
+}
+
+.page.active{
+  display:block;
+  animation:fade .18s ease;
+}
+
+@keyframes fade{
+  from{
+    opacity:0;
+    transform:translateY(3px);
+  }
+  to{
+    opacity:1;
+    transform:none;
+  }
+}
+
+/* =========================
+   HERO
+========================= */
+
+.hero{
+  padding:23px;
+  margin-bottom:14px;
+  border:1px solid var(--border);
+  border-radius:var(--radius);
+  background:
+    linear-gradient(
+      135deg,
+      rgba(32,90,145,.2),
+      rgba(13,25,41,.95) 60%
+    );
+  box-shadow:var(--shadow);
+}
+
+.hero h1{
+  margin:0;
+  font-size:25px;
+  letter-spacing:-.6px;
+}
+
+.hero p{
+  margin:7px 0 0;
+  color:var(--muted);
+  font-size:12px;
+  line-height:1.7;
+}
+
+/* =========================
+   MARKET INFO
+========================= */
+
+.market-summary{
+  display:grid;
+  grid-template-columns:repeat(4,1fr);
+  gap:10px;
+  margin-bottom:14px;
+}
+
+.summary-card{
+  padding:15px;
+  border-radius:16px;
+  border:1px solid var(--border);
+  background:var(--panel);
+}
+
+.summary-label{
+  color:var(--muted);
+  font-size:10px;
+}
+
+.summary-value{
+  margin-top:5px;
+  font-size:22px;
+  font-weight:900;
+}
+
+.summary-value.green{
+  color:var(--green);
+}
+
+.summary-value.blue{
+  color:var(--blue);
+}
+
+/* =========================
+   SEARCH
+========================= */
+
+.search-area{
+  display:flex;
+  gap:8px;
+  margin-bottom:16px;
+}
+
+.search-input{
+  flex:1;
+  min-width:0;
+  padding:13px 15px;
+  outline:none;
+  color:var(--text);
+  background:var(--panel);
+  border:1px solid var(--border);
+  border-radius:13px;
+}
+
+.search-input:focus{
+  border-color:rgba(77,163,255,.55);
+}
+
+.search-input::placeholder{
+  color:#66768a;
+}
+
+.button{
+  border:1px solid var(--border);
+  border-radius:11px;
+  padding:10px 14px;
+  color:var(--text);
+  background:var(--panel2);
+  font-size:12px;
+  font-weight:800;
+}
+
+.button:hover{
+  background:var(--panel3);
+}
+
+.button.primary{
+  background:#205a91;
+  border-color:transparent;
+}
+
+/* =========================
+   SECTION
+========================= */
+
+.section{
+  margin-bottom:22px;
+}
+
+.section-head{
+  display:flex;
+  align-items:flex-end;
+  justify-content:space-between;
+  gap:10px;
+  margin-bottom:10px;
+}
+
+.section-title{
+  font-size:17px;
+  font-weight:900;
+}
+
+.section-subtitle{
+  margin-top:3px;
+  color:var(--muted);
+  font-size:10px;
+}
+
+.section-count{
+  color:var(--muted);
+  font-size:10px;
+}
+
+/* =========================
+   STOCK GRID
+========================= */
+
+.stock-grid{
+  display:grid;
+  grid-template-columns:repeat(3,1fr);
+  gap:12px;
+}
+
+.stock-card{
+  padding:17px;
+  border:1px solid var(--border);
+  border-radius:var(--radius);
+  background:var(--panel);
+  box-shadow:var(--shadow);
+  transition:.18s ease;
+}
+
+.stock-card:hover{
+  transform:translateY(-2px);
+  border-color:rgba(77,163,255,.24);
+}
+
+.stock-top{
+  display:flex;
+  justify-content:space-between;
+  gap:10px;
+}
+
+.stock-code{
+  color:var(--blue);
+  font-size:11px;
+  font-weight:900;
+}
+
+.stock-name{
+  margin-top:3px;
+  font-size:17px;
+  font-weight:900;
+}
+
+.score{
+  text-align:right;
+}
+
+.score-label{
+  color:var(--muted);
+  font-size:9px;
+}
+
+.score-value{
+  margin-top:2px;
+  color:var(--green);
+  font-size:19px;
+  font-weight:900;
+}
+
+.signal{
+  display:inline-flex;
+  margin-top:14px;
+  padding:6px 9px;
+  border-radius:999px;
+  color:var(--green);
+  background:rgba(54,211,153,.1);
+  font-size:10px;
+  font-weight:900;
+}
+
+.signal.warning{
+  color:var(--yellow);
+  background:rgba(245,196,81,.1);
+}
+
+.signal.neutral{
+  color:var(--blue);
+  background:rgba(77,163,255,.1);
+}
+
+.price{
+  margin-top:12px;
+  font-size:27px;
+  font-weight:900;
+}
+
+.advice-box{
+  margin-top:14px;
+  padding:12px;
+  border-radius:13px;
+  background:rgba(255,255,255,.035);
+  border:1px solid rgba(255,255,255,.05);
+}
+
+.advice-row{
+  display:flex;
+  justify-content:space-between;
+  gap:10px;
+  padding:5px 0;
+  font-size:12px;
+}
+
+.advice-label{
+  color:var(--muted);
+}
+
+.advice-value{
+  text-align:right;
+  font-weight:900;
+}
+
+.green{
+  color:var(--green);
+}
+
+.red{
+  color:var(--red);
+}
+
+.blue{
+  color:var(--blue);
+}
+
+.yellow{
+  color:var(--yellow);
+}
+
+.card-actions{
+  display:flex;
+  gap:7px;
+  margin-top:14px;
+}
+
+.card-actions .button{
+  flex:1;
+}
+
+/* =========================
+   SEARCH RESULT
+========================= */
+
+.search-result{
+  margin-bottom:20px;
+}
+
+.search-result.hidden{
+  display:none;
+}
+
+/* =========================
+   DETAIL
+========================= */
+
+.detail-card{
+  padding:20px;
+  border:1px solid var(--border);
+  border-radius:var(--radius);
+  background:var(--panel);
+  box-shadow:var(--shadow);
+}
+
+.detail-top{
+  display:flex;
+  justify-content:space-between;
+  gap:12px;
+}
+
+.detail-title{
+  font-size:26px;
+  font-weight:900;
+}
+
+.detail-price{
+  margin-top:10px;
+  font-size:32px;
+  font-weight:900;
+}
+
+.detail-section{
+  margin-top:20px;
+  padding-top:18px;
+  border-top:1px solid var(--border);
+}
+
+.detail-section-title{
+  margin-bottom:10px;
+  font-size:14px;
+  font-weight:900;
+}
+
+.detail-grid{
+  display:grid;
+  grid-template-columns:repeat(4,1fr);
+  gap:8px;
+}
+
+.detail-item{
+  padding:12px;
+  border-radius:12px;
+  background:var(--panel2);
+}
+
+.detail-item span{
+  display:block;
+  color:var(--muted);
+  font-size:10px;
+}
+
+.detail-item strong{
+  display:block;
+  margin-top:5px;
+  font-size:14px;
+}
+
+/* =========================
+   WATCHLIST
+========================= */
+
+.watch-list{
+  display:grid;
+  gap:9px;
+}
+
+.watch-item{
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  gap:12px;
+  padding:15px;
+  border:1px solid var(--border);
+  border-radius:15px;
+  background:var(--panel);
+}
+
+.watch-name{
+  font-size:15px;
+  font-weight:900;
+}
+
+.watch-code{
+  color:var(--blue);
+  font-size:10px;
+  font-weight:900;
+}
+
+.watch-meta{
+  margin-top:4px;
+  color:var(--muted);
+  font-size:10px;
+}
+
+/* =========================
+   DCA
+========================= */
+
+.dca-summary{
+  display:grid;
+  grid-template-columns:repeat(4,1fr);
+  gap:10px;
+  margin-bottom:14px;
+}
+
+.dca-card{
+  padding:16px;
+  border:1px solid var(--border);
+  border-radius:16px;
+  background:var(--panel);
+}
+
+.dca-card span{
+  color:var(--muted);
+  font-size:10px;
+}
+
+.dca-card strong{
+  display:block;
+  margin-top:6px;
+  font-size:21px;
+}
+
+.holdings{
+  display:grid;
+  gap:10px;
+}
+
+.holding{
+  padding:16px;
+  border:1px solid var(--border);
+  border-radius:16px;
+  background:var(--panel);
+}
+
+.holding-name{
+  font-weight:900;
+}
+
+.holding-code{
+  color:var(--blue);
+  font-size:10px;
+}
+
+.holding-grid{
+  display:grid;
+  grid-template-columns:repeat(4,1fr);
+  gap:8px;
+  margin-top:14px;
+}
+
+.holding-stat{
+  padding:10px;
+  border-radius:11px;
+  background:var(--panel2);
+}
+
+.holding-stat span{
+  display:block;
+  color:var(--muted);
+  font-size:9px;
+}
+
+.holding-stat strong{
+  display:block;
+  margin-top:4px;
+  font-size:13px;
+}
+
+/* =========================
+   RISK
+========================= */
+
+.risk-list{
+  display:grid;
+  gap:10px;
+}
+
+.risk-card{
+  padding:17px;
+  border:1px solid var(--border);
+  border-radius:16px;
+  background:var(--panel);
+}
+
+.risk-header{
+  display:flex;
+  justify-content:space-between;
+  gap:10px;
+}
+
+.risk-title{
+  font-size:15px;
+  font-weight:900;
+}
+
+.risk-badge{
+  padding:6px 9px;
+  border-radius:999px;
+  font-size:10px;
+  font-weight:900;
+}
+
+.risk-normal{
+  color:var(--green);
+  background:rgba(54,211,153,.1);
+}
+
+.risk-watch{
+  color:var(--yellow);
+  background:rgba(245,196,81,.1);
+}
+
+.risk-high{
+  color:var(--orange);
+  background:rgba(255,159,67,.1);
+}
+
+.risk-stop{
+  color:var(--red);
+  background:rgba(255,102,122,.1);
+}
+
+.risk-message{
+  margin-top:10px;
+  color:var(--muted);
+  font-size:12px;
+  line-height:1.7;
+}
+
+/* =========================
+   EMPTY
+========================= */
+
+.empty{
+  grid-column:1/-1;
+  padding:42px 20px;
+  text-align:center;
+  color:var(--muted);
+  border:1px dashed rgba(255,255,255,.12);
+  border-radius:16px;
+  background:rgba(255,255,255,.015);
+}
+
+.error-box{
+  padding:20px;
+  border:1px solid rgba(255,102,122,.15);
+  border-radius:15px;
+  background:rgba(255,102,122,.08);
+  color:var(--red);
+  font-size:12px;
+  line-height:1.7;
+}
+
+/* =========================
+   MOBILE NAV
+========================= */
+
+.mobile-nav{
+  display:none;
+}
+
+/* =========================
+   RESPONSIVE
+========================= */
+
+@media(max-width:900px){
+
+  .stock-grid{
+    grid-template-columns:repeat(2,1fr);
+  }
+
+  .market-summary,
+  .dca-summary{
+    grid-template-columns:repeat(2,1fr);
+  }
+
+  .detail-grid,
+  .holding-grid{
+    grid-template-columns:repeat(2,1fr);
+  }
+}
+
+@media(max-width:600px){
+
+  .app{
+    width:calc(100% - 20px);
+    padding-top:13px;
+    padding-bottom:90px;
+  }
+
+  .topbar{
+    align-items:flex-start;
+  }
+
+  .logo{
+    width:42px;
+    height:42px;
+  }
+
+  .brand-title{
+    font-size:17px;
+  }
+
+  .status{
+    font-size:9px;
+  }
+
+  .desktop-nav{
+    display:none;
+  }
+
+  .hero{
+    padding:19px;
+  }
+
+  .hero h1{
+    font-size:22px;
+  }
+
+  .stock-grid{
+    grid-template-columns:1fr;
+  }
+
+  .market-summary,
+  .dca-summary{
+    grid-template-columns:repeat(2,1fr);
+  }
+
+  .search-area{
+    flex-direction:row;
+  }
+
+  .detail-grid,
+  .holding-grid{
+    grid-template-columns:repeat(2,1fr);
+  }
+
+  .mobile-nav{
+    position:fixed;
+    z-index:100;
+    left:10px;
+    right:10px;
+    bottom:10px;
+    display:grid;
+    grid-template-columns:repeat(4,1fr);
+    gap:3px;
+    padding:5px;
+    border:1px solid var(--border);
+    border-radius:17px;
+    background:rgba(9,18,31,.94);
+    backdrop-filter:blur(18px);
+    box-shadow:0 15px 40px rgba(0,0,0,.38);
+  }
+
+  .mobile-btn{
+    border:0;
+    padding:9px 3px;
+    border-radius:12px;
+    color:var(--muted);
+    background:transparent;
+    font-size:10px;
+    font-weight:800;
+  }
+
+  .mobile-btn.active{
+    color:#fff;
+    background:#205a91;
+  }
+}
+</style>
 </head>
+
 <body>
 
-  <!-- 頂部總覽卡片 -->
-  <div class="dashboard-header">
-    <div class="dashboard-title">台股 AI 選股儀表板 <span id="appVersion" style="font-size: 0.8rem; color: var(--text-muted);"></span></div>
-    <div class="update-time" id="generatedAt">正在讀取 Data/prices.json...</div>
-    
-    <!-- 統計數據 -->
-    <div class="stats-grid" id="statsContainer">
-      <div class="stats-item">掃描總數<span id="statTotal">--</span></div>
-      <div class="stats-item">CORE 核心<span id="statCore">--</span></div>
-      <div class="stats-item">STRONG 強勢<span id="statStrong">--</span></div>
+<div class="app">
+
+<header class="topbar">
+
+  <div class="brand">
+
+    <div class="logo">
+      AI
     </div>
+
+    <div>
+      <div class="brand-title">
+        台股 AI 投資儀表板
+      </div>
+
+      <div class="brand-subtitle">
+        全市場掃描・股票搜尋・零股定投・動態風控
+      </div>
+    </div>
+
   </div>
 
-  <!-- 個股數據列表 -->
-  <div class="stock-list" id="stockListContainer"></div>
+  <div class="status">
 
-  <script>
-    async function loadDashboardData() {
-      const timeElem = document.getElementById('generatedAt');
-      const container = document.getElementById("stockListContainer");
+    <span
+      id="statusDot"
+      class="status-dot">
+    </span>
 
-      try {
-        const res = await fetch('./Data/prices.json');
-        
-        if (!res.ok) {
-          throw new Error(`HTTP 狀態碼: ${res.status}`);
-        }
+    <span id="statusText">
+      資料讀取中
+    </span>
 
-        const data = await res.json();
+  </div>
 
-        // 1. 渲染頂部資訊與統計數據
-        document.getElementById('appVersion').innerText = data.version ? `(${data.version})` : '';
-        timeElem.innerText = `資料生成時間：${data.generated_at || data.updated_at || '最新'}`;
+</header>
 
-        if (data.statistics) {
-          document.getElementById('statTotal').innerText = data.statistics.total || '--';
-          document.getElementById('statCore').innerText = data.statistics.core || '--';
-          document.getElementById('statStrong').innerText = data.statistics.strong || '--';
-        }
 
-        // 2. 讀取 top30 陣列數據並渲染
-        const stockList = data.top30 || [];
-        let html = "";
+<!-- =========================
+     DESKTOP NAV
+========================= -->
 
-        stockList.forEach(item => {
-          const changePct = item.change_pct ?? 0;
-          const isUp = changePct >= 0;
-          const priceClass = isUp ? "price-up" : "price-down";
-          const changeSign = isUp ? "+" : "";
+<nav class="desktop-nav">
 
-          html += `
-            <div class="stock-card">
-              <!-- 標題：股名、代號、AI 分數 -->
-              <div class="card-header">
-                <div class="stock-title">
-                  ${item.name} <span class="stock-code">${item.symbol || item.code}</span>
-                  ${item.signal ? `<span class="signal-badge">${item.signal}</span>` : ''}
-                </div>
-                <div class="ai-score-badge">AI SCORE: ${item.ai_score ?? '--'}</div>
-              </div>
+  <button
+    class="nav-btn active"
+    data-page="ai">
+    AI 選股
+  </button>
 
-              <!-- 股價與漲跌幅 -->
-              <div class="price-row">
-                <div class="current-price ${priceClass}">${item.price ?? '--'}</div>
-                <div class="price-change ${priceClass}">${changeSign}${changePct}%</div>
-              </div>
+  <button
+    class="nav-btn"
+    data-page="watch">
+    股票清單
+  </button>
 
-              <!-- 技術指標細節 -->
-              <div class="tech-grid">
-                <div class="tech-item">RSI (14)<span>${item.rsi ?? '--'}</span></div>
-                <div class="tech-item">20日線 (MA20)<span>${item.ma20 ?? '--'}</span></div>
-                <div class="tech-item">KD (K / D)<span>${item.kd_k ?? '--'} / ${item.kd_d ?? '--'}</span></div>
-                <div class="tech-item">成交量<span>${item.volume ? Number(item.volume).toLocaleString() : '--'}</span></div>
-              </div>
-            </div>
-          `;
-        });
+  <button
+    class="nav-btn"
+    data-page="dca">
+    零股定投
+  </button>
 
-        container.innerHTML = html;
+  <button
+    class="nav-btn"
+    data-page="risk">
+    動態風控
+  </button>
 
-      } catch (error) {
-        console.error("讀取 Data/prices.json 失敗:", error);
-        timeElem.innerText = "數據讀取失敗，請確認 Data/prices.json 路徑與內容。";
+</nav>
+
+
+<!-- =========================
+     AI PAGE
+========================= -->
+
+<section
+  id="page-ai"
+  class="page active">
+
+  <div class="hero">
+
+    <h1>
+      今日 AI 選股
+    </h1>
+
+    <p>
+      顯示後台全市場掃描結果。
+      前台不重新判定、不重新排序、不修改後台訊號。
+    </p>
+
+  </div>
+
+
+  <div class="market-summary">
+
+    <div class="summary-card">
+
+      <div class="summary-label">
+        全市場資料
+      </div>
+
+      <div
+        id="summaryTotal"
+        class="summary-value">
+        —
+      </div>
+
+    </div>
+
+
+    <div class="summary-card">
+
+      <div class="summary-label">
+        今日精選
+      </div>
+
+      <div
+        id="summarySelected"
+        class="summary-value green">
+        —
+      </div>
+
+    </div>
+
+
+    <div class="summary-card">
+
+      <div class="summary-label">
+        強勢個股
+      </div>
+
+      <div
+        id="summaryStrong"
+        class="summary-value blue">
+        —
+      </div>
+
+    </div>
+
+
+    <div class="summary-card">
+
+      <div class="summary-label">
+        資料日期
+      </div>
+
+      <div
+        id="summaryDate"
+        class="summary-value"
+        style="font-size:14px">
+        —
+      </div>
+
+    </div>
+
+  </div>
+
+
+  <!-- =========================
+       SEARCH
+  ========================== -->
+
+  <div class="search-area">
+
+    <input
+      id="searchInput"
+      class="search-input"
+      type="search"
+      autocomplete="off"
+      placeholder="搜尋股票代號或名稱…">
+
+    <button
+      id="searchButton"
+      class="button primary">
+      搜尋
+    </button>
+
+  </div>
+
+
+  <!-- =========================
+       SEARCH RESULT
+  ========================== -->
+
+  <section
+    id="searchResult"
+    class="section search-result hidden">
+
+    <div class="section-head">
+
+      <div>
+
+        <div class="section-title">
+          個股搜尋結果
+        </div>
+
+        <div class="section-subtitle">
+          顯示後台資料中的對應個股
+        </div>
+
+      </div>
+
+    </div>
+
+    <div
+      id="searchGrid"
+      class="stock-grid">
+    </div>
+
+  </section>
+
+
+  <!-- =========================
+       BACKEND SECTIONS
+       前台不自行判斷分類
+  ========================== -->
+
+  <section class="section">
+
+    <div class="section-head">
+
+      <div>
+
+        <div
+          id="equityTitle"
+          class="section-title">
+          今日精選
+        </div>
+
+        <div class="section-subtitle">
+          完全依後台輸出的股票與排序顯示
+        </div>
+
+      </div>
+
+      <div
+        id="equityCount"
+        class="section-count">
+        —
+      </div>
+
+    </div>
+
+
+    <div
+      id="equityGrid"
+      class="stock-grid">
+
+      <div class="empty">
+        資料讀取中…
+      </div>
+
+    </div>
+
+  </section>
+
+
+  <section class="section">
+
+    <div class="section-head">
+
+      <div>
+
+        <div class="section-title">
+          強勢 ETF TOP 10
+        </div>
+
+        <div class="section-subtitle">
+          直接顯示後台提供的 ETF 排序結果
+        </div>
+
+      </div>
+
+      <div
+        id="etfCount"
+        class="section-count">
+        —
+      </div>
+
+    </div>
+
+
+    <div
+      id="etfGrid"
+      class="stock-grid">
+
+      <div class="empty">
+        資料讀取中…
+      </div>
+
+    </div>
+
+  </section>
+
+
+  <!-- =========================
+       ALL MARKET
+  ========================== -->
+
+  <section class="section">
+
+    <div class="section-head">
+
+      <div>
+
+        <div class="section-title">
+          全市場掃描
+        </div>
+
+        <div class="section-subtitle">
+          後台掃描到的全部資料
+        </div>
+
+      </div>
+
+      <div
+        id="allMarketCount"
+        class="section-count">
+        —
+      </div>
+
+    </div>
+
+
+    <div
+      id="allMarketGrid"
+      class="stock-grid">
+
+    </div>
+
+  </section>
+
+</section>
+
+
+<!-- =========================
+     DETAIL PAGE
+========================= -->
+
+<section
+  id="page-detail"
+  class="page">
+
+  <button
+    id="backButton"
+    class="button"
+    style="margin-bottom:12px">
+    ← 返回
+  </button>
+
+  <div id="detailContainer"></div>
+
+</section>
+
+
+<!-- =========================
+     WATCHLIST
+========================= -->
+
+<section
+  id="page-watch"
+  class="page">
+
+  <div class="hero">
+
+    <h1>
+      股票清單
+    </h1>
+
+    <p>
+      追蹤你自行加入的股票。
+    </p>
+
+  </div>
+
+  <div
+    id="watchList"
+    class="watch-list">
+  </div>
+
+</section>
+
+
+<!-- =========================
+     DCA
+========================= -->
+
+<section
+  id="page-dca"
+  class="page">
+
+  <div class="hero">
+
+    <h1>
+      零股定投
+    </h1>
+
+    <p>
+      顯示後台定投資料與目前部位。
+    </p>
+
+  </div>
+
+
+  <div class="dca-summary">
+
+    <div class="dca-card">
+      <span>累積投入</span>
+      <strong id="dcaCost">—</strong>
+    </div>
+
+    <div class="dca-card">
+      <span>目前市值</span>
+      <strong id="dcaValue">—</strong>
+    </div>
+
+    <div class="dca-card">
+      <span>未實現損益</span>
+      <strong id="dcaProfit">—</strong>
+    </div>
+
+    <div class="dca-card">
+      <span>報酬率</span>
+      <strong id="dcaReturn">—</strong>
+    </div>
+
+  </div>
+
+
+  <div
+    id="holdings"
+    class="holdings">
+  </div>
+
+</section>
+
+
+<!-- =========================
+     RISK
+========================= -->
+
+<section
+  id="page-risk"
+  class="page">
+
+  <div class="hero">
+
+    <h1>
+      動態風控
+    </h1>
+
+    <p>
+      顯示後台風控結果，不由前台自行判斷。
+    </p>
+
+  </div>
+
+
+  <div
+    id="riskList"
+    class="risk-list">
+  </div>
+
+</section>
+
+</div>
+
+
+<!-- =========================
+     MOBILE NAV
+========================= -->
+
+<nav class="mobile-nav">
+
+  <button
+    class="mobile-btn active"
+    data-page="ai">
+    AI 選股
+  </button>
+
+  <button
+    class="mobile-btn"
+    data-page="watch">
+    股票清單
+  </button>
+
+  <button
+    class="mobile-btn"
+    data-page="dca">
+    定投
+  </button>
+
+  <button
+    class="mobile-btn"
+    data-page="risk">
+    風控
+  </button>
+
+</nav>
+
+
+<script>
+
+/*
+==============================================================
+  台股 AI 投資儀表板
+  FRONTEND ONLY
+
+  核心原則：
+
+  1. 前台不重新掃描。
+  2. 前台不重新計算技術指標。
+  3. 前台不重新判斷 6 項條件。
+  4. 前台不重新產生 AI 分數。
+  5. 前台不重新排序。
+  6. 前台不修改後台分類。
+  7. 前台只負責讀取與顯示。
+==============================================================
+*/
+
+
+/* ============================================================
+   DATA FILE
+============================================================ */
+
+const DATA_URL =
+  "./Data/prices.json";
+
+const PORTFOLIO_URL =
+  "./Data/portfolio.json";
+
+const RISK_URL =
+  "./Data/risk.json";
+
+
+/* ============================================================
+   STATE
+============================================================ */
+
+let backendData = null;
+
+let allStocks = [];
+
+let equityStocks = [];
+
+let etfStocks = [];
+
+let watchList =
+  new Set(
+    JSON.parse(
+      localStorage.getItem(
+        "tw_stock_watchlist"
+      ) || "[]"
+    )
+  );
+
+
+/* ============================================================
+   BASIC HELPERS
+============================================================ */
+
+function $(id){
+  return document.getElementById(id);
+}
+
+
+function escapeHtml(value){
+
+  return String(
+    value ?? ""
+  )
+  .replace(/&/g,"&amp;")
+  .replace(/</g,"&lt;")
+  .replace(/>/g,"&gt;")
+  .replace(/"/g,"&quot;")
+  .replace(/'/g,"&#039;");
+}
+
+
+function escapeJs(value){
+
+  return String(value)
+    .replace(/\\/g,"\\\\")
+    .replace(/'/g,"\\'");
+}
+
+
+function number(value,digits=2){
+
+  if(
+    value === null ||
+    value === undefined ||
+    value === "" ||
+    Number.isNaN(Number(value))
+  ){
+    return "—";
+  }
+
+  return Number(value)
+    .toLocaleString(
+      "zh-TW",
+      {
+        minimumFractionDigits:digits,
+        maximumFractionDigits:digits
       }
+    );
+}
+
+
+function money(value){
+
+  if(
+    value === null ||
+    value === undefined ||
+    value === ""
+  ){
+    return "—";
+  }
+
+  return "$" +
+    Number(value)
+      .toLocaleString(
+        "zh-TW",
+        {
+          minimumFractionDigits:2,
+          maximumFractionDigits:2
+        }
+      );
+}
+
+
+function percent(value){
+
+  if(
+    value === null ||
+    value === undefined ||
+    value === ""
+  ){
+    return "—";
+  }
+
+  return Number(value).toFixed(2) + "%";
+}
+
+
+/* ============================================================
+   BACKEND FIELD ACCESS
+
+   注意：
+   這些函式只負責「讀取」後台欄位。
+
+   絕對不在這裡重新計算。
+============================================================ */
+
+function codeOf(stock){
+
+  return (
+    stock.code ??
+    stock.symbol ??
+    stock.stock_code ??
+    ""
+  );
+}
+
+
+function nameOf(stock){
+
+  return (
+    stock.name ??
+    stock.stock_name ??
+    stock.company_name ??
+    ""
+  );
+}
+
+
+function priceOf(stock){
+
+  return (
+    stock.price ??
+    stock.close ??
+    stock.current_price ??
+    stock.last_price
+  );
+}
+
+
+function scoreOf(stock){
+
+  return (
+    stock.ai_score ??
+    stock.score ??
+    stock.aiScore ??
+    null
+  );
+}
+
+
+function signalOf(stock){
+
+  return (
+    stock.signal ??
+    stock.signal_text ??
+    stock.status ??
+    stock.label ??
+    ""
+  );
+}
+
+
+function trendOf(stock){
+
+  const advice =
+    stock.advice ||
+    stock.recommendation ||
+    {};
+
+  return (
+    advice.trend ??
+    stock.trend ??
+    stock.short_term_trend ??
+    "—"
+  );
+}
+
+
+function actionOf(stock){
+
+  const advice =
+    stock.advice ||
+    stock.recommendation ||
+    {};
+
+  return (
+    advice.action ??
+    advice.operation ??
+    advice.recommendation ??
+    stock.action ??
+    stock.operation ??
+    "—"
+  );
+}
+
+
+function entryOf(stock){
+
+  const advice =
+    stock.advice ||
+    stock.recommendation ||
+    {};
+
+  return (
+    advice.entry ??
+    stock.entry ??
+    stock.entry_price ??
+    "—"
+  );
+}
+
+
+function stopLossOf(stock){
+
+  const advice =
+    stock.advice ||
+    stock.recommendation ||
+    {};
+
+  return (
+    advice.stop_loss ??
+    stock.stop_loss ??
+    stock.stopLoss ??
+    "—"
+  );
+}
+
+
+function takeProfit1Of(stock){
+
+  const advice =
+    stock.advice ||
+    stock.recommendation ||
+    {};
+
+  return (
+    advice.take_profit_1 ??
+    advice.takeProfit1 ??
+    stock.take_profit_1 ??
+    stock.takeProfit1 ??
+    "—"
+  );
+}
+
+
+function takeProfit2Of(stock){
+
+  const advice =
+    stock.advice ||
+    stock.recommendation ||
+    {};
+
+  return (
+    advice.take_profit_2 ??
+    advice.takeProfit2 ??
+    stock.take_profit_2 ??
+    stock.takeProfit2 ??
+    "—"
+  );
+}
+
+
+/* ============================================================
+   DISPLAY FORMAT
+
+   這裡只做格式化，不做任何投資判斷。
+============================================================ */
+
+function displayValue(value){
+
+  if(
+    value === null ||
+    value === undefined ||
+    value === ""
+  ){
+    return "—";
+  }
+
+  if(
+    typeof value === "number"
+  ){
+    return money(value);
+  }
+
+  if(
+    typeof value === "object"
+  ){
+
+    if(
+      value.min !== undefined &&
+      value.max !== undefined
+    ){
+      return (
+        number(value.min) +
+        " ～ " +
+        number(value.max)
+      );
     }
 
-    window.onload = loadDashboardData;
-  </script>
+    if(
+      value.low !== undefined &&
+      value.high !== undefined
+    ){
+      return (
+        number(value.low) +
+        " ～ " +
+        number(value.high)
+      );
+    }
+
+  }
+
+  return String(value);
+}
+
+
+/* ============================================================
+   SIGNAL DISPLAY
+
+   重要：
+   這裡只顯示後台提供的 signal。
+   不根據 score / RSI / KD 等重新判斷。
+============================================================ */
+
+function signalClass(stock){
+
+  const signal =
+    String(
+      signalOf(stock)
+    ).toLowerCase();
+
+  if(
+    signal.includes("核心") ||
+    signal.includes("精選") ||
+    signal.includes("strong") ||
+    signal.includes("強勢")
+  ){
+    return "";
+  }
+
+  if(
+    signal.includes("注意") ||
+    signal.includes("watch")
+  ){
+    return "warning";
+  }
+
+  return "neutral";
+}
+
+
+/* ============================================================
+   STOCK CARD
+============================================================ */
+
+function stockCard(stock){
+
+  const code =
+    codeOf(stock);
+
+  const name =
+    nameOf(stock);
+
+  const price =
+    priceOf(stock);
+
+  const score =
+    scoreOf(stock);
+
+  const signal =
+    signalOf(stock);
+
+  const watched =
+    watchList.has(
+      String(code)
+    );
+
+
+  return `
+
+  <article class="stock-card">
+
+    <div class="stock-top">
+
+      <div>
+
+        <div class="stock-code">
+          ${escapeHtml(code)}
+        </div>
+
+        <div class="stock-name">
+          ${escapeHtml(name)}
+        </div>
+
+      </div>
+
+
+      ${
+        score !== null &&
+        score !== undefined &&
+        score !== ""
+        ?
+        `
+        <div class="score">
+
+          <div class="score-label">
+            AI SCORE
+          </div>
+
+          <div class="score-value">
+            ${escapeHtml(number(score,0))}
+          </div>
+
+        </div>
+        `
+        :
+        ""
+      }
+
+    </div>
+
+
+    ${
+      signal
+      ?
+      `
+      <div class="signal ${signalClass(stock)}">
+
+        ${escapeHtml(signal)}
+
+      </div>
+      `
+      :
+      ""
+    }
+
+
+    <div class="price">
+
+      ${escapeHtml(
+        money(price)
+      )}
+
+    </div>
+
+
+    <div class="advice-box">
+
+      <div class="advice-row">
+
+        <span class="advice-label">
+          短期趨勢
+        </span>
+
+        <span class="advice-value blue">
+          ${escapeHtml(
+            trendOf(stock)
+          )}
+        </span>
+
+      </div>
+
+
+      <div class="advice-row">
+
+        <span class="advice-label">
+          操作建議
+        </span>
+
+        <span class="advice-value green">
+          ${escapeHtml(
+            actionOf(stock)
+          )}
+        </span>
+
+      </div>
+
+
+      <div class="advice-row">
+
+        <span class="advice-label">
+          建議進場
+        </span>
+
+        <span class="advice-value">
+          ${escapeHtml(
+            displayValue(
+              entryOf(stock)
+            )
+          )}
+        </span>
+
+      </div>
+
+
+      <div class="advice-row">
+
+        <span class="advice-label">
+          建議停損
+        </span>
+
+        <span class="advice-value red">
+          ${escapeHtml(
+            displayValue(
+              stopLossOf(stock)
+            )
+          )}
+        </span>
+
+      </div>
+
+
+      <div class="advice-row">
+
+        <span class="advice-label">
+          第一停利
+        </span>
+
+        <span class="advice-value green">
+          ${escapeHtml(
+            displayValue(
+              takeProfit1Of(stock)
+            )
+          )}
+        </span>
+
+      </div>
+
+
+      <div class="advice-row">
+
+        <span class="advice-label">
+          第二停利
+        </span>
+
+        <span class="advice-value blue">
+          ${escapeHtml(
+            displayValue(
+              takeProfit2Of(stock)
+            )
+          )}
+        </span>
+
+      </div>
+
+    </div>
+
+
+    <div class="card-actions">
+
+      <button
+        class="button primary"
+        onclick="openDetail('${escapeJs(code)}')">
+
+        查看策略
+
+      </button>
+
+
+      <button
+        class="button"
+        onclick="toggleWatch('${escapeJs(code)}')">
+
+        ${
+          watched
+          ? "★ 已加入"
+          : "☆ 加入清單"
+        }
+
+      </button>
+
+    </div>
+
+  </article>
+
+  `;
+}
+
+
+/* ============================================================
+   RENDER BACKEND LIST
+============================================================ */
+
+function renderGrid(
+  element,
+  list,
+  emptyText
+){
+
+  if(
+    !Array.isArray(list) ||
+    list.length === 0
+  ){
+
+    element.innerHTML = `
+      <div class="empty">
+        ${escapeHtml(emptyText)}
+      </div>
+    `;
+
+    return;
+  }
+
+
+  element.innerHTML =
+    list
+      .map(stockCard)
+      .join("");
+}
+
+
+/* ============================================================
+   BACKEND DATA EXTRACTION
+
+   這裡的重點：
+
+   不猜測股票是否符合條件。
+   優先使用後台已經產生的陣列。
+
+   如果後台有：
+
+   selected
+   strong_stocks
+   etfs
+   all_stocks
+
+   就直接使用。
+
+   前台不重新篩選。
+============================================================ */
+
+function extractBackendData(data){
+
+  backendData = data;
+
+
+  /*
+    全市場資料
+  */
+
+  if(
+    Array.isArray(data.all_stocks)
+  ){
+
+    allStocks =
+      data.all_stocks;
+
+  }else if(
+    Array.isArray(data.stocks)
+  ){
+
+    allStocks =
+      data.stocks;
+
+  }else if(
+    Array.isArray(data.data)
+  ){
+
+    allStocks =
+      data.data;
+
+  }else if(
+    Array.isArray(data.rankings)
+  ){
+
+    allStocks =
+      data.rankings;
+
+  }else{
+
+    allStocks = [];
+
+  }
+
+
+  /*
+    今日精選
+
+    只讀後台提供的 selected / today_selected。
+
+    不在前台用 6 項條件重新算。
+  */
+
+  if(
+    Array.isArray(data.today_selected)
+  ){
+
+    equityStocks =
+      data.today_selected;
+
+  }else if(
+    Array.isArray(data.selected)
+  ){
+
+    equityStocks =
+      data.selected;
+
+  }else if(
+    Array.isArray(data.today_pick)
+  ){
+
+    equityStocks =
+      data.today_pick;
+
+  }else if(
+    Array.isArray(data.featured)
+  ){
+
+    equityStocks =
+      data.featured;
+
+  }else{
+
+    equityStocks = [];
+
+  }
+
+
+  /*
+    強勢個股
+
+    直接使用後台輸出的 strong_stocks。
+  */
+
+  const strongStocks =
+    Array.isArray(
+      data.strong_stocks
+    )
+    ?
+    data.strong_stocks
+    :
+    Array.isArray(
+      data.top_stocks
+    )
+    ?
+    data.top_stocks
+    :
+    [];
+
+
+  /*
+    如果後台有今日精選，
+    顯示今日精選。
+
+    如果沒有，
+    顯示後台 strong_stocks。
+
+    注意：
+    這不是「判斷股票」，
+    只是判斷後台是否有輸出的區塊。
+  */
+
+  if(
+    equityStocks.length > 0
+  ){
+
+    window.mainEquityList =
+      equityStocks;
+
+  }else{
+
+    window.mainEquityList =
+      strongStocks;
+
+  }
+
+
+  /*
+    ETF
+
+    完全使用後台輸出的 ETF 陣列。
+  */
+
+  if(
+    Array.isArray(data.etfs)
+  ){
+
+    etfStocks =
+      data.etfs;
+
+  }else if(
+    Array.isArray(data.strong_etfs)
+  ){
+
+    etfStocks =
+      data.strong_etfs;
+
+  }else if(
+    Array.isArray(data.top_etfs)
+  ){
+
+    etfStocks =
+      data.top_etfs;
+
+  }else{
+
+    etfStocks = [];
+
+  }
+
+
+  /*
+    保存後台強勢列表。
+  */
+
+  window.backendStrongStocks =
+    strongStocks;
+
+}
+
+
+/* ============================================================
+   RENDER AI PAGE
+============================================================ */
+
+function renderAI(){
+
+  const mainList =
+    window.mainEquityList ||
+    [];
+
+
+  /*
+    今日精選存在：
+    顯示「今日精選」
+
+    沒有：
+    顯示「強勢個股 TOP 10」
+
+    這裡只看後台是否輸出 selected。
+  */
+
+  if(
+    equityStocks.length > 0
+  ){
+
+    $("equityTitle")
+      .textContent =
+      "今日精選";
+
+  }else{
+
+    $("equityTitle")
+      .textContent =
+      "強勢個股 TOP 10";
+
+  }
+
+
+  $("equityCount")
+    .textContent =
+    mainList.length +
+    " 檔";
+
+
+  renderGrid(
+    $("equityGrid"),
+    mainList,
+    equityStocks.length > 0
+      ? "後台目前沒有今日精選。"
+      : "後台目前沒有強勢個股資料。"
+  );
+
+
+  /*
+    ETF
+  */
+
+  $("etfCount")
+    .textContent =
+    etfStocks.length +
+    " 檔";
+
+
+  renderGrid(
+    $("etfGrid"),
+    etfStocks,
+    "後台目前沒有 ETF 資料。"
+  );
+
+
+  /*
+    全市場
+
+    完全照後台陣列。
+  */
+
+  $("allMarketCount")
+    .textContent =
+    allStocks.length +
+    " 檔";
+
+
+  renderGrid(
+    $("allMarketGrid"),
+    allStocks,
+    "後台目前沒有全市場資料。"
+  );
+
+
+  /*
+    Summary
+  */
+
+  $("summaryTotal")
+    .textContent =
+    allStocks.length;
+
+
+  $("summarySelected")
+    .textContent =
+    equityStocks.length;
+
+
+  $("summaryStrong")
+    .textContent =
+    (
+      window.backendStrongStocks ||
+      []
+    ).length;
+
+
+  const date =
+    backendData?.generated_at ??
+    backendData?.updated_at ??
+    backendData?.date ??
+    "";
+
+
+  $("summaryDate")
+    .textContent =
+    date
+      ? String(date).slice(0,10)
+      : "—";
+}
+
+
+/* ============================================================
+   SEARCH
+
+   只在 allStocks 中搜尋。
+
+   不重新計算。
+   不重新排序。
+   不重新判定。
+============================================================ */
+
+function performSearch(){
+
+  const keyword =
+    $("searchInput")
+      .value
+      .trim()
+      .toLowerCase();
+
+
+  if(!keyword){
+
+    $("searchResult")
+      .classList.add("hidden");
+
+    $("searchGrid").innerHTML =
+      "";
+
+    return;
+  }
+
+
+  const result =
+    allStocks.filter(stock => {
+
+      const code =
+        String(
+          codeOf(stock)
+        ).toLowerCase();
+
+      const name =
+        String(
+          nameOf(stock)
+        ).toLowerCase();
+
+      return (
+        code.includes(keyword) ||
+        name.includes(keyword)
+      );
+
+    });
+
+
+  $("searchResult")
+    .classList.remove("hidden");
+
+
+  renderGrid(
+    $("searchGrid"),
+    result,
+    "後台資料中找不到符合的個股。"
+  );
+}
+
+
+$("searchButton")
+  .addEventListener(
+    "click",
+    performSearch
+  );
+
+
+$("searchInput")
+  .addEventListener(
+    "keydown",
+    event => {
+
+      if(
+        event.key === "Enter"
+      ){
+
+        performSearch();
+
+      }
+
+    }
+  );
+
+
+$("searchInput")
+  .addEventListener(
+    "input",
+    () => {
+
+      if(
+        $("searchInput")
+          .value
+          .trim() === ""
+      ){
+
+        $("searchResult")
+          .classList.add(
+            "hidden"
+          );
+
+      }
+
+    }
+  );
+
+
+/* ============================================================
+   DETAIL
+============================================================ */
+
+function findStock(code){
+
+  const target =
+    String(code);
+
+
+  return allStocks.find(
+    stock =>
+      String(
+        codeOf(stock)
+      ) === target
+  );
+}
+
+
+function openDetail(code){
+
+  const stock =
+    findStock(code);
+
+
+  if(!stock){
+
+    return;
+
+  }
+
+
+  $("detailContainer")
+    .innerHTML = `
+
+    <div class="detail-card">
+
+      <div class="detail-top">
+
+        <div>
+
+          <div class="stock-code">
+            ${escapeHtml(
+              codeOf(stock)
+            )}
+          </div>
+
+          <div class="detail-title">
+            ${escapeHtml(
+              nameOf(stock)
+            )}
+          </div>
+
+        </div>
+
+
+        ${
+          scoreOf(stock) !== null
+          ?
+          `
+          <div class="score">
+
+            <div class="score-label">
+              AI SCORE
+            </div>
+
+            <div class="score-value">
+              ${escapeHtml(
+                number(
+                  scoreOf(stock),
+                  0
+                )
+              )}
+            </div>
+
+          </div>
+          `
+          :
+          ""
+        }
+
+      </div>
+
+
+      ${
+        signalOf(stock)
+        ?
+        `
+        <div
+          class="signal ${signalClass(stock)}">
+
+          ${escapeHtml(
+            signalOf(stock)
+          )}
+
+        </div>
+        `
+        :
+        ""
+      }
+
+
+      <div class="detail-price">
+
+        ${escapeHtml(
+          money(
+            priceOf(stock)
+          )
+        )}
+
+      </div>
+
+
+      <div class="detail-section">
+
+        <div class="detail-section-title">
+          操作建議
+        </div>
+
+
+        <div class="advice-box">
+
+          <div class="advice-row">
+
+            <span class="advice-label">
+              短期趨勢
+            </span>
+
+            <span class="advice-value blue">
+              ${escapeHtml(
+                trendOf(stock)
+              )}
+            </span>
+
+          </div>
+
+
+          <div class="advice-row">
+
+            <span class="advice-label">
+              操作建議
+            </span>
+
+            <span class="advice-value green">
+              ${escapeHtml(
+                actionOf(stock)
+              )}
+            </span>
+
+          </div>
+
+        </div>
+
+      </div>
+
+
+      <div class="detail-section">
+
+        <div class="detail-section-title">
+          交易策略
+        </div>
+
+
+        <div class="detail-grid">
+
+          <div class="detail-item">
+
+            <span>
+              建議進場
+            </span>
+
+            <strong>
+              ${escapeHtml(
+                displayValue(
+                  entryOf(stock)
+                )
+              )}
+            </strong>
+
+          </div>
+
+
+          <div class="detail-item">
+
+            <span>
+              建議停損
+            </span>
+
+            <strong class="red">
+              ${escapeHtml(
+                displayValue(
+                  stopLossOf(stock)
+                )
+              )}
+            </strong>
+
+          </div>
+
+
+          <div class="detail-item">
+
+            <span>
+              第一停利
+            </span>
+
+            <strong class="green">
+              ${escapeHtml(
+                displayValue(
+                  takeProfit1Of(stock)
+                )
+              )}
+            </strong>
+
+          </div>
+
+
+          <div class="detail-item">
+
+            <span>
+              第二停利
+            </span>
+
+            <strong class="blue">
+              ${escapeHtml(
+                displayValue(
+                  takeProfit2Of(stock)
+                )
+              )}
+            </strong>
+
+          </div>
+
+        </div>
+
+      </div>
+
+
+      <div class="detail-section">
+
+        <button
+          class="button primary"
+          onclick="toggleWatch('${escapeJs(
+            codeOf(stock)
+          )}')">
+
+          ${
+            watchList.has(
+              String(codeOf(stock))
+            )
+            ?
+            "★ 已加入股票清單"
+            :
+            "☆ 加入股票清單"
+          }
+
+        </button>
+
+      </div>
+
+    </div>
+
+  `;
+
+
+  showPage("detail");
+}
+
+
+/* ============================================================
+   WATCHLIST
+============================================================ */
+
+function toggleWatch(code){
+
+  const key =
+    String(code);
+
+
+  if(
+    watchList.has(key)
+  ){
+
+    watchList.delete(key);
+
+  }else{
+
+    watchList.add(key);
+
+  }
+
+
+  localStorage.setItem(
+    "tw_stock_watchlist",
+    JSON.stringify(
+      [...watchList]
+    )
+  );
+
+
+  renderWatchlist();
+
+  renderAI();
+
+  /*
+    如果目前正在看詳細頁，
+    重新打開目前個股。
+  */
+
+  if(
+    $("page-detail")
+      .classList
+      .contains("active")
+  ){
+
+    openDetail(key);
+
+  }
+}
+
+
+function renderWatchlist(){
+
+  const list =
+    allStocks.filter(
+      stock =>
+        watchList.has(
+          String(
+            codeOf(stock)
+          )
+        )
+    );
+
+
+  if(
+    list.length === 0
+  ){
+
+    $("watchList")
+      .innerHTML = `
+
+      <div class="empty">
+
+        尚未加入任何股票。
+
+      </div>
+
+    `;
+
+    return;
+  }
+
+
+  $("watchList")
+    .innerHTML =
+    list.map(stock => {
+
+      return `
+
+      <div class="watch-item">
+
+        <div>
+
+          <div class="watch-code">
+            ${escapeHtml(
+              codeOf(stock)
+            )}
+          </div>
+
+          <div class="watch-name">
+            ${escapeHtml(
+              nameOf(stock)
+            )}
+          </div>
+
+          <div class="watch-meta">
+
+            ${escapeHtml(
+              money(
+                priceOf(stock)
+              )
+            )}
+
+            ・
+
+            ${escapeHtml(
+              actionOf(stock)
+            )}
+
+          </div>
+
+        </div>
+
+
+        <button
+          class="button"
+          onclick="openDetail('${escapeJs(
+            codeOf(stock)
+          )}')">
+
+          查看
+
+        </button>
+
+      </div>
+
+      `;
+
+    }).join("");
+}
+
+
+/* ============================================================
+   PORTFOLIO
+============================================================ */
+
+async function loadPortfolio(){
+
+  try{
+
+    const response =
+      await fetch(
+        PORTFOLIO_URL +
+        "?t=" +
+        Date.now(),
+        {
+          cache:"no-store"
+        }
+      );
+
+
+    if(!response.ok){
+
+      throw new Error(
+        "portfolio.json HTTP " +
+        response.status
+      );
+
+    }
+
+
+    const data =
+      await response.json();
+
+
+    renderPortfolio(data);
+
+
+  }catch(error){
+
+    $("holdings")
+      .innerHTML = `
+
+      <div class="empty">
+
+        尚未載入定投資料。
+
+      </div>
+
+      `;
+
+  }
+}
+
+
+function renderPortfolio(data){
+
+  const summary =
+    data.summary ||
+    data;
+
+
+  $("dcaCost")
+    .textContent =
+    money(
+      summary.total_cost ??
+      summary.total_invested
+    );
+
+
+  $("dcaValue")
+    .textContent =
+    money(
+      summary.market_value ??
+      summary.total_market_value
+    );
+
+
+  $("dcaProfit")
+    .textContent =
+    money(
+      summary.profit ??
+      summary.unrealized_profit
+    );
+
+
+  $("dcaReturn")
+    .textContent =
+    percent(
+      summary.return_rate ??
+      summary.roi
+    );
+
+
+  const list =
+    data.holdings ??
+    data.portfolio ??
+    data.stocks ??
+    [];
+
+
+  if(
+    !Array.isArray(list) ||
+    list.length === 0
+  ){
+
+    $("holdings")
+      .innerHTML = `
+
+      <div class="empty">
+
+        尚未有定投持倉資料。
+
+      </div>
+
+      `;
+
+    return;
+  }
+
+
+  $("holdings")
+    .innerHTML =
+    list.map(item => {
+
+      return `
+
+      <div class="holding">
+
+        <div class="holding-code">
+
+          ${escapeHtml(
+            item.code ??
+            item.symbol ??
+            ""
+          )}
+
+        </div>
+
+        <div class="holding-name">
+
+          ${escapeHtml(
+            item.name ??
+            item.stock_name ??
+            ""
+          )}
+
+        </div>
+
+
+        <div class="holding-grid">
+
+          <div class="holding-stat">
+
+            <span>
+              累積投入
+            </span>
+
+            <strong>
+              ${money(
+                item.total_cost ??
+                item.invested
+              )}
+            </strong>
+
+          </div>
+
+
+          <div class="holding-stat">
+
+            <span>
+              累積股數
+            </span>
+
+            <strong>
+              ${number(
+                item.shares ??
+                item.quantity,
+                0
+              )}
+            </strong>
+
+          </div>
+
+
+          <div class="holding-stat">
+
+            <span>
+              平均成本
+            </span>
+
+            <strong>
+              ${money(
+                item.average_cost ??
+                item.avg_cost
+              )}
+            </strong>
+
+          </div>
+
+
+          <div class="holding-stat">
+
+            <span>
+              報酬率
+            </span>
+
+            <strong>
+              ${percent(
+                item.return_rate ??
+                item.roi
+              )}
+            </strong>
+
+          </div>
+
+        </div>
+
+      </div>
+
+      `;
+
+    }).join("");
+}
+
+
+/* ============================================================
+   RISK
+============================================================ */
+
+async function loadRisk(){
+
+  try{
+
+    const response =
+      await fetch(
+        RISK_URL +
+        "?t=" +
+        Date.now(),
+        {
+          cache:"no-store"
+        }
+      );
+
+
+    if(!response.ok){
+
+      throw new Error(
+        "risk.json HTTP " +
+        response.status
+      );
+
+    }
+
+
+    const data =
+      await response.json();
+
+
+    renderRisk(data);
+
+
+  }catch(error){
+
+    $("riskList")
+      .innerHTML = `
+
+      <div class="empty">
+
+        尚未載入風控資料。
+
+      </div>
+
+      `;
+
+  }
+}
+
+
+function renderRisk(data){
+
+  const list =
+    data.risks ??
+    data.items ??
+    data.stocks ??
+    [];
+
+
+  if(
+    !Array.isArray(list) ||
+    list.length === 0
+  ){
+
+    $("riskList")
+      .innerHTML = `
+
+      <div class="empty">
+
+        尚未有風控資料。
+
+      </div>
+
+      `;
+
+    return;
+  }
+
+
+  $("riskList")
+    .innerHTML =
+    list.map(item => {
+
+      const level =
+        String(
+          item.level ??
+          item.risk_level ??
+          "normal"
+        ).toLowerCase();
+
+
+      let cls =
+        "risk-normal";
+
+      let label =
+        "正常";
+
+
+      if(
+        level.includes("watch") ||
+        level.includes("注意")
+      ){
+
+        cls =
+          "risk-watch";
+
+        label =
+          "注意";
+
+      }else if(
+        level.includes("high") ||
+        level.includes("高")
+      ){
+
+        cls =
+          "risk-high";
+
+        label =
+          "高風險";
+
+      }else if(
+        level.includes("stop") ||
+        level.includes("停止")
+      ){
+
+        cls =
+          "risk-stop";
+
+        label =
+          "停止";
+
+      }
+
+
+      return `
+
+      <div class="risk-card">
+
+        <div class="risk-header">
+
+          <div class="risk-title">
+
+            ${escapeHtml(
+              item.name ??
+              item.stock_name ??
+              item.code ??
+              ""
+            )}
+
+          </div>
+
+
+          <span
+            class="risk-badge ${cls}">
+
+            ${label}
+
+          </span>
+
+        </div>
+
+
+        <div class="risk-message">
+
+          ${escapeHtml(
+            item.message ??
+            item.advice ??
+            item.description ??
+            "目前沒有額外風控訊息。"
+          )}
+
+        </div>
+
+      </div>
+
+      `;
+
+    }).join("");
+}
+
+
+/* ============================================================
+   NAVIGATION
+============================================================ */
+
+function showPage(page){
+
+  document
+    .querySelectorAll(".page")
+    .forEach(
+      element =>
+        element.classList.remove(
+          "active"
+        )
+    );
+
+
+  const target =
+    $("page-" + page);
+
+
+  if(target){
+
+    target.classList.add(
+      "active"
+    );
+
+  }
+
+
+  document
+    .querySelectorAll(
+      ".nav-btn,.mobile-btn"
+    )
+    .forEach(button => {
+
+      button.classList.toggle(
+        "active",
+        button.dataset.page === page
+      );
+
+    });
+
+
+  window.scrollTo({
+    top:0,
+    behavior:"smooth"
+  });
+}
+
+
+document
+  .querySelectorAll(
+    ".nav-btn,.mobile-btn"
+  )
+  .forEach(button => {
+
+    button.addEventListener(
+      "click",
+      () => {
+
+        showPage(
+          button.dataset.page
+        );
+
+      }
+    );
+
+  });
+
+
+$("backButton")
+  .addEventListener(
+    "click",
+    () => {
+
+      showPage("ai");
+
+    }
+  );
+
+
+/* ============================================================
+   LOAD PRICES
+============================================================ */
+
+async function loadPrices(){
+
+  try{
+
+    $("statusText")
+      .textContent =
+      "讀取後台資料…";
+
+
+    const response =
+      await fetch(
+        DATA_URL +
+        "?t=" +
+        Date.now(),
+        {
+          cache:"no-store"
+        }
+      );
+
+
+    if(!response.ok){
+
+      throw new Error(
+        "prices.json HTTP " +
+        response.status
+      );
+
+    }
+
+
+    const data =
+      await response.json();
+
+
+    extractBackendData(
+      data
+    );
+
+
+    renderAI();
+
+    renderWatchlist();
+
+
+    const generated =
+      data.generated_at ??
+      data.updated_at ??
+      data.date ??
+      "";
+
+
+    $("summaryDate")
+      .textContent =
+      generated
+        ? String(generated).slice(0,10)
+        : "—";
+
+
+    $("statusDot")
+      .classList
+      .remove("error");
+
+
+    $("statusText")
+      .textContent =
+      generated
+        ? "後台資料已載入"
+        : "後台資料已載入";
+
+
+  }catch(error){
+
+    console.error(
+      "prices.json:",
+      error
+    );
+
+
+    $("statusDot")
+      .classList
+      .add("error");
+
+
+    $("statusText")
+      .textContent =
+      "後台資料讀取失敗";
+
+
+    const message = `
+
+      <div class="error-box">
+
+        <strong>
+          無法讀取 Data/prices.json
+        </strong>
+
+        <br><br>
+
+        ${escapeHtml(
+          error.message
+        )}
+
+        <br><br>
+
+        前台沒有自行產生任何股票資料。
+        因此後台資料讀取失敗時，
+        這裡會直接顯示錯誤，
+        不會偷偷用其他資料補上。
+
+      </div>
+
+    `;
+
+
+    $("equityGrid")
+      .innerHTML =
+      message;
+
+    $("etfGrid")
+      .innerHTML =
+      "";
+
+    $("allMarketGrid")
+      .innerHTML =
+      "";
+
+  }
+}
+
+
+/* ============================================================
+   INITIALIZE
+============================================================ */
+
+loadPrices();
+
+loadPortfolio();
+
+loadRisk();
+
+</script>
+
 </body>
 </html>
