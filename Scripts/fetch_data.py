@@ -1,24 +1,28 @@
 # ================================================================
 # 台股 AI 選股系統
-# fetch_data.py V7.7 FINAL
+# fetch_data.py V7.8 FINAL
 #
-# 本版修正：
-# 1. MACD / KD 採「目前維持多方」
-# 2. 不手動指定任何個股 / ETF
-# 3. 不手動寫入 00720B 或任何特定代號
-# 4. 自動建立 top30
-# 5. top30 完整提供 code/name/price/ai_score/signal
-# 6. 新增後台歷史回測系統
-# 7. A/B 回測：
+# V7.8 修正：
+# 1. 修正 backtest 缺少 status = completed 導致 Actions 失敗
+# 2. 新股 / 歷史資料不足股票自動排除，不使整體回測失敗
+# 3. 回測最低歷史資料統一使用 BACKTEST_MIN_HISTORY = 120
+# 4. 回測統計改為保存逐筆報酬，正確計算全市場平均報酬
+# 5. A/B 回測：
 #       A = 當日黃金交叉
 #       B = 目前維持多方
-# 8. 暫定正式選股採 B：目前維持多方
-# 9. 回測資料另存 Data/backtest.json
-# 10. prices.json 同時寫入 backtest_summary
-# 11. 不依賴前台判斷核心條件
-# 12. 不因前台需求修改後台分析結果
-# 13. prices.json 原子寫入
-# 14. 若資料抓取異常，不覆蓋正常舊資料
+# 6. 正式選股採 B：目前維持多方
+# 7. 六項核心條件：
+#       MACD > Signal
+#       RSI > 50
+#       K > D
+#       Volume >= MA5 * 1.5
+#       Close > MA20
+#       MA20 今日 > 昨日 MA20
+# 8. 不手動指定任何個股 / ETF
+# 9. 自動建立 top30
+# 10. prices.json 原子寫入
+# 11. backtest.json 原子寫入
+# 12. 不因個別股票資料不足覆蓋正常流程
 # ================================================================
 
 import os
@@ -34,7 +38,7 @@ import requests
 import yfinance as yf
 
 
-VERSION = "V7.7"
+VERSION = "V7.8"
 
 BASE_DIR = os.path.dirname(
     os.path.dirname(
@@ -103,21 +107,12 @@ BACKTEST_HORIZONS = [
     20,
 ]
 
-
+# 回測需要至少 120 個交易日
 BACKTEST_MIN_HISTORY = 120
 
 
 # ================================================================
 # 六項正式核心條件
-#
-# 正式版：
-#
-# MACD > Signal
-# RSI > 50
-# K > D
-# Volume >= MA5 * 1.5
-# Close > MA20
-# MA20 今日 > 昨日 MA20
 # ================================================================
 
 CORE_CONDITIONS = [
@@ -132,8 +127,6 @@ CORE_CONDITIONS = [
 
 # ================================================================
 # 非股票 / 非 ETF 商品排除
-#
-# 不放入任何特定股票代號。
 # ================================================================
 
 INVALID_SECURITY_KEYWORDS = [
@@ -150,8 +143,21 @@ INVALID_SECURITY_KEYWORDS = [
 
 
 # ================================================================
-# 工具
+# ETF 判斷
 # ================================================================
+
+ETF_CODE_SUFFIXES = {
+    "A",
+    "B",
+    "C",
+    "D",
+    "K",
+    "L",
+    "R",
+    "T",
+    "U",
+}
+
 
 def clean_text(value):
 
@@ -230,32 +236,6 @@ def is_invalid_security(name):
     )
 
 
-# ================================================================
-# ETF 判斷
-#
-# 不指定任何個別 ETF。
-#
-# TPEx ETF 的證券代號有官方商品分類規則：
-# B/C/T/L/R/U/A/D/K 等尾碼可代表不同 ETF 類型。
-#
-# 同時搭配名稱中的 ETF 關鍵字。
-#
-# 00720B 因為是 B 尾碼，會依商品規則自然被判定為 ETF。
-# ================================================================
-
-ETF_CODE_SUFFIXES = {
-    "A",
-    "B",
-    "C",
-    "D",
-    "K",
-    "L",
-    "R",
-    "T",
-    "U",
-}
-
-
 def is_etf(
     code,
     name,
@@ -277,31 +257,17 @@ def is_etf(
         ).upper()
 
         if "ETF" in security_type:
-
             return True
 
-    upper_name = name.upper()
-
-    if "ETF" in upper_name:
-
+    if "ETF" in name.upper():
         return True
-
-    # ------------------------------------------------------------
-    # ETF 代號規則
-    #
-    # 不指定個別代號。
-    # ------------------------------------------------------------
 
     if (
         len(code) >= 5
-        and code[-1]
-        in ETF_CODE_SUFFIXES
+        and code[-1] in ETF_CODE_SUFFIXES
     ):
-
         return True
 
-    # 六碼純數字商品通常包含 ETF / 特殊商品。
-    # 這裡不直接全部視為 ETF，避免誤判。
     return False
 
 
@@ -320,13 +286,9 @@ def yahoo_symbol(
 
     if market == "TWO":
 
-        return (
-            f"{code}.TWO"
-        )
+        return f"{code}.TWO"
 
-    return (
-        f"{code}.TW"
-    )
+    return f"{code}.TW"
 
 
 # ================================================================
@@ -363,15 +325,11 @@ def fetch_twse_universe():
     for item in data:
 
         code = clean_code(
-            item.get(
-                "Code"
-            )
+            item.get("Code")
         )
 
         name = clean_text(
-            item.get(
-                "Name"
-            )
+            item.get("Name")
         )
 
         if not code:
@@ -444,7 +402,6 @@ def fetch_tpex_universe():
                 data,
                 list
             ):
-
                 continue
 
             universe = []
@@ -511,7 +468,6 @@ def fetch_tpex_universe():
                 })
 
             if universe:
-
                 return universe
 
         except Exception as exc:
@@ -520,8 +476,6 @@ def fetch_tpex_universe():
                 "[WARN] TPEx API："
                 f"{exc}"
             )
-
-            continue
 
     return []
 
@@ -564,15 +518,11 @@ def build_universe():
 
     for item in sources:
 
-        code = item[
-            "code"
-        ]
+        code = item["code"]
 
         if code not in combined:
 
-            combined[
-                code
-            ] = item
+            combined[code] = item
 
     return list(
         combined.values()
@@ -581,11 +531,16 @@ def build_universe():
 
 # ================================================================
 # 抓取歷史行情
+#
+# min_history：
+#   一般即時分析至少 30 日
+#   回測呼叫時使用 120 日
 # ================================================================
 
 def download_history(
     code,
-    market
+    market,
+    min_history=30
 ):
 
     symbol = yahoo_symbol(
@@ -606,11 +561,9 @@ def download_history(
 
             df = ticker.history(
 
-                period=
-                    YF_PERIOD,
+                period=YF_PERIOD,
 
-                interval=
-                    YF_INTERVAL,
+                interval=YF_INTERVAL,
 
                 auto_adjust=False,
 
@@ -636,11 +589,7 @@ def download_history(
 
             for column in required:
 
-                if (
-                    column
-                    not in
-                    df.columns
-                ):
+                if column not in df.columns:
 
                     raise RuntimeError(
                         f"缺少 {column}"
@@ -651,26 +600,21 @@ def download_history(
             ].copy()
 
             df = df.dropna(
-                subset=[
-                    "Close"
-                ]
+                subset=["Close"]
             )
 
-            if len(df) < 30:
+            if len(df) < min_history:
 
                 raise RuntimeError(
-                    "歷史資料不足 30 日"
+                    f"歷史資料不足 "
+                    f"{min_history} 日"
                 )
 
             return df
 
         except Exception as exc:
 
-            if (
-                attempt
-                ==
-                MAX_RETRY
-            ):
+            if attempt == MAX_RETRY:
 
                 print(
                     f"[FAIL] "
@@ -708,24 +652,20 @@ def calculate_rsi(
 
     avg_gain = gain.ewm(
 
-        alpha=
-            1 / period,
+        alpha=1 / period,
 
         adjust=False,
 
-        min_periods=
-            period
+        min_periods=period
     ).mean()
 
     avg_loss = loss.ewm(
 
-        alpha=
-            1 / period,
+        alpha=1 / period,
 
         adjust=False,
 
-        min_periods=
-            period
+        min_periods=period
     ).mean()
 
     rs = (
@@ -752,16 +692,12 @@ def calculate_macd(
 ):
 
     ema12 = close.ewm(
-
         span=12,
-
         adjust=False
     ).mean()
 
     ema26 = close.ewm(
-
         span=26,
-
         adjust=False
     ).mean()
 
@@ -771,9 +707,7 @@ def calculate_macd(
     )
 
     signal = macd.ewm(
-
         span=9,
-
         adjust=False
     ).mean()
 
@@ -831,16 +765,12 @@ def calculate_kd(
     )
 
     k = rsv.ewm(
-
         alpha=1 / 3,
-
         adjust=False
     ).mean()
 
     d = k.ewm(
-
         alpha=1 / 3,
-
         adjust=False
     ).mean()
 
@@ -878,10 +808,8 @@ def calculate_indicators(
         .mean()
     )
 
-    df["RSI"] = (
-        calculate_rsi(
-            df["Close"]
-        )
+    df["RSI"] = calculate_rsi(
+        df["Close"]
     )
 
     (
@@ -896,11 +824,8 @@ def calculate_indicators(
         df["K"],
         df["D"]
     ) = calculate_kd(
-
         df["High"],
-
         df["Low"],
-
         df["Close"]
     )
 
@@ -915,8 +840,6 @@ def calculate_indicators(
 
 # ================================================================
 # 六項核心條件
-#
-# 正式版 = 目前維持多方
 # ================================================================
 
 def evaluate_core(
@@ -1040,53 +963,35 @@ def evaluate_core(
     conditions = {
 
         "macd_golden_cross":
-            bool(
-                macd_pass
-            ),
+            bool(macd_pass),
 
         "rsi_over_50":
-            bool(
-                rsi_pass
-            ),
+            bool(rsi_pass),
 
         "kd_golden_cross":
-            bool(
-                kd_pass
-            ),
+            bool(kd_pass),
 
         "volume_expand":
-            bool(
-                volume_pass
-            ),
+            bool(volume_pass),
 
         "price_over_ma20":
-            bool(
-                price_ma20_pass
-            ),
+            bool(price_ma20_pass),
 
         "ma20_up":
-            bool(
-                ma20_up_pass
-            ),
+            bool(ma20_up_pass),
     }
 
     score = sum(
         conditions.values()
     )
 
-    conditions[
-        "core_score"
-    ] = int(
+    conditions["core_score"] = int(
         score
     )
 
-    conditions[
-        "core_total"
-    ] = 6
+    conditions["core_total"] = 6
 
-    conditions[
-        "core_pass"
-    ] = (
+    conditions["core_pass"] = (
         score == 6
     )
 
@@ -1095,16 +1000,6 @@ def evaluate_core(
 
 # ================================================================
 # A/B 歷史訊號
-#
-# A：
-# 當日 MACD 黃金交叉
-# 當日 KD 黃金交叉
-#
-# B：
-# MACD > Signal
-# K > D
-#
-# 其他四項完全相同。
 # ================================================================
 
 def calculate_backtest_signals(
@@ -1122,8 +1017,7 @@ def calculate_backtest_signals(
 
         df["MACD"].shift(1)
         <=
-        df["MACD_SIGNAL"]
-            .shift(1)
+        df["MACD_SIGNAL"].shift(1)
     )
 
     df["A_KD"] = (
@@ -1177,61 +1071,33 @@ def calculate_backtest_signals(
         df["MA20"].shift(1)
     )
 
-    # ------------------------------------------------------------
-    # A = 當日交叉
-    # ------------------------------------------------------------
-
     df["A_SIGNAL"] = (
 
         df["A_MACD"]
-
         &
-
         df["RSI_PASS"]
-
         &
-
         df["A_KD"]
-
         &
-
         df["VOLUME_PASS"]
-
         &
-
         df["PRICE_MA20_PASS"]
-
         &
-
         df["MA20_UP_PASS"]
     )
-
-    # ------------------------------------------------------------
-    # B = 目前維持多方
-    # ------------------------------------------------------------
 
     df["B_SIGNAL"] = (
 
         df["B_MACD"]
-
         &
-
         df["RSI_PASS"]
-
         &
-
         df["B_KD"]
-
         &
-
         df["VOLUME_PASS"]
-
         &
-
         df["PRICE_MA20_PASS"]
-
         &
-
         df["MA20_UP_PASS"]
     )
 
@@ -1240,13 +1106,6 @@ def calculate_backtest_signals(
 
 # ================================================================
 # 單一股票 A/B 回測
-#
-# 使用「訊號日收盤價」作為進場基準。
-#
-# forward_return：
-# 未來 N 個交易日收盤 / 訊號日收盤 - 1
-#
-# 不偷看未來資料。
 # ================================================================
 
 def backtest_security(
@@ -1256,7 +1115,6 @@ def backtest_security(
 ):
 
     if len(df) < BACKTEST_MIN_HISTORY:
-
         return None
 
     df = calculate_backtest_signals(
@@ -1319,33 +1177,25 @@ def backtest_security(
                     horizon
                 )
 
-                if (
-                    future_idx
-                    >=
-                    len(df)
-                ):
+                if future_idx >= len(df):
                     continue
 
                 entry = float(
-                    df.iloc[idx][
-                        "Close"
-                    ]
+                    df.iloc[idx]["Close"]
                 )
 
                 exit_price = float(
-                    df.iloc[
-                        future_idx
-                    ][
-                        "Close"
-                    ]
+                    df.iloc[future_idx]["Close"]
                 )
 
                 if (
                     entry <= 0
                     or
-                    not math.isfinite(
-                        entry
-                    )
+                    not math.isfinite(entry)
+                    or
+                    not math.isfinite(exit_price)
+                    or
+                    exit_price <= 0
                 ):
                     continue
 
@@ -1355,9 +1205,8 @@ def backtest_security(
                     1
                 )
 
-                if math.isfinite(
-                    ret
-                ):
+                if math.isfinite(ret):
+
                     returns.append(
                         ret
                     )
@@ -1373,33 +1222,27 @@ def backtest_security(
                     for r in returns
                 )
 
-                win_rate = (
-                    win_count /
-                    count *
-                    100
-                )
-
                 average_return = (
-                    np.mean(
-                        returns
+                    float(
+                        np.mean(returns)
                     ) * 100
                 )
 
                 median_return = (
-                    np.median(
-                        returns
+                    float(
+                        np.median(returns)
                     ) * 100
                 )
 
                 max_return = (
-                    np.max(
-                        returns
+                    float(
+                        np.max(returns)
                     ) * 100
                 )
 
                 min_return = (
-                    np.min(
-                        returns
+                    float(
+                        np.min(returns)
                     ) * 100
                 )
 
@@ -1407,15 +1250,13 @@ def backtest_security(
 
                 win_count = 0
 
-                win_rate = 0
+                average_return = 0.0
 
-                average_return = 0
+                median_return = 0.0
 
-                median_return = 0
+                max_return = 0.0
 
-                max_return = 0
-
-                min_return = 0
+                min_return = 0.0
 
             strategy_result[
                 f"{horizon}d"
@@ -1435,56 +1276,68 @@ def backtest_security(
 
                 "win_rate":
                     round(
-                        float(
-                            win_rate
-                        ),
+                        (
+                            win_count /
+                            count *
+                            100
+                        )
+                        if count
+                        else 0.0,
                         2
                     ),
 
                 "average_return":
                     round(
-                        float(
-                            average_return
-                        ),
+                        average_return,
                         4
                     ),
 
                 "median_return":
                     round(
-                        float(
-                            median_return
-                        ),
+                        median_return,
                         4
                     ),
 
                 "max_return":
                     round(
-                        float(
-                            max_return
-                        ),
+                        max_return,
                         4
                     ),
 
                 "min_return":
                     round(
-                        float(
-                            min_return
-                        ),
+                        min_return,
                         4
                     ),
+
+                # ------------------------------------------------
+                # 保留逐筆報酬，供全市場統計使用
+                # ------------------------------------------------
+
+                "returns":
+                    [
+                        round(
+                            float(r) * 100,
+                            6
+                        )
+                        for r in returns
+                    ],
             }
 
         result[
             "strategies"
-        ][
-            strategy_name
-        ] = strategy_result
+        ][strategy_name] = (
+            strategy_result
+        )
 
     return result
 
 
 # ================================================================
-# 全市場回測
+# 全市場回測統計
+#
+# 直接使用所有股票的逐筆報酬。
+# 不再用「平均報酬 × 筆數」重建。
 # ================================================================
 
 def aggregate_backtest(
@@ -1500,76 +1353,68 @@ def aggregate_backtest(
 
     for strategy in strategies:
 
-        summary[
-            strategy
-        ] = {}
+        summary[strategy] = {}
 
         for horizon in BACKTEST_HORIZONS:
 
-            signal_count = 0
-
-            win_count = 0
-
-            return_values = []
+            all_returns = []
 
             for record in records:
 
                 stats = (
                     record
-                    .get(
-                        "strategies",
-                        {}
-                    )
-                    .get(
-                        strategy,
-                        {}
-                    )
+                    .get("strategies", {})
+                    .get(strategy, {})
                     .get(
                         f"{horizon}d",
                         {}
                     )
                 )
 
-                signal_count += int(
-                    stats.get(
-                        "signals",
-                        0
-                    )
+                returns = stats.get(
+                    "returns",
+                    []
                 )
 
-                win_count += int(
-                    stats.get(
-                        "wins",
-                        0
-                    )
-                )
+                if isinstance(
+                    returns,
+                    list
+                ):
 
-                # ------------------------------------------------
-                # 由平均報酬 × 筆數重建總樣本報酬
-                # 但正式平均值仍由所有股票逐筆資料重新計算
-                # ------------------------------------------------
+                    for value in returns:
 
-                avg = float(
-                    stats.get(
-                        "average_return",
-                        0
-                    )
-                )
+                        try:
 
-                count = int(
-                    stats.get(
-                        "signals",
-                        0
-                    )
-                )
+                            value = float(
+                                value
+                            )
 
-                if count:
+                            if math.isfinite(
+                                value
+                            ):
 
-                    return_values.extend(
-                        [avg] * count
-                    )
+                                all_returns.append(
+                                    value
+                                )
+
+                        except Exception:
+                            continue
+
+            signal_count = len(
+                all_returns
+            )
+
+            win_count = sum(
+                r > 0
+                for r in all_returns
+            )
 
             if signal_count:
+
+                losses = (
+                    signal_count -
+                    win_count
+                )
 
                 win_rate = (
                     win_count /
@@ -1577,41 +1422,65 @@ def aggregate_backtest(
                     100
                 )
 
-                avg_return = (
-                    sum(
-                        return_values
+                average_return = (
+                    float(
+                        np.mean(
+                            all_returns
+                        )
                     )
-                    /
-                    len(
-                        return_values
+                )
+
+                median_return = (
+                    float(
+                        np.median(
+                            all_returns
+                        )
                     )
-                    if return_values
-                    else 0
+                )
+
+                max_return = (
+                    float(
+                        np.max(
+                            all_returns
+                        )
+                    )
+                )
+
+                min_return = (
+                    float(
+                        np.min(
+                            all_returns
+                        )
+                    )
+
                 )
 
             else:
 
-                win_rate = 0
+                losses = 0
 
-                avg_return = 0
+                win_rate = 0.0
 
-            summary[
-                strategy
-            ][
+                average_return = 0.0
+
+                median_return = 0.0
+
+                max_return = 0.0
+
+                min_return = 0.0
+
+            summary[strategy][
                 f"{horizon}d"
             ] = {
 
                 "signals":
-                    signal_count,
+                    int(signal_count),
 
                 "wins":
-                    win_count,
+                    int(win_count),
 
                 "losses":
-                    (
-                        signal_count -
-                        win_count
-                    ),
+                    int(losses),
 
                 "win_rate":
                     round(
@@ -1621,16 +1490,28 @@ def aggregate_backtest(
 
                 "average_return":
                     round(
-                        avg_return,
+                        average_return,
+                        4
+                    ),
+
+                "median_return":
+                    round(
+                        median_return,
+                        4
+                    ),
+
+                "max_return":
+                    round(
+                        max_return,
+                        4
+                    ),
+
+                "min_return":
+                    round(
+                        min_return,
                         4
                     ),
             }
-
-    # ------------------------------------------------------------
-    # 以 10 日勝率作為暫定比較基準
-    #
-    # 若未來需要改成 5 / 20 日，只改這裡。
-    # ------------------------------------------------------------
 
     comparison_horizon = 10
 
@@ -1638,7 +1519,7 @@ def aggregate_backtest(
         summary[
             "A_today_cross"
         ][
-            "10d"
+            f"{comparison_horizon}d"
         ][
             "win_rate"
         ]
@@ -1648,39 +1529,51 @@ def aggregate_backtest(
         summary[
             "B_current_bullish"
         ][
-            "10d"
+            f"{comparison_horizon}d"
         ][
             "win_rate"
         ]
     )
 
+    a_signals = (
+        summary[
+            "A_today_cross"
+        ][
+            f"{comparison_horizon}d"
+        ][
+            "signals"
+        ]
+    )
+
+    b_signals = (
+        summary[
+            "B_current_bullish"
+        ][
+            f"{comparison_horizon}d"
+        ][
+            "signals"
+        ]
+    )
+
     if (
-        a_rate == 0
+        a_signals == 0
         and
-        b_rate == 0
+        b_signals == 0
     ):
 
-        better = (
-            "insufficient_data"
-        )
+        better = "insufficient_data"
 
     elif b_rate > a_rate:
 
-        better = (
-            "B_current_bullish"
-        )
+        better = "B_current_bullish"
 
     elif a_rate > b_rate:
 
-        better = (
-            "A_today_cross"
-        )
+        better = "A_today_cross"
 
     else:
 
-        better = (
-            "tie"
-        )
+        better = "tie"
 
     return {
 
@@ -1705,7 +1598,7 @@ def aggregate_backtest(
 
 
 # ================================================================
-# 回測所有股票
+# 全市場回測
 # ================================================================
 
 def run_backtest(
@@ -1726,6 +1619,11 @@ def run_backtest(
     )
 
     print(
+        f"最低歷史資料："
+        f"{BACKTEST_MIN_HISTORY} 日"
+    )
+
+    print(
         "A：當日黃金交叉"
     )
 
@@ -1743,27 +1641,25 @@ def run_backtest(
         universe
     )
 
+    skipped_history = 0
+
+    skipped_etf = 0
+
     for index, item in enumerate(
         universe,
         start=1
     ):
 
-        code = item[
-            "code"
-        ]
+        code = item["code"]
 
-        name = item[
-            "name"
-        ]
-
-        # --------------------------------------------------------
-        # ETF 不參與短期個股核心策略回測
-        # --------------------------------------------------------
+        name = item["name"]
 
         if item.get(
             "is_etf",
             False
         ):
+
+            skipped_etf += 1
 
             continue
 
@@ -1773,14 +1669,19 @@ def run_backtest(
         )
 
         df = download_history(
+
             code,
-            item["market"]
+
+            item["market"],
+
+            min_history=
+                BACKTEST_MIN_HISTORY
         )
 
         if df is None:
-            continue
 
-        if len(df) < BACKTEST_MIN_HISTORY:
+            skipped_history += 1
+
             continue
 
         df = calculate_indicators(
@@ -1788,8 +1689,11 @@ def run_backtest(
         )
 
         record = backtest_security(
+
             code,
+
             name,
+
             df
         )
 
@@ -1803,10 +1707,19 @@ def run_backtest(
         records
     )
 
-    return {
+    # ------------------------------------------------------------
+    # 重要：
+    # status 放在 run_backtest 最外層。
+    # validate_backtest() 直接檢查這裡。
+    # ------------------------------------------------------------
+
+    result = {
 
         "version":
             VERSION,
+
+        "status":
+            "completed",
 
         "generated_at":
             datetime.now(
@@ -1819,8 +1732,17 @@ def run_backtest(
         "horizons":
             BACKTEST_HORIZONS,
 
+        "minimum_history":
+            BACKTEST_MIN_HISTORY,
+
         "sample_stocks":
             len(records),
+
+        "skipped_etf":
+            skipped_etf,
+
+        "skipped_history":
+            skipped_history,
 
         "comparison":
             summary,
@@ -1828,6 +1750,8 @@ def run_backtest(
         "stocks":
             records,
     }
+
+    return result
 
 
 # ================================================================
@@ -1842,9 +1766,7 @@ def calculate_strength(
 
     score = 0.0
 
-    rsi = latest[
-        "RSI"
-    ]
+    rsi = latest["RSI"]
 
     if pd.notna(rsi):
 
@@ -1859,13 +1781,9 @@ def calculate_strength(
             )
         )
 
-    close = latest[
-        "Close"
-    ]
+    close = latest["Close"]
 
-    ma20 = latest[
-        "MA20"
-    ]
+    ma20 = latest["MA20"]
 
     if (
         pd.notna(close)
@@ -1893,15 +1811,11 @@ def calculate_strength(
         pd.notna(
             latest["MACD"]
         )
-
         and
-
         pd.notna(
             latest["MACD_SIGNAL"]
         )
-
         and
-
         latest["MACD"]
         >
         latest["MACD_SIGNAL"]
@@ -1913,15 +1827,11 @@ def calculate_strength(
         pd.notna(
             latest["K"]
         )
-
         and
-
         pd.notna(
             latest["D"]
         )
-
         and
-
         latest["K"]
         >
         latest["D"]
@@ -1933,15 +1843,11 @@ def calculate_strength(
         pd.notna(
             latest["Volume"]
         )
-
         and
-
         pd.notna(
             latest["VOL_MA5"]
         )
-
         and
-
         latest["VOL_MA5"] > 0
     ):
 
@@ -1975,10 +1881,6 @@ def calculate_strength(
 
 # ================================================================
 # Signal
-#
-# 給前台簡潔使用。
-#
-# 不把六項核心邏輯塞進 signal。
 # ================================================================
 
 def make_signal(
@@ -2013,17 +1915,11 @@ def analyze_security(
     item
 ):
 
-    code = item[
-        "code"
-    ]
+    code = item["code"]
 
-    name = item[
-        "name"
-    ]
+    name = item["name"]
 
-    market = item[
-        "market"
-    ]
+    market = item["market"]
 
     security_type = (
 
@@ -2035,13 +1931,16 @@ def analyze_security(
         )
 
         else
-
         "stock"
     )
 
     df = download_history(
+
         code,
-        market
+
+        market,
+
+        min_history=30
     )
 
     if df is None:
@@ -2067,11 +1966,8 @@ def analyze_security(
 
     if (
         close is not None
-
         and
-
-        previous_close
-        not in (
+        previous_close not in (
             None,
             0
         )
@@ -2138,19 +2034,14 @@ def analyze_security(
                 )
 
                 if (
-
                     pd.notna(
                         latest["Volume"]
                     )
-
                     and
-
                     pd.notna(
                         latest["VOL_MA5"]
                     )
-
                     and
-
                     latest["VOL_MA5"] > 0
                 )
 
@@ -2213,39 +2104,30 @@ def analyze_security(
             core
         )
 
-        result[
-            "strength_score"
-        ] = calculate_strength(
-            df
+        result["strength_score"] = (
+            calculate_strength(df)
         )
 
-        result[
-            "ai_score"
-        ] = round(
+        result["ai_score"] = round(
 
             (
-                result[
-                    "strength_score"
-                ] * 0.6
-
-                +
-
-                (
-                    result[
-                        "core_score"
-                    ] / 6
-                ) * 40
-            ),
+                result["strength_score"]
+                * 0.6
+            )
+            +
+            (
+                result["core_score"]
+                / 6
+            )
+            * 40,
 
             2
         )
 
-        result[
-            "signal"
-        ] = make_signal(
-            result[
-                "core_score"
-            ],
+        result["signal"] = make_signal(
+
+            result["core_score"],
+
             "stock"
         )
 
@@ -2281,21 +2163,17 @@ def analyze_security(
                 None,
         })
 
-        result[
-            "strength_score"
-        ] = calculate_strength(
-            df
+        result["strength_score"] = (
+            calculate_strength(df)
         )
 
-        result[
-            "ai_score"
-        ] = result[
-            "strength_score"
-        ]
+        result["ai_score"] = (
+            result["strength_score"]
+        )
 
-        result[
-            "signal"
-        ] = "強勢 ETF"
+        result["signal"] = (
+            "強勢 ETF"
+        )
 
     return result
 
@@ -2413,8 +2291,6 @@ def sort_etfs(
 
 # ================================================================
 # 今日精選
-#
-# 只有真正 6 / 6 才能進入。
 # ================================================================
 
 def get_today_selected(
@@ -2514,30 +2390,14 @@ def build_output(
                 "%Y-%m-%d"
             ),
 
-        # --------------------------------------------------------
-        # 全部股票
-        # --------------------------------------------------------
-
         "stocks":
             stocks,
-
-        # --------------------------------------------------------
-        # 全部 ETF
-        # --------------------------------------------------------
 
         "etfs":
             etfs,
 
-        # --------------------------------------------------------
-        # Actions 驗證需要
-        # --------------------------------------------------------
-
         "top30":
             top30,
-
-        # --------------------------------------------------------
-        # 前 10
-        # --------------------------------------------------------
 
         "strong_stocks":
             strong_stocks,
@@ -2551,10 +2411,6 @@ def build_output(
         "top_etfs":
             strong_etfs,
 
-        # --------------------------------------------------------
-        # 今日精選
-        # --------------------------------------------------------
-
         "today_selected":
             today_selected,
 
@@ -2564,19 +2420,11 @@ def build_output(
         "featured_stocks":
             today_selected,
 
-        # --------------------------------------------------------
-        # 回測
-        # --------------------------------------------------------
-
         "backtest_summary":
             backtest.get(
                 "comparison",
                 {}
             ),
-
-        # --------------------------------------------------------
-        # 統計
-        # --------------------------------------------------------
 
         "statistics": {
 
@@ -2604,11 +2452,13 @@ def build_output(
                     "sample_stocks",
                     0
                 ),
-        },
 
-        # --------------------------------------------------------
-        # 核心條件
-        # --------------------------------------------------------
+            "backtest_skipped_history":
+                backtest.get(
+                    "skipped_history",
+                    0
+                ),
+        },
 
         "core_conditions": {
 
@@ -2684,7 +2534,6 @@ def atomic_write_json(
             )
 
         except Exception:
-
             pass
 
         raise
@@ -2785,6 +2634,11 @@ def validate_backtest(
     data
 ):
 
+    # ------------------------------------------------------------
+    # V7.8：
+    # status 現在位於 run_backtest() 最外層。
+    # ------------------------------------------------------------
+
     if data.get(
         "status"
     ) != "completed":
@@ -2801,6 +2655,15 @@ def validate_backtest(
 
         raise RuntimeError(
             "backtest comparison 為空"
+        )
+
+    if comparison.get(
+        "status"
+    ) != "completed":
+
+        raise RuntimeError(
+            "backtest comparison "
+            "未完成"
         )
 
     strategies = comparison.get(
@@ -2824,6 +2687,21 @@ def validate_backtest(
                 f"缺少回測策略："
                 f"{strategy}"
             )
+
+        for horizon in BACKTEST_HORIZONS:
+
+            key = f"{horizon}d"
+
+            if key not in strategies[
+                strategy
+            ]:
+
+                raise RuntimeError(
+
+                    f"缺少回測期間："
+                    f"{strategy} "
+                    f"{key}"
+                )
 
     return True
 
@@ -2961,11 +2839,6 @@ def main():
 
     # ============================================================
     # 4. 後台 A/B 回測
-    #
-    # 這裡重新抓取 2 年資料。
-    #
-    # 目的：
-    # 不使用今天的結果假裝歷史回測。
     # ============================================================
 
     print(
@@ -3029,10 +2902,6 @@ def main():
         start
     )
 
-    # ============================================================
-    # 結果
-    # ============================================================
-
     comparison = backtest[
         "comparison"
     ]
@@ -3085,8 +2954,18 @@ def main():
     )
 
     print(
+        f"A 10日訊號數："
+        f"{comparison['strategies']['A_today_cross']['10d']['signals']}"
+    )
+
+    print(
         f"A 10日勝率："
         f"{comparison['strategies']['A_today_cross']['10d']['win_rate']}%"
+    )
+
+    print(
+        f"B 10日訊號數："
+        f"{comparison['strategies']['B_current_bullish']['10d']['signals']}"
     )
 
     print(
