@@ -1,0 +1,68 @@
+{
+  "version": "V8.0",
+  "status": "initializing",
+  "generated_at": null,
+  "data_period": "2y",
+  "horizons": [
+    5,
+    10,
+    20
+  ],
+  "sample_stocks": 0,
+  "comparison": {
+    "status": "initializing",
+    "comparison_horizon": 10,
+    "strategy_A": "當日黃金交叉",
+    "strategy_B": "目前維持多方",
+    "better_by_win_rate": "insufficient_data",
+    "strategies": {
+      "A_today_cross": {
+        "5d": {
+          "signals": 0,
+          "wins": 0,
+          "losses": 0,
+          "win_rate": 0,
+          "average_return": 0
+        },
+        "10d": {
+          "signals": 0,
+          "wins": 0,
+          "losses": 0,
+          "win_rate": 0,
+          "average_return": 0
+        },
+        "20d": {
+          "signals": 0,
+          "wins": 0,
+          "losses": 0,
+          "win_rate": 0,
+          "average_return": 0
+        }
+      },
+      "B_current_bullish": {
+        "5d": {
+          "signals": 0,
+          "wins": 0,
+          "losses": 0,
+          "win_rate": 0,
+          "average_return": 0
+        },
+        "10d": {
+          "signals": 0,
+          "wins": 0,
+          "losses": 0,
+          "win_rate": 0,
+          "average_return": 0
+        },
+        "20d": {
+          "signals": 0,
+          "wins": 0,
+          "losses": 0,
+          "win_rate": 0,
+          "average_return": 0
+        }
+      }
+    }
+  },
+  "stocks": []
+}
