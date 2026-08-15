@@ -1,35 +1,30 @@
 # ================================================================
 # 台股 AI 選股系統
-# fetch_data.py V8.1 FINAL
+# fetch_data.py V8.1 FAST FINAL
 #
-# V8.1 BACKEND DATA ENGINE
-#
-# 掃描範圍：
-#   1. TWSE 上市股票
-#   2. TPEx 上櫃股票
-#   3. TWSE ETF / 基金
-#   4. TPEx ETF
-#
-# 核心：
-#   - RSI
-#   - MACD
-#   - KD
-#   - MA5 / MA20 / MA60
+# V8.1：
+#   - TWSE 上市股票
+#   - TPEx 上櫃股票
+#   - TWSE ETF
+#   - TPEx ETF
+#   - Yahoo Finance 批次下載
+#   - 掃描與回測共用歷史資料
+#   - RSI / MACD / KD / MA5 / MA20 / MA60
 #   - 成交量 / MA5
 #   - 六項核心條件
 #   - 今日 6/6
 #   - AI Score
 #   - Top30
 #   - A/B 歷史回測
+#   - Atomic JSON Write
 #
 # Data Contract：
 #   version       = V8.1
-#   schema_version = prices.v8
+#   schema_version = prices.v8.1
 #
 # 前台：
 #   READ ONLY
 #   不重新計算
-#
 # ================================================================
 
 import os
@@ -50,7 +45,7 @@ import yfinance as yf
 # ================================================================
 
 VERSION = "V8.1"
-SCHEMA_VERSION = "prices.v8"
+SCHEMA_VERSION = "prices.v8.1"
 
 BASE_DIR = os.path.dirname(
     os.path.dirname(
@@ -89,17 +84,15 @@ TW_TZ = timezone(
 
 
 # ================================================================
-# API / 行情設定
+# Yahoo 設定
 # ================================================================
 
 YF_PERIOD = "2y"
 YF_INTERVAL = "1d"
 
-MAX_RETRY = 3
-RETRY_DELAY = 2
-
-BATCH_SIZE = 40
-BATCH_DELAY = 1.0
+DOWNLOAD_BATCH_SIZE = 80
+MAX_BATCH_RETRY = 3
+BATCH_RETRY_DELAY = 3
 
 TOP30 = 30
 
@@ -127,7 +120,7 @@ CORE_CONDITIONS = [
 
 
 # ================================================================
-# 排除商品
+# 排除特殊證券
 # ================================================================
 
 INVALID_SECURITY_KEYWORDS = [
@@ -139,25 +132,8 @@ INVALID_SECURITY_KEYWORDS = [
     "海外存託憑證",
     "存託憑證",
     "可轉債",
-    "轉換公司債",
-    "公司債"
+    "轉換公司債"
 ]
-
-
-# ================================================================
-# Session
-# ================================================================
-
-SESSION = requests.Session()
-
-SESSION.headers.update({
-    "User-Agent":
-        "Mozilla/5.0 "
-        "(Windows NT 10.0; Win64; x64) "
-        "AppleWebKit/537.36 "
-        "(KHTML, like Gecko) "
-        "Chrome/126.0 Safari/537.36"
-})
 
 
 # ================================================================
@@ -180,7 +156,9 @@ def clean_text(value):
 
 def clean_code(value):
 
-    value = clean_text(value).upper()
+    value = clean_text(
+        value
+    ).upper()
 
     if value.endswith(".TWO"):
         value = value[:-4]
@@ -214,13 +192,8 @@ def safe_int(value):
 
     try:
 
-        value = float(value)
-
-        if not math.isfinite(value):
-            return 0
-
         return int(
-            value
+            float(value)
         )
 
     except Exception:
@@ -230,49 +203,13 @@ def safe_int(value):
 
 def is_invalid_security(name):
 
-    name = clean_text(name)
+    name = clean_text(
+        name
+    )
 
     return any(
         keyword in name
         for keyword in INVALID_SECURITY_KEYWORDS
-    )
-
-
-def request_json(
-    url,
-    timeout=30
-):
-
-    last_error = None
-
-    for attempt in range(
-        1,
-        MAX_RETRY + 1
-    ):
-
-        try:
-
-            response = SESSION.get(
-                url,
-                timeout=timeout
-            )
-
-            response.raise_for_status()
-
-            return response.json()
-
-        except Exception as exc:
-
-            last_error = exc
-
-            if attempt < MAX_RETRY:
-
-                time.sleep(
-                    RETRY_DELAY
-                )
-
-    raise RuntimeError(
-        f"API 取得失敗：{url} / {last_error}"
     )
 
 
@@ -282,12 +219,14 @@ def request_json(
 
 def is_etf_code(code):
 
-    code = clean_code(code)
+    code = clean_code(
+        code
+    )
 
     if not code:
         return False
 
-    # 台灣 ETF 主要集中在 00xx / 00xxx 區域
+    # 台灣 ETF 主要集中於 00 開頭
     if code.startswith("00"):
 
         if len(code) in (
@@ -306,9 +245,13 @@ def is_etf(
     security_type=None
 ):
 
-    code = clean_code(code)
+    code = clean_code(
+        code
+    )
 
-    name = clean_text(name)
+    name = clean_text(
+        name
+    )
 
     if security_type:
 
@@ -316,34 +259,13 @@ def is_etf(
             security_type
         ).upper()
 
-        if (
-            "ETF" in security_type
-            or
-            "EXCHANGE TRADED" in security_type
-        ):
-
+        if "ETF" in security_type:
             return True
 
-    upper_name = name.upper()
-
-    if "ETF" in upper_name:
-
-        return True
-
-    if "指數股票型基金" in name:
-
-        return True
-
-    if "交易所交易基金" in name:
-
-        return True
-
-    if "主動式交易所交易基金" in name:
-
+    if "ETF" in name.upper():
         return True
 
     if is_etf_code(code):
-
         return True
 
     return False
@@ -358,81 +280,35 @@ def yahoo_symbol(
     market
 ):
 
-    code = clean_code(code)
+    code = clean_code(
+        code
+    )
 
     if market == "TWO":
-
         return f"{code}.TWO"
 
     return f"{code}.TW"
 
 
 # ================================================================
-# 建立 Universe Record
+# TWSE Universe
 # ================================================================
 
-def make_universe_record(
-    code,
-    name,
-    market,
-    security_type=None
-):
-
-    code = clean_code(code)
-
-    name = clean_text(name)
-
-    if not code:
-        return None
-
-    if not code.isalnum():
-        return None
-
-    if is_invalid_security(name):
-        return None
-
-    security_is_etf = is_etf(
-        code,
-        name,
-        security_type
-    )
-
-    return {
-
-        "code":
-            code,
-
-        "name":
-            name,
-
-        "market":
-            market,
-
-        "type":
-            "etf"
-            if security_is_etf
-            else "stock",
-
-        "is_etf":
-            security_is_etf
-
-    }
-
-
-# ================================================================
-# TWSE 股票
-# ================================================================
-
-def fetch_twse_stocks():
+def fetch_twse_universe():
 
     url = (
         "https://openapi.twse.com.tw/"
         "v1/exchangeReport/STOCK_DAY_ALL"
     )
 
-    data = request_json(
-        url
+    response = requests.get(
+        url,
+        timeout=30
     )
+
+    response.raise_for_status()
+
+    data = response.json()
 
     if not isinstance(
         data,
@@ -440,177 +316,19 @@ def fetch_twse_stocks():
     ):
 
         raise RuntimeError(
-            "TWSE STOCK_DAY_ALL 格式錯誤"
+            "TWSE API 回傳格式錯誤"
         )
 
     universe = []
 
     for item in data:
-
-        record = make_universe_record(
-
-            item.get("Code"),
-
-            item.get("Name"),
-
-            "TW"
-
-        )
-
-        if record is None:
-            continue
-
-        # STOCK_DAY_ALL 是上市股票資料，
-        # 這裡只保留真正股票。
-        if record["type"] != "stock":
-            continue
-
-        universe.append(
-            record
-        )
-
-    return universe
-
-
-# ================================================================
-# TPEx 股票
-# ================================================================
-
-def fetch_tpex_stocks():
-
-    url = (
-        "https://www.tpex.org.tw/"
-        "openapi/v1/"
-        "tpex_mainboard_daily_close_quotes"
-    )
-
-    data = request_json(
-        url
-    )
-
-    if not isinstance(
-        data,
-        list
-    ):
-
-        raise RuntimeError(
-            "TPEx API 格式錯誤"
-        )
-
-    universe = []
-
-    for item in data:
-
-        code = (
-            item.get(
-                "SecuritiesCompanyCode"
-            )
-            or
-            item.get("Code")
-            or
-            item.get("股票代號")
-        )
-
-        name = (
-            item.get(
-                "CompanyName"
-            )
-            or
-            item.get("Name")
-            or
-            item.get("公司名稱")
-        )
-
-        record = make_universe_record(
-            code,
-            name,
-            "TWO"
-        )
-
-        if record is None:
-            continue
-
-        if record["type"] != "stock":
-            continue
-
-        universe.append(
-            record
-        )
-
-    return universe
-
-
-# ================================================================
-# TWSE 基金 / ETF
-#
-# TWSE 官方 OpenData 的基金基本資料。
-#
-# /opendata/t187ap47_L
-# ================================================================
-
-def fetch_twse_etfs():
-
-    url = (
-        "https://openapi.twse.com.tw/"
-        "v1/opendata/t187ap47_L"
-    )
-
-    try:
-
-        data = request_json(
-            url
-        )
-
-    except Exception as exc:
-
-        print(
-            "[WARN] TWSE ETF API 取得失敗："
-            f"{exc}"
-        )
-
-        return []
-
-    if not isinstance(
-        data,
-        list
-    ):
-
-        print(
-            "[WARN] TWSE ETF API 格式不是 list"
-        )
-
-        return []
-
-    universe = []
-
-    for item in data:
-
-        code = (
-            item.get("基金代號")
-            or
-            item.get("代號")
-            or
-            item.get("Code")
-            or
-            item.get("SecuritiesCompanyCode")
-        )
-
-        name = (
-            item.get("基金名稱")
-            or
-            item.get("名稱")
-            or
-            item.get("Name")
-            or
-            item.get("公司名稱")
-        )
 
         code = clean_code(
-            code
+            item.get("Code")
         )
 
         name = clean_text(
-            name
+            item.get("Name")
         )
 
         if not code:
@@ -619,19 +337,17 @@ def fetch_twse_etfs():
         if not code.isalnum():
             continue
 
-        if is_invalid_security(name):
-            continue
-
-        # 基金 API 中可能包含非 ETF 基金，
-        # 以名稱 / 代號判斷。
-        if not is_etf(
-            code,
-            name,
-            "ETF"
+        if is_invalid_security(
+            name
         ):
             continue
 
-        record = {
+        security_is_etf = is_etf(
+            code,
+            name
+        )
+
+        universe.append({
 
             "code":
                 code,
@@ -643,114 +359,66 @@ def fetch_twse_etfs():
                 "TW",
 
             "type":
-                "etf",
+                "etf"
+                if security_is_etf
+                else "stock",
 
             "is_etf":
-                True
+                security_is_etf
 
-        }
-
-        universe.append(
-            record
-        )
+        })
 
     return universe
 
 
 # ================================================================
-# TPEx ETF
-#
-# TPEx API 沒有把 ETF 放進
-# tpex_mainboard_daily_close_quotes。
-#
-# 因此這裡使用 TPEx ETF 商品頁提供的
-# ETF 類別資料來源。
-#
-# 同時保留一組代號型 ETF 防呆。
+# TPEx Universe
 # ================================================================
 
-def fetch_tpex_etfs():
+def fetch_tpex_universe():
 
-    candidates = []
+    url = (
+        "https://www.tpex.org.tw/"
+        "openapi/v1/"
+        "tpex_mainboard_daily_close_quotes"
+    )
 
-    # ------------------------------------------------------------
-    # 方法 1：
-    # TPEx ETF 商品 API
-    # ------------------------------------------------------------
+    response = requests.get(
+        url,
+        timeout=30
+    )
 
-    possible_urls = [
+    response.raise_for_status()
 
-        (
-            "https://www.tpex.org.tw/"
-            "openapi/v1/"
-            "tpex_etf"
-        ),
+    data = response.json()
 
-        (
-            "https://www.tpex.org.tw/"
-            "openapi/v1/"
-            "tpex_etf_latest"
+    if not isinstance(
+        data,
+        list
+    ):
+
+        raise RuntimeError(
+            "TPEx API 回傳格式錯誤"
         )
-
-    ]
-
-    for url in possible_urls:
-
-        try:
-
-            data = request_json(
-                url
-            )
-
-            if isinstance(
-                data,
-                list
-            ):
-
-                candidates.extend(
-                    data
-                )
-
-                if candidates:
-                    break
-
-        except Exception:
-            continue
 
     universe = []
 
-    # ------------------------------------------------------------
-    # 解析 API
-    # ------------------------------------------------------------
-
-    for item in candidates:
-
-        code = (
-            item.get("SecuritiesCompanyCode")
-            or
-            item.get("Code")
-            or
-            item.get("代號")
-            or
-            item.get("證券代號")
-        )
-
-        name = (
-            item.get("CompanyName")
-            or
-            item.get("Name")
-            or
-            item.get("名稱")
-            or
-            item.get("證券名稱")
-        )
+    for item in data:
 
         code = clean_code(
-            code
+            item.get(
+                "SecuritiesCompanyCode"
+            )
+            or item.get("Code")
+            or item.get("股票代號")
         )
 
         name = clean_text(
-            name
+            item.get(
+                "CompanyName"
+            )
+            or item.get("Name")
+            or item.get("公司名稱")
         )
 
         if not code:
@@ -759,15 +427,15 @@ def fetch_tpex_etfs():
         if not code.isalnum():
             continue
 
-        if is_invalid_security(name):
-            continue
-
-        if not is_etf(
-            code,
-            name,
-            "ETF"
+        if is_invalid_security(
+            name
         ):
             continue
+
+        security_is_etf = is_etf(
+            code,
+            name
+        )
 
         universe.append({
 
@@ -781,31 +449,16 @@ def fetch_tpex_etfs():
                 "TWO",
 
             "type":
-                "etf",
+                "etf"
+                if security_is_etf
+                else "stock",
 
             "is_etf":
-                True
+                security_is_etf
 
         })
 
-    # ------------------------------------------------------------
-    # 去重
-    # ------------------------------------------------------------
-
-    unique = {}
-
-    for item in universe:
-
-        unique[
-            (
-                item["market"],
-                item["code"]
-            )
-        ] = item
-
-    return list(
-        unique.values()
-    )
+    return universe
 
 
 # ================================================================
@@ -819,156 +472,107 @@ def build_universe():
     )
 
     print(
-        f"建立 {VERSION} 完整掃描 Universe"
+        "建立 V8.1 完整掃描 Universe"
     )
 
     print(
         "================================================"
     )
 
-    # ------------------------------------------------------------
-    # TWSE 股票
-    # ------------------------------------------------------------
-
-    twse_stocks = fetch_twse_stocks()
+    twse = fetch_twse_universe()
 
     print(
-        f"[TWSE] 上市股票："
-        f"{len(twse_stocks)}"
+        f"[TWSE] 原始證券：{len(twse)}"
     )
 
-    # ------------------------------------------------------------
-    # TPEx 股票
-    # ------------------------------------------------------------
-
-    tpex_stocks = fetch_tpex_stocks()
+    tpex = fetch_tpex_universe()
 
     print(
-        f"[TPEx] 上櫃股票："
-        f"{len(tpex_stocks)}"
-    )
-
-    # ------------------------------------------------------------
-    # TWSE ETF
-    # ------------------------------------------------------------
-
-    twse_etfs = fetch_twse_etfs()
-
-    print(
-        f"[TWSE] ETF："
-        f"{len(twse_etfs)}"
-    )
-
-    # ------------------------------------------------------------
-    # TPEx ETF
-    # ------------------------------------------------------------
-
-    tpex_etfs = fetch_tpex_etfs()
-
-    print(
-        f"[TPEx] ETF："
-        f"{len(tpex_etfs)}"
-    )
-
-    # ------------------------------------------------------------
-    # 合併
-    # ------------------------------------------------------------
-
-    all_items = (
-        twse_stocks
-        +
-        tpex_stocks
-        +
-        twse_etfs
-        +
-        tpex_etfs
+        f"[TPEx] 原始證券：{len(tpex)}"
     )
 
     combined = {}
 
-    for item in all_items:
+    for item in (
+        twse +
+        tpex
+    ):
 
         key = (
             item["market"],
             item["code"]
         )
 
-        combined[key] = item
+        combined[
+            key
+        ] = item
 
     universe = list(
         combined.values()
     )
 
-    # ------------------------------------------------------------
-    # 統計
-    # ------------------------------------------------------------
-
-    twse_stock_count = sum(
-        1
-        for x in universe
+    twse_stocks = [
+        x for x in universe
         if (
             x["market"] == "TW"
             and
             x["type"] == "stock"
         )
-    )
+    ]
 
-    tpex_stock_count = sum(
-        1
-        for x in universe
+    tpex_stocks = [
+        x for x in universe
         if (
             x["market"] == "TWO"
             and
             x["type"] == "stock"
         )
-    )
+    ]
 
-    twse_etf_count = sum(
-        1
-        for x in universe
+    twse_etfs = [
+        x for x in universe
         if (
             x["market"] == "TW"
             and
             x["type"] == "etf"
         )
-    )
+    ]
 
-    tpex_etf_count = sum(
-        1
-        for x in universe
+    tpex_etfs = [
+        x for x in universe
         if (
             x["market"] == "TWO"
             and
             x["type"] == "etf"
         )
-    )
+    ]
 
     statistics = {
 
         "twse_stock_universe":
-            twse_stock_count,
+            len(twse_stocks),
 
         "tpex_stock_universe":
-            tpex_stock_count,
+            len(tpex_stocks),
 
         "twse_etf_universe":
-            twse_etf_count,
+            len(twse_etfs),
 
         "tpex_etf_universe":
-            tpex_etf_count,
+            len(tpex_etfs),
 
         "stock_universe":
             (
-                twse_stock_count
+                len(twse_stocks)
                 +
-                tpex_stock_count
+                len(tpex_stocks)
             ),
 
         "etf_universe":
             (
-                twse_etf_count
+                len(twse_etfs)
                 +
-                tpex_etf_count
+                len(tpex_etfs)
             ),
 
         "total_universe":
@@ -981,32 +585,32 @@ def build_universe():
     )
 
     print(
-        f"上市股票 Universe："
+        f"上市股票："
         f"{statistics['twse_stock_universe']}"
     )
 
     print(
-        f"上櫃股票 Universe："
+        f"上櫃股票："
         f"{statistics['tpex_stock_universe']}"
     )
 
     print(
-        f"上市 ETF Universe："
+        f"上市 ETF："
         f"{statistics['twse_etf_universe']}"
     )
 
     print(
-        f"上櫃 ETF Universe："
+        f"上櫃 ETF："
         f"{statistics['tpex_etf_universe']}"
     )
 
     print(
-        f"股票 Universe："
+        f"股票總數："
         f"{statistics['stock_universe']}"
     )
 
     print(
-        f"ETF Universe："
+        f"ETF 總數："
         f"{statistics['etf_universe']}"
     )
 
@@ -1019,133 +623,32 @@ def build_universe():
         "------------------------------------------------"
     )
 
-    # ------------------------------------------------------------
-    # 防呆
-    # ------------------------------------------------------------
-
-    if statistics[
-        "twse_stock_universe"
-    ] < 500:
+    if len(twse_stocks) < 500:
 
         raise RuntimeError(
             "TWSE 股票 Universe 異常過少"
         )
 
-    if statistics[
-        "tpex_stock_universe"
-    ] < 300:
+    if len(tpex_stocks) < 300:
 
         raise RuntimeError(
             "TPEx 股票 Universe 異常過少"
         )
 
-    if statistics[
-        "etf_universe"
-    ] == 0:
+    if (
+        len(twse_etfs) == 0
+        and
+        len(tpex_etfs) == 0
+    ):
 
         raise RuntimeError(
-            "ETF Universe 為 0，禁止進入掃描"
+            "ETF Universe 為 0"
         )
 
     return (
         universe,
         statistics
     )
-
-
-# ================================================================
-# 下載歷史行情
-# ================================================================
-
-def download_history(
-    symbol
-):
-
-    for attempt in range(
-        1,
-        MAX_RETRY + 1
-    ):
-
-        try:
-
-            ticker = yf.Ticker(
-                symbol
-            )
-
-            df = ticker.history(
-                period=YF_PERIOD,
-                interval=YF_INTERVAL,
-                auto_adjust=False,
-                actions=False
-            )
-
-            if (
-                df is None
-                or
-                df.empty
-            ):
-
-                raise RuntimeError(
-                    "沒有行情資料"
-                )
-
-            required = [
-                "Open",
-                "High",
-                "Low",
-                "Close",
-                "Volume"
-            ]
-
-            for column in required:
-
-                if column not in df.columns:
-
-                    raise RuntimeError(
-                        f"缺少欄位：{column}"
-                    )
-
-            df = df[
-                required
-            ].copy()
-
-            df = df.dropna(
-                subset=[
-                    "Close"
-                ]
-            )
-
-            df = df[
-                ~df.index.duplicated(
-                    keep="last"
-                )
-            ]
-
-            df = df.sort_index()
-
-            if len(df) < 60:
-
-                raise RuntimeError(
-                    "歷史資料不足 60 個交易日"
-                )
-
-            return df
-
-        except Exception as exc:
-
-            if attempt >= MAX_RETRY:
-
-                print(
-                    f"[FAIL] {symbol}：{exc}"
-                )
-
-                return None
-
-            time.sleep(
-                RETRY_DELAY
-            )
-
-    return None
 
 
 # ================================================================
@@ -1187,11 +690,19 @@ def calculate_rsi(
         )
     )
 
-    return (
+    result = (
         100 -
         100 /
         (1 + rs)
     )
+
+    # 沒有下跌時 RSI 應視為 100
+    result = result.where(
+        avg_loss != 0,
+        100
+    )
+
+    return result
 
 
 # ================================================================
@@ -1301,6 +812,25 @@ def calculate_indicators(
 
     df = df.copy()
 
+    for column in [
+        "Open",
+        "High",
+        "Low",
+        "Close",
+        "Volume"
+    ]:
+
+        df[column] = pd.to_numeric(
+            df[column],
+            errors="coerce"
+        )
+
+    df = df.dropna(
+        subset=[
+            "Close"
+        ]
+    )
+
     df["MA5"] = (
         df["Close"]
         .rolling(5)
@@ -1350,6 +880,358 @@ def calculate_indicators(
 
 
 # ================================================================
+# 批次下載 Yahoo Finance
+#
+# 最重要的 V8.1 優化：
+# 不再逐檔 Ticker.history()
+# ================================================================
+
+def normalize_download_result(
+    raw,
+    symbols
+):
+
+    if raw is None:
+        return {}
+
+    if raw.empty:
+        return {}
+
+    result = {}
+
+    # ------------------------------------------------------------
+    # yfinance 可能回傳：
+    #
+    # MultiIndex:
+    #   Price / Ticker
+    #
+    # 或單一股票普通欄位。
+    # ------------------------------------------------------------
+
+    if isinstance(
+        raw.columns,
+        pd.MultiIndex
+    ):
+
+        level0 = set(
+            str(x)
+            for x in raw.columns
+                .get_level_values(0)
+        )
+
+        level1 = set(
+            str(x)
+            for x in raw.columns
+                .get_level_values(1)
+        )
+
+        price_columns = {
+            "Open",
+            "High",
+            "Low",
+            "Close",
+            "Volume"
+        }
+
+        # 格式：
+        # Price, Ticker
+        if price_columns.intersection(
+            level0
+        ):
+
+            for symbol in symbols:
+
+                try:
+
+                    if symbol not in level1:
+                        continue
+
+                    df = raw.xs(
+                        symbol,
+                        axis=1,
+                        level=1,
+                        drop_level=True
+                    )
+
+                    if (
+                        "Close" not in df.columns
+                    ):
+                        continue
+
+                    result[
+                        symbol
+                    ] = df.copy()
+
+                except Exception:
+                    continue
+
+        # 格式：
+        # Ticker, Price
+        else:
+
+            for symbol in symbols:
+
+                try:
+
+                    if symbol not in level0:
+                        continue
+
+                    df = raw[
+                        symbol
+                    ].copy()
+
+                    if (
+                        "Close" not in df.columns
+                    ):
+                        continue
+
+                    result[
+                        symbol
+                    ] = df
+
+                except Exception:
+                    continue
+
+    else:
+
+        # 單一股票
+        if len(symbols) == 1:
+
+            symbol = symbols[0]
+
+            if (
+                "Close"
+                in
+                raw.columns
+            ):
+
+                result[
+                    symbol
+                ] = raw.copy()
+
+    return result
+
+
+def download_batch(
+    symbols
+):
+
+    symbols = list(
+        dict.fromkeys(
+            symbols
+        )
+    )
+
+    if not symbols:
+        return {}
+
+    for attempt in range(
+        1,
+        MAX_BATCH_RETRY + 1
+    ):
+
+        try:
+
+            print(
+                f"    Yahoo 批次下載："
+                f"{len(symbols)} 檔 "
+                f"(第 {attempt} 次)"
+            )
+
+            raw = yf.download(
+                tickers=symbols,
+                period=YF_PERIOD,
+                interval=YF_INTERVAL,
+                auto_adjust=False,
+                actions=False,
+                group_by="column",
+                threads=True,
+                progress=False
+            )
+
+            result = normalize_download_result(
+                raw,
+                symbols
+            )
+
+            if result:
+
+                return result
+
+            raise RuntimeError(
+                "Yahoo 回傳空資料"
+            )
+
+        except Exception as exc:
+
+            print(
+                f"    [WARN] 批次下載失敗："
+                f"{exc}"
+            )
+
+            if attempt < MAX_BATCH_RETRY:
+
+                time.sleep(
+                    BATCH_RETRY_DELAY
+                )
+
+    return {}
+
+
+# ================================================================
+# 批次下載全部 Universe
+# ================================================================
+
+def download_all_history(
+    universe
+):
+
+    symbol_to_item = {}
+
+    for item in universe:
+
+        symbol = yahoo_symbol(
+            item["code"],
+            item["market"]
+        )
+
+        symbol_to_item[
+            symbol
+        ] = item
+
+    symbols = list(
+        symbol_to_item.keys()
+    )
+
+    history = {}
+
+    total = len(
+        symbols
+    )
+
+    batches = [
+        symbols[i:i + DOWNLOAD_BATCH_SIZE]
+        for i in range(
+            0,
+            total,
+            DOWNLOAD_BATCH_SIZE
+        )
+    ]
+
+    print(
+        "================================================"
+    )
+
+    print(
+        "開始 Yahoo Finance 批次下載"
+    )
+
+    print(
+        f"總標的：{total}"
+    )
+
+    print(
+        f"批次大小：{DOWNLOAD_BATCH_SIZE}"
+    )
+
+    print(
+        f"批次數：{len(batches)}"
+    )
+
+    print(
+        "================================================"
+    )
+
+    for index, batch in enumerate(
+        batches,
+        start=1
+    ):
+
+        print(
+            f"[批次 {index}/{len(batches)}]"
+        )
+
+        downloaded = download_batch(
+            batch
+        )
+
+        for symbol, df in downloaded.items():
+
+            if df is None:
+                continue
+
+            if df.empty:
+                continue
+
+            required = [
+                "Open",
+                "High",
+                "Low",
+                "Close",
+                "Volume"
+            ]
+
+            if not all(
+                column in df.columns
+                for column in required
+            ):
+                continue
+
+            df = df[
+                required
+            ].copy()
+
+            df = df[
+                ~df.index.duplicated(
+                    keep="last"
+                )
+            ]
+
+            df = df.sort_index()
+
+            df = df.dropna(
+                subset=[
+                    "Close"
+                ]
+            )
+
+            if len(df) < 60:
+                continue
+
+            history[
+                symbol
+            ] = df
+
+        print(
+            f"    成功取得："
+            f"{len(downloaded)}"
+        )
+
+    print(
+        "------------------------------------------------"
+    )
+
+    print(
+        f"歷史資料成功："
+        f"{len(history)} / {total}"
+    )
+
+    print(
+        f"歷史資料失敗："
+        f"{total - len(history)}"
+    )
+
+    print(
+        "================================================"
+    )
+
+    return (
+        history,
+        symbol_to_item
+    )
+
+
+# ================================================================
 # 核心條件
 # ================================================================
 
@@ -1358,12 +1240,37 @@ def evaluate_core(
 ):
 
     if len(df) < 21:
-
         return None
 
     latest = df.iloc[-1]
-
     previous = df.iloc[-2]
+
+    fields = [
+        "MACD",
+        "MACD_SIGNAL",
+        "RSI",
+        "K",
+        "D",
+        "Volume",
+        "VOL_MA5",
+        "Close",
+        "MA20"
+    ]
+
+    if any(
+        pd.isna(
+            latest[field]
+        )
+        for field in fields
+    ):
+
+        return None
+
+    if pd.isna(
+        previous["MA20"]
+    ):
+
+        return None
 
     values = {
 
@@ -1437,7 +1344,7 @@ def evaluate_core(
 
 
 # ================================================================
-# 強勢分數
+# Strength Score
 # ================================================================
 
 def calculate_strength_score(
@@ -1452,16 +1359,17 @@ def calculate_strength_score(
         latest["RSI"]
     )
 
-    if rsi is not None:
+    if rsi is None:
+        return 0
 
-        if rsi >= 70:
-            score += 20
+    if rsi >= 70:
+        score += 20
 
-        elif rsi >= 60:
-            score += 16
+    elif rsi >= 60:
+        score += 16
 
-        elif rsi >= 50:
-            score += 12
+    elif rsi >= 50:
+        score += 12
 
     if (
         latest["MACD"]
@@ -1497,13 +1405,13 @@ def calculate_strength_score(
 
             score += 15
 
-    volume_ma5 = latest[
-        "VOL_MA5"
-    ]
+    volume_ma5 = (
+        latest["VOL_MA5"]
+    )
 
-    volume = latest[
-        "Volume"
-    ]
+    volume = (
+        latest["Volume"]
+    )
 
     if (
         pd.notna(volume_ma5)
@@ -1611,15 +1519,17 @@ def build_security_record(
     df
 ):
 
-    df = calculate_indicators(
-        df
-    )
+    if df is None:
+        return None
 
     if len(df) < 60:
         return None
 
-    latest = df.iloc[-1]
+    df = calculate_indicators(
+        df
+    )
 
+    latest = df.iloc[-1]
     previous = df.iloc[-2]
 
     core = evaluate_core(
@@ -1851,13 +1761,12 @@ def build_security_record(
 # ================================================================
 
 def scan_universe(
-    universe
+    universe,
+    history
 ):
 
     stocks = []
-
     etfs = []
-
     failed = []
 
     total = len(
@@ -1869,7 +1778,11 @@ def scan_universe(
     )
 
     print(
-        f"開始掃描：{total} 個標的"
+        "開始技術指標掃描"
+    )
+
+    print(
+        f"Universe：{total}"
     )
 
     print(
@@ -1886,43 +1799,34 @@ def scan_universe(
             item["market"]
         )
 
+        df = history.get(
+            symbol
+        )
+
+        if df is None:
+
+            failed.append({
+
+                "code":
+                    item["code"],
+
+                "symbol":
+                    symbol,
+
+                "name":
+                    item["name"],
+
+                "market":
+                    item["market"],
+
+                "reason":
+                    "history_failed"
+
+            })
+
+            continue
+
         try:
-
-            print(
-                f"[{index}/{total}] "
-                f"{symbol} "
-                f"{item['name']}"
-            )
-
-            df = download_history(
-                symbol
-            )
-
-            if df is None:
-
-                failed.append({
-
-                    "code":
-                        item["code"],
-
-                    "symbol":
-                        symbol,
-
-                    "name":
-                        item["name"],
-
-                    "market":
-                        item["market"],
-
-                    "type":
-                        item["type"],
-
-                    "reason":
-                        "history_failed"
-
-                })
-
-                continue
 
             record = (
                 build_security_record(
@@ -1947,9 +1851,6 @@ def scan_universe(
                     "market":
                         item["market"],
 
-                    "type":
-                        item["type"],
-
                     "reason":
                         "indicator_failed"
 
@@ -1971,10 +1872,6 @@ def scan_universe(
 
         except Exception as exc:
 
-            print(
-                f"[FAIL] {symbol}: {exc}"
-            )
-
             failed.append({
 
                 "code":
@@ -1989,22 +1886,23 @@ def scan_universe(
                 "market":
                     item["market"],
 
-                "type":
-                    item["type"],
-
                 "reason":
                     str(exc)
 
             })
 
         if (
-            index %
-            BATCH_SIZE
-            == 0
+            index % 250 == 0
+            or
+            index == total
         ):
 
-            time.sleep(
-                BATCH_DELAY
+            print(
+                f"[掃描進度] "
+                f"{index}/{total} "
+                f"| 股票 {len(stocks)} "
+                f"| ETF {len(etfs)} "
+                f"| 失敗 {len(failed)}"
             )
 
     return (
@@ -2044,11 +1942,11 @@ def build_top30(
     stocks
 ):
 
-    return (
-        sort_by_ai_score(
-            stocks
-        )[:TOP30]
-    )
+    return sort_by_ai_score(
+        stocks
+    )[
+        :TOP30
+    ]
 
 
 # ================================================================
@@ -2091,7 +1989,10 @@ def build_etf_result(
 
 
 # ================================================================
-# Backtest
+# 回測
+#
+# 使用已經下載的歷史資料
+# 不再重新呼叫 Yahoo
 # ================================================================
 
 def backtest_stock(
@@ -2116,7 +2017,6 @@ def backtest_stock(
     for horizon in BACKTEST_HORIZONS:
 
         a_returns = []
-
         b_returns = []
 
         for i in range(
@@ -2132,18 +2032,22 @@ def backtest_stock(
                 i + horizon
             ]
 
-            today_close = today[
-                "Close"
-            ]
+            today_close = (
+                today["Close"]
+            )
 
-            future_close = future[
-                "Close"
-            ]
+            future_close = (
+                future["Close"]
+            )
 
             if (
-                pd.isna(today_close)
+                pd.isna(
+                    today_close
+                )
                 or
-                pd.isna(future_close)
+                pd.isna(
+                    future_close
+                )
             ):
                 continue
 
@@ -2221,15 +2125,20 @@ def backtest_stock(
 
                 return {
 
-                    "signals": 0,
+                    "signals":
+                        0,
 
-                    "wins": 0,
+                    "wins":
+                        0,
 
-                    "losses": 0,
+                    "losses":
+                        0,
 
-                    "win_rate": 0,
+                    "win_rate":
+                        0,
 
-                    "average_return": 0
+                    "average_return":
+                        0
 
                 }
 
@@ -2297,11 +2206,12 @@ def backtest_stock(
 
 
 # ================================================================
-# 整體回測
+# 建立整體回測
 # ================================================================
 
 def build_backtest(
-    stocks
+    stocks,
+    history
 ):
 
     aggregate = {
@@ -2320,19 +2230,42 @@ def build_backtest(
 
     count = 0
 
-    for item in stocks:
+    print(
+        "================================================"
+    )
+
+    print(
+        "開始 A/B 歷史回測"
+    )
+
+    print(
+        "使用既有歷史資料，不重新下載"
+    )
+
+    print(
+        "================================================"
+    )
+
+    for index, item in enumerate(
+        stocks,
+        start=1
+    ):
+
+        symbol = item[
+            "symbol"
+        ]
+
+        df = history.get(
+            symbol
+        )
+
+        if df is None:
+            continue
+
+        if len(df) < BACKTEST_MIN_HISTORY:
+            continue
 
         try:
-
-            df = download_history(
-                item["symbol"]
-            )
-
-            if df is None:
-                continue
-
-            if len(df) < BACKTEST_MIN_HISTORY:
-                continue
 
             result = backtest_stock(
                 df
@@ -2348,7 +2281,9 @@ def build_backtest(
                 "B_current_bullish"
             ):
 
-                for horizon in BACKTEST_HORIZONS:
+                for horizon in (
+                    BACKTEST_HORIZONS
+                ):
 
                     data = result[
                         strategy
@@ -2365,7 +2300,19 @@ def build_backtest(
                     )
 
         except Exception:
+
             continue
+
+        if (
+            index % 250 == 0
+            or
+            index == len(stocks)
+        ):
+
+            print(
+                f"[回測進度] "
+                f"{index}/{len(stocks)}"
+            )
 
     def merge(
         values
@@ -2375,15 +2322,20 @@ def build_backtest(
 
             return {
 
-                "signals": 0,
+                "signals":
+                    0,
 
-                "wins": 0,
+                "wins":
+                    0,
 
-                "losses": 0,
+                "losses":
+                    0,
 
-                "win_rate": 0,
+                "win_rate":
+                    0,
 
-                "average_return": 0
+                "average_return":
+                    0
 
             }
 
@@ -2483,7 +2435,9 @@ def build_backtest(
         "B_current_bullish"
     ):
 
-        for horizon in BACKTEST_HORIZONS:
+        for horizon in (
+            BACKTEST_HORIZONS
+        ):
 
             final[
                 "strategies"
@@ -2541,6 +2495,31 @@ def build_backtest(
         "backtest_stock_count"
     ] = count
 
+    print(
+        "------------------------------------------------"
+    )
+
+    print(
+        f"回測股票數：{count}"
+    )
+
+    print(
+        f"A 10日勝率：{a10}%"
+    )
+
+    print(
+        f"B 10日勝率：{b10}%"
+    )
+
+    print(
+        f"勝率較佳："
+        f"{final['better_by_win_rate']}"
+    )
+
+    print(
+        "================================================"
+    )
+
     return final
 
 
@@ -2549,7 +2528,8 @@ def build_backtest(
 # ================================================================
 
 def validate_record(
-    item
+    item,
+    is_etf_record=False
 ):
 
     required = {
@@ -2581,22 +2561,28 @@ def validate_record(
         "ma20",
         "ma60",
 
-        "macd_golden_cross",
-        "rsi_over_50",
-        "kd_golden_cross",
-        "volume_expand",
-        "price_over_ma20",
-        "ma20_up",
-
-        "core_score",
-        "core_total",
-        "core_pass",
-
         "strength_score",
         "ai_score",
         "signal"
 
     }
+
+    if not is_etf_record:
+
+        required.update({
+
+            "macd_golden_cross",
+            "rsi_over_50",
+            "kd_golden_cross",
+            "volume_expand",
+            "price_over_ma20",
+            "ma20_up",
+
+            "core_score",
+            "core_total",
+            "core_pass"
+
+        })
 
     missing = [
         field
@@ -2711,25 +2697,19 @@ def build_prices_json(
         "%Y-%m-%d %H:%M:%S"
     )
 
-    # ------------------------------------------------------------
-    # 驗證
-    # ------------------------------------------------------------
-
     for item in stocks:
 
         validate_record(
-            item
+            item,
+            False
         )
 
     for item in etfs:
 
         validate_record(
-            item
+            item,
+            True
         )
-
-    # ------------------------------------------------------------
-    # 今日 6/6
-    # ------------------------------------------------------------
 
     today_selected = (
         build_today_selected(
@@ -2737,27 +2717,15 @@ def build_prices_json(
         )
     )
 
-    # ------------------------------------------------------------
-    # Top30
-    # ------------------------------------------------------------
-
     top30 = build_top30(
         stocks
     )
-
-    # ------------------------------------------------------------
-    # ETF
-    # ------------------------------------------------------------
 
     etfs_sorted = (
         build_etf_result(
             etfs
         )
     )
-
-    # ------------------------------------------------------------
-    # 市場統計
-    # ------------------------------------------------------------
 
     stock_tw = sum(
         1
@@ -2965,12 +2933,15 @@ def main():
     )
 
     print(
-        "台股 AI 選股系統 "
-        f"fetch_data.py {VERSION}"
+        "台股 AI 選股系統 fetch_data.py V8.1 FAST"
     )
 
     print(
         "TWSE + TPEx + ETF"
+    )
+
+    print(
+        "批次 Yahoo + 共用歷史資料"
     )
 
     print(
@@ -3001,7 +2972,18 @@ def main():
         )
 
     # ------------------------------------------------------------
-    # 2. Scan
+    # 2. 一次批次下載所有歷史資料
+    # ------------------------------------------------------------
+
+    (
+        history,
+        symbol_to_item
+    ) = download_all_history(
+        universe
+    )
+
+    # ------------------------------------------------------------
+    # 3. 掃描
     # ------------------------------------------------------------
 
     (
@@ -3009,11 +2991,12 @@ def main():
         etfs,
         failed
     ) = scan_universe(
-        universe
+        universe,
+        history
     )
 
     # ------------------------------------------------------------
-    # 3. 結果
+    # 4. 掃描結果
     # ------------------------------------------------------------
 
     print(
@@ -3044,64 +3027,57 @@ def main():
         "------------------------------------------------"
     )
 
-    print(
-        "上市股票成功："
-        +
-        str(
-            sum(
-                1
-                for x in stocks
-                if x["market"] == "TW"
-            )
-        )
+    stock_tw_count = sum(
+        1
+        for x in stocks
+        if x["market"] == "TW"
+    )
+
+    stock_two_count = sum(
+        1
+        for x in stocks
+        if x["market"] == "TWO"
+    )
+
+    etf_tw_count = sum(
+        1
+        for x in etfs
+        if x["market"] == "TW"
+    )
+
+    etf_two_count = sum(
+        1
+        for x in etfs
+        if x["market"] == "TWO"
     )
 
     print(
-        "上櫃股票成功："
-        +
-        str(
-            sum(
-                1
-                for x in stocks
-                if x["market"] == "TWO"
-            )
-        )
+        f"上市股票成功："
+        f"{stock_tw_count}"
     )
 
     print(
-        "上市 ETF 成功："
-        +
-        str(
-            sum(
-                1
-                for x in etfs
-                if x["market"] == "TW"
-            )
-        )
+        f"上櫃股票成功："
+        f"{stock_two_count}"
     )
 
     print(
-        "上櫃 ETF 成功："
-        +
-        str(
-            sum(
-                1
-                for x in etfs
-                if x["market"] == "TWO"
-            )
-        )
+        f"上市 ETF 成功："
+        f"{etf_tw_count}"
+    )
+
+    print(
+        f"上櫃 ETF 成功："
+        f"{etf_two_count}"
+    )
+
+    print(
+        "------------------------------------------------"
     )
 
     # ------------------------------------------------------------
-    # 4. 強制防呆
+    # 5. 強制防呆
     # ------------------------------------------------------------
-
-    if len(etfs) == 0:
-
-        raise RuntimeError(
-            "ETF 掃描結果為 0，"
-            "禁止產生成功的 prices.json"
-        )
 
     if len(stocks) < 500:
 
@@ -3110,28 +3086,24 @@ def main():
             f"{len(stocks)}"
         )
 
+    if len(etfs) == 0:
+
+        raise RuntimeError(
+            "ETF 掃描結果為 0，"
+            "禁止產生成功資料"
+        )
+
     # ------------------------------------------------------------
-    # 5. 回測
+    # 6. A/B 回測
     # ------------------------------------------------------------
-
-    print(
-        "================================================"
-    )
-
-    print(
-        "開始 A/B 歷史回測"
-    )
-
-    print(
-        "================================================"
-    )
 
     backtest = build_backtest(
-        stocks
+        stocks,
+        history
     )
 
     # ------------------------------------------------------------
-    # 6. Build prices
+    # 7. 建立 prices.json
     # ------------------------------------------------------------
 
     prices = build_prices_json(
@@ -3143,7 +3115,7 @@ def main():
     )
 
     # ------------------------------------------------------------
-    # 7. 最終驗證
+    # 8. 最終 Data Contract 驗證
     # ------------------------------------------------------------
 
     if prices[
@@ -3186,21 +3158,23 @@ def main():
             "etfs 為空"
         )
 
-    if len(
-        prices["top30"]
-    ) != min(
+    expected_top30 = min(
         TOP30,
         len(
             prices["stocks"]
         )
-    ):
+    )
+
+    if len(
+        prices["top30"]
+    ) != expected_top30:
 
         raise RuntimeError(
             "Top30 數量驗證失敗"
         )
 
     # ------------------------------------------------------------
-    # 8. Atomic Write
+    # 9. Atomic Write
     # ------------------------------------------------------------
 
     atomic_write_json(
@@ -3209,7 +3183,7 @@ def main():
     )
 
     # ------------------------------------------------------------
-    # 9. Backtest
+    # 10. backtest.json
     # ------------------------------------------------------------
 
     write_backtest(
@@ -3217,7 +3191,7 @@ def main():
     )
 
     # ------------------------------------------------------------
-    # 10. 完成
+    # 11. 最終統計
     # ------------------------------------------------------------
 
     end_time = datetime.now(
@@ -3234,7 +3208,7 @@ def main():
     )
 
     print(
-        f"{VERSION} 完成"
+        "V8.1 FAST 完成"
     )
 
     print(
@@ -3242,11 +3216,43 @@ def main():
     )
 
     print(
-        f"股票：{len(stocks)}"
+        f"Universe："
+        f"{len(universe)}"
     )
 
     print(
-        f"ETF：{len(etfs)}"
+        f"歷史資料成功："
+        f"{len(history)}"
+    )
+
+    print(
+        f"上市股票："
+        f"{stock_tw_count}"
+    )
+
+    print(
+        f"上櫃股票："
+        f"{stock_two_count}"
+    )
+
+    print(
+        f"上市 ETF："
+        f"{etf_tw_count}"
+    )
+
+    print(
+        f"上櫃 ETF："
+        f"{etf_two_count}"
+    )
+
+    print(
+        f"股票總成功："
+        f"{len(stocks)}"
+    )
+
+    print(
+        f"ETF 總成功："
+        f"{len(etfs)}"
     )
 
     print(
@@ -3260,11 +3266,18 @@ def main():
     )
 
     print(
-        f"失敗：{len(failed)}"
+        f"失敗："
+        f"{len(failed)}"
     )
 
     print(
-        f"耗時：{elapsed:.1f} 秒"
+        f"回測股票："
+        f"{backtest.get('backtest_stock_count', 0)}"
+    )
+
+    print(
+        f"耗時："
+        f"{elapsed:.1f} 秒"
     )
 
     print(
@@ -3286,15 +3299,12 @@ def main():
     )
 
     print(
-        "Data Contract：OK"
+        "V8.1 Data Contract：OK"
     )
 
     print(
-        f"version：{VERSION}"
-    )
-
-    print(
-        f"schema_version：{SCHEMA_VERSION}"
+        f"schema_version："
+        f"{SCHEMA_VERSION}"
     )
 
     print(
