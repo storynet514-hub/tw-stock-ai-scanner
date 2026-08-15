@@ -1,14 +1,14 @@
 {
   "version": "V8.0",
   "status": "completed",
-  "generated_at": "2026-08-15T18:39:37.275594+08:00",
+  "generated_at": "2026-08-15T22:58:30.376770+08:00",
   "data_period": "2y",
   "horizons": [
     5,
     10,
     20
   ],
-  "sample_stocks": 1542,
+  "sample_stocks": 1543,
   "comparison": {
     "status": "completed",
     "comparison_horizon": 10,
@@ -18,48 +18,48 @@
     "strategies": {
       "A_today_cross": {
         "5d": {
-          "signals": 1857,
-          "wins": 758,
-          "losses": 1099,
-          "win_rate": 40.82,
-          "average_return": 0.9904
+          "signals": 1859,
+          "wins": 759,
+          "losses": 1100,
+          "win_rate": 40.83,
+          "average_return": 0.9931
         },
         "10d": {
-          "signals": 1848,
-          "wins": 783,
+          "signals": 1850,
+          "wins": 785,
           "losses": 1065,
-          "win_rate": 42.37,
-          "average_return": 1.6853
+          "win_rate": 42.43,
+          "average_return": 1.6951
         },
         "20d": {
-          "signals": 1829,
-          "wins": 755,
+          "signals": 1831,
+          "wins": 757,
           "losses": 1074,
-          "win_rate": 41.28,
-          "average_return": 2.5052
+          "win_rate": 41.34,
+          "average_return": 2.5136
         }
       },
       "B_current_bullish": {
         "5d": {
-          "signals": 31780,
-          "wins": 13684,
-          "losses": 18096,
+          "signals": 31800,
+          "wins": 13693,
+          "losses": 18107,
           "win_rate": 43.06,
-          "average_return": 0.5891
+          "average_return": 0.5898
         },
         "10d": {
-          "signals": 31561,
-          "wins": 13602,
-          "losses": 17959,
-          "win_rate": 43.1,
-          "average_return": 1.3004
+          "signals": 31581,
+          "wins": 13614,
+          "losses": 17967,
+          "win_rate": 43.11,
+          "average_return": 1.3012
         },
         "20d": {
-          "signals": 31268,
-          "wins": 13797,
-          "losses": 17471,
-          "win_rate": 44.12,
-          "average_return": 2.1439
+          "signals": 31288,
+          "wins": 13810,
+          "losses": 17478,
+          "win_rate": 44.14,
+          "average_return": 2.1451
         }
       }
     }
@@ -28141,6 +28141,78 @@
             "median_return": -0.745,
             "max_return": 27.2364,
             "min_return": -18.6335
+          }
+        }
+      }
+    },
+    {
+      "code": "2237",
+      "name": "華德動能-創",
+      "sample_start": "2024-08-14",
+      "sample_end": "2026-08-14",
+      "strategies": {
+        "A_today_cross": {
+          "5d": {
+            "signals": 2,
+            "wins": 1,
+            "losses": 1,
+            "win_rate": 50.0,
+            "average_return": 3.5056,
+            "median_return": 3.5056,
+            "max_return": 7.1875,
+            "min_return": -0.1764
+          },
+          "10d": {
+            "signals": 2,
+            "wins": 2,
+            "losses": 0,
+            "win_rate": 100.0,
+            "average_return": 10.687,
+            "median_return": 10.687,
+            "max_return": 13.4375,
+            "min_return": 7.9365
+          },
+          "20d": {
+            "signals": 2,
+            "wins": 2,
+            "losses": 0,
+            "win_rate": 100.0,
+            "average_return": 10.1911,
+            "median_return": 10.1911,
+            "max_return": 17.0313,
+            "min_return": 3.351
+          }
+        },
+        "B_current_bullish": {
+          "5d": {
+            "signals": 20,
+            "wins": 9,
+            "losses": 11,
+            "win_rate": 45.0,
+            "average_return": 1.7716,
+            "median_return": -0.4354,
+            "max_return": 29.9107,
+            "min_return": -9.6639
+          },
+          "10d": {
+            "signals": 20,
+            "wins": 12,
+            "losses": 8,
+            "win_rate": 60.0,
+            "average_return": 2.6347,
+            "median_return": 2.2149,
+            "max_return": 22.9911,
+            "min_return": -11.2069
+          },
+          "20d": {
+            "signals": 20,
+            "wins": 13,
+            "losses": 7,
+            "win_rate": 65.0,
+            "average_return": 3.9761,
+            "median_return": 2.5263,
+            "max_return": 27.1071,
+            "min_return": -12.069
           }
         }
       }
