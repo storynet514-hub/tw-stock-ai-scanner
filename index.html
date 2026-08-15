@@ -1,21 +1,30 @@
 <!DOCTYPE html>
 <html lang="zh-TW">
-
 <head>
-
 <meta charset="UTF-8">
-
-<meta
-  name="viewport"
-  content="width=device-width, initial-scale=1.0"
->
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 
 <title>台股 AI 選股儀表板 V8.0</title>
 
 <style>
-
 * {
   box-sizing: border-box;
+}
+
+:root {
+  --bg: #f3f5f8;
+  --card: #ffffff;
+  --text: #172033;
+  --muted: #64748b;
+  --border: #e5e7eb;
+  --header: #111827;
+  --blue: #2563eb;
+  --green: #16a34a;
+  --green-bg: #dcfce7;
+  --red: #dc2626;
+  --red-bg: #fee2e2;
+  --yellow: #92400e;
+  --yellow-bg: #fef3c7;
 }
 
 body {
@@ -27,33 +36,33 @@ body {
     "Noto Sans TC",
     Arial,
     sans-serif;
-  background: #f3f5f8;
-  color: #172033;
+  background: var(--bg);
+  color: var(--text);
 }
 
 header {
-  background: #111827;
+  background: var(--header);
   color: white;
-  padding: 20px;
+  padding: 22px 18px;
 }
 
 .header-inner {
-  max-width: 1200px;
+  max-width: 1280px;
   margin: auto;
 }
 
 h1 {
-  margin: 0 0 8px 0;
+  margin: 0 0 7px;
   font-size: 25px;
 }
 
 .subtitle {
   color: #cbd5e1;
-  font-size: 14px;
+  font-size: 13px;
 }
 
 .container {
-  max-width: 1200px;
+  max-width: 1280px;
   margin: auto;
   padding: 18px;
 }
@@ -61,32 +70,34 @@ h1 {
 .grid {
   display: grid;
   grid-template-columns:
-    repeat(
-      auto-fit,
-      minmax(180px, 1fr)
-    );
+    repeat(auto-fit, minmax(190px, 1fr));
   gap: 12px;
-  margin-bottom: 18px;
+  margin-bottom: 16px;
 }
 
 .card {
-  background: white;
+  background: var(--card);
   border-radius: 14px;
-  padding: 16px;
+  padding: 17px;
   box-shadow:
-    0 3px 12px
-    rgba(0, 0, 0, 0.06);
+    0 3px 12px rgba(0,0,0,.06);
 }
 
 .card-title {
-  color: #64748b;
+  color: var(--muted);
   font-size: 13px;
   margin-bottom: 8px;
 }
 
 .card-value {
-  font-size: 26px;
-  font-weight: 700;
+  font-size: 27px;
+  font-weight: 750;
+}
+
+.card-sub {
+  margin-top: 5px;
+  font-size: 12px;
+  color: var(--muted);
 }
 
 .section {
@@ -95,8 +106,15 @@ h1 {
 
 .section-title {
   font-size: 20px;
-  font-weight: 700;
-  margin-bottom: 12px;
+  font-weight: 750;
+  margin-bottom: 11px;
+}
+
+.section-subtitle {
+  color: var(--muted);
+  font-size: 12px;
+  margin-top: -6px;
+  margin-bottom: 10px;
 }
 
 .table-wrap {
@@ -104,23 +122,22 @@ h1 {
   background: white;
   border-radius: 14px;
   box-shadow:
-    0 3px 12px
-    rgba(0, 0, 0, 0.06);
+    0 3px 12px rgba(0,0,0,.06);
 }
 
 table {
   width: 100%;
   border-collapse: collapse;
-  min-width: 900px;
+  min-width: 980px;
 }
 
 th,
 td {
-  padding: 11px 10px;
-  border-bottom:
-    1px solid #e5e7eb;
+  padding: 10px 9px;
+  border-bottom: 1px solid var(--border);
   text-align: left;
-  font-size: 14px;
+  font-size: 13px;
+  white-space: nowrap;
 }
 
 th {
@@ -128,58 +145,135 @@ th {
   color: #475569;
   position: sticky;
   top: 0;
+  z-index: 2;
+}
+
+tr:hover td {
+  background: #fafafa;
 }
 
 .badge {
   display: inline-block;
   padding: 4px 9px;
   border-radius: 999px;
-  font-size: 12px;
-  font-weight: 700;
-  background: #e5e7eb;
+  font-size: 11px;
+  font-weight: 750;
 }
 
 .badge-good {
-  background: #dcfce7;
+  background: var(--green-bg);
   color: #166534;
 }
 
 .badge-mid {
-  background: #fef3c7;
-  color: #92400e;
+  background: var(--yellow-bg);
+  color: var(--yellow);
 }
 
 .badge-low {
-  background: #fee2e2;
+  background: var(--red-bg);
   color: #991b1b;
 }
 
+.badge-blue {
+  background: #dbeafe;
+  color: #1d4ed8;
+}
+
 .up {
-  color: #dc2626;
+  color: var(--red);
   font-weight: 700;
 }
 
 .down {
-  color: #16a34a;
+  color: var(--green);
   font-weight: 700;
+}
+
+.neutral {
+  color: #64748b;
+  font-weight: 700;
+}
+
+.status-box {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.status-item {
+  background: #f8fafc;
+  border-radius: 10px;
+  padding: 9px 12px;
+  font-size: 13px;
+}
+
+.status-ok {
+  color: #166534;
+  font-weight: 700;
+}
+
+.conditions {
+  display: grid;
+  grid-template-columns:
+    repeat(auto-fit, minmax(210px, 1fr));
+  gap: 10px;
+}
+
+.condition {
+  background: #f8fafc;
+  border-radius: 11px;
+  padding: 13px;
+  border-left: 5px solid #94a3b8;
+}
+
+.condition-pass {
+  border-left-color: var(--green);
+}
+
+.condition-title {
+  font-weight: 700;
+  margin-bottom: 5px;
+}
+
+.condition-rule {
+  color: var(--muted);
+  font-size: 12px;
 }
 
 .loading {
   text-align: center;
-  padding: 50px;
-  color: #64748b;
+  padding: 55px 20px;
+  color: var(--muted);
 }
 
 .error {
-  background: #fee2e2;
+  background: var(--red-bg);
   color: #991b1b;
   padding: 16px;
   border-radius: 12px;
+  line-height: 1.6;
 }
 
-.small {
-  font-size: 12px;
-  color: #64748b;
+.notice {
+  background: #eff6ff;
+  color: #1e40af;
+  padding: 14px;
+  border-radius: 12px;
+  line-height: 1.6;
+}
+
+.meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 9px;
+}
+
+.meta-item {
+  background: #f8fafc;
+  border-radius: 9px;
+  padding: 8px 11px;
+  font-size: 13px;
 }
 
 button {
@@ -187,384 +281,417 @@ button {
   border-radius: 9px;
   padding: 9px 14px;
   cursor: pointer;
-  background: #2563eb;
+  background: var(--blue);
   color: white;
-  font-weight: 600;
+  font-weight: 650;
 }
 
 button:hover {
-  opacity: 0.9;
+  opacity: .9;
 }
 
-.condition-grid {
-  display: grid;
-  grid-template-columns:
-    repeat(
-      auto-fit,
-      minmax(180px, 1fr)
-    );
-  gap: 10px;
+.empty {
+  padding: 22px;
+  color: var(--muted);
 }
 
-.condition {
-  background: #f8fafc;
-  border-radius: 10px;
-  padding: 12px;
+.highlight {
+  font-weight: 750;
 }
 
-.pass {
-  border-left:
-    5px solid #16a34a;
+.green-text {
+  color: #166534;
 }
 
-.fail {
-  border-left:
-    5px solid #dc2626;
+.red-text {
+  color: #991b1b;
 }
 
-.meta {
-  display: flex;
-  gap: 12px;
-  flex-wrap: wrap;
+footer {
+  max-width: 1280px;
+  margin: 25px auto;
+  padding: 0 18px 30px;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.6;
 }
 
-.meta-item {
-  background: #f8fafc;
-  border-radius: 9px;
-  padding: 8px 12px;
-}
+@media (max-width: 600px) {
 
+  header {
+    padding: 18px 14px;
+  }
+
+  h1 {
+    font-size: 21px;
+  }
+
+  .container {
+    padding: 12px;
+  }
+
+  .card {
+    padding: 14px;
+  }
+
+  .card-value {
+    font-size: 24px;
+  }
+
+  .section-title {
+    font-size: 18px;
+  }
+}
 </style>
-
 </head>
 
 <body>
 
 <header>
+  <div class="header-inner">
 
-<div class="header-inner">
+    <h1>台股 AI 選股儀表板</h1>
 
-<h1>
-台股 AI 選股儀表板
-</h1>
+    <div class="subtitle">
+      V8.0 FINAL｜後台計算｜前台 READ ONLY｜prices.v8
+    </div>
 
-<div class="subtitle">
-V8.0 FINAL｜後台資料結構鎖定｜前台 READ ONLY
-</div>
-
-</div>
-
+  </div>
 </header>
 
 
 <main class="container">
 
-<div
-  id="loading"
-  class="loading"
->
-正在讀取 V8.0 後台資料……
-</div>
+  <div id="loading" class="loading">
+    正在讀取 V8.0 後台資料……
+  </div>
 
-<div id="error"></div>
+  <div id="error"></div>
 
+  <div id="app" style="display:none">
 
-<div
-  id="app"
-  style="display:none"
->
 
+    <!-- ===================================================== -->
+    <!-- 核心統計 -->
+    <!-- ===================================================== -->
 
-<!-- ========================================================= -->
-<!-- 統計 -->
-<!-- ========================================================= -->
+    <section>
 
-<div class="grid">
+      <div class="grid">
 
-<div class="card">
+        <div class="card">
+          <div class="card-title">
+            股票數量
+          </div>
 
-<div class="card-title">
-股票數量
-</div>
+          <div
+            id="stockCount"
+            class="card-value"
+          >
+            -
+          </div>
 
-<div
-  id="stockCount"
-  class="card-value"
->
--
-</div>
+          <div class="card-sub">
+            後台實際股票資料
+          </div>
+        </div>
 
-</div>
 
+        <div class="card">
+          <div class="card-title">
+            ETF 數量
+          </div>
 
-<div class="card">
+          <div
+            id="etfCount"
+            class="card-value"
+          >
+            -
+          </div>
 
-<div class="card-title">
-ETF 數量
-</div>
+          <div class="card-sub">
+            後台 ETF 資料
+          </div>
+        </div>
 
-<div
-  id="etfCount"
-  class="card-value"
->
--
-</div>
 
-</div>
+        <div class="card">
+          <div class="card-title">
+            今日符合六項條件
+          </div>
 
+          <div
+            id="selectedCount"
+            class="card-value"
+          >
+            -
+          </div>
 
-<div class="card">
+          <div class="card-sub">
+            Core Score = 6 / 6
+          </div>
+        </div>
 
-<div class="card-title">
-今日 6/6
-</div>
 
-<div
-  id="selectedCount"
-  class="card-value"
->
--
-</div>
+        <div class="card">
+          <div class="card-title">
+            AI Top 30
+          </div>
 
-</div>
+          <div
+            id="top30Count"
+            class="card-value"
+          >
+            -
+          </div>
 
+          <div class="card-sub">
+            完全採用後台排序結果
+          </div>
+        </div>
 
-<div class="card">
+      </div>
 
-<div class="card-title">
-Top 30
-</div>
+    </section>
 
-<div
-  id="top30Count"
-  class="card-value"
->
--
-</div>
 
-</div>
+    <!-- ===================================================== -->
+    <!-- V8.0 資料狀態 -->
+    <!-- ===================================================== -->
 
-</div>
+    <section class="section">
 
+      <div class="section-title">
+        V8.0 資料狀態
+      </div>
 
-<!-- ========================================================= -->
-<!-- 資料狀態 -->
-<!-- ========================================================= -->
+      <div class="card">
 
-<section class="section">
+        <div class="status-box">
 
-<div class="card">
+          <div class="status-item">
+            版本：
+            <strong id="version">-</strong>
+          </div>
 
-<div class="card-title">
-V8.0 資料狀態
-</div>
+          <div class="status-item">
+            Schema：
+            <strong id="schemaVersion">-</strong>
+          </div>
 
-<div class="meta">
+          <div class="status-item">
+            狀態：
+            <strong
+              id="dataStatus"
+              class="status-ok"
+            >
+              -
+            </strong>
+          </div>
 
-<div class="meta-item">
-版本：
-<strong id="version">
--
-</strong>
-</div>
+          <div class="status-item">
+            資料日期：
+            <strong id="dataDate">-</strong>
+          </div>
 
-<div class="meta-item">
-日期：
-<strong id="dataDate">
--
-</strong>
-</div>
+          <div class="status-item">
+            更新時間：
+            <strong id="updatedAt">-</strong>
+          </div>
 
-<div class="meta-item">
-更新：
-<strong id="updatedAt">
--
-</strong>
-</div>
+        </div>
 
-<div class="meta-item">
-狀態：
-<strong id="dataStatus">
--
-</strong>
-</div>
+        <br>
 
-</div>
+        <button onclick="loadData()">
+          重新讀取後台資料
+        </button>
 
-<br>
+      </div>
 
-<button
-  onclick="loadData()"
->
-重新讀取後台資料
-</button>
+    </section>
 
-</div>
 
-</section>
+    <!-- ===================================================== -->
+    <!-- 今日精選 -->
+    <!-- ===================================================== -->
 
+    <section class="section">
 
-<!-- ========================================================= -->
-<!-- 今日精選 -->
-<!-- ========================================================= -->
+      <div class="section-title">
+        今日符合六項條件
+      </div>
 
-<section class="section">
+      <div class="section-subtitle">
+        以下結果完全由後台 fetch_data.py 產生，前台不重新篩選。
+      </div>
 
-<div class="section-title">
-今日符合六項條件
-</div>
+      <div
+        id="selectedTable"
+        class="table-wrap"
+      ></div>
 
-<div
-  id="selectedTable"
-  class="table-wrap"
->
-</div>
+    </section>
 
-</section>
 
+    <!-- ===================================================== -->
+    <!-- Top 30 -->
+    <!-- ===================================================== -->
 
-<!-- ========================================================= -->
-<!-- Top30 -->
-<!-- ========================================================= -->
+    <section class="section">
 
-<section class="section">
+      <div class="section-title">
+        AI Top 30
+      </div>
 
-<div class="section-title">
-AI Top 30
-</div>
+      <div class="section-subtitle">
+        完全使用後台既有 Top 30 結果，前台不重新排序。
+      </div>
 
-<div
-  id="top30Table"
-  class="table-wrap"
->
-</div>
+      <div
+        id="top30Table"
+        class="table-wrap"
+      ></div>
 
-</section>
+    </section>
 
 
-<!-- ========================================================= -->
-<!-- 回測 -->
-<!-- ========================================================= -->
+    <!-- ===================================================== -->
+    <!-- 回測 -->
+    <!-- ===================================================== -->
 
-<section class="section">
+    <section class="section">
 
-<div class="section-title">
-A / B 歷史回測
-</div>
+      <div class="section-title">
+        A / B 歷史回測
+      </div>
 
-<div
-  id="backtestTable"
-  class="table-wrap"
->
-</div>
+      <div
+        id="backtestTable"
+        class="table-wrap"
+      ></div>
 
-</section>
+    </section>
 
 
-<!-- ========================================================= -->
-<!-- 六項正式條件 -->
-<!-- ========================================================= -->
+    <!-- ===================================================== -->
+    <!-- 六項正式條件 -->
+    <!-- ===================================================== -->
 
-<section class="section">
+    <section class="section">
 
-<div class="section-title">
-V8.0 正式六項核心條件
-</div>
+      <div class="section-title">
+        V8.0 六項正式核心條件
+      </div>
 
-<div class="card">
+      <div class="card">
 
-<div
-  id="conditionGrid"
-  class="condition-grid"
->
-</div>
+        <div
+          id="conditionGrid"
+          class="conditions"
+        ></div>
 
-<br>
+        <br>
 
-<div class="small">
-正式選股模式：目前維持多方
-</div>
+        <div class="notice">
+          <strong>正式選股模式：</strong>
+          目前維持多方。
+          <br>
+          所有條件判定均由後台產生，前台僅顯示結果。
+        </div>
 
-</div>
+      </div>
 
-</section>
+    </section>
 
 
-<!-- ========================================================= -->
-<!-- 股票完整資料 -->
-<!-- ========================================================= -->
+    <!-- ===================================================== -->
+    <!-- 股票完整資料 -->
+    <!-- ===================================================== -->
 
-<section class="section">
+    <section class="section">
 
-<div class="section-title">
-股票完整資料
-</div>
+      <div class="section-title">
+        股票完整資料
+      </div>
 
-<div
-  id="stocksTable"
-  class="table-wrap"
->
-</div>
+      <div class="section-subtitle">
+        共 <span id="stockTableCount">-</span> 檔。
+      </div>
 
-</section>
+      <div
+        id="stocksTable"
+        class="table-wrap"
+      ></div>
 
+    </section>
 
-<!-- ========================================================= -->
-<!-- ETF -->
-<!-- ========================================================= -->
 
-<section class="section">
+    <!-- ===================================================== -->
+    <!-- ETF -->
+    <!-- ===================================================== -->
 
-<div class="section-title">
-ETF
-</div>
+    <section class="section">
 
-<div
-  id="etfTable"
-  class="table-wrap"
->
-</div>
+      <div class="section-title">
+        ETF
+      </div>
 
-</section>
+      <div
+        id="etfTable"
+        class="table-wrap"
+      ></div>
 
+    </section>
 
-</div>
+
+  </div>
 
 </main>
+
+
+<footer>
+
+  V8.0 FINAL｜Data source:
+  <strong>Data/prices.json</strong>
+  <br>
+  Frontend READ ONLY。前台不自行產生選股結果。
+
+</footer>
 
 
 <script>
 
 /*
 ================================================================
-V8.0 FRONTEND LOCK
+台股 AI 選股儀表板 V8.0
 ================================================================
 
-本頁禁止自行計算：
-
-- RSI
-- MACD
-- KD
-- MA
-- 成交量條件
-- Core Score
-- AI Score
-- 今日 6/6
-- Top30
-- 回測
-
-所有結果只接受：
-
+資料來源：
 Data/prices.json
 
-後台 fetch_data.py 是唯一計算來源。
+前台責任：
+READ ONLY
+
+前台禁止：
+- RSI 計算
+- MACD 計算
+- KD 計算
+- MA 計算
+- 成交量條件計算
+- Core Score 計算
+- AI Score 計算
+- 今日 6/6 篩選
+- Top 30 排序
+- 回測計算
+
+所有結果均由後台 fetch_data.py 產生。
 
 ================================================================
 */
 
 
-const DATA_URL =
-  "./Data/prices.json";
+const DATA_URL = "./Data/prices.json";
 
 
 /* ==============================================================
@@ -590,25 +717,30 @@ function escapeHtml(value) {
 
 
 /* ==============================================================
-   數字格式
+   數字
 ============================================================== */
 
-function number(value, digits = 2) {
+function formatNumber(value, digits = 2) {
 
   if (
     value === null ||
-    value === undefined ||
-    !Number.isFinite(Number(value))
+    value === undefined
   ) {
     return "-";
   }
 
-  return Number(value).toFixed(digits);
+  const n = Number(value);
+
+  if (!Number.isFinite(n)) {
+    return "-";
+  }
+
+  return n.toFixed(digits);
 }
 
 
 /* ==============================================================
-   漲跌顯示
+   漲跌
 ============================================================== */
 
 function changeHtml(value) {
@@ -626,36 +758,37 @@ function changeHtml(value) {
     return "-";
   }
 
-  const cls =
-    n >= 0
-      ? "up"
-      : "down";
+  if (n > 0) {
 
-  const sign =
-    n >= 0
-      ? "+"
-      : "";
+    return `
+      <span class="up">
+        +${n.toFixed(2)}%
+      </span>
+    `;
+  }
+
+  if (n < 0) {
+
+    return `
+      <span class="down">
+        ${n.toFixed(2)}%
+      </span>
+    `;
+  }
 
   return `
-    <span class="${cls}">
-      ${sign}${n.toFixed(2)}%
+    <span class="neutral">
+      0.00%
     </span>
   `;
 }
 
 
 /* ==============================================================
-   Core Score 顯示
+   Core Score
 ============================================================== */
 
 function scoreBadge(score) {
-
-  if (
-    score === null ||
-    score === undefined
-  ) {
-    return "-";
-  }
 
   const n = Number(score);
 
@@ -702,7 +835,7 @@ function scoreBadge(score) {
    股票表格
 ============================================================== */
 
-function stockTable(stocks) {
+function renderStockTable(stocks) {
 
   if (
     !Array.isArray(stocks) ||
@@ -710,11 +843,12 @@ function stockTable(stocks) {
   ) {
 
     return `
-      <div style="padding:20px">
-        沒有資料
+      <div class="empty">
+        沒有股票資料。
       </div>
     `;
   }
+
 
   let html = `
 
@@ -727,6 +861,7 @@ function stockTable(stocks) {
 <th>排名</th>
 <th>代號</th>
 <th>名稱</th>
+<th>市場</th>
 <th>價格</th>
 <th>漲跌</th>
 <th>AI Score</th>
@@ -744,7 +879,7 @@ function stockTable(stocks) {
 </thead>
 
 <tbody>
-  `;
+`;
 
 
   stocks.forEach(
@@ -769,7 +904,11 @@ ${escapeHtml(item.name)}
 </td>
 
 <td>
-${number(item.price)}
+${escapeHtml(item.market || "-")}
+</td>
+
+<td>
+${formatNumber(item.price)}
 </td>
 
 <td>
@@ -777,7 +916,9 @@ ${changeHtml(item.change_pct)}
 </td>
 
 <td>
-${number(item.ai_score)}
+<strong>
+${formatNumber(item.ai_score)}
+</strong>
 </td>
 
 <td>
@@ -785,40 +926,48 @@ ${scoreBadge(item.core_score)}
 </td>
 
 <td>
-${escapeHtml(item.signal || "-")}
+${
+  item.signal === "今日精選"
+    ? `
+      <span class="badge badge-good">
+        ${escapeHtml(item.signal)}
+      </span>
+      `
+    : escapeHtml(item.signal || "-")
+}
 </td>
 
 <td>
-${number(item.rsi)}
+${formatNumber(item.rsi)}
 </td>
 
 <td>
-${number(item.k)}
+${formatNumber(item.k)}
 </td>
 
 <td>
-${number(item.d)}
+${formatNumber(item.d)}
 </td>
 
 <td>
-${number(item.macd)}
+${formatNumber(item.macd)}
 </td>
 
 <td>
-${number(item.ma20)}
+${formatNumber(item.ma20)}
 </td>
 
 <td>
 ${
   item.volume_ratio !== null &&
   item.volume_ratio !== undefined
-    ? number(item.volume_ratio) + "x"
+    ? formatNumber(item.volume_ratio) + "x"
     : "-"
 }
 </td>
 
 </tr>
-      `;
+`;
     }
   );
 
@@ -828,17 +977,17 @@ ${
 </tbody>
 
 </table>
-  `;
+`;
 
   return html;
 }
 
 
 /* ==============================================================
-   ETF 表格
+   ETF
 ============================================================== */
 
-function etfTable(etfs) {
+function renderETFTable(etfs) {
 
   if (
     !Array.isArray(etfs) ||
@@ -846,11 +995,12 @@ function etfTable(etfs) {
   ) {
 
     return `
-      <div style="padding:20px">
-        沒有 ETF 資料
+      <div class="empty">
+        後台目前沒有 ETF 資料。
       </div>
     `;
   }
+
 
   let html = `
 
@@ -875,7 +1025,7 @@ function etfTable(etfs) {
 </thead>
 
 <tbody>
-  `;
+`;
 
 
   etfs.forEach(
@@ -900,7 +1050,7 @@ ${escapeHtml(item.name)}
 </td>
 
 <td>
-${number(item.price)}
+${formatNumber(item.price)}
 </td>
 
 <td>
@@ -908,7 +1058,7 @@ ${changeHtml(item.change_pct)}
 </td>
 
 <td>
-${number(item.strength_score)}
+${formatNumber(item.strength_score)}
 </td>
 
 <td>
@@ -916,21 +1066,20 @@ ${escapeHtml(item.signal || "-")}
 </td>
 
 <td>
-${number(item.rsi)}
+${formatNumber(item.rsi)}
 </td>
 
 <td>
 ${
   item.volume_ratio !== null &&
   item.volume_ratio !== undefined
-    ? number(item.volume_ratio) + "x"
+    ? formatNumber(item.volume_ratio) + "x"
     : "-"
 }
 </td>
 
 </tr>
-
-      `;
+`;
     }
   );
 
@@ -940,17 +1089,17 @@ ${
 </tbody>
 
 </table>
-  `;
+`;
 
   return html;
 }
 
 
 /* ==============================================================
-   回測表格
+   回測
 ============================================================== */
 
-function backtestTable(comparison) {
+function renderBacktest(comparison) {
 
   if (
     !comparison ||
@@ -958,35 +1107,31 @@ function backtestTable(comparison) {
   ) {
 
     return `
-      <div style="padding:20px">
-        尚無回測資料
+      <div class="empty">
+        尚無回測資料。
       </div>
     `;
   }
 
 
   const A =
-    comparison
-      .strategies
-      .A_today_cross;
+    comparison.strategies.A_today_cross;
 
   const B =
-    comparison
-      .strategies
-      .B_current_bullish;
+    comparison.strategies.B_current_bullish;
 
 
   if (!A || !B) {
 
     return `
-      <div style="padding:20px">
-        回測資料結構錯誤
+      <div class="error">
+        回測資料結構錯誤。
       </div>
     `;
   }
 
 
-  let html = `
+  return `
 
 <table>
 
@@ -996,14 +1141,17 @@ function backtestTable(comparison) {
 
 <th>策略</th>
 
-<th>5 日勝率</th>
-<th>5 日平均</th>
+<th>5日訊號</th>
+<th>5日勝率</th>
+<th>5日平均報酬</th>
 
-<th>10 日勝率</th>
-<th>10 日平均</th>
+<th>10日訊號</th>
+<th>10日勝率</th>
+<th>10日平均報酬</th>
 
-<th>20 日勝率</th>
-<th>20 日平均</th>
+<th>20日訊號</th>
+<th>20日勝率</th>
+<th>20日平均報酬</th>
 
 </tr>
 
@@ -1020,27 +1168,39 @@ A：當日黃金交叉
 </td>
 
 <td>
-${number(A["5d"]?.win_rate)}%
+${formatNumber(A["5d"]?.signals, 0)}
 </td>
 
 <td>
-${number(A["5d"]?.average_return)}%
+${formatNumber(A["5d"]?.win_rate)}%
 </td>
 
 <td>
-${number(A["10d"]?.win_rate)}%
+${formatNumber(A["5d"]?.average_return)}%
 </td>
 
 <td>
-${number(A["10d"]?.average_return)}%
+${formatNumber(A["10d"]?.signals, 0)}
 </td>
 
 <td>
-${number(A["20d"]?.win_rate)}%
+${formatNumber(A["10d"]?.win_rate)}%
 </td>
 
 <td>
-${number(A["20d"]?.average_return)}%
+${formatNumber(A["10d"]?.average_return)}%
+</td>
+
+<td>
+${formatNumber(A["20d"]?.signals, 0)}
+</td>
+
+<td>
+${formatNumber(A["20d"]?.win_rate)}%
+</td>
+
+<td>
+${formatNumber(A["20d"]?.average_return)}%
 </td>
 
 </tr>
@@ -1055,27 +1215,39 @@ B：目前維持多方
 </td>
 
 <td>
-${number(B["5d"]?.win_rate)}%
+${formatNumber(B["5d"]?.signals, 0)}
 </td>
 
 <td>
-${number(B["5d"]?.average_return)}%
+${formatNumber(B["5d"]?.win_rate)}%
 </td>
 
 <td>
-${number(B["10d"]?.win_rate)}%
+${formatNumber(B["5d"]?.average_return)}%
 </td>
 
 <td>
-${number(B["10d"]?.average_return)}%
+${formatNumber(B["10d"]?.signals, 0)}
 </td>
 
 <td>
-${number(B["20d"]?.win_rate)}%
+${formatNumber(B["10d"]?.win_rate)}%
 </td>
 
 <td>
-${number(B["20d"]?.average_return)}%
+${formatNumber(B["10d"]?.average_return)}%
+</td>
+
+<td>
+${formatNumber(B["20d"]?.signals, 0)}
+</td>
+
+<td>
+${formatNumber(B["20d"]?.win_rate)}%
+</td>
+
+<td>
+${formatNumber(B["20d"]?.average_return)}%
 </td>
 
 </tr>
@@ -1085,7 +1257,7 @@ ${number(B["20d"]?.average_return)}%
 </table>
 
 
-<div style="padding:14px">
+<div class="card-sub" style="padding:14px">
 
 比較基準：
 <strong>
@@ -1105,9 +1277,8 @@ ${escapeHtml(
 </strong>
 
 </div>
-  `;
 
-  return html;
+`;
 }
 
 
@@ -1122,6 +1293,7 @@ function renderConditions(core) {
       "conditionGrid"
     );
 
+
   if (
     !core ||
     !Array.isArray(core.names)
@@ -1129,7 +1301,7 @@ function renderConditions(core) {
 
     container.innerHTML = `
       <div class="error">
-        核心條件資料錯誤
+        核心條件資料錯誤。
       </div>
     `;
 
@@ -1141,71 +1313,81 @@ function renderConditions(core) {
     core.rules || {};
 
 
-  const entries = [
+  const map = [
     [
       "MACD 多方",
       rules.macd_golden_cross
     ],
+
     [
       "RSI > 50",
       rules.rsi_over_50
     ],
+
     [
       "KD 多方",
       rules.kd_golden_cross
     ],
+
     [
-      "成交量放大",
+      "成交量 ≥ MA5 × 1.5",
       rules.volume_expand
     ],
+
     [
       "股價 > MA20",
       rules.price_over_ma20
     ],
+
     [
-      "MA20 向上",
+      "MA20 今日 > 昨日",
       rules.ma20_up
     ]
   ];
 
 
   container.innerHTML =
-    entries.map(
-      item => `
+    map.map(
+      ([title, rule]) => `
 
-<div class="condition pass">
+<div class="condition condition-pass">
 
-<strong>
-${escapeHtml(item[0])}
-</strong>
+<div class="condition-title">
+${escapeHtml(title)}
+</div>
 
-<br>
-
-<span class="small">
-${escapeHtml(item[1] || "-")}
-</span>
+<div class="condition-rule">
+${escapeHtml(rule || "-")}
+</div>
 
 </div>
 
-      `
+`
     ).join("");
 }
 
 
 /* ==============================================================
-   V8.0 資料結構驗證
+   V8.0 嚴格資料驗證
 ============================================================== */
 
 function validateData(data) {
 
-  if (!data || typeof data !== "object") {
+  if (
+    !data ||
+    typeof data !== "object"
+  ) {
+
     throw new Error(
       "prices.json 不是有效 JSON"
     );
   }
 
 
-  if (data.version !== "V8.0") {
+  if (
+    data.version !== "V8.0"
+  ) {
+
     throw new Error(
       "資料版本不是 V8.0"
     );
@@ -1213,9 +1395,9 @@ function validateData(data) {
 
 
   if (
-    data.schema_version !==
-    "prices.v8"
+    data.schema_version !== "prices.v8"
   ) {
+
     throw new Error(
       "資料結構版本不是 prices.v8"
     );
@@ -1223,9 +1405,9 @@ function validateData(data) {
 
 
   if (
-    data.status !==
-    "success"
+    data.status !== "success"
   ) {
+
     throw new Error(
       "後台資料狀態不是 success"
     );
@@ -1235,6 +1417,7 @@ function validateData(data) {
   if (
     !Array.isArray(data.stocks)
   ) {
+
     throw new Error(
       "stocks 資料結構錯誤"
     );
@@ -1244,6 +1427,7 @@ function validateData(data) {
   if (
     !Array.isArray(data.etfs)
   ) {
+
     throw new Error(
       "etfs 資料結構錯誤"
     );
@@ -1253,6 +1437,7 @@ function validateData(data) {
   if (
     !Array.isArray(data.top30)
   ) {
+
     throw new Error(
       "top30 資料結構錯誤"
     );
@@ -1264,6 +1449,7 @@ function validateData(data) {
       data.today_selected
     )
   ) {
+
     throw new Error(
       "today_selected 資料結構錯誤"
     );
@@ -1273,6 +1459,7 @@ function validateData(data) {
   if (
     !data.statistics
   ) {
+
     throw new Error(
       "statistics 缺失"
     );
@@ -1282,8 +1469,19 @@ function validateData(data) {
   if (
     !data.core_conditions
   ) {
+
     throw new Error(
       "core_conditions 缺失"
+    );
+  }
+
+
+  if (
+    !data.backtest_summary
+  ) {
+
+    throw new Error(
+      "backtest_summary 缺失"
     );
   }
 
@@ -1302,37 +1500,57 @@ function render(data) {
 
 
   const stats =
-    data.statistics || {};
+    data.statistics;
 
 
   document.getElementById(
     "stockCount"
   ).textContent =
-    stats.stock_count ?? "-";
+    stats.stock_count ?? data.stocks.length;
 
 
   document.getElementById(
     "etfCount"
   ).textContent =
-    stats.etf_count ?? "-";
+    stats.etf_count ?? data.etfs.length;
 
 
   document.getElementById(
     "selectedCount"
   ).textContent =
-    stats.today_selected_count ?? "-";
+    stats.today_selected_count ??
+    data.today_selected.length;
 
 
   document.getElementById(
     "top30Count"
   ).textContent =
-    stats.top30_count ?? "-";
+    stats.top30_count ??
+    data.top30.length;
+
+
+  document.getElementById(
+    "stockTableCount"
+  ).textContent =
+    data.stocks.length;
 
 
   document.getElementById(
     "version"
   ).textContent =
-    data.version || "-";
+    data.version;
+
+
+  document.getElementById(
+    "schemaVersion"
+  ).textContent =
+    data.schema_version;
+
+
+  document.getElementById(
+    "dataStatus"
+  ).textContent =
+    data.status;
 
 
   document.getElementById(
@@ -1349,26 +1567,24 @@ function render(data) {
     "-";
 
 
-  document.getElementById(
-    "dataStatus"
-  ).textContent =
-    data.status || "-";
-
-
   /*
-   * 注意：
-   *
-   * 以下全部直接使用後台資料。
-   *
-   * 前台不篩選。
-   * 前台不排序。
-   * 前台不重新計算。
-   */
+   =============================================================
+   READ ONLY
+
+   下面全部直接讀後台陣列。
+
+   不篩選。
+   不排序。
+   不計算。
+   不修改。
+   =============================================================
+  */
+
 
   document.getElementById(
     "selectedTable"
   ).innerHTML =
-    stockTable(
+    renderStockTable(
       data.today_selected
     );
 
@@ -1376,7 +1592,7 @@ function render(data) {
   document.getElementById(
     "top30Table"
   ).innerHTML =
-    stockTable(
+    renderStockTable(
       data.top30
     );
 
@@ -1384,7 +1600,7 @@ function render(data) {
   document.getElementById(
     "stocksTable"
   ).innerHTML =
-    stockTable(
+    renderStockTable(
       data.stocks
     );
 
@@ -1392,7 +1608,7 @@ function render(data) {
   document.getElementById(
     "etfTable"
   ).innerHTML =
-    etfTable(
+    renderETFTable(
       data.etfs
     );
 
@@ -1400,7 +1616,7 @@ function render(data) {
   document.getElementById(
     "backtestTable"
   ).innerHTML =
-    backtestTable(
+    renderBacktest(
       data.backtest_summary
     );
 
@@ -1424,26 +1640,34 @@ function render(data) {
 
 
 /* ==============================================================
-   讀取 prices.json
+   讀取後台
 ============================================================== */
 
 async function loadData() {
 
-  document.getElementById(
-    "loading"
-  ).style.display =
+  const loading =
+    document.getElementById(
+      "loading"
+    );
+
+  const error =
+    document.getElementById(
+      "error"
+    );
+
+  const app =
+    document.getElementById(
+      "app"
+    );
+
+
+  loading.style.display =
     "block";
 
-
-  document.getElementById(
-    "app"
-  ).style.display =
+  app.style.display =
     "none";
 
-
-  document.getElementById(
-    "error"
-  ).innerHTML =
+  error.innerHTML =
     "";
 
 
@@ -1476,17 +1700,12 @@ async function loadData() {
     render(data);
 
 
-  } catch (error) {
+  } catch (err) {
 
-    document.getElementById(
-      "loading"
-    ).style.display =
+    loading.style.display =
       "none";
 
-
-    document.getElementById(
-      "error"
-    ).innerHTML = `
+    error.innerHTML = `
 
 <div class="error">
 
@@ -1496,19 +1715,30 @@ async function loadData() {
 
 <br><br>
 
+錯誤：
 ${escapeHtml(
-  error.message
+  err.message
 )}
 
 <br><br>
 
-前台未自行產生任何選股結果。
-請確認 GitHub Actions 是否成功產生
-Data/prices.json。
+前台沒有自行產生任何選股結果。
+
+<br>
+
+請確認：
+<br>
+1. GitHub Actions 是否成功執行。
+<br>
+2. Data/prices.json 是否存在。
+<br>
+3. schema_version 是否為 prices.v8。
+<br>
+4. status 是否為 success。
 
 </div>
 
-    `;
+`;
   }
 }
 
@@ -1522,5 +1752,4 @@ loadData();
 </script>
 
 </body>
-
 </html>
