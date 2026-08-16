@@ -3,42 +3,63 @@
 # fetch_data.py V10.0 FINAL
 #
 # ================================================================
+#
 # V10.0 DATA ENGINE
 #
-# 核心架構：
+# V10.0 核心架構：
 #
 #   TWSE / TPEx Universe
-#              ↓
-#       SQLite market.db
-#              ↓
+#             ↓
+#       securities table
+#             ↓
+#   第一次：Yahoo 批次建立歷史資料
+#   每日：官方收盤資料增量更新
+#             ↓
+#          SQLite
+#       Data/market.db
+#             ↓
+#       技術指標計算
+#             ↓
+#       核心 6/6
+#             ↓
+#       AI Score
+#             ↓
+#       今日精選 / Top10
+#             ↓
 #   ┌─────────────────────────────┐
-#   │ 股票                         │
-#   │ 6/6 核心條件                │
+#   │ prices.json                 │ ← 完整後台資料
+#   │ backtest.json               │ ← 回測
+#   │ ui_data.json                │ ← 前台 UI 專用
+#   │ securities.json             │ ← 個股搜尋專用
 #   └─────────────────────────────┘
-#              ↓
-#        AI / Strength Score
-#              ↓
-#          Top10 / 精選
-#
-#   ┌─────────────────────────────┐
-#   │ ETF                          │
-#   │ ETF 專用趨勢 / 動能模型      │
-#   └─────────────────────────────┘
-#
-#   ┌─────────────────────────────┐
-#   │ Bond ETF                     │
-#   │ 固定收益型 ETF 獨立分類      │
-#   └─────────────────────────────┘
-#
-#              ↓
-#       ┌──────────────────┐
-#       │ prices.json      │ ← 完整後台結果
-#       │ ui_data.json     │ ← 前台專用小資料
-#       │ securities.json  │ ← 搜尋 / 加入清單
-#       │ backtest.json    │ ← 回測
-#       └──────────────────┘
 #
 # ================================================================
+#
+# V10.0 重要原則
+#
+# 1. index.html 不讀巨大 prices.json
+#
+# 2. index.html 主要讀：
+#
+#       Data/ui_data.json
+#       Data/securities.json
+#
+# 3. securities.json 由本程式自動生成
+#
+# 4. ui_data.json 由本程式自動生成
+#
+# 5. 今日精選 = 核心 6/6
+#
+# 6. Top10 = 股票 AI Score 前 10
+#
+# 7. ETF 與債券 ETF 分開
+#
+# 8. 不把「今日精選」當成系統訊號文字
+#
+# 9. 原始 prices.json 保留，不破壞後台資料
+#
+# ================================================================
+
 
 import os
 import json
@@ -59,7 +80,13 @@ import yfinance as yf
 # ================================================================
 
 VERSION = "V10.0"
+
 SCHEMA_VERSION = "prices.v10"
+
+UI_SCHEMA_VERSION = "ui.v10"
+
+SECURITIES_SCHEMA_VERSION = "securities.v10"
+
 
 BASE_DIR = os.path.dirname(
     os.path.dirname(
@@ -67,35 +94,42 @@ BASE_DIR = os.path.dirname(
     )
 )
 
+
 DATA_DIR = os.path.join(
     BASE_DIR,
     "Data"
 )
+
 
 OUTPUT_FILE = os.path.join(
     DATA_DIR,
     "prices.json"
 )
 
-UI_OUTPUT_FILE = os.path.join(
-    DATA_DIR,
-    "ui_data.json"
-)
-
-SECURITIES_OUTPUT_FILE = os.path.join(
-    DATA_DIR,
-    "securities.json"
-)
 
 BACKTEST_FILE = os.path.join(
     DATA_DIR,
     "backtest.json"
 )
 
+
 DATABASE_FILE = os.path.join(
     DATA_DIR,
     "market.db"
 )
+
+
+UI_DATA_FILE = os.path.join(
+    DATA_DIR,
+    "ui_data.json"
+)
+
+
+SECURITIES_FILE = os.path.join(
+    DATA_DIR,
+    "securities.json"
+)
+
 
 os.makedirs(
     DATA_DIR,
@@ -113,7 +147,7 @@ TW_TZ = timezone(
 
 
 # ================================================================
-# 歷史資料
+# 歷史資料設定
 # ================================================================
 
 HISTORY_PERIOD = "2y"
@@ -130,18 +164,20 @@ BACKTEST_HORIZONS = [
 
 
 # ================================================================
-# 前台輸出數量
+# 前台數量設定
 # ================================================================
 
 TOP10 = 10
 
-TODAY_RECOMMENDATION_LIMIT = 5
+TOP30 = 30
 
-ETF_RECOMMENDATION_LIMIT = 5
+ETF_TOP10 = 10
+
+BOND_TOP10 = 10
 
 
 # ================================================================
-# Yahoo 批次
+# Yahoo 批次下載設定
 # ================================================================
 
 YF_BATCH_SIZE = 80
@@ -162,16 +198,19 @@ TWSE_UNIVERSE_URL = (
     "v1/exchangeReport/STOCK_DAY_ALL"
 )
 
+
 TPEx_UNIVERSE_URL = (
     "https://www.tpex.org.tw/"
     "openapi/v1/"
     "tpex_mainboard_daily_close_quotes"
 )
 
+
 TWSE_DAILY_URL = (
     "https://openapi.twse.com.tw/"
     "v1/exchangeReport/STOCK_DAY_ALL"
 )
+
 
 TPEx_DAILY_URL = (
     "https://www.tpex.org.tw/"
@@ -181,7 +220,7 @@ TPEx_DAILY_URL = (
 
 
 # ================================================================
-# 股票六項核心條件
+# 六項正式條件
 # ================================================================
 
 CORE_CONDITIONS = [
@@ -195,59 +234,68 @@ CORE_CONDITIONS = [
 
 
 # ================================================================
-# 特殊商品
+# 特殊商品排除
+#
+# 注意：
+#
+# 「債券 ETF」不能在這裡直接全部排除。
+#
+# V10.0 會先判斷 ETF，再判斷 bond ETF。
+#
 # ================================================================
 
 INVALID_SECURITY_KEYWORDS = [
+
     "權證",
     "認購權證",
     "認售權證",
     "牛熊證",
+
     "ETN",
+
     "海外存託憑證",
     "存託憑證",
-    "可轉債",
-    "轉換公司債",
-    "公司債"
+
+    "認購證",
+    "認售證"
+
 ]
 
 
 # ================================================================
-# ETF / 債券 ETF 關鍵字
+# 債券 ETF 關鍵字
 # ================================================================
 
-BOND_ETF_KEYWORDS = [
-    "債",
+BOND_KEYWORDS = [
+
     "債券",
-    "公債",
     "公司債",
-    "投資級",
+    "公債",
+    "國債",
+    "政府債",
+    "美債",
+    "國庫券",
+    "投資級債",
     "高收益債",
-    "金融債",
-    "非投資級債",
+    "非投資等級債",
     "短天期債",
     "短期債",
-    "長天期債",
+    "中期債",
     "長期債",
-    "美債",
-    "美國債",
-    "國債",
-    "IG債",
-    "高收債"
-]
+    "金融債",
+    "美元債",
+    "人民幣債",
+    "新興市場債",
+    "全球債",
+    "全球高收益",
+    "收益債",
+    "Treasury",
+    "Bond",
+    "Bonds",
+    "Corporate Bond",
+    "Government Bond",
+    "High Yield"
 
-
-ETF_KEYWORDS = [
-    "ETF",
-    "指數",
-    "台灣50",
-    "高股息",
-    "高息",
-    "科技",
-    "半導體",
-    "金融",
-    "ESG",
-    "REIT"
 ]
 
 
@@ -277,6 +325,10 @@ def get_connection():
     return conn
 
 
+# ================================================================
+# 初始化 SQLite
+# ================================================================
+
 def init_database():
 
     conn = get_connection()
@@ -290,9 +342,8 @@ def init_database():
                 code TEXT NOT NULL,
                 name TEXT,
                 type TEXT,
-                asset_class TEXT DEFAULT 'stock',
                 is_etf INTEGER DEFAULT 0,
-                is_bond_etf INTEGER DEFAULT 0,
+                is_bond INTEGER DEFAULT 0,
                 active INTEGER DEFAULT 1,
                 updated_at TEXT,
                 PRIMARY KEY (market, code)
@@ -301,7 +352,7 @@ def init_database():
         )
 
         # --------------------------------------------------------
-        # V9 舊資料庫升級
+        # V9 → V10 舊 DB 相容
         # --------------------------------------------------------
 
         columns = [
@@ -311,28 +362,15 @@ def init_database():
             ).fetchall()
         ]
 
-        if "asset_class" not in columns:
+        if "is_bond" not in columns:
 
             conn.execute(
                 """
                 ALTER TABLE securities
-                ADD COLUMN asset_class TEXT
-                DEFAULT 'stock'
+                ADD COLUMN is_bond INTEGER DEFAULT 0
                 """
             )
 
-        if "is_bond_etf" not in columns:
-
-            conn.execute(
-                """
-                ALTER TABLE securities
-                ADD COLUMN is_bond_etf INTEGER
-                DEFAULT 0
-                """
-            )
-
-        # --------------------------------------------------------
-        # Daily prices
         # --------------------------------------------------------
 
         conn.execute(
@@ -346,7 +384,11 @@ def init_database():
                 low REAL,
                 close REAL,
                 volume INTEGER,
-                PRIMARY KEY (market, code, date)
+                PRIMARY KEY (
+                    market,
+                    code,
+                    date
+                )
             )
             """
         )
@@ -354,20 +396,22 @@ def init_database():
         conn.execute(
             """
             CREATE INDEX IF NOT EXISTS idx_daily_code_date
-            ON daily_prices (market, code, date)
+            ON daily_prices (
+                market,
+                code,
+                date
+            )
             """
         )
 
         conn.execute(
             """
             CREATE INDEX IF NOT EXISTS idx_daily_date
-            ON daily_prices (date)
+            ON daily_prices (
+                date
+            )
             """
         )
-
-        # --------------------------------------------------------
-        # Metadata
-        # --------------------------------------------------------
 
         conn.execute(
             """
@@ -412,9 +456,11 @@ def clean_code(value):
     ).upper()
 
     if value.endswith(".TWO"):
+
         value = value[:-4]
 
     if value.endswith(".TW"):
+
         value = value[:-3]
 
     return value
@@ -426,21 +472,6 @@ def safe_float(value):
 
         if value is None:
             return None
-
-        if isinstance(
-            value,
-            str
-        ):
-
-            value = (
-                value
-                .replace(",", "")
-                .replace("--", "")
-                .strip()
-            )
-
-            if value == "":
-                return None
 
         value = float(value)
 
@@ -464,22 +495,8 @@ def safe_int(value):
         if value is None:
             return 0
 
-        if isinstance(
-            value,
-            str
-        ):
-
-            value = (
-                value
-                .replace(",", "")
-                .strip()
-            )
-
-            if value in (
-                "",
-                "--"
-            ):
-                return 0
+        if pd.isna(value):
+            return 0
 
         return int(
             float(value)
@@ -490,15 +507,21 @@ def safe_int(value):
         return 0
 
 
+# ================================================================
+# 商品名稱是否為特殊商品
+# ================================================================
+
 def is_invalid_security(name):
 
-    name = clean_text(
+    text = clean_text(
         name
     )
 
     return any(
-        keyword in name
-        for keyword in INVALID_SECURITY_KEYWORDS
+        keyword.lower()
+        in text.lower()
+        for keyword
+        in INVALID_SECURITY_KEYWORDS
     )
 
 
@@ -522,24 +545,10 @@ def is_etf_code(code):
             5,
             6
         ):
+
             return True
 
     return False
-
-
-def is_bond_etf_name(name):
-
-    name = clean_text(
-        name
-    )
-
-    if not name:
-        return False
-
-    return any(
-        keyword in name
-        for keyword in BOND_ETF_KEYWORDS
-    )
 
 
 def is_etf(
@@ -574,18 +583,57 @@ def is_etf(
     return False
 
 
-def determine_asset_class(
+# ================================================================
+# 債券 ETF 判斷
+# ================================================================
+
+def is_bond_etf(
     code,
     name,
     security_type=None
 ):
 
-    if is_bond_etf_name(
+    if not is_etf(
+        code,
+        name,
+        security_type
+    ):
+        return False
+
+    text = clean_text(
         name
+    )
+
+    text_lower = text.lower()
+
+    return any(
+        keyword.lower()
+        in text_lower
+        for keyword
+        in BOND_KEYWORDS
+    )
+
+
+# ================================================================
+# 商品類型
+# ================================================================
+
+def classify_security(
+    code,
+    name,
+    security_type=None
+):
+
+    if is_bond_etf(
+        code,
+        name,
+        security_type
     ):
 
         return (
-            "bond_etf"
+            "bond",
+            True,
+            True
         )
 
     if is_etf(
@@ -595,10 +643,16 @@ def determine_asset_class(
     ):
 
         return (
-            "etf"
+            "etf",
+            True,
+            False
         )
 
-    return "stock"
+    return (
+        "stock",
+        False,
+        False
+    )
 
 
 # ================================================================
@@ -668,11 +722,13 @@ def fetch_twse_universe():
         ):
             continue
 
-        asset_class = (
-            determine_asset_class(
-                code,
-                name
-            )
+        (
+            security_type,
+            etf,
+            bond
+        ) = classify_security(
+            code,
+            name
         )
 
         universe.append({
@@ -684,19 +740,13 @@ def fetch_twse_universe():
             "name": name,
 
             "type":
-                asset_class,
-
-            "asset_class":
-                asset_class,
+                security_type,
 
             "is_etf":
-                asset_class in (
-                    "etf",
-                    "bond_etf"
-                ),
+                etf,
 
-            "is_bond_etf":
-                asset_class == "bond_etf"
+            "is_bond":
+                bond
 
         })
 
@@ -732,19 +782,43 @@ def fetch_tpex_universe():
     for item in data:
 
         code = clean_code(
+
             item.get(
                 "SecuritiesCompanyCode"
             )
-            or item.get("Code")
-            or item.get("股票代號")
+
+            or
+
+            item.get(
+                "Code"
+            )
+
+            or
+
+            item.get(
+                "股票代號"
+            )
+
         )
 
         name = clean_text(
+
             item.get(
                 "CompanyName"
             )
-            or item.get("Name")
-            or item.get("公司名稱")
+
+            or
+
+            item.get(
+                "Name"
+            )
+
+            or
+
+            item.get(
+                "公司名稱"
+            )
+
         )
 
         if not code:
@@ -758,11 +832,13 @@ def fetch_tpex_universe():
         ):
             continue
 
-        asset_class = (
-            determine_asset_class(
-                code,
-                name
-            )
+        (
+            security_type,
+            etf,
+            bond
+        ) = classify_security(
+            code,
+            name
         )
 
         universe.append({
@@ -774,19 +850,13 @@ def fetch_tpex_universe():
             "name": name,
 
             "type":
-                asset_class,
-
-            "asset_class":
-                asset_class,
+                security_type,
 
             "is_etf":
-                asset_class in (
-                    "etf",
-                    "bond_etf"
-                ),
+                etf,
 
-            "is_bond_etf":
-                asset_class == "bond_etf"
+            "is_bond":
+                bond
 
         })
 
@@ -848,7 +918,7 @@ def build_universe():
                 1
                 for x in universe
                 if x["market"] == "TW"
-                and x["asset_class"] == "stock"
+                and x["type"] == "stock"
             ),
 
         "tpex_stock_universe":
@@ -856,7 +926,7 @@ def build_universe():
                 1
                 for x in universe
                 if x["market"] == "TWO"
-                and x["asset_class"] == "stock"
+                and x["type"] == "stock"
             ),
 
         "twse_etf_universe":
@@ -864,7 +934,7 @@ def build_universe():
                 1
                 for x in universe
                 if x["market"] == "TW"
-                and x["asset_class"] == "etf"
+                and x["type"] == "etf"
             ),
 
         "tpex_etf_universe":
@@ -872,43 +942,67 @@ def build_universe():
                 1
                 for x in universe
                 if x["market"] == "TWO"
-                and x["asset_class"] == "etf"
+                and x["type"] == "etf"
             ),
 
-        "twse_bond_etf_universe":
+        "twse_bond_universe":
             sum(
                 1
                 for x in universe
                 if x["market"] == "TW"
-                and x["asset_class"] == "bond_etf"
+                and x["type"] == "bond"
             ),
 
-        "tpex_bond_etf_universe":
+        "tpex_bond_universe":
             sum(
                 1
                 for x in universe
                 if x["market"] == "TWO"
-                and x["asset_class"] == "bond_etf"
+                and x["type"] == "bond"
             )
 
     }
 
     statistics["stock_universe"] = (
-        statistics["twse_stock_universe"]
+
+        statistics[
+            "twse_stock_universe"
+        ]
+
         +
-        statistics["tpex_stock_universe"]
+
+        statistics[
+            "tpex_stock_universe"
+        ]
+
     )
 
     statistics["etf_universe"] = (
-        statistics["twse_etf_universe"]
+
+        statistics[
+            "twse_etf_universe"
+        ]
+
         +
-        statistics["tpex_etf_universe"]
+
+        statistics[
+            "tpex_etf_universe"
+        ]
+
     )
 
-    statistics["bond_etf_universe"] = (
-        statistics["twse_bond_etf_universe"]
+    statistics["bond_universe"] = (
+
+        statistics[
+            "twse_bond_universe"
+        ]
+
         +
-        statistics["tpex_bond_etf_universe"]
+
+        statistics[
+            "tpex_bond_universe"
+        ]
+
     )
 
     statistics["total_universe"] = (
@@ -940,13 +1034,8 @@ def build_universe():
     )
 
     print(
-        f"上市債券 ETF："
-        f"{statistics['twse_bond_etf_universe']}"
-    )
-
-    print(
-        f"上櫃債券 ETF："
-        f"{statistics['tpex_bond_etf_universe']}"
+        f"債券商品："
+        f"{statistics['bond_universe']}"
     )
 
     print(
@@ -997,10 +1086,7 @@ def save_universe(
     try:
 
         conn.execute(
-            """
-            UPDATE securities
-            SET active = 0
-            """
+            "UPDATE securities SET active = 0"
         )
 
         rows = []
@@ -1017,14 +1103,12 @@ def save_universe(
 
                 item["type"],
 
-                item["asset_class"],
-
                 1
                 if item["is_etf"]
                 else 0,
 
                 1
-                if item["is_bond_etf"]
+                if item["is_bond"]
                 else 0,
 
                 1,
@@ -1034,30 +1118,44 @@ def save_universe(
             ))
 
         conn.executemany(
+
             """
             INSERT INTO securities (
                 market,
                 code,
                 name,
                 type,
-                asset_class,
                 is_etf,
-                is_bond_etf,
+                is_bond,
                 active,
                 updated_at
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ON CONFLICT(market, code)
+            VALUES (
+                ?, ?, ?, ?, ?, ?, ?, ?
+            )
+
+            ON CONFLICT(
+                market,
+                code
+            )
+
             DO UPDATE SET
+
                 name=excluded.name,
+
                 type=excluded.type,
-                asset_class=excluded.asset_class,
+
                 is_etf=excluded.is_etf,
-                is_bond_etf=excluded.is_bond_etf,
+
+                is_bond=excluded.is_bond,
+
                 active=1,
+
                 updated_at=excluded.updated_at
             """,
+
             rows
+
         )
 
         conn.commit()
@@ -1121,7 +1219,33 @@ def database_latest_date():
 
 
 # ================================================================
-# Bootstrap Yahoo
+# 歷史資料筆數
+# ================================================================
+
+def count_history_records():
+
+    conn = get_connection()
+
+    try:
+
+        row = conn.execute(
+            """
+            SELECT COUNT(*)
+            FROM daily_prices
+            """
+        ).fetchone()
+
+        return int(
+            row[0]
+        )
+
+    finally:
+
+        conn.close()
+
+
+# ================================================================
+# Yahoo Bootstrap
 # ================================================================
 
 def bootstrap_history(
@@ -1137,7 +1261,7 @@ def bootstrap_history(
     )
 
     print(
-        "Yahoo Finance 批次下載"
+        "Yahoo Finance 批次下載 2 年資料"
     )
 
     print(
@@ -1165,16 +1289,20 @@ def bootstrap_history(
             ]
 
             symbols = [
+
                 yahoo_symbol(
                     x["code"],
                     x["market"]
                 )
+
                 for x in batch
+
             ]
 
             print(
                 f"[Bootstrap] "
-                f"{min(start + len(batch), total)}/{total}"
+                f"{min(start + len(batch), total)}"
+                f"/{total}"
             )
 
             downloaded = None
@@ -1187,20 +1315,33 @@ def bootstrap_history(
                 try:
 
                     downloaded = yf.download(
+
                         tickers=symbols,
+
                         period=HISTORY_PERIOD,
+
                         interval="1d",
+
                         auto_adjust=False,
+
                         actions=False,
+
                         progress=False,
+
                         group_by="ticker",
+
                         threads=True
+
                     )
 
                     if (
+
                         downloaded is not None
+
                         and
+
                         not downloaded.empty
+
                     ):
 
                         break
@@ -1217,13 +1358,18 @@ def bootstrap_history(
                     )
 
             if (
+
                 downloaded is None
+
                 or
+
                 downloaded.empty
+
             ):
 
                 print(
-                    "[WARN] 批次下載失敗"
+                    "[WARN] "
+                    "批次下載失敗，跳過"
                 )
 
                 continue
@@ -1243,11 +1389,9 @@ def bootstrap_history(
 
                     else:
 
-                        if (
-                            not isinstance(
-                                downloaded.columns,
-                                pd.MultiIndex
-                            )
+                        if not isinstance(
+                            downloaded.columns,
+                            pd.MultiIndex
                         ):
 
                             continue
@@ -1272,6 +1416,7 @@ def bootstrap_history(
                     df = df.reset_index()
 
                     if "Date" not in df.columns:
+
                         continue
 
                     for _, row in df.iterrows():
@@ -1283,15 +1428,19 @@ def bootstrap_history(
                         if pd.isna(
                             date_value
                         ):
+
                             continue
 
                         date_text = (
+
                             pd.Timestamp(
                                 date_value
                             )
+
                             .strftime(
                                 "%Y-%m-%d"
                             )
+
                         )
 
                         close = safe_float(
@@ -1301,6 +1450,22 @@ def bootstrap_history(
                         if close is None:
                             continue
 
+                        open_price = safe_float(
+                            row.get("Open")
+                        )
+
+                        high = safe_float(
+                            row.get("High")
+                        )
+
+                        low = safe_float(
+                            row.get("Low")
+                        )
+
+                        volume = safe_int(
+                            row.get("Volume")
+                        )
+
                         rows.append((
 
                             item["market"],
@@ -1309,23 +1474,15 @@ def bootstrap_history(
 
                             date_text,
 
-                            safe_float(
-                                row.get("Open")
-                            ),
+                            open_price,
 
-                            safe_float(
-                                row.get("High")
-                            ),
+                            high,
 
-                            safe_float(
-                                row.get("Low")
-                            ),
+                            low,
 
                             close,
 
-                            safe_int(
-                                row.get("Volume")
-                            )
+                            volume
 
                         ))
 
@@ -1336,8 +1493,11 @@ def bootstrap_history(
             if rows:
 
                 conn.executemany(
+
                     """
-                    INSERT OR REPLACE INTO daily_prices (
+                    INSERT OR REPLACE INTO
+                    daily_prices (
+
                         market,
                         code,
                         date,
@@ -1346,10 +1506,15 @@ def bootstrap_history(
                         low,
                         close,
                         volume
+
                     )
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    VALUES (
+                        ?, ?, ?, ?, ?, ?, ?, ?
+                    )
                     """,
+
                     rows
+
                 )
 
                 conn.commit()
@@ -1378,32 +1543,6 @@ def bootstrap_history(
 
 
 # ================================================================
-# 歷史資料筆數
-# ================================================================
-
-def count_history_records():
-
-    conn = get_connection()
-
-    try:
-
-        row = conn.execute(
-            """
-            SELECT COUNT(*)
-            FROM daily_prices
-            """
-        ).fetchone()
-
-        return int(
-            row[0]
-        )
-
-    finally:
-
-        conn.close()
-
-
-# ================================================================
 # 官方資料解析
 # ================================================================
 
@@ -1423,122 +1562,249 @@ def parse_daily_item(
         )
 
         open_price = (
-            item.get("OpeningPrice")
+
+            item.get(
+                "OpeningPrice"
+            )
+
             or
-            item.get("Open")
+
+            item.get(
+                "Open"
+            )
+
         )
 
         high = (
-            item.get("HighestPrice")
+
+            item.get(
+                "HighestPrice"
+            )
+
             or
-            item.get("High")
+
+            item.get(
+                "High"
+            )
+
         )
 
         low = (
-            item.get("LowestPrice")
+
+            item.get(
+                "LowestPrice"
+            )
+
             or
-            item.get("Low")
+
+            item.get(
+                "Low"
+            )
+
         )
 
         close = (
-            item.get("ClosingPrice")
+
+            item.get(
+                "ClosingPrice"
+            )
+
             or
-            item.get("Close")
+
+            item.get(
+                "Close"
+            )
+
         )
 
         volume = (
-            item.get("TradeVolume")
+
+            item.get(
+                "TradeVolume"
+            )
+
             or
-            item.get("Volume")
+
+            item.get(
+                "Volume"
+            )
+
         )
 
     else:
 
         code = clean_code(
+
             item.get(
                 "SecuritiesCompanyCode"
             )
+
             or
-            item.get("Code")
+
+            item.get(
+                "Code"
+            )
+
             or
-            item.get("股票代號")
+
+            item.get(
+                "股票代號"
+            )
+
         )
 
         name = clean_text(
+
             item.get(
                 "CompanyName"
             )
+
             or
-            item.get("Name")
+
+            item.get(
+                "Name"
+            )
+
             or
-            item.get("公司名稱")
+
+            item.get(
+                "公司名稱"
+            )
+
         )
 
         open_price = (
-            item.get("Open")
+
+            item.get(
+                "Open"
+            )
+
             or
-            item.get("OpeningPrice")
+
+            item.get(
+                "OpeningPrice"
+            )
+
             or
-            item.get("開盤價")
+
+            item.get(
+                "開盤價"
+            )
+
         )
 
         high = (
-            item.get("High")
+
+            item.get(
+                "High"
+            )
+
             or
-            item.get("HighestPrice")
+
+            item.get(
+                "HighestPrice"
+            )
+
             or
-            item.get("最高價")
+
+            item.get(
+                "最高價"
+            )
+
         )
 
         low = (
-            item.get("Low")
+
+            item.get(
+                "Low"
+            )
+
             or
-            item.get("LowestPrice")
+
+            item.get(
+                "LowestPrice"
+            )
+
             or
-            item.get("最低價")
+
+            item.get(
+                "最低價"
+            )
+
         )
 
         close = (
-            item.get("Close")
+
+            item.get(
+                "Close"
+            )
+
             or
-            item.get("ClosingPrice")
+
+            item.get(
+                "ClosingPrice"
+            )
+
             or
-            item.get("收盤價")
+
+            item.get(
+                "收盤價"
+            )
+
         )
 
         volume = (
-            item.get("Volume")
+
+            item.get(
+                "Volume"
+            )
+
             or
-            item.get("TradeVolume")
+
+            item.get(
+                "TradeVolume"
+            )
+
             or
-            item.get("成交股數")
+
+            item.get(
+                "成交股數"
+            )
+
         )
 
     return {
 
-        "code": code,
+        "code":
+            code,
 
-        "name": name,
+        "name":
+            name,
 
-        "open": safe_float(
-            open_price
-        ),
+        "open":
+            safe_float(
+                open_price
+            ),
 
-        "high": safe_float(
-            high
-        ),
+        "high":
+            safe_float(
+                high
+            ),
 
-        "low": safe_float(
-            low
-        ),
+        "low":
+            safe_float(
+                low
+            ),
 
-        "close": safe_float(
-            close
-        ),
+        "close":
+            safe_float(
+                close
+            ),
 
-        "volume": safe_int(
-            volume
-        )
+        "volume":
+            safe_int(
+                volume
+            )
 
     }
 
@@ -1723,8 +1989,11 @@ def fetch_official_daily(
     try:
 
         conn.executemany(
+
             """
-            INSERT OR REPLACE INTO daily_prices (
+            INSERT OR REPLACE INTO
+            daily_prices (
+
                 market,
                 code,
                 date,
@@ -1733,10 +2002,15 @@ def fetch_official_daily(
                 low,
                 close,
                 volume
+
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (
+                ?, ?, ?, ?, ?, ?, ?, ?
+            )
             """,
+
             records
+
         )
 
         conn.commit()
@@ -1753,7 +2027,7 @@ def fetch_official_daily(
 
 
 # ================================================================
-# 讀取歷史
+# 取得股票歷史
 # ================================================================
 
 def load_history(
@@ -1766,24 +2040,34 @@ def load_history(
     try:
 
         df = pd.read_sql_query(
+
             """
             SELECT
+
                 date,
                 open,
                 high,
                 low,
                 close,
                 volume
+
             FROM daily_prices
+
             WHERE market = ?
+
               AND code = ?
+
             ORDER BY date ASC
+
             """,
+
             conn,
+
             params=(
                 market,
                 code
             )
+
         )
 
     finally:
@@ -1802,14 +2086,19 @@ def load_history(
     )
 
     df.rename(
+
         columns={
+
             "open": "Open",
             "high": "High",
             "low": "Low",
             "close": "Close",
             "volume": "Volume"
+
         },
+
         inplace=True
+
     )
 
     return df
@@ -1835,38 +2124,56 @@ def calculate_rsi(
     )
 
     avg_gain = gain.ewm(
+
         alpha=1 / period,
+
         adjust=False,
+
         min_periods=period
+
     ).mean()
 
     avg_loss = loss.ewm(
+
         alpha=1 / period,
+
         adjust=False,
+
         min_periods=period
+
     ).mean()
 
     rs = (
+
         avg_gain /
+
         avg_loss.replace(
             0,
             np.nan
         )
+
     )
 
     result = (
+
         100 -
+
         100 /
+
         (1 + rs)
+
     )
 
     result = result.where(
+
         ~(
             avg_loss.eq(0)
             &
             avg_gain.gt(0)
         ),
+
         100
+
     )
 
     return result
@@ -1881,13 +2188,19 @@ def calculate_macd(
 ):
 
     ema12 = close.ewm(
+
         span=12,
+
         adjust=False
+
     ).mean()
 
     ema26 = close.ewm(
+
         span=26,
+
         adjust=False
+
     ).mean()
 
     macd = (
@@ -1896,8 +2209,11 @@ def calculate_macd(
     )
 
     signal = macd.ewm(
+
         span=9,
+
         adjust=False
+
     ).mean()
 
     hist = (
@@ -1943,24 +2259,36 @@ def calculate_kd(
     )
 
     rsv = (
+
         (
             close -
             low9
         )
+
         /
+
         denominator
+
         *
+
         100
+
     )
 
     k = rsv.ewm(
+
         alpha=1 / 3,
+
         adjust=False
+
     ).mean()
 
     d = k.ewm(
+
         alpha=1 / 3,
+
         adjust=False
+
     ).mean()
 
     return (
@@ -2013,9 +2341,13 @@ def calculate_indicators(
         df["K"],
         df["D"]
     ) = calculate_kd(
+
         df["High"],
+
         df["Low"],
+
         df["Close"]
+
     )
 
     df["VOL_MA5"] = (
@@ -2028,7 +2360,7 @@ def calculate_indicators(
 
 
 # ================================================================
-# 股票核心條件
+# 核心 6/6
 # ================================================================
 
 def evaluate_core(
@@ -2042,120 +2374,107 @@ def evaluate_core(
 
     previous = df.iloc[-2]
 
-    conditions = {
+    values = {
 
         "macd_golden_cross":
             bool(
-                pd.notna(
-                    latest["MACD"]
-                )
-                and
-                pd.notna(
-                    latest["MACD_SIGNAL"]
-                )
-                and
+
                 latest["MACD"]
+
                 >
+
                 latest["MACD_SIGNAL"]
+
             ),
 
         "rsi_over_50":
             bool(
-                pd.notna(
-                    latest["RSI"]
-                )
-                and
+
                 latest["RSI"]
+
                 >
+
                 50
+
             ),
 
         "kd_golden_cross":
             bool(
-                pd.notna(
-                    latest["K"]
-                )
-                and
-                pd.notna(
-                    latest["D"]
-                )
-                and
+
                 latest["K"]
+
                 >
+
                 latest["D"]
+
             ),
 
         "volume_expand":
             bool(
-                pd.notna(
-                    latest["VOL_MA5"]
-                )
-                and
-                latest["VOL_MA5"] > 0
-                and
+
                 latest["Volume"]
+
                 >=
+
                 latest["VOL_MA5"]
+
                 *
+
                 1.5
+
             ),
 
         "price_over_ma20":
             bool(
-                pd.notna(
-                    latest["MA20"]
-                )
-                and
+
                 latest["Close"]
+
                 >
+
                 latest["MA20"]
+
             ),
 
         "ma20_up":
             bool(
-                pd.notna(
-                    latest["MA20"]
-                )
-                and
-                pd.notna(
-                    previous["MA20"]
-                )
-                and
+
                 latest["MA20"]
+
                 >
+
                 previous["MA20"]
+
             )
 
     }
 
     score = sum(
+
         1
-        for value in conditions.values()
+
+        for value
+        in values.values()
+
         if value
+
     )
 
-    conditions[
-        "core_score"
-    ] = score
+    values["core_score"] = score
 
-    conditions[
-        "core_total"
-    ] = 6
+    values["core_total"] = 6
 
-    conditions[
-        "core_pass"
-    ] = (
+    values["core_pass"] = (
         score == 6
     )
 
-    return conditions
+    return values
 
 
 # ================================================================
-# 股票 Strength Score
+# Strength Score
 # ================================================================
 
-def calculate_stock_strength_score(
+def calculate_strength_score(
     df
 ):
 
@@ -2163,287 +2482,110 @@ def calculate_stock_strength_score(
 
     score = 0.0
 
-    rsi = safe_float(
-        latest["RSI"]
-    )
+    rsi = latest["RSI"]
 
-    if rsi is not None:
+    if pd.notna(rsi):
+
+        rsi = float(rsi)
 
         if rsi >= 70:
+
             score += 20
 
         elif rsi >= 60:
+
             score += 16
 
         elif rsi >= 50:
+
             score += 12
 
     if (
-        pd.notna(
-            latest["MACD"]
-        )
-        and
-        pd.notna(
-            latest["MACD_SIGNAL"]
-        )
-        and
+
         latest["MACD"]
+
         >
+
         latest["MACD_SIGNAL"]
+
     ):
+
         score += 20
 
     if (
-        pd.notna(
-            latest["K"]
-        )
-        and
-        pd.notna(
-            latest["D"]
-        )
-        and
+
         latest["K"]
+
         >
+
         latest["D"]
+
     ):
+
         score += 15
 
     if (
-        pd.notna(
-            latest["Close"]
-        )
-        and
-        pd.notna(
-            latest["MA20"]
-        )
-        and
+
         latest["Close"]
+
         >
+
         latest["MA20"]
+
     ):
+
         score += 20
 
     if len(df) >= 2:
 
         if (
-            pd.notna(
-                latest["MA20"]
-            )
-            and
-            pd.notna(
-                df.iloc[-2]["MA20"]
-            )
-            and
+
             latest["MA20"]
+
             >
+
             df.iloc[-2]["MA20"]
+
         ):
+
             score += 15
 
     if (
+
         pd.notna(
             latest["VOL_MA5"]
         )
+
         and
+
         latest["VOL_MA5"] > 0
+
         and
+
         latest["Volume"]
+
         >=
+
         latest["VOL_MA5"]
+
         *
+
         1.5
+
     ):
+
         score += 10
 
     return round(
+
         min(
             score,
             100
         ),
+
         2
+
     )
-
-
-# ================================================================
-# ETF 專用評分
-# ================================================================
-#
-# ETF 不使用股票 6/6。
-#
-# 核心：
-#   1. 價格 > MA20
-#   2. MA20 上升
-#   3. MACD 多方
-#   4. RSI > 50
-#   5. K > D
-#
-# 量能只作為輔助，不作為 ETF 的硬性 6/6。
-#
-# ================================================================
-
-def calculate_etf_score(
-    df
-):
-
-    if df is None or len(df) < 60:
-
-        return {
-
-            "etf_score":
-                0,
-
-            "trend_score":
-                0,
-
-            "momentum_score":
-                0,
-
-            "volume_score":
-                0,
-
-            "etf_pass":
-                False
-
-        }
-
-    latest = df.iloc[-1]
-
-    score = 0.0
-
-    trend_score = 0.0
-
-    momentum_score = 0.0
-
-    volume_score = 0.0
-
-    # ------------------------------------------------------------
-    # 趨勢
-    # ------------------------------------------------------------
-
-    if (
-        pd.notna(latest["Close"])
-        and
-        pd.notna(latest["MA20"])
-        and
-        latest["Close"]
-        >
-        latest["MA20"]
-    ):
-
-        trend_score += 25
-
-    if len(df) >= 2:
-
-        if (
-            pd.notna(latest["MA20"])
-            and
-            pd.notna(df.iloc[-2]["MA20"])
-            and
-            latest["MA20"]
-            >
-            df.iloc[-2]["MA20"]
-        ):
-
-            trend_score += 20
-
-    # ------------------------------------------------------------
-    # 動能
-    # ------------------------------------------------------------
-
-    if (
-        pd.notna(latest["MACD"])
-        and
-        pd.notna(latest["MACD_SIGNAL"])
-        and
-        latest["MACD"]
-        >
-        latest["MACD_SIGNAL"]
-    ):
-
-        momentum_score += 20
-
-    if (
-        pd.notna(latest["RSI"])
-        and
-        latest["RSI"] > 50
-    ):
-
-        momentum_score += 15
-
-    if (
-        pd.notna(latest["K"])
-        and
-        pd.notna(latest["D"])
-        and
-        latest["K"]
-        >
-        latest["D"]
-    ):
-
-        momentum_score += 10
-
-    # ------------------------------------------------------------
-    # 量能
-    # ------------------------------------------------------------
-
-    if (
-        pd.notna(latest["VOL_MA5"])
-        and
-        latest["VOL_MA5"] > 0
-    ):
-
-        volume_ratio = (
-            latest["Volume"]
-            /
-            latest["VOL_MA5"]
-        )
-
-        if volume_ratio >= 1.5:
-
-            volume_score = 10
-
-        elif volume_ratio >= 1.0:
-
-            volume_score = 5
-
-    score = (
-        trend_score
-        +
-        momentum_score
-        +
-        volume_score
-    )
-
-    return {
-
-        "etf_score":
-            round(
-                min(score, 100),
-                2
-            ),
-
-        "trend_score":
-            round(
-                trend_score,
-                2
-            ),
-
-        "momentum_score":
-            round(
-                momentum_score,
-                2
-            ),
-
-        "volume_score":
-            round(
-                volume_score,
-                2
-            ),
-
-        "etf_pass":
-            score >= 60
-
-    }
 
 
 # ================================================================
@@ -2472,212 +2614,149 @@ def calculate_ai_score(
     )
 
     momentum_bonus = min(
+
         max(
             change,
             -10
         ),
+
         10
+
     )
 
     score = (
+
         strength * 0.65
+
         +
+
         (core / 6) * 30
+
         +
+
         momentum_bonus * 0.5
+
     )
 
     return round(
+
         max(
+
             0,
+
             min(
                 score,
                 100
             )
+
         ),
+
         2
+
     )
 
 
 # ================================================================
-# 股票評級
+# 系統訊號
+#
+# 注意：
+#
+# 「今日精選」不再塞進 signal。
+#
+# 今日精選由 core_pass 決定。
+#
 # ================================================================
 
-def make_stock_rating(
+def make_signal(
     core_score,
     ai_score
 ):
 
-    if core_score == 6:
-
-        if ai_score >= 85:
-            return "A+"
-
-        if ai_score >= 75:
-            return "A"
-
-        return "A-"
-
     if core_score >= 5:
 
-        if ai_score >= 75:
-            return "B+"
-
-        return "B"
+        return "強勢多方"
 
     if core_score >= 4:
 
-        return "B-"
+        return "多方觀察"
 
-    if core_score >= 3:
+    if ai_score >= 70:
 
-        return "C"
+        return "偏多"
 
-    return "D"
+    if ai_score >= 50:
+
+        return "中性"
+
+    return "偏弱"
 
 
 # ================================================================
-# 股票系統訊號
+# 系統評級
 # ================================================================
 
-def make_stock_signal(
+def make_rating(
+    ai_score,
     core_score
 ):
 
     if core_score == 6:
 
-        return "6/6 多方成立"
-
-    if core_score >= 5:
-
-        return "5/6 強勢"
-
-    if core_score >= 4:
-
-        return "4/6 偏多"
-
-    if core_score >= 3:
-
-        return "3/6 中性偏多"
-
-    return "多方條件不足"
-
-
-# ================================================================
-# 股票建議
-# ================================================================
-
-def make_stock_recommendation(
-    core_score,
-    ai_score
-):
-
-    if core_score == 6:
-
-        if ai_score >= 80:
-            return "可分批布局"
-
-        if ai_score >= 70:
-            return "列入買進觀察"
-
-        return "符合條件，控制部位"
-
-    if core_score >= 5:
-
-        return "等待條件完整"
-
-    if core_score >= 4:
-
-        return "觀察後續突破"
-
-    return "暫不建議進場"
-
-
-# ================================================================
-# ETF 評級
-# ================================================================
-
-def make_etf_rating(
-    score
-):
-
-    if score >= 85:
         return "A+"
 
-    if score >= 75:
+    if ai_score >= 80:
+
         return "A"
 
-    if score >= 65:
+    if ai_score >= 70:
+
         return "B+"
 
-    if score >= 55:
+    if ai_score >= 60:
+
         return "B"
 
-    if score >= 45:
+    if ai_score >= 50:
+
         return "C"
 
     return "D"
 
 
 # ================================================================
-# ETF 系統訊號
+# 建議
 # ================================================================
 
-def make_etf_signal(
-    score
+def make_recommendation(
+    core_pass,
+    core_score,
+    ai_score
 ):
 
-    if score >= 80:
-        return "強勢多方"
+    if core_pass:
 
-    if score >= 70:
-        return "多方趨勢"
+        return "符合 6/6 核心條件"
 
-    if score >= 60:
+    if core_score >= 5:
+
+        return "接近核心條件"
+
+    if core_score >= 4:
+
+        return "列入觀察"
+
+    if ai_score >= 70:
+
         return "偏多觀察"
 
-    if score >= 50:
-        return "中性"
-
-    return "趨勢不足"
+    return "暫不操作"
 
 
 # ================================================================
-# ETF 建議
+# 建立單一 Record
 # ================================================================
 
-def make_etf_recommendation(
-    score,
-    is_bond_etf=False
-):
-
-    if is_bond_etf:
-
-        if score >= 75:
-            return "可作防禦型配置"
-
-        if score >= 60:
-            return "列入配置觀察"
-
-        return "暫不建議增加部位"
-
-    if score >= 80:
-        return "可分批布局"
-
-    if score >= 70:
-        return "列入配置觀察"
-
-    if score >= 60:
-        return "等待趨勢確認"
-
-    return "暫不建議進場"
-
-
-# ================================================================
-# 建立股票 Record
-# ================================================================
-
-def build_stock_record(
+def build_security_record(
     item,
     df
 ):
@@ -2712,38 +2791,56 @@ def build_stock_record(
     )
 
     if (
+
         close is None
+
         or
+
         previous_close is None
+
     ):
+
         return None
 
-    change_pct = 0.0
+    change_pct = 0
 
     if previous_close != 0:
 
         change_pct = (
+
             (
+
                 close -
+
                 previous_close
+
             )
+
             /
+
             previous_close
+
             *
+
             100
+
         )
 
     strength_score = (
-        calculate_stock_strength_score(
+        calculate_strength_score(
             df
         )
     )
 
     ai_score = (
         calculate_ai_score(
+
             strength_score,
+
             core["core_score"],
+
             change_pct
+
         )
     )
 
@@ -2758,19 +2855,30 @@ def build_stock_record(
     volume_ratio = None
 
     if (
-        volume_ma5 is not None
+
+        volume_ma5
+
         and
+
         volume_ma5 > 0
+
     ):
 
         volume_ratio = (
+
             volume /
+
             volume_ma5
+
         )
 
-    core_score = (
-        core["core_score"]
-    )
+    core_score = core[
+        "core_score"
+    ]
+
+    core_pass = core[
+        "core_pass"
+    ]
 
     return {
 
@@ -2787,13 +2895,20 @@ def build_stock_record(
             item["name"],
 
         "type":
-            "stock",
-
-        "asset_class":
-            "stock",
+            item["type"],
 
         "market":
             item["market"],
+
+        "is_etf":
+            bool(
+                item["is_etf"]
+            ),
+
+        "is_bond":
+            bool(
+                item["is_bond"]
+            ),
 
         "price":
             close,
@@ -2902,9 +3017,7 @@ def build_stock_record(
             6,
 
         "core_pass":
-            core[
-                "core_pass"
-            ],
+            core_pass,
 
         "strength_score":
             strength_score,
@@ -2913,251 +3026,22 @@ def build_stock_record(
             ai_score,
 
         "signal":
-            make_stock_signal(
+            make_signal(
+                core_score,
+                ai_score
+            ),
+
+        "rating":
+            make_rating(
+                ai_score,
                 core_score
             ),
 
-        "rating":
-            make_stock_rating(
+        "recommendation":
+            make_recommendation(
+                core_pass,
                 core_score,
                 ai_score
-            ),
-
-        "recommendation":
-            make_stock_recommendation(
-                core_score,
-                ai_score
-            )
-
-    }
-
-
-# ================================================================
-# 建立 ETF Record
-# ================================================================
-
-def build_etf_record(
-    item,
-    df
-):
-
-    if df is None:
-        return None
-
-    if len(df) < MIN_HISTORY:
-        return None
-
-    df = calculate_indicators(
-        df
-    )
-
-    latest = df.iloc[-1]
-
-    previous = df.iloc[-2]
-
-    etf_result = calculate_etf_score(
-        df
-    )
-
-    close = safe_float(
-        latest["Close"]
-    )
-
-    previous_close = safe_float(
-        previous["Close"]
-    )
-
-    if (
-        close is None
-        or
-        previous_close is None
-    ):
-        return None
-
-    change_pct = 0.0
-
-    if previous_close != 0:
-
-        change_pct = (
-            (
-                close -
-                previous_close
-            )
-            /
-            previous_close
-            *
-            100
-        )
-
-    volume_ma5 = safe_float(
-        latest["VOL_MA5"]
-    )
-
-    volume = safe_int(
-        latest["Volume"]
-    )
-
-    volume_ratio = None
-
-    if (
-        volume_ma5 is not None
-        and
-        volume_ma5 > 0
-    ):
-
-        volume_ratio = (
-            volume /
-            volume_ma5
-        )
-
-    score = (
-        etf_result[
-            "etf_score"
-        ]
-    )
-
-    is_bond_etf = (
-        item["asset_class"]
-        ==
-        "bond_etf"
-    )
-
-    return {
-
-        "code":
-            item["code"],
-
-        "symbol":
-            yahoo_symbol(
-                item["code"],
-                item["market"]
-            ),
-
-        "name":
-            item["name"],
-
-        "type":
-            item["type"],
-
-        "asset_class":
-            item["asset_class"],
-
-        "market":
-            item["market"],
-
-        "price":
-            close,
-
-        "close":
-            close,
-
-        "previous_close":
-            previous_close,
-
-        "change_pct":
-            safe_float(
-                change_pct
-            ),
-
-        "volume":
-            volume,
-
-        "volume_ma5":
-            volume_ma5,
-
-        "volume_ratio":
-            safe_float(
-                volume_ratio
-            ),
-
-        "rsi":
-            safe_float(
-                latest["RSI"]
-            ),
-
-        "k":
-            safe_float(
-                latest["K"]
-            ),
-
-        "d":
-            safe_float(
-                latest["D"]
-            ),
-
-        "macd":
-            safe_float(
-                latest["MACD"]
-            ),
-
-        "macd_signal":
-            safe_float(
-                latest["MACD_SIGNAL"]
-            ),
-
-        "macd_hist":
-            safe_float(
-                latest["MACD_HIST"]
-            ),
-
-        "ma5":
-            safe_float(
-                latest["MA5"]
-            ),
-
-        "ma20":
-            safe_float(
-                latest["MA20"]
-            ),
-
-        "ma60":
-            safe_float(
-                latest["MA60"]
-            ),
-
-        "trend_score":
-            etf_result[
-                "trend_score"
-            ],
-
-        "momentum_score":
-            etf_result[
-                "momentum_score"
-            ],
-
-        "volume_score":
-            etf_result[
-                "volume_score"
-            ],
-
-        "etf_score":
-            score,
-
-        "etf_pass":
-            etf_result[
-                "etf_pass"
-            ],
-
-        "is_bond_etf":
-            is_bond_etf,
-
-        "ai_score":
-            score,
-
-        "signal":
-            make_etf_signal(
-                score
-            ),
-
-        "rating":
-            make_etf_rating(
-                score
-            ),
-
-        "recommendation":
-            make_etf_recommendation(
-                score,
-                is_bond_etf
             )
 
     }
@@ -3174,19 +3058,27 @@ def load_active_universe():
     try:
 
         rows = conn.execute(
+
             """
             SELECT
+
                 market,
                 code,
                 name,
                 type,
-                asset_class,
                 is_etf,
-                is_bond_etf
+                is_bond
+
             FROM securities
+
             WHERE active = 1
-            ORDER BY market, code
+
+            ORDER BY
+                market,
+                code
+
             """
+
         ).fetchall()
 
     finally:
@@ -3196,21 +3088,6 @@ def load_active_universe():
     universe = []
 
     for row in rows:
-
-        asset_class = (
-            row[4]
-            or
-            (
-                "bond_etf"
-                if row[6]
-                else
-                (
-                    "etf"
-                    if row[5]
-                    else "stock"
-                )
-            )
-        )
 
         universe.append({
 
@@ -3226,14 +3103,11 @@ def load_active_universe():
             "type":
                 row[3],
 
-            "asset_class":
-                asset_class,
-
             "is_etf":
-                bool(row[5]),
+                bool(row[4]),
 
-            "is_bond_etf":
-                bool(row[6])
+            "is_bond":
+                bool(row[5])
 
         })
 
@@ -3241,7 +3115,7 @@ def load_active_universe():
 
 
 # ================================================================
-# 掃描 Universe
+# 掃描
 # ================================================================
 
 def scan_universe(
@@ -3252,7 +3126,7 @@ def scan_universe(
 
     etfs = []
 
-    bond_etfs = []
+    bonds = []
 
     failed = []
 
@@ -3269,10 +3143,6 @@ def scan_universe(
     )
 
     print(
-        "不重新下載歷史行情"
-    )
-
-    print(
         "================================================"
     )
 
@@ -3284,8 +3154,11 @@ def scan_universe(
         try:
 
             df = load_history(
+
                 item["market"],
+
                 item["code"]
+
             )
 
             if df is None:
@@ -3314,23 +3187,12 @@ def scan_universe(
 
                 continue
 
-            if item["asset_class"] == "stock":
-
-                record = (
-                    build_stock_record(
-                        item,
-                        df
-                    )
+            record = (
+                build_security_record(
+                    item,
+                    df
                 )
-
-            else:
-
-                record = (
-                    build_etf_record(
-                        item,
-                        df
-                    )
-                )
+            )
 
             if record is None:
 
@@ -3358,21 +3220,21 @@ def scan_universe(
 
                 continue
 
-            if item["asset_class"] == "stock":
+            if item["type"] == "bond":
 
-                stocks.append(
+                bonds.append(
                     record
                 )
 
-            elif item["asset_class"] == "bond_etf":
+            elif item["type"] == "etf":
 
-                bond_etfs.append(
+                etfs.append(
                     record
                 )
 
             else:
 
-                etfs.append(
+                stocks.append(
                     record
                 )
 
@@ -3401,62 +3263,100 @@ def scan_universe(
             })
 
         if (
+
             index % 250 == 0
+
             or
+
             index == total
+
         ):
 
             print(
+
                 f"[掃描進度] "
                 f"{index}/{total}"
+
             )
 
     return (
+
         stocks,
+
         etfs,
-        bond_etfs,
+
+        bonds,
+
         failed
+
     )
 
 
 # ================================================================
-# 排序
+# AI Score 排序
 # ================================================================
 
-def sort_by_score(
-    items,
-    field="ai_score"
+def sort_by_ai_score(
+    items
 ):
 
     return sorted(
+
         items,
+
         key=lambda x:
+
             float(
+
                 x.get(
-                    field,
+                    "ai_score",
                     0
                 )
-                or 0
+
+                or
+
+                0
+
             ),
+
         reverse=True
+
     )
 
 
 # ================================================================
-# 股票 Top10
+# Top10
 # ================================================================
 
 def build_top10(
     stocks
 ):
 
-    return sort_by_score(
+    return sort_by_ai_score(
         stocks
     )[:TOP10]
 
 
 # ================================================================
-# 今日 6/6
+# Top30
+# ================================================================
+
+def build_top30(
+    stocks
+):
+
+    return sort_by_ai_score(
+        stocks
+    )[:TOP30]
+
+
+# ================================================================
+# 今日精選
+#
+# 唯一條件：
+#
+# core_score == 6
+#
 # ================================================================
 
 def build_today_selected(
@@ -3476,63 +3376,34 @@ def build_today_selected(
 
     ]
 
-    return sort_by_score(
+    return sort_by_ai_score(
         selected
     )
 
 
 # ================================================================
-# 今日精選
-#
-# 重要：
-#
-# 後台可以有很多 6/6。
-#
-# 但前台只展示前 5 名。
-#
+# ETF
 # ================================================================
 
-def build_today_recommendations(
-    stocks
+def build_etf_result(
+    etfs
 ):
 
-    selected = (
-        build_today_selected(
-            stocks
-        )
+    return sort_by_ai_score(
+        etfs
     )
 
-    return selected[
-        :TODAY_RECOMMENDATION_LIMIT
-    ]
-
 
 # ================================================================
-# ETF 精選
+# 債券
 # ================================================================
 
-def build_etf_recommendations(
-    etfs,
-    bond_etfs
+def build_bond_result(
+    bonds
 ):
 
-    normal_etf = sort_by_score(
-        etfs,
-        "etf_score"
-    )[
-        :ETF_RECOMMENDATION_LIMIT
-    ]
-
-    bond_etf = sort_by_score(
-        bond_etfs,
-        "etf_score"
-    )[
-        :ETF_RECOMMENDATION_LIMIT
-    ]
-
-    return (
-        normal_etf,
-        bond_etf
+    return sort_by_ai_score(
+        bonds
     )
 
 
@@ -3545,10 +3416,16 @@ def backtest_stock(
 ):
 
     if (
+
         df is None
+
         or
-        len(df) < BACKTEST_MIN_HISTORY
+
+        len(df) <
+        BACKTEST_MIN_HISTORY
+
     ):
+
         return None
 
     df = calculate_indicators(
@@ -3570,13 +3447,18 @@ def backtest_stock(
         b_returns = []
 
         for i in range(
+
             1,
+
             len(df) - horizon
+
         ):
 
             today = df.iloc[i]
 
-            yesterday = df.iloc[i - 1]
+            yesterday = df.iloc[
+                i - 1
+            ]
 
             future = df.iloc[
                 i + horizon
@@ -3591,14 +3473,19 @@ def backtest_stock(
             )
 
             if (
+
                 pd.isna(
                     today_close
                 )
+
                 or
+
                 pd.isna(
                     future_close
                 )
+
             ):
+
                 continue
 
             if today_close == 0:
@@ -3607,30 +3494,42 @@ def backtest_stock(
             future_return = (
 
                 (
+
                     future_close -
+
                     today_close
+
                 )
+
                 /
+
                 today_close
+
                 *
+
                 100
 
             )
 
             # ----------------------------------------------------
-            # A：當日 MACD 黃金交叉
+            # A
+            # 當日 MACD 黃金交叉
             # ----------------------------------------------------
 
             macd_cross = (
 
                 today["MACD"]
+
                 >
+
                 today["MACD_SIGNAL"]
 
                 and
 
                 yesterday["MACD"]
+
                 <=
+
                 yesterday["MACD_SIGNAL"]
 
             )
@@ -3642,31 +3541,40 @@ def backtest_stock(
                 )
 
             # ----------------------------------------------------
-            # B：目前維持多方
+            # B
+            # 目前維持多方
             # ----------------------------------------------------
 
             current_bullish = (
 
                 today["MACD"]
+
                 >
+
                 today["MACD_SIGNAL"]
 
                 and
 
                 today["RSI"]
+
                 >
+
                 50
 
                 and
 
                 today["K"]
+
                 >
+
                 today["D"]
 
                 and
 
                 today["Close"]
+
                 >
+
                 today["MA20"]
 
             )
@@ -3698,14 +3606,24 @@ def backtest_stock(
                 }
 
             wins = sum(
+
                 1
-                for value in returns
+
+                for value
+                in returns
+
                 if value > 0
+
             )
 
             losses = (
-                len(returns) -
+
+                len(returns)
+
+                -
+
                 wins
+
             )
 
             return {
@@ -3721,21 +3639,30 @@ def backtest_stock(
 
                 "win_rate":
                     round(
+
                         wins /
+
                         len(returns)
+
                         *
+
                         100,
+
                         2
+
                     ),
 
                 "average_return":
                     round(
+
                         float(
                             np.mean(
                                 returns
                             )
                         ),
+
                         4
+
                     )
 
             }
@@ -3770,13 +3697,21 @@ def build_backtest(
     aggregate = {
 
         "A_today_cross": {
+
             h: []
-            for h in BACKTEST_HORIZONS
+
+            for h
+            in BACKTEST_HORIZONS
+
         },
 
         "B_current_bullish": {
+
             h: []
-            for h in BACKTEST_HORIZONS
+
+            for h
+            in BACKTEST_HORIZONS
+
         }
 
     }
@@ -3795,17 +3730,27 @@ def build_backtest(
         try:
 
             df = load_history(
+
                 item["market"],
+
                 item["code"]
+
             )
 
             if (
+
                 df is None
+
                 or
+
                 len(df)
+
                 <
+
                 BACKTEST_MIN_HISTORY
+
             ):
+
                 continue
 
             result = backtest_stock(
@@ -3818,8 +3763,11 @@ def build_backtest(
             count += 1
 
             for strategy in (
+
                 "A_today_cross",
+
                 "B_current_bullish"
+
             ):
 
                 for horizon in (
@@ -3831,11 +3779,13 @@ def build_backtest(
                     ][
                         horizon
                     ].append(
+
                         result[
                             strategy
                         ][
                             f"{horizon}d"
                         ]
+
                     )
 
         except Exception:
@@ -3843,14 +3793,20 @@ def build_backtest(
             continue
 
         if (
+
             index % 250 == 0
+
             or
+
             index == total
+
         ):
 
             print(
+
                 f"[回測進度] "
                 f"{index}/{total}"
+
             )
 
     def merge(
@@ -3874,18 +3830,27 @@ def build_backtest(
             }
 
         signals = sum(
+
             x["signals"]
+
             for x in values
+
         )
 
         wins = sum(
+
             x["wins"]
+
             for x in values
+
         )
 
         losses = sum(
+
             x["losses"]
+
             for x in values
+
         )
 
         weighted = []
@@ -3897,7 +3862,9 @@ def build_backtest(
                 weighted.extend(
 
                     [x["average_return"]]
+
                     *
+
                     x["signals"]
 
                 )
@@ -3912,7 +3879,9 @@ def build_backtest(
 
             if weighted
 
-            else 0
+            else
+
+            0
 
         )
 
@@ -3928,19 +3897,35 @@ def build_backtest(
                 losses,
 
             "win_rate":
+
                 round(
+
                     wins /
-                    signals *
+
+                    signals
+
+                    *
+
                     100,
+
                     2
+
                 )
+
                 if signals
-                else 0,
+
+                else
+
+                0,
 
             "average_return":
+
                 round(
+
                     average_return,
+
                     4
+
                 )
 
         }
@@ -3970,8 +3955,11 @@ def build_backtest(
     }
 
     for strategy in (
+
         "A_today_cross",
+
         "B_current_bullish"
+
     ):
 
         for horizon in (
@@ -3985,11 +3973,13 @@ def build_backtest(
             ][
                 f"{horizon}d"
             ] = merge(
+
                 aggregate[
                     strategy
                 ][
                     horizon
                 ]
+
             )
 
     a10 = final[
@@ -4043,7 +4033,7 @@ def build_backtest(
 
 def validate_record(
     item,
-    asset_class
+    is_etf_record=False
 ):
 
     required = {
@@ -4052,7 +4042,6 @@ def validate_record(
         "symbol",
         "name",
         "type",
-        "asset_class",
         "market",
 
         "price",
@@ -4076,14 +4065,16 @@ def validate_record(
         "ma20",
         "ma60",
 
+        "strength_score",
         "ai_score",
+
         "signal",
         "rating",
         "recommendation"
 
     }
 
-    if asset_class == "stock":
+    if not is_etf_record:
 
         required.update({
 
@@ -4103,27 +4094,7 @@ def validate_record(
 
             "core_total",
 
-            "core_pass",
-
-            "strength_score"
-
-        })
-
-    else:
-
-        required.update({
-
-            "trend_score",
-
-            "momentum_score",
-
-            "volume_score",
-
-            "etf_score",
-
-            "etf_pass",
-
-            "is_bond_etf"
+            "core_pass"
 
         })
 
@@ -4131,7 +4102,8 @@ def validate_record(
 
         field
 
-        for field in required
+        for field
+        in required
 
         if field not in item
 
@@ -4140,11 +4112,15 @@ def validate_record(
     if missing:
 
         raise RuntimeError(
+
             "資料欄位缺失："
+
             +
+
             ",".join(
                 missing
             )
+
         )
 
     if not item["symbol"]:
@@ -4156,135 +4132,11 @@ def validate_record(
     if item["price"] is None:
 
         raise RuntimeError(
-            f"{item['symbol']} price 空白"
+
+            f"{item['symbol']} "
+            f"price 空白"
+
         )
-
-
-# ================================================================
-# 前台 Record
-# ================================================================
-#
-# index.html 不需要知道後台所有技術指標。
-#
-# ================================================================
-
-def make_ui_record(
-    item
-):
-
-    return {
-
-        "code":
-            item["code"],
-
-        "symbol":
-            item["symbol"],
-
-        "name":
-            item["name"],
-
-        "market":
-            item["market"],
-
-        "asset_class":
-            item["asset_class"],
-
-        "type":
-            item["type"],
-
-        "price":
-            item["price"],
-
-        "change_pct":
-            item["change_pct"],
-
-        "signal":
-            item["signal"],
-
-        "rating":
-            item["rating"],
-
-        "recommendation":
-            item["recommendation"],
-
-        "ai_score":
-            item["ai_score"]
-
-    }
-
-
-# ================================================================
-# 搜尋索引
-# ================================================================
-
-def build_securities_index(
-    stocks,
-    etfs,
-    bond_etfs
-):
-
-    all_items = (
-        stocks
-        +
-        etfs
-        +
-        bond_etfs
-    )
-
-    result = []
-
-    seen = set()
-
-    for item in all_items:
-
-        key = (
-            item["market"],
-            item["code"]
-        )
-
-        if key in seen:
-            continue
-
-        seen.add(
-            key
-        )
-
-        result.append({
-
-            "code":
-                item["code"],
-
-            "symbol":
-                item["symbol"],
-
-            "name":
-                item["name"],
-
-            "market":
-                item["market"],
-
-            "asset_class":
-                item["asset_class"],
-
-            "type":
-                item["type"],
-
-            "price":
-                item["price"],
-
-            "change_pct":
-                item["change_pct"]
-
-        })
-
-    result.sort(
-        key=lambda x: (
-            x["code"],
-            x["name"]
-        )
-    )
-
-    return result
 
 
 # ================================================================
@@ -4301,59 +4153,258 @@ def atomic_write_json(
     )
 
     fd, temp_path = tempfile.mkstemp(
+
         prefix=".tmp_",
+
         suffix=".json",
+
         dir=directory
+
     )
 
     try:
 
         with os.fdopen(
+
             fd,
+
             "w",
+
             encoding="utf-8"
+
         ) as file:
 
             json.dump(
+
                 data,
+
                 file,
+
                 ensure_ascii=False,
+
                 indent=2,
+
                 allow_nan=False
+
             )
 
             file.write("\n")
 
         os.replace(
+
             temp_path,
+
             path
+
         )
 
     except Exception:
 
         try:
+
             os.remove(
                 temp_path
             )
+
         except Exception:
+
             pass
 
         raise
 
 
 # ================================================================
-# 建立 prices.json
+# 精簡 UI Record
+#
+# 這裡故意不把所有技術指標都塞進 ui_data.json。
+#
+# 前台首頁只需要：
+#
+#   股票名稱
+#   現價
+#   漲跌
+#   核心分數
+#   AI Score
+#   訊號
+#   評級
+#   建議
+#
+# 詳細資料仍保留在 prices.json。
+#
 # ================================================================
 
-def build_prices_json(
+def make_ui_record(
+    item,
+    include_core=True
+):
+
+    record = {
+
+        "code":
+            item["code"],
+
+        "symbol":
+            item["symbol"],
+
+        "name":
+            item["name"],
+
+        "market":
+            item["market"],
+
+        "type":
+            item["type"],
+
+        "price":
+            item["price"],
+
+        "change_pct":
+            item["change_pct"],
+
+        "ai_score":
+            item["ai_score"],
+
+        "strength_score":
+            item["strength_score"],
+
+        "signal":
+            item["signal"],
+
+        "rating":
+            item["rating"],
+
+        "recommendation":
+            item["recommendation"]
+
+    }
+
+    if include_core:
+
+        record.update({
+
+            "core_score":
+                item["core_score"],
+
+            "core_total":
+                item["core_total"],
+
+            "core_pass":
+                item["core_pass"]
+
+        })
+
+    return record
+
+
+# ================================================================
+# UI Summary
+# ================================================================
+
+def build_ui_summary(
     stocks,
     etfs,
-    bond_etfs,
-    failed,
-    universe_statistics,
+    bonds,
+    today_selected,
+    top10
+):
+
+    all_stock_change = [
+
+        x["change_pct"]
+
+        for x in stocks
+
+        if x.get(
+            "change_pct"
+        ) is not None
+
+    ]
+
+    rising = sum(
+
+        1
+
+        for value
+        in all_stock_change
+
+        if value > 0
+
+    )
+
+    falling = sum(
+
+        1
+
+        for value
+        in all_stock_change
+
+        if value < 0
+
+    )
+
+    unchanged = (
+
+        len(all_stock_change)
+
+        -
+
+        rising
+
+        -
+
+        falling
+
+    )
+
+    return {
+
+        "stock_count":
+            len(stocks),
+
+        "etf_count":
+            len(etfs),
+
+        "bond_count":
+            len(bonds),
+
+        "today_selected_count":
+            len(today_selected),
+
+        "top10_count":
+            len(top10),
+
+        "market_breadth": {
+
+            "rising":
+                rising,
+
+            "falling":
+                falling,
+
+            "unchanged":
+                unchanged
+
+        },
+
+        "core_condition_count":
+            6
+
+    }
+
+
+# ================================================================
+# 建立 ui_data.json
+# ================================================================
+
+def build_ui_data(
+    stocks,
+    etfs,
+    bonds,
+    today_selected,
+    top10,
     backtest,
-    history_mode,
-    official_update_count
+    universe_statistics,
+    latest_date
 ):
 
     now = datetime.now(
@@ -4364,31 +4415,475 @@ def build_prices_json(
         "%Y-%m-%d"
     )
 
-    updated_at_tw = (
-        now.strftime(
-            "%Y-%m-%d %H:%M:%S"
+    updated_at_tw = now.strftime(
+        "%Y-%m-%d %H:%M:%S"
+    )
+
+    ui_today_selected = [
+
+        make_ui_record(
+            item,
+            True
         )
+
+        for item
+        in today_selected
+
+    ]
+
+    ui_top10 = [
+
+        make_ui_record(
+            item,
+            True
+        )
+
+        for item
+        in top10
+
+    ]
+
+    ui_etfs = [
+
+        make_ui_record(
+            item,
+            False
+        )
+
+        for item
+        in build_etf_result(
+            etfs
+        )[
+            :ETF_TOP10
+        ]
+
+    ]
+
+    ui_bonds = [
+
+        make_ui_record(
+            item,
+            False
+        )
+
+        for item
+        in build_bond_result(
+            bonds
+        )[
+            :BOND_TOP10
+        ]
+
+    ]
+
+    return {
+
+        "version":
+            VERSION,
+
+        "schema_version":
+            UI_SCHEMA_VERSION,
+
+        "status":
+            "success",
+
+        "date":
+            today,
+
+        "latest_market_date":
+            latest_date,
+
+        "updated_at":
+            now.isoformat(),
+
+        "updated_at_tw":
+            updated_at_tw,
+
+        "source":
+            "fetch_data.py V10.0",
+
+        "summary":
+            build_ui_summary(
+
+                stocks,
+
+                etfs,
+
+                bonds,
+
+                today_selected,
+
+                top10
+
+            ),
+
+        "core_conditions": {
+
+            "total":
+                6,
+
+            "names":
+                CORE_CONDITIONS
+
+        },
+
+        "today_selected":
+            ui_today_selected,
+
+        "top10":
+            ui_top10,
+
+        "etfs":
+            ui_etfs,
+
+        "bonds":
+            ui_bonds,
+
+        "backtest_summary": {
+
+            "comparison_horizon":
+                backtest.get(
+                    "comparison_horizon",
+                    10
+                ),
+
+            "better_by_win_rate":
+                backtest.get(
+                    "better_by_win_rate"
+                ),
+
+            "stock_count":
+                backtest.get(
+                    "backtest_stock_count",
+                    0
+                ),
+
+            "A_10d_win_rate":
+                backtest.get(
+                    "strategies",
+                    {}
+                )
+                .get(
+                    "A_today_cross",
+                    {}
+                )
+                .get(
+                    "10d",
+                    {}
+                )
+                .get(
+                    "win_rate",
+                    0
+                ),
+
+            "B_10d_win_rate":
+                backtest.get(
+                    "strategies",
+                    {}
+                )
+                .get(
+                    "B_current_bullish",
+                    {}
+                )
+                .get(
+                    "10d",
+                    {}
+                )
+                .get(
+                    "win_rate",
+                    0
+                )
+
+        },
+
+        "universe": {
+
+            "stock_count":
+                universe_statistics[
+                    "stock_universe"
+                ],
+
+            "etf_count":
+                universe_statistics[
+                    "etf_universe"
+                ],
+
+            "bond_count":
+                universe_statistics[
+                    "bond_universe"
+                ],
+
+            "total_count":
+                universe_statistics[
+                    "total_universe"
+                ]
+
+        }
+
+    }
+
+
+# ================================================================
+# 建立 securities.json
+#
+# 這個檔案不是 prices.json 的縮小版。
+#
+# 它是：
+#
+#   「整個可搜尋 Universe」
+#
+# 即使今天沒有 6/6，
+# 使用者仍然可以搜尋該股票。
+#
+# ================================================================
+
+def build_securities_json(
+    universe,
+    stocks,
+    etfs,
+    bonds,
+    latest_date
+):
+
+    now = datetime.now(
+        TW_TZ
+    )
+
+    # ------------------------------------------------------------
+    # 建立最新行情 Map
+    # ------------------------------------------------------------
+
+    latest_map = {}
+
+    for item in (
+
+        stocks
+        +
+        etfs
+        +
+        bonds
+
+    ):
+
+        key = (
+
+            item["market"],
+
+            item["code"]
+
+        )
+
+        latest_map[key] = item
+
+    # ------------------------------------------------------------
+    # 建立完整搜尋 Universe
+    # ------------------------------------------------------------
+
+    securities = []
+
+    for item in universe:
+
+        key = (
+
+            item["market"],
+
+            item["code"]
+
+        )
+
+        latest = latest_map.get(
+            key
+        )
+
+        security = {
+
+            "code":
+                item["code"],
+
+            "symbol":
+                yahoo_symbol(
+                    item["code"],
+                    item["market"]
+                ),
+
+            "name":
+                item["name"],
+
+            "market":
+                item["market"],
+
+            "type":
+                item["type"],
+
+            "is_etf":
+                bool(
+                    item["is_etf"]
+                ),
+
+            "is_bond":
+                bool(
+                    item["is_bond"]
+                )
+
+        }
+
+        # --------------------------------------------------------
+        # 有行情則加入最新價格
+        # --------------------------------------------------------
+
+        if latest is not None:
+
+            security.update({
+
+                "price":
+                    latest.get(
+                        "price"
+                    ),
+
+                "change_pct":
+                    latest.get(
+                        "change_pct"
+                    ),
+
+                "ai_score":
+                    latest.get(
+                        "ai_score"
+                    ),
+
+                "core_score":
+                    latest.get(
+                        "core_score"
+                    ),
+
+                "core_pass":
+                    latest.get(
+                        "core_pass"
+                    )
+
+            })
+
+        else:
+
+            security.update({
+
+                "price":
+                    None,
+
+                "change_pct":
+                    None,
+
+                "ai_score":
+                    None,
+
+                "core_score":
+                    None,
+
+                "core_pass":
+                    False
+
+            })
+
+        securities.append(
+            security
+        )
+
+    securities.sort(
+
+        key=lambda x: (
+
+            x["market"],
+
+            x["code"]
+
+        )
+
+    )
+
+    return {
+
+        "version":
+            VERSION,
+
+        "schema_version":
+            SECURITIES_SCHEMA_VERSION,
+
+        "status":
+            "success",
+
+        "updated_at":
+            now.isoformat(),
+
+        "updated_at_tw":
+            now.strftime(
+                "%Y-%m-%d %H:%M:%S"
+            ),
+
+        "latest_market_date":
+            latest_date,
+
+        "count":
+            len(securities),
+
+        "securities":
+            securities
+
+    }
+
+
+# ================================================================
+# 建立 prices.json
+# ================================================================
+
+def build_prices_json(
+
+    stocks,
+
+    etfs,
+
+    bonds,
+
+    failed,
+
+    universe_statistics,
+
+    backtest,
+
+    history_mode,
+
+    official_update_count
+
+):
+
+    now = datetime.now(
+        TW_TZ
+    )
+
+    today = now.strftime(
+        "%Y-%m-%d"
+    )
+
+    updated_at_tw = now.strftime(
+        "%Y-%m-%d %H:%M:%S"
     )
 
     for item in stocks:
 
         validate_record(
             item,
-            "stock"
+            False
         )
 
     for item in etfs:
 
         validate_record(
             item,
-            "etf"
+            True
         )
 
-    for item in bond_etfs:
+    for item in bonds:
 
         validate_record(
             item,
-            "bond_etf"
+            True
         )
 
     today_selected = (
@@ -4397,57 +4892,84 @@ def build_prices_json(
         )
     )
 
-    today_recommendations = (
-        build_today_recommendations(
-            stocks
-        )
+    top30 = build_top30(
+        stocks
     )
 
     top10 = build_top10(
         stocks
     )
 
-    etf_recommendations, bond_etf_recommendations = (
-        build_etf_recommendations(
-            etfs,
-            bond_etfs
+    etfs_sorted = (
+        build_etf_result(
+            etfs
+        )
+    )
+
+    bonds_sorted = (
+        build_bond_result(
+            bonds
         )
     )
 
     stock_tw = sum(
+
         1
+
         for x in stocks
+
         if x["market"] == "TW"
+
     )
 
     stock_two = sum(
+
         1
+
         for x in stocks
+
         if x["market"] == "TWO"
+
     )
 
     etf_tw = sum(
+
         1
+
         for x in etfs
+
         if x["market"] == "TW"
+
     )
 
     etf_two = sum(
+
         1
+
         for x in etfs
+
         if x["market"] == "TWO"
+
     )
 
-    bond_etf_tw = sum(
+    bond_tw = sum(
+
         1
-        for x in bond_etfs
+
+        for x in bonds
+
         if x["market"] == "TW"
+
     )
 
-    bond_etf_two = sum(
+    bond_two = sum(
+
         1
-        for x in bond_etfs
+
+        for x in bonds
+
         if x["market"] == "TWO"
+
     )
 
     return {
@@ -4486,25 +5008,19 @@ def build_prices_json(
             stocks,
 
         "etfs":
-            etfs,
+            etfs_sorted,
 
-        "bond_etfs":
-            bond_etfs,
+        "bonds":
+            bonds_sorted,
 
         "today_selected":
             today_selected,
 
-        "today_recommendations":
-            today_recommendations,
-
         "top10":
             top10,
 
-        "etf_recommendations":
-            etf_recommendations,
-
-        "bond_etf_recommendations":
-            bond_etf_recommendations,
+        "top30":
+            top30,
 
         "backtest_summary":
             backtest,
@@ -4529,23 +5045,23 @@ def build_prices_json(
             "etf_tpex_count":
                 etf_two,
 
-            "bond_etf_count":
-                len(bond_etfs),
+            "bond_count":
+                len(bonds),
 
-            "bond_etf_twse_count":
-                bond_etf_tw,
+            "bond_twse_count":
+                bond_tw,
 
-            "bond_etf_tpex_count":
-                bond_etf_two,
+            "bond_tpex_count":
+                bond_two,
 
             "top10_count":
                 len(top10),
 
+            "top30_count":
+                len(top30),
+
             "today_selected_count":
                 len(today_selected),
-
-            "today_recommendation_count":
-                len(today_recommendations),
 
             "core_6_count":
                 len(today_selected),
@@ -4579,14 +5095,14 @@ def build_prices_json(
                     "tpex_etf_universe"
                 ],
 
-            "twse_bond_etf_universe":
+            "twse_bond_universe":
                 universe_statistics[
-                    "twse_bond_etf_universe"
+                    "twse_bond_universe"
                 ],
 
-            "tpex_bond_etf_universe":
+            "tpex_bond_universe":
                 universe_statistics[
-                    "tpex_bond_etf_universe"
+                    "tpex_bond_universe"
                 ],
 
             "stock_universe":
@@ -4599,9 +5115,9 @@ def build_prices_json(
                     "etf_universe"
                 ],
 
-            "bond_etf_universe":
+            "bond_universe":
                 universe_statistics[
-                    "bond_etf_universe"
+                    "bond_universe"
                 ],
 
             "total_universe":
@@ -4620,7 +5136,7 @@ def build_prices_json(
                 CORE_CONDITIONS,
 
             "definition":
-                "股票目前維持多方",
+                "六項條件全部成立才列入今日精選",
 
             "rules": {
 
@@ -4646,35 +5162,6 @@ def build_prices_json(
 
         },
 
-        "etf_model": {
-
-            "definition":
-                "ETF 趨勢與動能模型",
-
-            "rules": {
-
-                "trend":
-                    "Close > MA20",
-
-                "ma20":
-                    "MA20 今日 > MA20 昨日",
-
-                "macd":
-                    "MACD > MACD Signal",
-
-                "rsi":
-                    "RSI > 50",
-
-                "kd":
-                    "K > D",
-
-                "volume":
-                    "量能作為輔助條件，不作為硬性 6/6"
-
-            }
-
-        },
-
         "failed":
             failed
 
@@ -4682,207 +5169,149 @@ def build_prices_json(
 
 
 # ================================================================
-# 建立 ui_data.json
+# Data Contract 驗證
 # ================================================================
 
-def build_ui_data(
-    stocks,
-    etfs,
-    bond_etfs,
-    universe_statistics,
-    history_mode,
-    official_update_count
+def validate_output_contract(
+    prices,
+    ui_data,
+    securities
 ):
 
-    now = datetime.now(
-        TW_TZ
-    )
-
-    today = now.strftime(
-        "%Y-%m-%d"
-    )
-
-    today_recommendations = (
-        build_today_recommendations(
-            stocks
-        )
-    )
-
-    top10 = build_top10(
-        stocks
-    )
-
-    etf_recommendations, bond_etf_recommendations = (
-        build_etf_recommendations(
-            etfs,
-            bond_etfs
-        )
-    )
-
     # ------------------------------------------------------------
-    # 前台真正使用的資料
+    # prices
     # ------------------------------------------------------------
 
-    return {
+    if prices.get(
+        "version"
+    ) != VERSION:
 
-        "version":
-            VERSION,
+        raise RuntimeError(
+            "prices version 驗證失敗"
+        )
 
-        "schema_version":
-            "ui.v10",
+    if prices.get(
+        "schema_version"
+    ) != SCHEMA_VERSION:
 
-        "status":
-            "success",
+        raise RuntimeError(
+            "prices schema 驗證失敗"
+        )
 
-        "date":
-            today,
+    if prices.get(
+        "status"
+    ) != "success":
 
-        "updated_at":
-            now.isoformat(),
+        raise RuntimeError(
+            "prices status 驗證失敗"
+        )
 
-        "history_mode":
-            history_mode,
+    if not prices.get(
+        "stocks"
+    ):
 
-        "official_update_count":
-            official_update_count,
+        raise RuntimeError(
+            "prices stocks 為空"
+        )
 
-        # --------------------------------------------------------
-        # 今日推薦
-        # --------------------------------------------------------
+    # ------------------------------------------------------------
+    # ui_data
+    # ------------------------------------------------------------
 
-        "today_recommendations":
+    if ui_data.get(
+        "version"
+    ) != VERSION:
 
-            [
-                make_ui_record(
-                    item
-                )
+        raise RuntimeError(
+            "ui_data version 驗證失敗"
+        )
 
-                for item
-                in today_recommendations
-            ],
+    if ui_data.get(
+        "schema_version"
+    ) != UI_SCHEMA_VERSION:
 
-        # --------------------------------------------------------
-        # Top10
-        # --------------------------------------------------------
+        raise RuntimeError(
+            "ui_data schema 驗證失敗"
+        )
 
-        "top10":
+    if ui_data.get(
+        "status"
+    ) != "success":
 
-            [
-                make_ui_record(
-                    item
-                )
+        raise RuntimeError(
+            "ui_data status 驗證失敗"
+        )
 
-                for item
-                in top10
-            ],
+    if "today_selected" not in ui_data:
 
-        # --------------------------------------------------------
-        # ETF
-        # --------------------------------------------------------
+        raise RuntimeError(
+            "ui_data 缺少 today_selected"
+        )
 
-        "etf_recommendations":
+    if "top10" not in ui_data:
 
-            [
-                make_ui_record(
-                    item
-                )
+        raise RuntimeError(
+            "ui_data 缺少 top10"
+        )
 
-                for item
-                in etf_recommendations
-            ],
+    if "etfs" not in ui_data:
 
-        # --------------------------------------------------------
-        # Bond ETF
-        # --------------------------------------------------------
+        raise RuntimeError(
+            "ui_data 缺少 etfs"
+        )
 
-        "bond_etf_recommendations":
+    if "bonds" not in ui_data:
 
-            [
-                make_ui_record(
-                    item
-                )
+        raise RuntimeError(
+            "ui_data 缺少 bonds"
+        )
 
-                for item
-                in bond_etf_recommendations
-            ],
+    # ------------------------------------------------------------
+    # securities
+    # ------------------------------------------------------------
 
-        # --------------------------------------------------------
-        # 統計
-        # --------------------------------------------------------
+    if securities.get(
+        "version"
+    ) != VERSION:
 
-        "statistics": {
+        raise RuntimeError(
+            "securities version 驗證失敗"
+        )
 
-            "stock_universe":
-                universe_statistics[
-                    "stock_universe"
-                ],
+    if securities.get(
+        "schema_version"
+    ) != SECURITIES_SCHEMA_VERSION:
 
-            "etf_universe":
-                universe_statistics[
-                    "etf_universe"
-                ],
+        raise RuntimeError(
+            "securities schema 驗證失敗"
+        )
 
-            "bond_etf_universe":
-                universe_statistics[
-                    "bond_etf_universe"
-                ],
+    if securities.get(
+        "status"
+    ) != "success":
 
-            "today_core6_count":
-                sum(
-                    1
-                    for item
-                    in stocks
-                    if item.get(
-                        "core_pass"
-                    )
-                ),
+        raise RuntimeError(
+            "securities status 驗證失敗"
+        )
 
-            "today_recommendation_count":
-                len(
-                    today_recommendations
-                ),
+    if not isinstance(
+        securities.get(
+            "securities"
+        ),
+        list
+    ):
 
-            "top10_count":
-                len(
-                    top10
-                ),
+        raise RuntimeError(
+            "securities.securities 格式錯誤"
+        )
 
-            "etf_recommendation_count":
-                len(
-                    etf_recommendations
-                ),
+    if len(
+        securities["securities"]
+    ) == 0:
 
-            "bond_etf_recommendation_count":
-                len(
-                    bond_etf_recommendations
-                )
-
-        },
-
-        # --------------------------------------------------------
-        # UI 顯示規則
-        # --------------------------------------------------------
-
-        "display_rules": {
-
-            "today_recommendation_limit":
-                TODAY_RECOMMENDATION_LIMIT,
-
-            "top10_limit":
-                TOP10,
-
-            "show_all_core6":
-                False,
-
-            "show_failed":
-                False,
-
-            "source":
-                "Data/ui_data.json"
-
-        }
-
-    }
+        raise RuntimeError(
+            "securities.json 沒有任何商品"
+        )
 
 
 # ================================================================
@@ -4904,7 +5333,31 @@ def main():
     )
 
     print(
-        "Incremental SQLite + UI Data Engine"
+        "================================================"
+    )
+
+    print(
+        "V10.0 Incremental SQLite Data Engine"
+    )
+
+    print(
+        "自動產生："
+    )
+
+    print(
+        "  prices.json"
+    )
+
+    print(
+        "  backtest.json"
+    )
+
+    print(
+        "  ui_data.json"
+    )
+
+    print(
+        "  securities.json"
     )
 
     print(
@@ -4914,9 +5367,11 @@ def main():
     print(
         "開始時間："
         +
+
         start_time.strftime(
             "%Y-%m-%d %H:%M:%S"
         )
+
     )
 
     print(
@@ -4924,7 +5379,7 @@ def main():
     )
 
     # ============================================================
-    # 1. 初始化 DB
+    # 1. SQLite
     # ============================================================
 
     init_database()
@@ -4949,7 +5404,7 @@ def main():
     )
 
     # ============================================================
-    # 3. 歷史資料
+    # 3. 歷史資料模式
     # ============================================================
 
     has_history = (
@@ -4985,7 +5440,7 @@ def main():
         )
 
         print(
-            "使用官方每日增量更新"
+            "使用官方每日資料增量更新"
         )
 
         print(
@@ -4998,9 +5453,7 @@ def main():
 
     official_update_count = 0
 
-    if history_mode == (
-        "INCREMENTAL_OFFICIAL"
-    ):
+    try:
 
         official_update_count = (
             fetch_official_daily(
@@ -5008,15 +5461,9 @@ def main():
             )
         )
 
-    else:
-
-        try:
-
-            official_update_count = (
-                fetch_official_daily(
-                    universe
-                )
-            )
+        if history_mode == (
+            "BOOTSTRAP_YAHOO_BATCH"
+        ):
 
             history_mode = (
                 "BOOTSTRAP_YAHOO_BATCH"
@@ -5024,15 +5471,21 @@ def main():
                 "OFFICIAL_DAILY"
             )
 
-        except Exception as exc:
+    except Exception as exc:
 
-            print(
-                f"[WARN] "
-                f"官方當日更新失敗：{exc}"
-            )
+        if history_mode == (
+            "INCREMENTAL_OFFICIAL"
+        ):
+
+            raise
+
+        print(
+            f"[WARN] "
+            f"官方當日更新失敗：{exc}"
+        )
 
     # ============================================================
-    # 5. DB 檢查
+    # 5. 確認 DB
     # ============================================================
 
     history_count = (
@@ -5054,11 +5507,13 @@ def main():
     )
 
     print(
-        f"歷史資料筆數：{history_count}"
+        f"歷史資料筆數："
+        f"{history_count}"
     )
 
     print(
-        f"最新交易日期：{latest_date}"
+        f"最新交易日期："
+        f"{latest_date}"
     )
 
     print(
@@ -5066,18 +5521,29 @@ def main():
     )
 
     # ============================================================
-    # 6. 掃描
+    # 6. Active Universe
     # ============================================================
 
     active_universe = (
         load_active_universe()
     )
 
+    if not active_universe:
+
+        raise RuntimeError(
+            "Active Universe 為空"
+        )
+
+    # ============================================================
+    # 7. 掃描
+    # ============================================================
+
     (
         stocks,
         etfs,
-        bond_etfs,
+        bonds,
         failed
+
     ) = scan_universe(
         active_universe
     )
@@ -5087,7 +5553,7 @@ def main():
     )
 
     print(
-        "V10.0 掃描結果"
+        "掃描結果"
     )
 
     print(
@@ -5095,19 +5561,23 @@ def main():
     )
 
     print(
-        f"股票成功：{len(stocks)}"
+        f"股票成功："
+        f"{len(stocks)}"
     )
 
     print(
-        f"一般 ETF：{len(etfs)}"
+        f"ETF 成功："
+        f"{len(etfs)}"
     )
 
     print(
-        f"債券 ETF：{len(bond_etfs)}"
+        f"債券 ETF 成功："
+        f"{len(bonds)}"
     )
 
     print(
-        f"失敗：{len(failed)}"
+        f"失敗："
+        f"{len(failed)}"
     )
 
     print(
@@ -5115,53 +5585,52 @@ def main():
     )
 
     print(
-        f"上市股票："
+        f"上市股票成功："
         f"{sum(1 for x in stocks if x['market'] == 'TW')}"
     )
 
     print(
-        f"上櫃股票："
+        f"上櫃股票成功："
         f"{sum(1 for x in stocks if x['market'] == 'TWO')}"
     )
 
     print(
-        f"上市 ETF："
+        f"上市 ETF 成功："
         f"{sum(1 for x in etfs if x['market'] == 'TW')}"
     )
 
     print(
-        f"上櫃 ETF："
+        f"上櫃 ETF 成功："
         f"{sum(1 for x in etfs if x['market'] == 'TWO')}"
     )
 
     print(
-        f"債券 ETF："
-        f"{len(bond_etfs)}"
+        f"債券商品成功："
+        f"{len(bonds)}"
     )
 
     # ============================================================
-    # 7. 強制檢查
+    # 8. 強制檢查
     # ============================================================
 
     if len(stocks) < 500:
 
         raise RuntimeError(
+
             "股票成功數量異常過低："
+
             f"{len(stocks)}"
+
         )
 
-    if (
-        len(etfs) == 0
-        and
-        len(bond_etfs) == 0
-    ):
+    if len(etfs) == 0:
 
-        raise RuntimeError(
-            "ETF 掃描結果為 0"
+        print(
+            "[WARN] ETF 掃描結果為 0"
         )
 
     # ============================================================
-    # 8. 回測
+    # 9. A/B 回測
     # ============================================================
 
     print(
@@ -5209,7 +5678,70 @@ def main():
     )
 
     # ============================================================
-    # 9. prices.json
+    # 10. 建立今日精選
+    # ============================================================
+
+    today_selected = (
+        build_today_selected(
+            stocks
+        )
+    )
+
+    top10 = build_top10(
+        stocks
+    )
+
+    print(
+        "================================================"
+    )
+
+    print(
+        "今日選股結果"
+    )
+
+    print(
+        "================================================"
+    )
+
+    print(
+        f"今日 6/6："
+        f"{len(today_selected)}"
+    )
+
+    print(
+        f"Top10："
+        f"{len(top10)}"
+    )
+
+    if today_selected:
+
+        print(
+            "------------------------------------------------"
+        )
+
+        print(
+            "今日精選："
+        )
+
+        for item in today_selected:
+
+            print(
+
+                f"{item['code']} "
+                f"{item['name']} "
+                f"AI={item['ai_score']} "
+                f"6/6"
+
+            )
+
+    else:
+
+        print(
+            "今日精選：0 檔"
+        )
+
+    # ============================================================
+    # 11. 建立 prices.json
     # ============================================================
 
     prices = build_prices_json(
@@ -5218,7 +5750,7 @@ def main():
 
         etfs,
 
-        bond_etfs,
+        bonds,
 
         failed,
 
@@ -5233,7 +5765,7 @@ def main():
     )
 
     # ============================================================
-    # 10. ui_data.json
+    # 12. 建立 ui_data.json
     # ============================================================
 
     ui_data = build_ui_data(
@@ -5242,155 +5774,155 @@ def main():
 
         etfs,
 
-        bond_etfs,
+        bonds,
+
+        today_selected,
+
+        top10,
+
+        backtest,
 
         universe_statistics,
 
-        history_mode,
-
-        official_update_count
+        latest_date
 
     )
 
     # ============================================================
-    # 11. securities.json
+    # 13. 建立 securities.json
     # ============================================================
 
-    securities_index = (
-        build_securities_index(
+    securities = build_securities_json(
 
-            stocks,
+        active_universe,
 
-            etfs,
+        stocks,
 
-            bond_etfs
+        etfs,
 
-        )
+        bonds,
+
+        latest_date
+
     )
 
-    securities_data = {
-
-        "version":
-            VERSION,
-
-        "schema_version":
-            "securities.v10",
-
-        "status":
-            "success",
-
-        "updated_at":
-            datetime.now(
-                TW_TZ
-            ).isoformat(),
-
-        "count":
-            len(
-                securities_index
-            ),
-
-        "securities":
-            securities_index
-
-    }
-
     # ============================================================
-    # 12. Data Contract
+    # 14. Data Contract
     # ============================================================
 
-    if prices[
-        "version"
-    ] != VERSION:
+    validate_output_contract(
 
-        raise RuntimeError(
-            "prices version 驗證失敗"
-        )
+        prices,
 
-    if prices[
-        "schema_version"
-    ] != SCHEMA_VERSION:
+        ui_data,
 
-        raise RuntimeError(
-            "prices schema_version 驗證失敗"
-        )
+        securities
 
-    if prices[
-        "status"
-    ] != "success":
-
-        raise RuntimeError(
-            "prices status 驗證失敗"
-        )
-
-    if not prices[
-        "stocks"
-    ]:
-
-        raise RuntimeError(
-            "stocks 為空"
-        )
-
-    if (
-        not prices["etfs"]
-        and
-        not prices["bond_etfs"]
-    ):
-
-        raise RuntimeError(
-            "ETF 為空"
-        )
-
-    if ui_data[
-        "status"
-    ] != "success":
-
-        raise RuntimeError(
-            "ui_data status 驗證失敗"
-        )
-
-    if securities_data[
-        "status"
-    ] != "success":
-
-        raise RuntimeError(
-            "securities status 驗證失敗"
-        )
+    )
 
     # ============================================================
-    # 13. 寫入 prices.json
+    # 15. 寫入 JSON
     # ============================================================
+
+    print(
+        "================================================"
+    )
+
+    print(
+        "寫入 V10.0 資料檔"
+    )
+
+    print(
+        "================================================"
+    )
 
     atomic_write_json(
+
         OUTPUT_FILE,
+
         prices
+
     )
 
-    # ============================================================
-    # 14. 寫入 ui_data.json
-    # ============================================================
-
-    atomic_write_json(
-        UI_OUTPUT_FILE,
-        ui_data
+    print(
+        f"[OK] prices.json"
     )
 
-    # ============================================================
-    # 15. 寫入 securities.json
-    # ============================================================
-
     atomic_write_json(
-        SECURITIES_OUTPUT_FILE,
-        securities_data
-    )
 
-    # ============================================================
-    # 16. backtest.json
-    # ============================================================
-
-    atomic_write_json(
         BACKTEST_FILE,
+
         backtest
+
     )
+
+    print(
+        f"[OK] backtest.json"
+    )
+
+    atomic_write_json(
+
+        UI_DATA_FILE,
+
+        ui_data
+
+    )
+
+    print(
+        f"[OK] ui_data.json"
+    )
+
+    atomic_write_json(
+
+        SECURITIES_FILE,
+
+        securities
+
+    )
+
+    print(
+        f"[OK] securities.json"
+    )
+
+    # ============================================================
+    # 16. 最終驗證
+    # ============================================================
+
+    required_files = [
+
+        OUTPUT_FILE,
+
+        BACKTEST_FILE,
+
+        UI_DATA_FILE,
+
+        SECURITIES_FILE,
+
+        DATABASE_FILE
+
+    ]
+
+    for path in required_files:
+
+        if not os.path.exists(path):
+
+            raise RuntimeError(
+
+                "輸出檔不存在："
+
+                f"{path}"
+
+            )
+
+        if os.path.getsize(path) <= 0:
+
+            raise RuntimeError(
+
+                "輸出檔為空："
+
+                f"{path}"
+
+            )
 
     # ============================================================
     # 17. 完成
@@ -5401,27 +5933,12 @@ def main():
     )
 
     elapsed = (
+
         end_time -
+
         start_time
+
     ).total_seconds()
-
-    today_core6 = (
-        build_today_selected(
-            stocks
-        )
-    )
-
-    today_recommendations = (
-        build_today_recommendations(
-            stocks
-        )
-    )
-
-    top10 = (
-        build_top10(
-            stocks
-        )
-    )
 
     print(
         "================================================"
@@ -5446,32 +5963,23 @@ def main():
     )
 
     print(
-        f"股票總成功："
+        f"股票："
         f"{len(stocks)}"
     )
 
     print(
-        f"一般 ETF："
+        f"ETF："
         f"{len(etfs)}"
     )
 
     print(
         f"債券 ETF："
-        f"{len(bond_etfs)}"
+        f"{len(bonds)}"
     )
 
     print(
-        "------------------------------------------------"
-    )
-
-    print(
-        f"今日 6/6 完整結果："
-        f"{len(today_core6)}"
-    )
-
-    print(
-        f"今日前台精選："
-        f"{len(today_recommendations)}"
+        f"今日 6/6："
+        f"{len(today_selected)}"
     )
 
     print(
@@ -5480,8 +5988,8 @@ def main():
     )
 
     print(
-        f"搜尋索引："
-        f"{len(securities_index)}"
+        f"搜尋 Universe："
+        f"{len(securities['securities'])}"
     )
 
     print(
@@ -5504,28 +6012,32 @@ def main():
     )
 
     print(
-        f"prices.json："
-        f"{OUTPUT_FILE}"
+        "輸出檔案："
     )
 
     print(
-        f"ui_data.json："
-        f"{UI_OUTPUT_FILE}"
+        f"prices.json"
+        f" → {OUTPUT_FILE}"
     )
 
     print(
-        f"securities.json："
-        f"{SECURITIES_OUTPUT_FILE}"
+        f"backtest.json"
+        f" → {BACKTEST_FILE}"
     )
 
     print(
-        f"backtest.json："
-        f"{BACKTEST_FILE}"
+        f"ui_data.json"
+        f" → {UI_DATA_FILE}"
     )
 
     print(
-        f"market.db："
-        f"{DATABASE_FILE}"
+        f"securities.json"
+        f" → {SECURITIES_FILE}"
+    )
+
+    print(
+        f"market.db"
+        f" → {DATABASE_FILE}"
     )
 
     print(
@@ -5542,11 +6054,13 @@ def main():
     )
 
     print(
-        "UI schema：ui.v10"
+        f"UI schema："
+        f"{UI_SCHEMA_VERSION}"
     )
 
     print(
-        "Search schema：securities.v10"
+        f"Securities schema："
+        f"{SECURITIES_SCHEMA_VERSION}"
     )
 
     print(
