@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html lang="zh-TW">
 <head>
+
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
@@ -8,9 +9,15 @@
 
 <style>
 
+/* =========================================================
+   ROOT
+========================================================= */
+
 :root {
+
     --bg: #070b12;
     --bg2: #0b111b;
+
     --panel: #101824;
     --panel2: #131d2a;
     --panel3: #182333;
@@ -43,6 +50,11 @@
     --radius: 18px;
 }
 
+
+/* =========================================================
+   RESET
+========================================================= */
+
 * {
     box-sizing: border-box;
 }
@@ -52,7 +64,9 @@ html {
 }
 
 body {
+
     margin: 0;
+
     background:
         radial-gradient(
             circle at 15% 0%,
@@ -93,6 +107,7 @@ a {
     text-decoration: none;
 }
 
+
 /* =========================================================
    APP
 ========================================================= */
@@ -103,51 +118,70 @@ a {
 }
 
 .container {
-    width: min(1440px, calc(100% - 32px));
+
+    width:
+        min(
+            1440px,
+            calc(100% - 32px)
+        );
+
     margin: 0 auto;
 }
+
 
 /* =========================================================
    HEADER
 ========================================================= */
 
 .header {
+
     position: sticky;
+
     top: 0;
+
     z-index: 100;
 
     background:
         rgba(7,11,18,.88);
 
-    backdrop-filter: blur(18px);
+    backdrop-filter:
+        blur(18px);
 
     border-bottom:
         1px solid var(--border);
 }
 
 .header-inner {
+
     min-height: 76px;
 
     display: flex;
+
     align-items: center;
+
     justify-content: space-between;
 
     gap: 20px;
 }
 
 .brand {
+
     display: flex;
+
     align-items: center;
+
     gap: 13px;
 }
 
 .brand-icon {
+
     width: 42px;
     height: 42px;
 
     border-radius: 13px;
 
     display: flex;
+
     align-items: center;
     justify-content: center;
 
@@ -159,27 +193,37 @@ a {
         );
 
     box-shadow:
-        0 8px 28px rgba(75,105,255,.25);
+        0 8px 28px
+        rgba(75,105,255,.25);
 
     font-weight: 900;
     font-size: 18px;
 }
 
 .brand-title {
+
     font-size: 17px;
+
     font-weight: 800;
+
     letter-spacing: .2px;
 }
 
 .brand-subtitle {
+
     margin-top: 2px;
+
     font-size: 11px;
+
     color: var(--text3);
 }
 
 .header-status {
+
     display: flex;
+
     align-items: center;
+
     gap: 9px;
 
     color: var(--text2);
@@ -188,15 +232,20 @@ a {
 }
 
 .status-dot {
+
     width: 8px;
     height: 8px;
+
     border-radius: 50%;
 
-    background: var(--green);
+    background:
+        var(--green);
 
     box-shadow:
-        0 0 12px rgba(37,217,138,.8);
+        0 0 12px
+        rgba(37,217,138,.8);
 }
+
 
 /* =========================================================
    MAIN
@@ -206,11 +255,13 @@ main {
     padding: 28px 0 60px;
 }
 
+
 /* =========================================================
    HERO
 ========================================================= */
 
 .hero {
+
     display: grid;
 
     grid-template-columns:
@@ -223,7 +274,9 @@ main {
 }
 
 .hero-main {
+
     position: relative;
+
     overflow: hidden;
 
     min-height: 230px;
@@ -243,10 +296,12 @@ main {
             rgba(12,18,29,.98)
         );
 
-    box-shadow: var(--shadow);
+    box-shadow:
+        var(--shadow);
 }
 
 .hero-main::after {
+
     content: "";
 
     position: absolute;
@@ -270,9 +325,11 @@ main {
 }
 
 .hero-eyebrow {
+
     color: var(--blue);
 
     font-size: 12px;
+
     font-weight: 800;
 
     letter-spacing: 1px;
@@ -281,7 +338,9 @@ main {
 }
 
 .hero-title {
+
     position: relative;
+
     z-index: 1;
 
     margin: 0;
@@ -295,7 +354,9 @@ main {
 }
 
 .hero-description {
+
     position: relative;
+
     z-index: 1;
 
     margin-top: 15px;
@@ -310,18 +371,24 @@ main {
 }
 
 .hero-side {
+
     display: grid;
-    grid-template-columns: 1fr 1fr;
+
+    grid-template-columns:
+        1fr 1fr;
+
     gap: 12px;
 }
 
 .metric-card {
+
     padding: 20px;
 
     border:
         1px solid var(--border);
 
-    border-radius: var(--radius);
+    border-radius:
+        var(--radius);
 
     background:
         linear-gradient(
@@ -330,10 +397,12 @@ main {
             var(--panel)
         );
 
-    box-shadow: var(--shadow);
+    box-shadow:
+        var(--shadow);
 }
 
 .metric-label {
+
     color: var(--text3);
 
     font-size: 12px;
@@ -342,19 +411,23 @@ main {
 }
 
 .metric-value {
+
     font-size: 28px;
+
     font-weight: 900;
 
     letter-spacing: -.5px;
 }
 
 .metric-note {
+
     color: var(--text3);
 
     font-size: 11px;
 
     margin-top: 5px;
 }
+
 
 /* =========================================================
    SEARCH
@@ -365,6 +438,7 @@ main {
 }
 
 .search-panel {
+
     border:
         1px solid var(--border);
 
@@ -380,13 +454,16 @@ main {
 
     padding: 18px;
 
-    box-shadow: var(--shadow);
+    box-shadow:
+        var(--shadow);
 }
 
 .search-header {
+
     display: flex;
 
     justify-content: space-between;
+
     align-items: center;
 
     gap: 15px;
@@ -395,22 +472,30 @@ main {
 }
 
 .section-title {
+
     font-size: 16px;
+
     font-weight: 800;
 }
 
 .section-subtitle {
+
     color: var(--text3);
+
     font-size: 11px;
+
     margin-top: 3px;
 }
 
 .search-box {
+
     display: flex;
+
     gap: 10px;
 }
 
 .search-input {
+
     flex: 1;
 
     min-width: 0;
@@ -441,6 +526,7 @@ main {
 }
 
 .search-input:focus {
+
     border-color:
         rgba(90,169,255,.6);
 
@@ -450,6 +536,7 @@ main {
 }
 
 .search-button {
+
     width: 110px;
 
     border: 0;
@@ -469,6 +556,7 @@ main {
 }
 
 .search-results {
+
     display: none;
 
     margin-top: 12px;
@@ -484,9 +572,11 @@ main {
 }
 
 .search-result-item {
+
     display: flex;
 
     align-items: center;
+
     justify-content: space-between;
 
     gap: 12px;
@@ -500,6 +590,7 @@ main {
 }
 
 .search-result-item:hover {
+
     background:
         rgba(255,255,255,.035);
 }
@@ -509,11 +600,14 @@ main {
 }
 
 .stock-code {
+
     font-weight: 900;
+
     font-size: 15px;
 }
 
 .stock-name {
+
     margin-left: 7px;
 
     color: var(--text2);
@@ -522,6 +616,7 @@ main {
 }
 
 .stock-market {
+
     display: inline-flex;
 
     margin-left: 7px;
@@ -539,11 +634,14 @@ main {
 }
 
 .search-result-actions {
+
     display: flex;
+
     gap: 7px;
 }
 
 .small-button {
+
     border:
         1px solid var(--border-light);
 
@@ -560,6 +658,7 @@ main {
 }
 
 .small-button.primary {
+
     border: 0;
 
     color: white;
@@ -576,11 +675,13 @@ main {
     color: var(--red);
 }
 
+
 /* =========================================================
    NAV
 ========================================================= */
 
 .nav {
+
     display: flex;
 
     gap: 7px;
@@ -601,6 +702,7 @@ main {
 }
 
 .nav-button {
+
     flex: 0 0 auto;
 
     border: 0;
@@ -619,11 +721,13 @@ main {
 }
 
 .nav-button.active {
+
     color: white;
 
     background:
         rgba(255,255,255,.08);
 }
+
 
 /* =========================================================
    SECTION
@@ -634,9 +738,11 @@ main {
 }
 
 .section-heading {
+
     display: flex;
 
     align-items: flex-end;
+
     justify-content: space-between;
 
     gap: 15px;
@@ -649,11 +755,14 @@ main {
 }
 
 .section-heading-title {
+
     font-size: 19px;
+
     font-weight: 900;
 }
 
 .section-heading-description {
+
     color: var(--text3);
 
     font-size: 11px;
@@ -662,6 +771,7 @@ main {
 }
 
 .section-count {
+
     flex: 0 0 auto;
 
     color: var(--text3);
@@ -669,11 +779,92 @@ main {
     font-size: 11px;
 }
 
+
+/* =========================================================
+   SIGNAL / RECOMMENDATION
+========================================================= */
+
+.signal {
+
+    display: inline-flex;
+
+    align-items: center;
+
+    width: fit-content;
+
+    padding: 6px 9px;
+
+    border-radius: 8px;
+
+    font-size: 10px;
+
+    font-weight: 900;
+
+    white-space: nowrap;
+}
+
+.signal.bullish {
+
+    color: var(--green);
+
+    background:
+        var(--green-soft);
+}
+
+.signal.weak {
+
+    color: var(--red);
+
+    background:
+        var(--red-soft);
+}
+
+.signal.neutral {
+
+    color: var(--yellow);
+
+    background:
+        var(--yellow-soft);
+}
+
+.signal.wait {
+
+    color: var(--blue);
+
+    background:
+        var(--blue-soft);
+}
+
+.recommendation {
+
+    margin-top: 12px;
+
+    padding: 11px 12px;
+
+    border-radius: 10px;
+
+    background:
+        rgba(255,255,255,.035);
+
+    border:
+        1px solid var(--border);
+
+    color: var(--text);
+
+    font-size: 12px;
+
+    font-weight: 800;
+
+    line-height: 1.55;
+}
+
+
 /* =========================================================
    FEATURED
 ========================================================= */
 
 .featured-grid {
+
     display: grid;
 
     grid-template-columns:
@@ -686,6 +877,7 @@ main {
 }
 
 .featured-card {
+
     position: relative;
 
     overflow: hidden;
@@ -716,13 +908,16 @@ main {
 }
 
 .featured-card:hover {
-    transform: translateY(-2px);
+
+    transform:
+        translateY(-2px);
 
     border-color:
         rgba(90,169,255,.35);
 }
 
 .featured-card::before {
+
     content: "";
 
     position: absolute;
@@ -742,9 +937,11 @@ main {
 }
 
 .featured-top {
+
     display: flex;
 
     align-items: center;
+
     justify-content: space-between;
 
     gap: 10px;
@@ -753,6 +950,7 @@ main {
 }
 
 .featured-label {
+
     color: var(--blue);
 
     font-size: 10px;
@@ -764,23 +962,8 @@ main {
     text-transform: uppercase;
 }
 
-.signal-badge {
-    padding: 5px 8px;
-
-    border-radius: 7px;
-
-    background:
-        var(--green-soft);
-
-    color:
-        var(--green);
-
-    font-size: 10px;
-
-    font-weight: 800;
-}
-
 .featured-stock {
+
     display: flex;
 
     align-items: baseline;
@@ -791,33 +974,43 @@ main {
 }
 
 .featured-code {
+
     font-size: 25px;
+
     font-weight: 950;
 }
 
 .featured-name {
+
     color: var(--text2);
+
     font-size: 14px;
 }
 
 .price-row {
+
     display: flex;
 
     align-items: flex-end;
+
     justify-content: space-between;
 
     gap: 15px;
 }
 
 .price {
+
     font-size: 30px;
+
     font-weight: 950;
 
     letter-spacing: -1px;
 }
 
 .change {
+
     font-size: 14px;
+
     font-weight: 900;
 }
 
@@ -834,47 +1027,24 @@ main {
 }
 
 .featured-bottom {
+
     display: grid;
 
     grid-template-columns:
-        repeat(3, 1fr);
+        1fr;
 
     gap: 7px;
 
     margin-top: 18px;
 }
 
-.info-mini {
-    padding: 10px;
-
-    border:
-        1px solid var(--border);
-
-    border-radius: 10px;
-
-    background:
-        rgba(0,0,0,.14);
-}
-
-.info-mini-label {
-    color: var(--text3);
-
-    font-size: 9px;
-
-    margin-bottom: 5px;
-}
-
-.info-mini-value {
-    font-size: 13px;
-
-    font-weight: 800;
-}
 
 /* =========================================================
    TOP 10
 ========================================================= */
 
 .table-card {
+
     overflow: hidden;
 
     border:
@@ -886,23 +1056,28 @@ main {
     background:
         var(--panel);
 
-    box-shadow: var(--shadow);
+    box-shadow:
+        var(--shadow);
 }
 
 .table-wrap {
+
     width: 100%;
+
     overflow-x: auto;
 }
 
 .stock-table {
+
     width: 100%;
 
     border-collapse: collapse;
 
-    min-width: 850px;
+    min-width: 900px;
 }
 
 .stock-table th {
+
     text-align: left;
 
     padding: 13px 15px;
@@ -923,6 +1098,7 @@ main {
 }
 
 .stock-table td {
+
     padding: 14px 15px;
 
     border-bottom:
@@ -933,16 +1109,19 @@ main {
 }
 
 .stock-table tbody tr {
+
     transition:
         background .15s;
 }
 
 .stock-table tbody tr:hover {
+
     background:
         rgba(255,255,255,.025);
 }
 
 .rank {
+
     width: 42px;
 
     color: var(--text3);
@@ -951,59 +1130,40 @@ main {
 }
 
 .table-stock {
+
     display: flex;
+
     align-items: center;
+
     gap: 9px;
 }
 
 .table-stock-code {
+
     font-weight: 900;
 }
 
 .table-stock-name {
-    color: var(--text2);
-}
-
-.score {
-    font-weight: 900;
-}
-
-.score.high {
-    color: var(--green);
-}
-
-.score.mid {
-    color: var(--yellow);
-}
-
-.score.low {
-    color: var(--text2);
-}
-
-.core {
-    display: inline-flex;
-
-    align-items: center;
-
-    padding: 4px 7px;
-
-    border-radius: 6px;
-
-    background:
-        rgba(255,255,255,.05);
 
     color: var(--text2);
+}
 
-    font-size: 10px;
+.recommendation-table {
+
+    max-width: 180px;
+
+    line-height: 1.45;
 
     font-weight: 800;
 }
 
+
 /* =========================================================
-   ETF / BOND
+   ASSETS
 ========================================================= */
 
 .asset-grid {
+
     display: grid;
 
     grid-template-columns:
@@ -1016,6 +1176,7 @@ main {
 }
 
 .asset-card {
+
     border:
         1px solid var(--border);
 
@@ -1033,6 +1194,7 @@ main {
 }
 
 .asset-header {
+
     display: flex;
 
     align-items: flex-start;
@@ -1045,6 +1207,7 @@ main {
 }
 
 .asset-type {
+
     display: inline-block;
 
     padding: 5px 7px;
@@ -1063,97 +1226,334 @@ main {
 }
 
 .asset-code {
+
     font-size: 20px;
+
     font-weight: 950;
 }
 
 .asset-name {
+
     color: var(--text2);
+
     font-size: 12px;
 }
 
 .asset-price {
+
     font-size: 25px;
+
     font-weight: 950;
 }
 
 .asset-change {
+
     font-size: 12px;
+
     margin-top: 3px;
 }
+
 
 /* =========================================================
    WATCHLIST
 ========================================================= */
 
 .watchlist-grid {
+
     display: grid;
 
     grid-template-columns:
         repeat(
             auto-fit,
-            minmax(270px, 1fr)
+            minmax(290px, 1fr)
         );
 
     gap: 12px;
 }
 
 .watch-card {
+
     border:
         1px solid var(--border);
 
     border-radius:
-        16px;
+        18px;
 
-    padding: 16px;
+    padding: 17px;
 
     background:
-        var(--panel);
+        linear-gradient(
+            145deg,
+            var(--panel2),
+            var(--panel)
+        );
+
+    box-shadow:
+        0 8px 25px
+        rgba(0,0,0,.16);
 }
 
 .watch-top {
+
     display: flex;
 
-    align-items: center;
+    align-items: flex-start;
+
     justify-content: space-between;
 
     gap: 10px;
 }
 
 .watch-code {
-    font-size: 17px;
+
+    font-size: 18px;
+
     font-weight: 900;
 }
 
 .watch-name {
+
     color: var(--text2);
+
     font-size: 12px;
+
+    margin-top: 3px;
 }
 
 .watch-price {
-    margin-top: 13px;
 
-    font-size: 25px;
+    margin-top: 14px;
+
+    font-size: 27px;
+
     font-weight: 950;
 }
 
-.watch-meta {
+.watch-change {
+
+    margin-top: 4px;
+
+    font-size: 12px;
+
+    font-weight: 800;
+}
+
+.watch-status-row {
+
     display: flex;
+
+    align-items: center;
 
     justify-content: space-between;
 
-    margin-top: 10px;
+    gap: 10px;
+
+    margin-top: 14px;
+}
+
+.watch-status-label {
 
     color: var(--text3);
 
     font-size: 10px;
 }
 
+.watch-recommendation {
+
+    margin-top: 13px;
+
+    padding: 12px;
+
+    border:
+        1px solid var(--border);
+
+    border-radius: 11px;
+
+    background:
+        rgba(255,255,255,.025);
+
+    font-size: 12px;
+
+    line-height: 1.55;
+
+    font-weight: 800;
+}
+
+.holding-box {
+
+    margin-top: 14px;
+
+    padding: 13px;
+
+    border-radius: 12px;
+
+    background:
+        rgba(0,0,0,.17);
+
+    border:
+        1px solid var(--border);
+}
+
+.holding-header {
+
+    display: flex;
+
+    justify-content: space-between;
+
+    align-items: center;
+
+    gap: 10px;
+
+    margin-bottom: 10px;
+}
+
+.holding-title {
+
+    color: var(--text2);
+
+    font-size: 11px;
+
+    font-weight: 900;
+}
+
+.holding-toggle {
+
+    border: 0;
+
+    border-radius: 8px;
+
+    padding: 6px 9px;
+
+    color: var(--text2);
+
+    background:
+        rgba(255,255,255,.06);
+
+    font-size: 10px;
+
+    font-weight: 800;
+}
+
+.holding-fields {
+
+    display: grid;
+
+    grid-template-columns:
+        1fr 1fr;
+
+    gap: 8px;
+}
+
+.holding-field label {
+
+    display: block;
+
+    color: var(--text3);
+
+    font-size: 9px;
+
+    margin-bottom: 5px;
+}
+
+.holding-field input {
+
+    width: 100%;
+
+    height: 34px;
+
+    border:
+        1px solid var(--border-light);
+
+    border-radius: 8px;
+
+    background:
+        rgba(0,0,0,.25);
+
+    color: var(--text);
+
+    padding:
+        0 9px;
+
+    outline: none;
+
+    font-size: 11px;
+}
+
+.holding-field input:focus {
+
+    border-color:
+        rgba(90,169,255,.55);
+}
+
+.holding-summary {
+
+    display: grid;
+
+    grid-template-columns:
+        1fr 1fr;
+
+    gap: 7px;
+
+    margin-top: 10px;
+}
+
+.holding-stat {
+
+    padding: 9px;
+
+    border-radius: 9px;
+
+    background:
+        rgba(255,255,255,.025);
+}
+
+.holding-stat-label {
+
+    color: var(--text3);
+
+    font-size: 9px;
+
+    margin-bottom: 4px;
+}
+
+.holding-stat-value {
+
+    font-size: 12px;
+
+    font-weight: 900;
+}
+
+.holding-stat-value.profit {
+    color: var(--green);
+}
+
+.holding-stat-value.loss {
+    color: var(--red);
+}
+
+.not-holding {
+
+    color: var(--text3);
+
+    font-size: 11px;
+
+    margin-top: 13px;
+
+    padding: 10px;
+
+    border-radius: 9px;
+
+    background:
+        rgba(255,255,255,.025);
+}
+
+
 /* =========================================================
    EMPTY
 ========================================================= */
 
 .empty {
+
     padding: 42px 20px;
 
     text-align: center;
@@ -1172,6 +1572,7 @@ main {
 }
 
 .empty-title {
+
     color: var(--text2);
 
     font-size: 14px;
@@ -1182,16 +1583,19 @@ main {
 }
 
 .empty-description {
+
     font-size: 11px;
 
     line-height: 1.7;
 }
+
 
 /* =========================================================
    ERROR
 ========================================================= */
 
 .error-panel {
+
     display: none;
 
     margin-bottom: 20px;
@@ -1216,6 +1620,7 @@ main {
 }
 
 .error-title {
+
     color: var(--red);
 
     font-weight: 900;
@@ -1224,16 +1629,19 @@ main {
 }
 
 .error-message {
+
     font-size: 12px;
 
     line-height: 1.7;
 }
+
 
 /* =========================================================
    LOADING
 ========================================================= */
 
 .loading {
+
     padding: 60px 20px;
 
     text-align: center;
@@ -1242,10 +1650,12 @@ main {
 }
 
 .spinner {
+
     width: 32px;
     height: 32px;
 
-    margin: 0 auto 14px;
+    margin:
+        0 auto 14px;
 
     border:
         3px solid
@@ -1261,16 +1671,20 @@ main {
 }
 
 @keyframes spin {
+
     to {
         transform: rotate(360deg);
     }
+
 }
+
 
 /* =========================================================
    FOOTER
 ========================================================= */
 
 .footer {
+
     margin-top: 45px;
 
     padding: 25px 0;
@@ -1285,6 +1699,7 @@ main {
     line-height: 1.8;
 }
 
+
 /* =========================================================
    MOBILE
 ========================================================= */
@@ -1292,6 +1707,7 @@ main {
 @media (max-width: 850px) {
 
     .container {
+
         width:
             min(
                 100% - 20px,
@@ -1300,25 +1716,30 @@ main {
     }
 
     .header-inner {
+
         min-height: 68px;
     }
 
     .hero {
+
         grid-template-columns: 1fr;
     }
 
     .hero-main {
+
         min-height: 210px;
 
         padding: 23px;
     }
 
     .hero-side {
+
         grid-template-columns:
             repeat(2, 1fr);
     }
 
     .metric-value {
+
         font-size: 23px;
     }
 
@@ -1346,38 +1767,40 @@ main {
         font-size: 12px;
     }
 
-    .hero-side {
-        grid-template-columns:
-            repeat(2, 1fr);
-    }
-
     .search-box {
         flex-direction: column;
     }
 
     .search-button {
+
         width: 100%;
+
         height: 45px;
     }
 
     .featured-grid {
+
         grid-template-columns: 1fr;
     }
 
-    .featured-bottom {
-        grid-template-columns:
-            repeat(3, 1fr);
-    }
-
     .section-heading-title {
+
         font-size: 17px;
     }
 
     .price {
+
         font-size: 27px;
     }
 
+    .holding-fields {
+
+        grid-template-columns:
+            1fr;
+    }
+
 }
+
 
 /* =========================================================
    HIDDEN
@@ -1388,11 +1811,18 @@ main {
 }
 
 </style>
+
 </head>
+
 
 <body>
 
 <div class="app">
+
+
+<!-- =========================================================
+     HEADER
+========================================================= -->
 
 <header class="header">
 
@@ -1405,6 +1835,7 @@ main {
             </div>
 
             <div>
+
                 <div class="brand-title">
                     台股 AI 智能選股
                 </div>
@@ -1412,9 +1843,11 @@ main {
                 <div class="brand-subtitle">
                     Quantitative Market Dashboard
                 </div>
+
             </div>
 
         </div>
+
 
         <div class="header-status">
 
@@ -1431,537 +1864,539 @@ main {
 </header>
 
 
+<!-- =========================================================
+     MAIN
+========================================================= -->
+
 <main>
 
 <div class="container">
 
-    <!-- =====================================================
-         ERROR
-    ====================================================== -->
+
+<!-- =========================================================
+     ERROR
+========================================================= -->
+
+<div
+    id="errorPanel"
+    class="error-panel"
+>
 
     <div
-        id="errorPanel"
-        class="error-panel"
+        id="errorTitle"
+        class="error-title"
     >
+        無法載入儀表板資料
+    </div>
 
-        <div
-            class="error-title"
-            id="errorTitle"
-        >
-            無法載入儀表板資料
+    <div
+        id="errorMessage"
+        class="error-message"
+    >
+    </div>
+
+</div>
+
+
+<!-- =========================================================
+     LOADING
+========================================================= -->
+
+<div
+    id="loading"
+    class="loading"
+>
+
+    <div class="spinner"></div>
+
+    正在載入最新市場資料……
+
+</div>
+
+
+<!-- =========================================================
+     DASHBOARD
+========================================================= -->
+
+<div
+    id="dashboard"
+    class="hidden"
+>
+
+
+<!-- =========================================================
+     HERO
+========================================================= -->
+
+<section class="hero">
+
+    <div class="hero-main">
+
+        <div class="hero-eyebrow">
+            AI MARKET INTELLIGENCE
         </div>
 
-        <div
-            class="error-message"
-            id="errorMessage"
-        >
+        <h1 class="hero-title">
+            台股市場<br>
+            今日量化訊號
+        </h1>
+
+        <div class="hero-description">
+            系統由後端分析市場資料，
+            綜合判斷市場趨勢與個股狀態。
+            前端只呈現最終的趨勢判斷與操作建議，
+            不直接顯示底層技術指標計算。
         </div>
 
     </div>
 
 
-    <!-- =====================================================
-         LOADING
-    ====================================================== -->
+    <div class="hero-side">
 
-    <div
-        id="loading"
-        class="loading"
-    >
+        <div class="metric-card">
 
-        <div class="spinner"></div>
-
-        正在載入最新市場資料……
-
-    </div>
-
-
-    <!-- =====================================================
-         DASHBOARD
-    ====================================================== -->
-
-    <div
-        id="dashboard"
-        class="hidden"
-    >
-
-        <!-- =================================================
-             HERO
-        ================================================== -->
-
-        <section class="hero">
-
-            <div class="hero-main">
-
-                <div class="hero-eyebrow">
-                    AI MARKET INTELLIGENCE
-                </div>
-
-                <h1 class="hero-title">
-                    台股市場<br>
-                    今日量化訊號
-                </h1>
-
-                <div class="hero-description">
-                    系統依據最新交易日資料，
-                    計算 MACD、RSI、KD、成交量、
-                    MA20 等技術條件，
-                    從全市場股票中篩選符合策略的標的。
-                </div>
-
-            </div>
-
-
-            <div class="hero-side">
-
-                <div class="metric-card">
-
-                    <div class="metric-label">
-                        今日精選
-                    </div>
-
-                    <div
-                        class="metric-value"
-                        id="featuredCount"
-                    >
-                        -
-                    </div>
-
-                    <div class="metric-note">
-                        完整 6/6 條件
-                    </div>
-
-                </div>
-
-
-                <div class="metric-card">
-
-                    <div class="metric-label">
-                        股票池
-                    </div>
-
-                    <div
-                        class="metric-value"
-                        id="stockCount"
-                    >
-                        -
-                    </div>
-
-                    <div class="metric-note">
-                        成功分析
-                    </div>
-
-                </div>
-
-
-                <div class="metric-card">
-
-                    <div class="metric-label">
-                        ETF
-                    </div>
-
-                    <div
-                        class="metric-value"
-                        id="etfCount"
-                    >
-                        -
-                    </div>
-
-                    <div class="metric-note">
-                        獨立資產區
-                    </div>
-
-                </div>
-
-
-                <div class="metric-card">
-
-                    <div class="metric-label">
-                        更新日期
-                    </div>
-
-                    <div
-                        class="metric-value"
-                        id="dataDate"
-                        style="font-size:18px;"
-                    >
-                        -
-                    </div>
-
-                    <div class="metric-note">
-                        台灣時間
-                    </div>
-
-                </div>
-
-            </div>
-
-        </section>
-
-
-        <!-- =================================================
-             SEARCH
-        ================================================== -->
-
-        <section class="search-section">
-
-            <div class="search-panel">
-
-                <div class="search-header">
-
-                    <div>
-
-                        <div class="section-title">
-                            查詢個股
-                        </div>
-
-                        <div class="section-subtitle">
-                            輸入股票代號或名稱，加入你的追蹤清單
-                        </div>
-
-                    </div>
-
-                </div>
-
-
-                <div class="search-box">
-
-                    <input
-                        id="searchInput"
-                        class="search-input"
-                        type="text"
-                        autocomplete="off"
-                        placeholder="例如：2330、台積電、4905"
-                    >
-
-                    <button
-                        id="searchButton"
-                        class="search-button"
-                        type="button"
-                    >
-                        搜尋
-                    </button>
-
-                </div>
-
-
-                <div
-                    id="searchResults"
-                    class="search-results"
-                >
-                </div>
-
-            </div>
-
-        </section>
-
-
-        <!-- =================================================
-             NAV
-        ================================================== -->
-
-        <nav class="nav">
-
-            <button
-                class="nav-button active"
-                data-target="featuredSection"
-            >
+            <div class="metric-label">
                 今日精選
-            </button>
+            </div>
 
-            <button
-                class="nav-button"
-                data-target="topSection"
+            <div
+                id="featuredCount"
+                class="metric-value"
             >
-                Top 10
-            </button>
+                -
+            </div>
 
-            <button
-                class="nav-button"
-                data-target="etfSection"
+            <div class="metric-note">
+                今日符合選股結果
+            </div>
+
+        </div>
+
+
+        <div class="metric-card">
+
+            <div class="metric-label">
+                股票池
+            </div>
+
+            <div
+                id="stockCount"
+                class="metric-value"
             >
+                -
+            </div>
+
+            <div class="metric-note">
+                成功分析
+            </div>
+
+        </div>
+
+
+        <div class="metric-card">
+
+            <div class="metric-label">
                 ETF
-            </button>
-
-            <button
-                class="nav-button"
-                data-target="bondSection"
-            >
-                債券
-            </button>
-
-            <button
-                class="nav-button"
-                data-target="watchSection"
-            >
-                我的清單
-            </button>
-
-        </nav>
-
-
-        <!-- =================================================
-             TODAY FEATURED
-        ================================================== -->
-
-        <section
-            id="featuredSection"
-            class="section"
-        >
-
-            <div class="section-heading">
-
-                <div class="section-heading-left">
-
-                    <div class="section-heading-title">
-                        今日精選
-                    </div>
-
-                    <div class="section-heading-description">
-                        僅顯示今日實際通過完整核心條件的標的
-                    </div>
-
-                </div>
-
-                <div
-                    id="featuredSectionCount"
-                    class="section-count"
-                >
-                    -
-                </div>
-
-            </div>
-
-
-            <div
-                id="featuredGrid"
-                class="featured-grid"
-            >
-            </div>
-
-        </section>
-
-
-        <!-- =================================================
-             TOP 10
-        ================================================== -->
-
-        <section
-            id="topSection"
-            class="section"
-        >
-
-            <div class="section-heading">
-
-                <div class="section-heading-left">
-
-                    <div class="section-heading-title">
-                        AI Top 10
-                    </div>
-
-                    <div class="section-heading-description">
-                        依 AI Score 排序，不代表全部都是今日 6/6
-                    </div>
-
-                </div>
-
-                <div
-                    id="topCount"
-                    class="section-count"
-                >
-                    -
-                </div>
-
-            </div>
-
-
-            <div class="table-card">
-
-                <div class="table-wrap">
-
-                    <table class="stock-table">
-
-                        <thead>
-
-                            <tr>
-
-                                <th>#</th>
-
-                                <th>標的</th>
-
-                                <th>現價</th>
-
-                                <th>漲跌</th>
-
-                                <th>AI Score</th>
-
-                                <th>核心條件</th>
-
-                                <th>RSI</th>
-
-                                <th>成交量</th>
-
-                            </tr>
-
-                        </thead>
-
-                        <tbody
-                            id="topTableBody"
-                        >
-                        </tbody>
-
-                    </table>
-
-                </div>
-
-            </div>
-
-        </section>
-
-
-        <!-- =================================================
-             ETF
-        ================================================== -->
-
-        <section
-            id="etfSection"
-            class="section"
-        >
-
-            <div class="section-heading">
-
-                <div class="section-heading-left">
-
-                    <div class="section-heading-title">
-                        ETF
-                    </div>
-
-                    <div class="section-heading-description">
-                        ETF 獨立於個股選股條件呈現
-                    </div>
-
-                </div>
-
-                <div
-                    id="etfSectionCount"
-                    class="section-count"
-                >
-                    -
-                </div>
-
-            </div>
-
-
-            <div
-                id="etfGrid"
-                class="asset-grid"
-            >
-            </div>
-
-        </section>
-
-
-        <!-- =================================================
-             BOND
-        ================================================== -->
-
-        <section
-            id="bondSection"
-            class="section"
-        >
-
-            <div class="section-heading">
-
-                <div class="section-heading-left">
-
-                    <div class="section-heading-title">
-                        債券
-                    </div>
-
-                    <div class="section-heading-description">
-                        債券不套用股票 6/6 技術條件
-                    </div>
-
-                </div>
-
-            </div>
-
-
-            <div
-                id="bondGrid"
-                class="asset-grid"
-            >
-            </div>
-
-        </section>
-
-
-        <!-- =================================================
-             WATCHLIST
-        ================================================== -->
-
-        <section
-            id="watchSection"
-            class="section"
-        >
-
-            <div class="section-heading">
-
-                <div class="section-heading-left">
-
-                    <div class="section-heading-title">
-                        我的清單
-                    </div>
-
-                    <div class="section-heading-description">
-                        你從「查詢個股」加入的追蹤標的
-                    </div>
-
-                </div>
-
-                <div
-                    id="watchCount"
-                    class="section-count"
-                >
-                    0 檔
-                </div>
-
-            </div>
-
-
-            <div
-                id="watchlistGrid"
-                class="watchlist-grid"
-            >
-            </div>
-
-        </section>
-
-
-        <!-- =================================================
-             FOOTER
-        ================================================== -->
-
-        <footer class="footer">
-
-            <div>
-                台股 AI 智能選股系統
-            </div>
-
-            <div>
-                本頁面資料由 GitHub Actions
-                後端資料引擎產生。
-                前端僅負責資料呈現、搜尋與個人追蹤清單。
             </div>
 
             <div
-                id="footerUpdated"
+                id="etfCount"
+                class="metric-value"
             >
+                -
             </div>
 
-        </footer>
+            <div class="metric-note">
+                獨立資產區
+            </div>
+
+        </div>
+
+
+        <div class="metric-card">
+
+            <div class="metric-label">
+                更新日期
+            </div>
+
+            <div
+                id="dataDate"
+                class="metric-value"
+                style="font-size:18px;"
+            >
+                -
+            </div>
+
+            <div class="metric-note">
+                台灣時間
+            </div>
+
+        </div>
 
     </div>
+
+</section>
+
+
+<!-- =========================================================
+     SEARCH
+========================================================= -->
+
+<section class="search-section">
+
+<div class="search-panel">
+
+    <div class="search-header">
+
+        <div>
+
+            <div class="section-title">
+                查詢個股
+            </div>
+
+            <div class="section-subtitle">
+                輸入股票代號或名稱，加入你的股票清單
+            </div>
+
+        </div>
+
+    </div>
+
+
+    <div class="search-box">
+
+        <input
+            id="searchInput"
+            class="search-input"
+            type="text"
+            autocomplete="off"
+            placeholder="例如：2330、台積電、4905"
+        >
+
+        <button
+            id="searchButton"
+            class="search-button"
+            type="button"
+        >
+            搜尋
+        </button>
+
+    </div>
+
+
+    <div
+        id="searchResults"
+        class="search-results"
+    >
+    </div>
+
+</div>
+
+</section>
+
+
+<!-- =========================================================
+     NAV
+========================================================= -->
+
+<nav class="nav">
+
+    <button
+        class="nav-button active"
+        data-target="featuredSection"
+    >
+        今日精選
+    </button>
+
+    <button
+        class="nav-button"
+        data-target="topSection"
+    >
+        AI Top 10
+    </button>
+
+    <button
+        class="nav-button"
+        data-target="etfSection"
+    >
+        ETF
+    </button>
+
+    <button
+        class="nav-button"
+        data-target="bondSection"
+    >
+        債券
+    </button>
+
+    <button
+        class="nav-button"
+        data-target="watchSection"
+    >
+        我的清單
+    </button>
+
+</nav>
+
+
+<!-- =========================================================
+     TODAY FEATURED
+========================================================= -->
+
+<section
+    id="featuredSection"
+    class="section"
+>
+
+<div class="section-heading">
+
+    <div class="section-heading-left">
+
+        <div class="section-heading-title">
+            今日精選
+        </div>
+
+        <div class="section-heading-description">
+            顯示後端判斷為今日值得關注的標的
+        </div>
+
+    </div>
+
+    <div
+        id="featuredSectionCount"
+        class="section-count"
+    >
+        -
+    </div>
+
+</div>
+
+
+<div
+    id="featuredGrid"
+    class="featured-grid"
+>
+</div>
+
+</section>
+
+
+<!-- =========================================================
+     TOP 10
+========================================================= -->
+
+<section
+    id="topSection"
+    class="section"
+>
+
+<div class="section-heading">
+
+    <div class="section-heading-left">
+
+        <div class="section-heading-title">
+            AI Top 10
+        </div>
+
+        <div class="section-heading-description">
+            綜合後端分析結果排序，前端只呈現判斷結果
+        </div>
+
+    </div>
+
+    <div
+        id="topCount"
+        class="section-count"
+    >
+        -
+    </div>
+
+</div>
+
+
+<div class="table-card">
+
+<div class="table-wrap">
+
+<table class="stock-table">
+
+<thead>
+
+<tr>
+
+    <th>#</th>
+
+    <th>標的</th>
+
+    <th>現價</th>
+
+    <th>今日漲跌</th>
+
+    <th>趨勢</th>
+
+    <th>操作建議</th>
+
+</tr>
+
+</thead>
+
+
+<tbody
+    id="topTableBody"
+>
+</tbody>
+
+</table>
+
+</div>
+
+</div>
+
+</section>
+
+
+<!-- =========================================================
+     ETF
+========================================================= -->
+
+<section
+    id="etfSection"
+    class="section"
+>
+
+<div class="section-heading">
+
+    <div class="section-heading-left">
+
+        <div class="section-heading-title">
+            ETF
+        </div>
+
+        <div class="section-heading-description">
+            ETF 獨立於個股選股邏輯呈現
+        </div>
+
+    </div>
+
+    <div
+        id="etfSectionCount"
+        class="section-count"
+    >
+        -
+    </div>
+
+</div>
+
+
+<div
+    id="etfGrid"
+    class="asset-grid"
+>
+</div>
+
+</section>
+
+
+<!-- =========================================================
+     BOND
+========================================================= -->
+
+<section
+    id="bondSection"
+    class="section"
+>
+
+<div class="section-heading">
+
+    <div class="section-heading-left">
+
+        <div class="section-heading-title">
+            債券
+        </div>
+
+        <div class="section-heading-description">
+            債券不套用股票選股邏輯
+        </div>
+
+    </div>
+
+</div>
+
+
+<div
+    id="bondGrid"
+    class="asset-grid"
+>
+</div>
+
+</section>
+
+
+<!-- =========================================================
+     WATCHLIST
+========================================================= -->
+
+<section
+    id="watchSection"
+    class="section"
+>
+
+<div class="section-heading">
+
+    <div class="section-heading-left">
+
+        <div class="section-heading-title">
+            我的清單
+        </div>
+
+        <div class="section-heading-description">
+            追蹤標的會自動取得最新分析結果；持有者可另外設定持股資料
+        </div>
+
+    </div>
+
+    <div
+        id="watchCount"
+        class="section-count"
+    >
+        0 檔
+    </div>
+
+</div>
+
+
+<div
+    id="watchlistGrid"
+    class="watchlist-grid"
+>
+</div>
+
+</section>
+
+
+<!-- =========================================================
+     FOOTER
+========================================================= -->
+
+<footer class="footer">
+
+    <div>
+        台股 AI 智能選股系統
+    </div>
+
+    <div>
+        本頁面資料由 GitHub Actions
+        後端資料引擎產生。
+        前端僅負責資料呈現、
+        搜尋、追蹤清單與持有狀態管理。
+    </div>
+
+    <div id="footerUpdated"></div>
+
+</footer>
+
+
+</div>
 
 </div>
 
@@ -1973,15 +2408,30 @@ main {
 <script>
 
 /* ============================================================
-   V10 FRONTEND
+   V11 FRONTEND
    ------------------------------------------------------------
+   前端原則：
+
+   1. 不重新計算技術指標
+   2. 不顯示 RSI
+   3. 不顯示 MACD
+   4. 不顯示 KD
+   5. 不顯示 MA20
+   6. 不顯示成交量倍率
+   7. 不顯示 AI Score
+   8. 不顯示核心條件分數
+   9. 不顯示 6/6
+   10. 只顯示後端最終判斷
+   11. 我的清單可管理持有股數與成本
+   12. 持有資料只存在瀏覽器 localStorage
+
    資料來源：
 
    Data/ui_data.json
    Data/securities.json
 
-   不讀取 prices.json
 ============================================================ */
+
 
 const UI_DATA_URL =
     "./Data/ui_data.json";
@@ -1990,9 +2440,9 @@ const SECURITIES_URL =
     "./Data/securities.json";
 
 
-/* ============================================================
+/* =========================================================
    GLOBAL STATE
-============================================================ */
+========================================================= */
 
 let uiData = null;
 
@@ -2000,20 +2450,23 @@ let securitiesData = [];
 
 let watchlist = [];
 
+let holdings = {};
+
 let searchTimer = null;
 
 
-/* ============================================================
+/* =========================================================
    DOM
-============================================================ */
+========================================================= */
 
-const $ = id =>
-    document.getElementById(id);
+const $ =
+    id =>
+        document.getElementById(id);
 
 
-/* ============================================================
-   INITIALIZATION
-============================================================ */
+/* =========================================================
+   INIT
+========================================================= */
 
 document.addEventListener(
     "DOMContentLoaded",
@@ -2025,17 +2478,18 @@ async function init() {
 
     loadWatchlist();
 
+    loadHoldings();
+
     bindEvents();
 
     await loadDashboard();
 
-    renderWatchlist();
 }
 
 
-/* ============================================================
+/* =========================================================
    EVENTS
-============================================================ */
+========================================================= */
 
 function bindEvents() {
 
@@ -2060,17 +2514,15 @@ function bindEvents() {
                         .value
                         .trim();
 
+
                 if (!value) {
 
-                    $("searchResults")
-                        .classList
-                        .remove("active");
-
-                    $("searchResults")
-                        .innerHTML = "";
+                    clearSearchResults();
 
                     return;
+
                 }
+
 
                 searchTimer =
                     setTimeout(
@@ -2125,20 +2577,26 @@ function bindEvents() {
                                         )
                             );
 
+
                         button
                             .classList
                             .add(
                                 "active"
                             );
 
+
                         const target =
-                            $(button.dataset.target);
+                            $(
+                                button.dataset.target
+                            );
+
 
                         if (target) {
 
                             target.scrollIntoView({
                                 behavior:
                                     "smooth",
+
                                 block:
                                     "start"
                             });
@@ -2154,9 +2612,9 @@ function bindEvents() {
 }
 
 
-/* ============================================================
+/* =========================================================
    LOAD DASHBOARD
-============================================================ */
+========================================================= */
 
 async function loadDashboard() {
 
@@ -2196,6 +2654,7 @@ async function loadDashboard() {
 
         renderDashboard();
 
+
         $("dashboard")
             .classList
             .remove(
@@ -2213,6 +2672,7 @@ async function loadDashboard() {
         console.error(
             error
         );
+
 
         $("systemStatus")
             .textContent =
@@ -2232,9 +2692,9 @@ async function loadDashboard() {
 }
 
 
-/* ============================================================
+/* =========================================================
    FETCH JSON
-============================================================ */
+========================================================= */
 
 async function fetchJson(
     url
@@ -2263,7 +2723,7 @@ async function fetchJson(
 
         return await response.json();
 
-    } catch (error) {
+    } catch {
 
         throw new Error(
             `JSON 格式錯誤：${url}`
@@ -2274,9 +2734,9 @@ async function fetchJson(
 }
 
 
-/* ============================================================
+/* =========================================================
    VALIDATE
-============================================================ */
+========================================================= */
 
 function validateUiData(
     data
@@ -2297,9 +2757,9 @@ function validateUiData(
 }
 
 
-/* ============================================================
-   NORMALIZE UI DATA
-============================================================ */
+/* =========================================================
+   NORMALIZE UI
+========================================================= */
 
 function normalizeUiData(
     data
@@ -2322,8 +2782,7 @@ function normalizeUiData(
     result.top10 =
         firstArray(
             data.top10,
-            data.top_10,
-            data.top30
+            data.top_10
         );
 
 
@@ -2344,6 +2803,8 @@ function normalizeUiData(
     result.statistics =
         data.statistics
         ||
+        data.summary
+        ||
         {};
 
 
@@ -2352,15 +2813,17 @@ function normalizeUiData(
 }
 
 
-/* ============================================================
+/* =========================================================
    NORMALIZE SECURITIES
-============================================================ */
+========================================================= */
 
 function normalizeSecurities(
     data
 ) {
 
-    if (Array.isArray(data)) {
+    if (
+        Array.isArray(data)
+    ) {
 
         return data;
 
@@ -2368,8 +2831,7 @@ function normalizeSecurities(
 
 
     if (
-        data
-        &&
+        data &&
         Array.isArray(
             data.securities
         )
@@ -2381,8 +2843,7 @@ function normalizeSecurities(
 
 
     if (
-        data
-        &&
+        data &&
         Array.isArray(
             data.items
         )
@@ -2398,16 +2859,17 @@ function normalizeSecurities(
 }
 
 
-/* ============================================================
+/* =========================================================
    ARRAY HELPER
-============================================================ */
+========================================================= */
 
 function firstArray(
     ...values
 ) {
 
     for (
-        const value of values
+        const value
+        of values
     ) {
 
         if (
@@ -2425,9 +2887,9 @@ function firstArray(
 }
 
 
-/* ============================================================
+/* =========================================================
    RENDER DASHBOARD
-============================================================ */
+========================================================= */
 
 function renderDashboard() {
 
@@ -2448,9 +2910,9 @@ function renderDashboard() {
 }
 
 
-/* ============================================================
+/* =========================================================
    METRICS
-============================================================ */
+========================================================= */
 
 function renderMetrics() {
 
@@ -2490,7 +2952,9 @@ function renderMetrics() {
 
     $("featuredCount")
         .textContent =
-        featured.length;
+        formatNumber(
+            featured.length
+        );
 
 
     $("stockCount")
@@ -2508,6 +2972,8 @@ function renderMetrics() {
 
 
     const date =
+        uiData.latest_market_date
+        ||
         uiData.date
         ||
         uiData.updated_at_tw
@@ -2526,9 +2992,9 @@ function renderMetrics() {
 }
 
 
-/* ============================================================
+/* =========================================================
    FEATURED
-============================================================ */
+========================================================= */
 
 function renderFeatured() {
 
@@ -2549,12 +3015,14 @@ function renderFeatured() {
         `${items.length} 檔`;
 
 
-    if (!items.length) {
+    if (
+        !items.length
+    ) {
 
         container.innerHTML =
             emptyHtml(
-                "今日沒有完整 6/6 標的",
-                "目前資料中沒有股票同時符合六項核心條件。這是正常結果，不會為了填滿卡片而虛構推薦。"
+                "今日沒有符合推薦條件的標的",
+                "系統不會為了填滿畫面而虛構推薦。"
             );
 
         return;
@@ -2564,10 +3032,7 @@ function renderFeatured() {
 
     container.innerHTML =
         items
-            .slice(
-                0,
-                10
-            )
+            .slice(0, 10)
             .map(
                 renderFeaturedCard
             )
@@ -2576,9 +3041,9 @@ function renderFeatured() {
 }
 
 
-/* ============================================================
+/* =========================================================
    FEATURED CARD
-============================================================ */
+========================================================= */
 
 function renderFeaturedCard(
     item
@@ -2596,11 +3061,11 @@ function renderFeaturedCard(
     const change =
         getChange(item);
 
-    const ai =
-        getAiScore(item);
+    const trend =
+        getTrend(item);
 
-    const core =
-        getCoreScore(item);
+    const recommendation =
+        getRecommendation(item);
 
 
     return `
@@ -2613,9 +3078,7 @@ function renderFeaturedCard(
                     今日精選
                 </div>
 
-                <div class="signal-badge">
-                    6 / 6 通過
-                </div>
+                ${renderSignal(trend)}
 
             </div>
 
@@ -2635,14 +3098,8 @@ function renderFeaturedCard(
 
             <div class="price-row">
 
-                <div>
-
-                    <div
-                        class="price"
-                    >
-                        ${formatPrice(price)}
-                    </div>
-
+                <div class="price">
+                    ${formatPrice(price)}
                 </div>
 
                 <div
@@ -2656,43 +3113,11 @@ function renderFeaturedCard(
 
             <div class="featured-bottom">
 
-                <div class="info-mini">
+                <div class="recommendation">
 
-                    <div class="info-mini-label">
-                        AI SCORE
-                    </div>
-
-                    <div class="info-mini-value">
-                        ${formatNumber(ai)}
-                    </div>
-
-                </div>
-
-
-                <div class="info-mini">
-
-                    <div class="info-mini-label">
-                        CORE
-                    </div>
-
-                    <div class="info-mini-value">
-                        ${core}/6
-                    </div>
-
-                </div>
-
-
-                <div class="info-mini">
-
-                    <div class="info-mini-label">
-                        RSI
-                    </div>
-
-                    <div class="info-mini-value">
-                        ${formatNumber(
-                            item.rsi
-                        )}
-                    </div>
+                    ${escapeHtml(
+                        recommendation
+                    )}
 
                 </div>
 
@@ -2705,9 +3130,9 @@ function renderFeaturedCard(
 }
 
 
-/* ============================================================
+/* =========================================================
    TOP 10
-============================================================ */
+========================================================= */
 
 function renderTop10() {
 
@@ -2724,11 +3149,10 @@ function renderTop10() {
 
 
     const top10 =
-        items
-            .slice(
-                0,
-                10
-            );
+        items.slice(
+            0,
+            10
+        );
 
 
     $("topCount")
@@ -2736,18 +3160,20 @@ function renderTop10() {
         `${top10.length} 檔`;
 
 
-    if (!top10.length) {
+    if (
+        !top10.length
+    ) {
 
         body.innerHTML =
             `
             <tr>
                 <td
-                    colspan="8"
+                    colspan="6"
                     style="padding:0"
                 >
                     ${emptyHtml(
                         "目前沒有 Top 10 資料",
-                        "請確認 V10.0 fetch_data.py 已成功產生 ui_data.json。"
+                        "請確認後端已成功產生 ui_data.json。"
                     )}
                 </td>
             </tr>
@@ -2775,9 +3201,9 @@ function renderTop10() {
 }
 
 
-/* ============================================================
+/* =========================================================
    TOP ROW
-============================================================ */
+========================================================= */
 
 function renderTopRow(
     item,
@@ -2796,11 +3222,11 @@ function renderTopRow(
     const change =
         getChange(item);
 
-    const ai =
-        getAiScore(item);
+    const trend =
+        getTrend(item);
 
-    const core =
-        getCoreScore(item);
+    const recommendation =
+        getRecommendation(item);
 
 
     return `
@@ -2818,15 +3244,11 @@ function renderTopRow(
 
                     <div>
 
-                        <div
-                            class="table-stock-code"
-                        >
+                        <div class="table-stock-code">
                             ${escapeHtml(code)}
                         </div>
 
-                        <div
-                            class="table-stock-name"
-                        >
+                        <div class="table-stock-name">
                             ${escapeHtml(name)}
                         </div>
 
@@ -2850,34 +3272,20 @@ function renderTopRow(
 
 
             <td>
+                ${renderSignal(trend)}
+            </td>
 
-                <span
-                    class="score ${scoreClass(ai)}"
+
+            <td>
+
+                <div
+                    class="recommendation-table"
                 >
-                    ${formatNumber(ai)}
-                </span>
+                    ${escapeHtml(
+                        recommendation
+                    )}
+                </div>
 
-            </td>
-
-
-            <td>
-
-                <span class="core">
-                    ${core}/6
-                </span>
-
-            </td>
-
-
-            <td>
-                ${formatNumber(item.rsi)}
-            </td>
-
-
-            <td>
-                ${formatVolumeRatio(
-                    item.volume_ratio
-                )}
             </td>
 
         </tr>
@@ -2887,9 +3295,9 @@ function renderTopRow(
 }
 
 
-/* ============================================================
+/* =========================================================
    ETF
-============================================================ */
+========================================================= */
 
 function renderEtf() {
 
@@ -2917,12 +3325,14 @@ function renderEtf() {
         );
 
 
-    if (!display.length) {
+    if (
+        !display.length
+    ) {
 
         container.innerHTML =
             emptyHtml(
                 "目前沒有 ETF 資料",
-                "請確認 V10.0 已成功建立 ETF 資料。"
+                "請確認後端 ETF 資料是否正常產生。"
             );
 
         return;
@@ -2940,9 +3350,9 @@ function renderEtf() {
 }
 
 
-/* ============================================================
+/* =========================================================
    ASSET CARD
-============================================================ */
+========================================================= */
 
 function renderAssetCard(
     item
@@ -3004,9 +3414,9 @@ function renderAssetCard(
 }
 
 
-/* ============================================================
+/* =========================================================
    BONDS
-============================================================ */
+========================================================= */
 
 function renderBonds() {
 
@@ -3022,12 +3432,14 @@ function renderBonds() {
             : [];
 
 
-    if (!items.length) {
+    if (
+        !items.length
+    ) {
 
         container.innerHTML =
             emptyHtml(
                 "目前沒有債券資料",
-                "債券資料必須由後端 V10.0 明確提供；前端不會把 ETF 或股票自行判定成債券。"
+                "債券資料由後端明確提供。"
             );
 
         return;
@@ -3037,10 +3449,7 @@ function renderBonds() {
 
     container.innerHTML =
         items
-            .slice(
-                0,
-                12
-            )
+            .slice(0, 12)
             .map(
                 renderBondCard
             )
@@ -3049,9 +3458,9 @@ function renderBonds() {
 }
 
 
-/* ============================================================
+/* =========================================================
    BOND CARD
-============================================================ */
+========================================================= */
 
 function renderBondCard(
     item
@@ -3114,9 +3523,9 @@ function renderBondCard(
 }
 
 
-/* ============================================================
+/* =========================================================
    SEARCH
-============================================================ */
+========================================================= */
 
 function performSearch() {
 
@@ -3133,13 +3542,7 @@ function performSearch() {
 
     if (!keyword) {
 
-        results.innerHTML = "";
-
-        results
-            .classList
-            .remove(
-                "active"
-            );
+        clearSearchResults();
 
         return;
 
@@ -3151,20 +3554,18 @@ function performSearch() {
             securitiesData
         )
         ||
-        securitiesData.length === 0
+        !securitiesData.length
     ) {
 
         results.innerHTML =
             emptyHtml(
                 "資料檔尚未部署",
-                "GitHub Pages 目前沒有可供搜尋的 Data/securities.json。請先讓 V10.0 fetch_data.py 執行成功並提交資料檔。"
+                "目前沒有可供搜尋的 securities.json。"
             );
 
         results
             .classList
-            .add(
-                "active"
-            );
+            .add("active");
 
         return;
 
@@ -3196,9 +3597,7 @@ function performSearch() {
 
         results
             .classList
-            .add(
-                "active"
-            );
+            .add("active");
 
         return;
 
@@ -3215,16 +3614,30 @@ function performSearch() {
 
     results
         .classList
-        .add(
-            "active"
-        );
+        .add("active");
 
 }
 
 
-/* ============================================================
+/* =========================================================
+   CLEAR SEARCH
+========================================================= */
+
+function clearSearchResults() {
+
+    $("searchResults")
+        .innerHTML = "";
+
+    $("searchResults")
+        .classList
+        .remove("active");
+
+}
+
+
+/* =========================================================
    SECURITY MATCH
-============================================================ */
+========================================================= */
 
 function securityMatches(
     item,
@@ -3233,9 +3646,9 @@ function securityMatches(
 
     const code =
         String(
-            item.code
+            item?.code
             ??
-            item.symbol
+            item?.symbol
             ??
             ""
         )
@@ -3244,9 +3657,9 @@ function securityMatches(
 
     const name =
         String(
-            item.name
+            item?.name
             ??
-            item.CompanyName
+            item?.CompanyName
             ??
             ""
         )
@@ -3255,7 +3668,7 @@ function securityMatches(
 
     const symbol =
         String(
-            item.symbol
+            item?.symbol
             ??
             ""
         )
@@ -3273,9 +3686,9 @@ function securityMatches(
 }
 
 
-/* ============================================================
+/* =========================================================
    SEARCH RESULT
-============================================================ */
+========================================================= */
 
 function renderSearchResult(
     item
@@ -3292,6 +3705,7 @@ function renderSearchResult(
 
     const key =
         securityKey(item);
+
 
     const exists =
         watchlist.some(
@@ -3358,9 +3772,9 @@ function renderSearchResult(
 }
 
 
-/* ============================================================
-   WATCHLIST
-============================================================ */
+/* =========================================================
+   WATCHLIST STORAGE
+========================================================= */
 
 function loadWatchlist() {
 
@@ -3368,37 +3782,27 @@ function loadWatchlist() {
 
         const raw =
             localStorage.getItem(
-                "tw_ai_watchlist_v10"
-            );
-
-
-        if (!raw) {
-
-            watchlist = [];
-
-            return;
-
-        }
-
-
-        const parsed =
-            JSON.parse(
-                raw
+                "tw_ai_watchlist_v11"
             );
 
 
         watchlist =
-            Array.isArray(parsed)
-                ? parsed
+            raw
+                ? JSON.parse(raw)
                 : [];
 
 
-    } catch (error) {
+        if (
+            !Array.isArray(
+                watchlist
+            )
+        ) {
 
-        console.warn(
-            "Watchlist load error:",
-            error
-        );
+            watchlist = [];
+
+        }
+
+    } catch {
 
         watchlist = [];
 
@@ -3407,22 +3811,61 @@ function loadWatchlist() {
 }
 
 
-/* ============================================================
+/* =========================================================
+   HOLDINGS STORAGE
+========================================================= */
+
+function loadHoldings() {
+
+    try {
+
+        const raw =
+            localStorage.getItem(
+                "tw_ai_holdings_v11"
+            );
+
+
+        holdings =
+            raw
+                ? JSON.parse(raw)
+                : {};
+
+
+        if (
+            !holdings
+            ||
+            typeof holdings !== "object"
+        ) {
+
+            holdings = {};
+
+        }
+
+    } catch {
+
+        holdings = {};
+
+    }
+
+}
+
+
+/* =========================================================
    SAVE WATCHLIST
-============================================================ */
+========================================================= */
 
 function saveWatchlist() {
 
     try {
 
         localStorage.setItem(
-            "tw_ai_watchlist_v10",
+            "tw_ai_watchlist_v11",
             JSON.stringify(
                 watchlist
             )
         );
 
-    } catch (error) {
+    } catch(error) {
 
         console.warn(
             "Watchlist save error:",
@@ -3434,9 +3877,36 @@ function saveWatchlist() {
 }
 
 
-/* ============================================================
+/* =========================================================
+   SAVE HOLDINGS
+========================================================= */
+
+function saveHoldings() {
+
+    try {
+
+        localStorage.setItem(
+            "tw_ai_holdings_v11",
+            JSON.stringify(
+                holdings
+            )
+        );
+
+    } catch(error) {
+
+        console.warn(
+            "Holdings save error:",
+            error
+        );
+
+    }
+
+}
+
+
+/* =========================================================
    ADD WATCHLIST
-============================================================ */
+========================================================= */
 
 function addToWatchlist(
     key
@@ -3452,9 +3922,7 @@ function addToWatchlist(
 
 
     if (!item) {
-
         return;
-
     }
 
 
@@ -3468,9 +3936,7 @@ function addToWatchlist(
 
 
     if (exists) {
-
         return;
-
     }
 
 
@@ -3490,9 +3956,9 @@ function addToWatchlist(
 }
 
 
-/* ============================================================
+/* =========================================================
    REMOVE WATCHLIST
-============================================================ */
+========================================================= */
 
 function removeFromWatchlistByKey(
     key
@@ -3516,9 +3982,9 @@ function removeFromWatchlistByKey(
 }
 
 
-/* ============================================================
+/* =========================================================
    NORMALIZE WATCH ITEM
-============================================================ */
+========================================================= */
 
 function normalizeWatchItem(
     item
@@ -3567,9 +4033,9 @@ function normalizeWatchItem(
 }
 
 
-/* ============================================================
+/* =========================================================
    RENDER WATCHLIST
-============================================================ */
+========================================================= */
 
 function renderWatchlist() {
 
@@ -3585,12 +4051,14 @@ function renderWatchlist() {
         `${watchlist.length} 檔`;
 
 
-    if (!watchlist.length) {
+    if (
+        !watchlist.length
+    ) {
 
         container.innerHTML =
             emptyHtml(
                 "目前沒有追蹤標的",
-                "請使用上方「查詢個股」搜尋股票，再按「＋ 加入清單」。"
+                "請使用上方「查詢個股」搜尋股票，再加入你的清單。"
             );
 
         return;
@@ -3608,9 +4076,9 @@ function renderWatchlist() {
 }
 
 
-/* ============================================================
+/* =========================================================
    WATCH CARD
-============================================================ */
+========================================================= */
 
 function renderWatchCard(
     item
@@ -3621,6 +4089,9 @@ function renderWatchCard(
 
     const name =
         getName(item);
+
+    const key =
+        securityKey(item);
 
 
     const live =
@@ -3640,6 +4111,37 @@ function renderWatchCard(
         live
             ? getChange(live)
             : null;
+
+
+    const trend =
+        live
+            ? getTrend(live)
+            : "待分析";
+
+
+    const normalRecommendation =
+        live
+            ? getRecommendation(live)
+            : "等待最新市場資料";
+
+
+    const holding =
+        getHolding(key);
+
+
+    const isHolding =
+        isValidHolding(
+            holding
+        );
+
+
+    const recommendation =
+        isHolding
+            ? getHoldingRecommendation(
+                live,
+                holding
+              )
+            : normalRecommendation;
 
 
     return `
@@ -3664,7 +4166,7 @@ function renderWatchCard(
                 <button
                     class="small-button remove"
                     type="button"
-                    onclick="removeFromWatchlistByKey('${escapeAttribute(securityKey(item))}')"
+                    onclick="removeFromWatchlistByKey('${escapeAttribute(key)}')"
                 >
                     移除
                 </button>
@@ -3686,30 +4188,79 @@ function renderWatchCard(
 
 
             <div
-                class="watch-meta"
+                class="watch-change
+                ${changeClass(change)}"
             >
 
-                <span>
-                    ${
-                        live
-                        ?
-                        formatChange(change)
-                        :
-                        "尚無行情"
-                    }
-                </span>
-
-                <span>
-                    ${
-                        live
-                        ?
-                        "已同步"
-                        :
-                        "待更新"
-                    }
-                </span>
+                ${
+                    live
+                    ?
+                    formatChange(change)
+                    :
+                    "尚無行情"
+                }
 
             </div>
+
+
+            <div class="watch-status-row">
+
+                <span class="watch-status-label">
+                    趨勢狀態
+                </span>
+
+                ${renderSignal(trend)}
+
+            </div>
+
+
+            <div class="watch-recommendation">
+
+                <div
+                    style="
+                        color:var(--text3);
+                        font-size:9px;
+                        margin-bottom:5px;
+                    "
+                >
+                    ${isHolding
+                        ? "持有狀態建議"
+                        : "目前建議"}
+                </div>
+
+                ${escapeHtml(
+                    recommendation
+                )}
+
+            </div>
+
+
+            ${
+                isHolding
+                ?
+                renderHoldingBox(
+                    key,
+                    holding,
+                    price
+                )
+                :
+                `
+                <div class="not-holding">
+
+                    目前未設定持有部位。
+
+                    <button
+                        class="small-button primary"
+                        style="margin-left:6px;"
+                        type="button"
+                        onclick="startHolding('${escapeAttribute(key)}')"
+                    >
+                        設定持有
+                    </button>
+
+                </div>
+                `
+            }
 
         </article>
 
@@ -3718,9 +4269,470 @@ function renderWatchCard(
 }
 
 
-/* ============================================================
+/* =========================================================
+   HOLDING BOX
+========================================================= */
+
+function renderHoldingBox(
+    key,
+    holding,
+    currentPrice
+) {
+
+    const shares =
+        Number(
+            holding.shares
+        ) || 0;
+
+
+    const cost =
+        Number(
+            holding.cost
+        ) || 0;
+
+
+    const marketValue =
+        Number.isFinite(
+            currentPrice
+        )
+            ? currentPrice * shares
+            : null;
+
+
+    const costValue =
+        cost * shares;
+
+
+    const pnl =
+        marketValue !== null
+            ? marketValue - costValue
+            : null;
+
+
+    const returnPct =
+        cost > 0
+        &&
+        Number.isFinite(
+            currentPrice
+        )
+            ? (
+                (
+                    currentPrice
+                    -
+                    cost
+                )
+                /
+                cost
+            ) * 100
+            : null;
+
+
+    return `
+
+        <div class="holding-box">
+
+            <div class="holding-header">
+
+                <div class="holding-title">
+                    我的持有部位
+                </div>
+
+                <button
+                    class="holding-toggle"
+                    type="button"
+                    onclick="clearHolding('${escapeAttribute(key)}')"
+                >
+                    清除持有
+                </button>
+
+            </div>
+
+
+            <div class="holding-fields">
+
+                <div class="holding-field">
+
+                    <label>
+                        持有股數
+                    </label>
+
+                    <input
+                        type="number"
+                        min="0"
+                        step="1"
+                        value="${shares || ""}"
+                        onchange="updateHoldingShares('${escapeAttribute(key)}', this.value)"
+                    >
+
+                </div>
+
+
+                <div class="holding-field">
+
+                    <label>
+                        持有成本
+                    </label>
+
+                    <input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value="${cost || ""}"
+                        onchange="updateHoldingCost('${escapeAttribute(key)}', this.value)"
+                    >
+
+                </div>
+
+            </div>
+
+
+            <div class="holding-summary">
+
+                <div class="holding-stat">
+
+                    <div class="holding-stat-label">
+                        目前市值
+                    </div>
+
+                    <div class="holding-stat-value">
+                        ${
+                            marketValue !== null
+                            ?
+                            formatMoney(
+                                marketValue
+                            )
+                            :
+                            "--"
+                        }
+                    </div>
+
+                </div>
+
+
+                <div class="holding-stat">
+
+                    <div class="holding-stat-label">
+                        未實現損益
+                    </div>
+
+                    <div
+                        class="
+                            holding-stat-value
+                            ${
+                                pnl === null
+                                ? ""
+                                : pnl >= 0
+                                    ? "profit"
+                                    : "loss"
+                            }
+                        "
+                    >
+                        ${
+                            pnl !== null
+                            ?
+                            formatMoney(
+                                pnl,
+                                true
+                            )
+                            :
+                            "--"
+                        }
+                    </div>
+
+                </div>
+
+
+                <div class="holding-stat">
+
+                    <div class="holding-stat-label">
+                        報酬率
+                    </div>
+
+                    <div
+                        class="
+                            holding-stat-value
+                            ${
+                                returnPct === null
+                                ? ""
+                                : returnPct >= 0
+                                    ? "profit"
+                                    : "loss"
+                            }
+                        "
+                    >
+                        ${
+                            returnPct !== null
+                            ?
+                            formatPercent(
+                                returnPct
+                            )
+                            :
+                            "--"
+                        }
+                    </div>
+
+                </div>
+
+
+                <div class="holding-stat">
+
+                    <div class="holding-stat-label">
+                        成本總額
+                    </div>
+
+                    <div class="holding-stat-value">
+                        ${
+                            costValue > 0
+                            ?
+                            formatMoney(
+                                costValue
+                            )
+                            :
+                            "--"
+                        }
+                    </div>
+
+                </div>
+
+            </div>
+
+        </div>
+
+    `;
+
+}
+
+
+/* =========================================================
+   HOLDING ACTIONS
+========================================================= */
+
+function startHolding(
+    key
+) {
+
+    holdings[key] = {
+
+        shares: 0,
+
+        cost: 0
+
+    };
+
+
+    saveHoldings();
+
+    renderWatchlist();
+
+}
+
+
+function updateHoldingShares(
+    key,
+    value
+) {
+
+    if (!holdings[key]) {
+
+        holdings[key] = {
+            shares: 0,
+            cost: 0
+        };
+
+    }
+
+
+    const shares =
+        Number(value);
+
+
+    holdings[key].shares =
+        Number.isFinite(shares)
+            ? Math.max(
+                0,
+                shares
+              )
+            : 0;
+
+
+    saveHoldings();
+
+    renderWatchlist();
+
+}
+
+
+function updateHoldingCost(
+    key,
+    value
+) {
+
+    if (!holdings[key]) {
+
+        holdings[key] = {
+            shares: 0,
+            cost: 0
+        };
+
+    }
+
+
+    const cost =
+        Number(value);
+
+
+    holdings[key].cost =
+        Number.isFinite(cost)
+            ? Math.max(
+                0,
+                cost
+              )
+            : 0;
+
+
+    saveHoldings();
+
+    renderWatchlist();
+
+}
+
+
+function clearHolding(
+    key
+) {
+
+    delete holdings[key];
+
+    saveHoldings();
+
+    renderWatchlist();
+
+}
+
+
+/* =========================================================
+   HOLDING VALIDATION
+========================================================= */
+
+function getHolding(
+    key
+) {
+
+    return holdings[key]
+        ||
+        null;
+
+}
+
+
+function isValidHolding(
+    holding
+) {
+
+    if (
+        !holding
+    ) {
+
+        return false;
+
+    }
+
+
+    const shares =
+        Number(
+            holding.shares
+        );
+
+
+    const cost =
+        Number(
+            holding.cost
+        );
+
+
+    return (
+        Number.isFinite(shares)
+        &&
+        shares > 0
+        &&
+        Number.isFinite(cost)
+        &&
+        cost > 0
+    );
+
+}
+
+
+/* =========================================================
+   HOLDING RECOMMENDATION
+   ---------------------------------------------------------
+   優先使用後端提供的 holding_recommendation。
+
+   若後端暫時沒有，
+   前端只使用一般 recommendation，
+   不自行重算技術指標。
+========================================================= */
+
+function getHoldingRecommendation(
+    live,
+    holding
+) {
+
+    if (
+        live
+        &&
+        typeof live === "object"
+        &&
+        live.holding_recommendation
+    ) {
+
+        return String(
+            live.holding_recommendation
+        );
+
+    }
+
+
+    if (
+        live
+        &&
+        typeof live === "object"
+        &&
+        live.recommendation_holding
+    ) {
+
+        return String(
+            live.recommendation_holding
+        );
+
+    }
+
+
+    if (
+        live
+        &&
+        typeof live === "object"
+        &&
+        live.holder_recommendation
+    ) {
+
+        return String(
+            live.holder_recommendation
+        );
+
+    }
+
+
+    return getRecommendation(
+        live
+    );
+
+}
+
+
+/* =========================================================
    FIND CURRENT RECORD
-============================================================ */
+========================================================= */
 
 function findCurrentRecord(
     code,
@@ -3730,9 +4742,13 @@ function findCurrentRecord(
     const arrays = [
 
         uiData?.today_selected,
+
         uiData?.top10,
+
         uiData?.stocks,
+
         uiData?.stock
+
     ];
 
 
@@ -3754,22 +4770,39 @@ function findCurrentRecord(
 
         const found =
             array.find(
-                item =>
-                    String(
-                        getCode(item)
-                    )
-                    ===
-                    String(code)
-                    &&
-                    (
+                item => {
+
+                    const itemCode =
+                        String(
+                            getCode(item)
+                        );
+
+
+                    const sameCode =
+                        itemCode ===
+                        String(code);
+
+
+                    const itemMarket =
+                        getMarket(item);
+
+
+                    const sameMarket =
                         !market
                         ||
-                        !getMarket(item)
+                        !itemMarket
                         ||
-                        getMarket(item)
-                            ===
-                            market
-                    )
+                        itemMarket ===
+                        market;
+
+
+                    return (
+                        sameCode
+                        &&
+                        sameMarket
+                    );
+
+                }
             );
 
 
@@ -3787,15 +4820,166 @@ function findCurrentRecord(
 }
 
 
-/* ============================================================
-   HELPERS
-============================================================ */
+/* =========================================================
+   TREND
+========================================================= */
+
+function getTrend(
+    item
+) {
+
+    if (
+        !item
+    ) {
+
+        return "待分析";
+
+    }
+
+
+    return String(
+
+        item.trend_status
+        ??
+        item.trend
+        ??
+        item.market_trend
+        ??
+        "待分析"
+
+    );
+
+}
+
+
+/* =========================================================
+   RECOMMENDATION
+========================================================= */
+
+function getRecommendation(
+    item
+) {
+
+    if (
+        !item
+    ) {
+
+        return "等待最新市場資料";
+
+    }
+
+
+    return String(
+
+        item.recommendation
+        ??
+        item.action
+        ??
+        item.advice
+        ??
+        "等待後端分析"
+
+    );
+
+}
+
+
+/* =========================================================
+   SIGNAL
+========================================================= */
+
+function renderSignal(
+    trend
+) {
+
+    const text =
+        String(
+            trend
+            ||
+            "待分析"
+        );
+
+
+    const cls =
+        trendClass(
+            text
+        );
+
+
+    return `
+
+        <span
+            class="signal ${cls}"
+        >
+            ${escapeHtml(text)}
+        </span>
+
+    `;
+
+}
+
+
+/* =========================================================
+   TREND CLASS
+========================================================= */
+
+function trendClass(
+    trend
+) {
+
+    const text =
+        String(
+            trend
+            ||
+            ""
+        );
+
+
+    if (
+        /強勢|偏多|多方|上升|轉強|看多|積極/
+            .test(text)
+    ) {
+
+        return "bullish";
+
+    }
+
+
+    if (
+        /偏弱|弱勢|空方|下降|轉弱|看空/
+            .test(text)
+    ) {
+
+        return "weak";
+
+    }
+
+
+    if (
+        /等待|觀望|確認|待分析/
+            .test(text)
+    ) {
+
+        return "wait";
+
+    }
+
+
+    return "neutral";
+
+}
+
+
+/* =========================================================
+   BASIC DATA HELPERS
+========================================================= */
 
 function getCode(
     item
 ) {
 
     return String(
+
         item?.code
         ??
         item?.symbol
@@ -3803,6 +4987,7 @@ function getCode(
         item?.ticker
         ??
         ""
+
     )
     .replace(
         ".TW",
@@ -3810,8 +4995,7 @@ function getCode(
     )
     .replace(
         ".TWO",
-        ""
-    );
+        "");
 
 }
 
@@ -3821,6 +5005,7 @@ function getName(
 ) {
 
     return String(
+
         item?.name
         ??
         item?.CompanyName
@@ -3828,6 +5013,7 @@ function getName(
         item?.company_name
         ??
         "未命名"
+
     );
 
 }
@@ -3838,11 +5024,13 @@ function getMarket(
 ) {
 
     return String(
+
         item?.market
         ??
         item?.exchange
         ??
         ""
+
     );
 
 }
@@ -3852,18 +5040,23 @@ function getPrice(
     item
 ) {
 
+    if (!item) {
+
+        return null;
+
+    }
+
+
     const value =
-        item?.price
+        item.price
         ??
-        item?.close
+        item.close
         ??
-        item?.Close;
+        item.Close;
 
 
     const number =
-        Number(
-            value
-        );
+        Number(value);
 
 
     return Number.isFinite(
@@ -3879,20 +5072,25 @@ function getChange(
     item
 ) {
 
+    if (!item) {
+
+        return null;
+
+    }
+
+
     const value =
-        item?.change_pct
+        item.change_pct
         ??
-        item?.changePercent
+        item.changePercent
         ??
-        item?.change
+        item.change
         ??
         null;
 
 
     const number =
-        Number(
-            value
-        );
+        Number(value);
 
 
     return Number.isFinite(
@@ -3904,86 +5102,29 @@ function getChange(
 }
 
 
-function getAiScore(
-    item
-) {
-
-    const value =
-        item?.ai_score
-        ??
-        item?.aiScore
-        ??
-        item?.score
-        ??
-        0;
-
-
-    const number =
-        Number(
-            value
-        );
-
-
-    return Number.isFinite(
-        number
-    )
-        ? number
-        : 0;
-
-}
-
-
-function getCoreScore(
-    item
-) {
-
-    const value =
-        item?.core_score
-        ??
-        item?.coreScore
-        ??
-        0;
-
-
-    const number =
-        Number(
-            value
-        );
-
-
-    return Number.isFinite(
-        number
-    )
-        ? number
-        : 0;
-
-}
-
+/* =========================================================
+   SECURITY KEY
+========================================================= */
 
 function securityKey(
     item
 ) {
 
-    const market =
-        getMarket(item);
-
-    const code =
-        getCode(item);
-
-
-    return `${market}:${code}`;
+    return `${getMarket(item)}:${getCode(item)}`;
 
 }
 
+
+/* =========================================================
+   FORMAT
+========================================================= */
 
 function formatNumber(
     value
 ) {
 
     const number =
-        Number(
-            value
-        );
+        Number(value);
 
 
     if (
@@ -4013,9 +5154,7 @@ function formatPrice(
 ) {
 
     const number =
-        Number(
-            value
-        );
+        Number(value);
 
 
     if (
@@ -4034,6 +5173,7 @@ function formatPrice(
         {
             minimumFractionDigits:
                 2,
+
             maximumFractionDigits:
                 2
         }
@@ -4042,14 +5182,54 @@ function formatPrice(
 }
 
 
-function formatChange(
+function formatMoney(
+    value,
+    signed = false
+) {
+
+    const number =
+        Number(value);
+
+
+    if (
+        !Number.isFinite(
+            number
+        )
+    ) {
+
+        return "--";
+
+    }
+
+
+    const prefix =
+        signed && number > 0
+            ? "+"
+            : "";
+
+
+    return prefix +
+        number.toLocaleString(
+            "zh-TW",
+            {
+                minimumFractionDigits:
+                    0,
+
+                maximumFractionDigits:
+                    2
+            }
+        ) +
+        " 元";
+
+}
+
+
+function formatPercent(
     value
 ) {
 
     const number =
-        Number(
-            value
-        );
+        Number(value);
 
 
     if (
@@ -4074,14 +5254,12 @@ function formatChange(
 }
 
 
-function formatVolumeRatio(
+function formatChange(
     value
 ) {
 
     const number =
-        Number(
-            value
-        );
+        Number(value);
 
 
     if (
@@ -4095,7 +5273,13 @@ function formatVolumeRatio(
     }
 
 
-    return `${number.toFixed(2)}x`;
+    const prefix =
+        number > 0
+            ? "+"
+            : "";
+
+
+    return `${prefix}${number.toFixed(2)}%`;
 
 }
 
@@ -4105,9 +5289,7 @@ function changeClass(
 ) {
 
     const number =
-        Number(
-            value
-        );
+        Number(value);
 
 
     if (
@@ -4144,38 +5326,9 @@ function changeClass(
 }
 
 
-function scoreClass(
-    value
-) {
-
-    const number =
-        Number(
-            value
-        );
-
-
-    if (
-        number >= 80
-    ) {
-
-        return "high";
-
-    }
-
-
-    if (
-        number >= 60
-    ) {
-
-        return "mid";
-
-    }
-
-
-    return "low";
-
-}
-
+/* =========================================================
+   DATE
+========================================================= */
 
 function formatDateShort(
     value
@@ -4189,9 +5342,7 @@ function formatDateShort(
 
 
     const text =
-        String(
-            value
-        );
+        String(value);
 
 
     if (
@@ -4223,9 +5374,9 @@ function formatDateShort(
 }
 
 
-/* ============================================================
+/* =========================================================
    EMPTY
-============================================================ */
+========================================================= */
 
 function emptyHtml(
     title,
@@ -4251,9 +5402,9 @@ function emptyHtml(
 }
 
 
-/* ============================================================
+/* =========================================================
    ESCAPE
-============================================================ */
+========================================================= */
 
 function escapeHtml(
     value
@@ -4309,9 +5460,9 @@ function escapeAttribute(
 }
 
 
-/* ============================================================
-   ERROR UI
-============================================================ */
+/* =========================================================
+   ERROR
+========================================================= */
 
 function showError(
     error
@@ -4354,9 +5505,9 @@ function hideError() {
 }
 
 
-/* ============================================================
+/* =========================================================
    LOADING
-============================================================ */
+========================================================= */
 
 function showLoading(
     visible
@@ -4383,9 +5534,9 @@ function showLoading(
 }
 
 
-/* ============================================================
+/* =========================================================
    FOOTER
-============================================================ */
+========================================================= */
 
 function renderFooter() {
 
@@ -4393,6 +5544,8 @@ function renderFooter() {
         uiData?.updated_at_tw
         ||
         uiData?.updated_at
+        ||
+        uiData?.latest_market_date
         ||
         uiData?.date
         ||
@@ -4408,17 +5561,27 @@ function renderFooter() {
 }
 
 
-/* ============================================================
-   PUBLIC FUNCTIONS
-   ------------------------------------------------------------
-   onclick 需要從全域取得
-============================================================ */
+/* =========================================================
+   GLOBAL FUNCTIONS
+========================================================= */
 
 window.addToWatchlist =
     addToWatchlist;
 
 window.removeFromWatchlistByKey =
     removeFromWatchlistByKey;
+
+window.startHolding =
+    startHolding;
+
+window.updateHoldingShares =
+    updateHoldingShares;
+
+window.updateHoldingCost =
+    updateHoldingCost;
+
+window.clearHolding =
+    clearHolding;
 
 </script>
 
