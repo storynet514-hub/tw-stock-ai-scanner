@@ -353,7 +353,6 @@ jobs:
 
           else:
 
-              # 避免重複資料
               item = found[0]
 
               print("")
