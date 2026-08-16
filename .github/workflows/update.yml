@@ -2,16 +2,34 @@ name: 台股AI選股系統自動更新
 
 on:
   schedule:
-    # 台灣時間 16:30
-    # GitHub Actions 使用 UTC，所以是 08:30 UTC
-    - cron: "30 8 * * 1-5"
 
+    # =====================================================
+    # GitHub Actions 使用 UTC
+    # 台灣時間 = UTC + 8
+    #
+    # 09:15 台灣時間 = 01:15 UTC
+    # 10:30 台灣時間 = 02:30 UTC
+    # 12:00 台灣時間 = 04:00 UTC
+    # 14:30 台灣時間 = 06:30 UTC
+    # 15:30 台灣時間 = 07:30 UTC
+    # 17:30 台灣時間 = 09:30 UTC
+    # =====================================================
+
+    - cron: "15 1 * * 1-5"
+    - cron: "30 2 * * 1-5"
+    - cron: "0 4 * * 1-5"
+    - cron: "30 6 * * 1-5"
+    - cron: "30 7 * * 1-5"
+    - cron: "30 9 * * 1-5"
+
+  # 手動執行
   workflow_dispatch:
 
 permissions:
   contents: write
 
 jobs:
+
   update-stock-data:
 
     runs-on: ubuntu-latest
@@ -25,6 +43,7 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
+
       # =====================================================
       # 2. 設定 Python
       # =====================================================
@@ -33,6 +52,7 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
+
 
       # =====================================================
       # 3. 安裝套件
@@ -43,13 +63,21 @@ jobs:
           python -m pip install --upgrade pip
           pip install pandas numpy requests
 
+
       # =====================================================
       # 4. 執行台股資料更新
       # =====================================================
 
       - name: Fetch Taiwan Stock Data
         run: |
+          echo "=============================================="
+          echo "開始更新台股資料"
+          echo "UTC 時間：$(date -u '+%Y-%m-%d %H:%M:%S')"
+          echo "台灣時間：$(TZ=Asia/Taipei date '+%Y-%m-%d %H:%M:%S')"
+          echo "=============================================="
+
           python Scripts/fetch_data.py
+
 
       # =====================================================
       # 5. 驗證 prices.json
@@ -62,47 +90,66 @@ jobs:
           import os
 
           path = "Data/prices.json"
-      - name: Debug 1319 RSI backend data
-        run: |
-          python - <<'PY'
-          import json
 
-          with open("Data/prices.json", "r", encoding="utf-8") as f:
-              data = json.load(f)
+          print("==============================================")
+          print("開始驗證 Data/prices.json")
+          print("==============================================")
 
-          found = []
+          # -------------------------------------------------
+          # 檔案存在
+          # -------------------------------------------------
 
-          for key in ["today_selected", "top10", "etfs", "bonds"]:
-              for item in data.get(key, []):
-                  if str(item.get("code")) == "1319":
-                      found.append(item)
-
-          if not found:
-              print("❌ 找不到 1319 東陽")
-          else:
-              item = found[0]
-
-              print("===== 1319 東陽後台資料 =====")
-              print("code:", item.get("code"))
-              print("name:", item.get("name"))
-              print("price:", item.get("price"))
-              print("change_pct:", item.get("change_pct"))
-              print("ai_score:", item.get("ai_score"))
-              print("strength_score:", item.get("strength_score"))
-              print("indicators:", item.get("indicators"))
-              print("============================")
-          PY
           if not os.path.exists(path):
-              raise SystemExit("❌ Data/prices.json 不存在")
+              raise SystemExit(
+                  "❌ Data/prices.json 不存在"
+              )
 
-          if os.path.getsize(path) == 0:
-              raise SystemExit("❌ Data/prices.json 是空檔案")
+          # -------------------------------------------------
+          # 檔案大小
+          # -------------------------------------------------
 
-          with open(path, "r", encoding="utf-8") as f:
-              data = json.load(f)
+          size = os.path.getsize(path)
+
+          if size == 0:
+              raise SystemExit(
+                  "❌ Data/prices.json 是空檔案"
+              )
+
+          print(f"檔案大小：{size:,} bytes")
+
+          # -------------------------------------------------
+          # JSON 格式
+          # -------------------------------------------------
+
+          try:
+
+              with open(
+                  path,
+                  "r",
+                  encoding="utf-8"
+              ) as f:
+
+                  data = json.load(f)
+
+          except json.JSONDecodeError as e:
+
+              raise SystemExit(
+                  f"❌ prices.json JSON 格式錯誤：{e}"
+              )
+
+          # -------------------------------------------------
+          # Root 必須是 object
+          # -------------------------------------------------
 
           if not isinstance(data, dict):
-              raise SystemExit("❌ prices.json 格式錯誤：不是 JSON object")
+
+              raise SystemExit(
+                  "❌ prices.json 格式錯誤：不是 JSON object"
+              )
+
+          # -------------------------------------------------
+          # 必要欄位
+          # -------------------------------------------------
 
           required = [
               "version",
@@ -116,71 +163,315 @@ jobs:
           ]
 
           missing = [
-              key for key in required
+              key
+              for key in required
               if key not in data
           ]
 
           if missing:
+
               raise SystemExit(
                   "❌ prices.json 缺少欄位："
                   + ", ".join(missing)
               )
 
+          # -------------------------------------------------
+          # 陣列欄位
+          # -------------------------------------------------
+
+          if not isinstance(
+              data.get("today_selected"),
+              list
+          ):
+
+              raise SystemExit(
+                  "❌ today_selected 不是陣列"
+              )
+
+          if not isinstance(
+              data.get("top10"),
+              list
+          ):
+
+              raise SystemExit(
+                  "❌ top10 不是陣列"
+              )
+
+          if not isinstance(
+              data.get("summary"),
+              dict
+          ):
+
+              raise SystemExit(
+                  "❌ summary 不是 object"
+              )
+
+          # -------------------------------------------------
+          # 顯示結果
+          # -------------------------------------------------
+
+          print("")
           print("✅ prices.json 驗證成功")
-          print("版本：", data.get("version"))
-          print("日期：", data.get("date"))
+          print("----------------------------------------------")
+
+          print(
+              "版本：",
+              data.get("version")
+          )
+
+          print(
+              "Schema：",
+              data.get("schema_version")
+          )
+
+          print(
+              "狀態：",
+              data.get("status")
+          )
+
+          print(
+              "資料日期：",
+              data.get("date")
+          )
+
           print(
               "最新市場日期：",
               data.get("latest_market_date")
           )
+
           print(
               "6/6 選股數量：",
-              data.get("summary", {}).get(
+              data.get(
+                  "summary",
+                  {}
+              ).get(
                   "today_selected_count"
               )
           )
+
           print(
               "股票數量：",
-              data.get("summary", {}).get(
+              data.get(
+                  "summary",
+                  {}
+              ).get(
                   "stock_count"
               )
           )
+
           print(
               "ETF 數量：",
-              data.get("summary", {}).get(
+              data.get(
+                  "summary",
+                  {}
+              ).get(
                   "etf_count"
               )
           )
+
           print(
               "債券數量：",
-              data.get("summary", {}).get(
+              data.get(
+                  "summary",
+                  {}
+              ).get(
                   "bond_count"
               )
           )
+
+          print("----------------------------------------------")
+          print("✅ Data/prices.json 驗證完成")
           PY
 
+
       # =====================================================
-      # 6. 顯示 Git 差異
+      # 6. Debug 1319 RSI 後台資料
+      # =====================================================
+
+      - name: Debug 1319 RSI backend data
+        run: |
+          python - <<'PY'
+          import json
+
+          path = "Data/prices.json"
+
+          with open(
+              path,
+              "r",
+              encoding="utf-8"
+          ) as f:
+
+              data = json.load(f)
+
+          found = []
+
+          # -------------------------------------------------
+          # 搜尋主要資料區
+          # -------------------------------------------------
+
+          search_keys = [
+              "today_selected",
+              "top10",
+              "stocks",
+              "stock",
+              "etfs",
+              "bonds"
+          ]
+
+          for key in search_keys:
+
+              items = data.get(
+                  key,
+                  []
+              )
+
+              if not isinstance(
+                  items,
+                  list
+              ):
+                  continue
+
+              for item in items:
+
+                  if str(
+                      item.get("code")
+                  ) == "1319":
+
+                      found.append(
+                          item
+                      )
+
+          # -------------------------------------------------
+          # 顯示 1319
+          # -------------------------------------------------
+
+          if not found:
+
+              print(
+                  "ℹ️ 找不到 1319 東陽於目前主要資料區"
+              )
+
+          else:
+
+              # 避免重複資料
+              item = found[0]
+
+              print("")
+              print(
+                  "=============================================="
+              )
+
+              print(
+                  "1319 東陽後台資料"
+              )
+
+              print(
+                  "=============================================="
+              )
+
+              print(
+                  "code:",
+                  item.get("code")
+              )
+
+              print(
+                  "name:",
+                  item.get("name")
+              )
+
+              print(
+                  "price:",
+                  item.get("price")
+              )
+
+              print(
+                  "change_pct:",
+                  item.get("change_pct")
+              )
+
+              print(
+                  "ai_score:",
+                  item.get("ai_score")
+              )
+
+              print(
+                  "strength_score:",
+                  item.get("strength_score")
+              )
+
+              print(
+                  "core_score:",
+                  item.get("core_score")
+              )
+
+              print(
+                  "rsi:",
+                  item.get("rsi")
+              )
+
+              print(
+                  "indicators:",
+                  item.get("indicators")
+              )
+
+              print(
+                  "=============================================="
+              )
+
+          PY
+
+
+      # =====================================================
+      # 7. 顯示 Git 差異
       # =====================================================
 
       - name: Check Updated Files
         run: |
+          echo "=============================================="
+          echo "Git Status"
+          echo "=============================================="
+
           git status --short
 
+          echo ""
+          echo "=============================================="
+          echo "Data/prices.json 檔案資訊"
+          echo "=============================================="
+
+          ls -lh Data/prices.json
+
+
       # =====================================================
-      # 7. 提交更新
+      # 8. 提交更新
       # =====================================================
 
       - name: Commit Updated Data
         run: |
           git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git config user.email \
+            "41898282+github-actions[bot]@users.noreply.github.com"
 
           git add Data/prices.json
 
           if git diff --cached --quiet; then
+
             echo "ℹ️ Data/prices.json 沒有新的變更"
+
           else
-            git commit -m "chore: update Taiwan stock data"
+
+            echo "=============================================="
+            echo "偵測到資料變更"
+            echo "開始提交"
+            echo "=============================================="
+
+            git commit \
+              -m "chore: update Taiwan stock data"
+
             git push
+
+            echo "=============================================="
+            echo "✅ 資料更新完成並已推送 GitHub"
+            echo "=============================================="
+
           fi
