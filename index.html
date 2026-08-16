@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-<title>台股 AI 投資儀表板</title>
+<title>台股 AI 選股儀表板 V8.1</title>
 
 <style>
 * {
@@ -19,18 +19,12 @@
   --border: #e5e7eb;
   --header: #111827;
   --blue: #2563eb;
-  --blue-bg: #dbeafe;
   --green: #16a34a;
   --green-bg: #dcfce7;
   --red: #dc2626;
   --red-bg: #fee2e2;
   --yellow: #92400e;
   --yellow-bg: #fef3c7;
-  --gray-bg: #f8fafc;
-}
-
-html {
-  scroll-behavior: smooth;
 }
 
 body {
@@ -48,19 +42,18 @@ body {
 
 header {
   background: var(--header);
-  color: #fff;
+  color: white;
   padding: 22px 18px;
 }
 
 .header-inner {
-  max-width: 1180px;
+  max-width: 1280px;
   margin: auto;
 }
 
 h1 {
   margin: 0 0 7px;
   font-size: 25px;
-  font-weight: 800;
 }
 
 .subtitle {
@@ -69,229 +62,102 @@ h1 {
 }
 
 .container {
-  max-width: 1180px;
+  max-width: 1280px;
   margin: auto;
   padding: 18px;
 }
 
-/* =========================================================
-   系統狀態
-========================================================= */
+.grid {
+  display: grid;
+  grid-template-columns:
+    repeat(auto-fit, minmax(190px, 1fr));
+  gap: 12px;
+  margin-bottom: 16px;
+}
 
-.status-card {
+.card {
   background: var(--card);
   border-radius: 14px;
-  padding: 15px;
-  box-shadow: 0 3px 12px rgba(0,0,0,.06);
-  margin-bottom: 18px;
+  padding: 17px;
+  box-shadow:
+    0 3px 12px rgba(0,0,0,.06);
 }
 
-.status-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 9px;
-  align-items: center;
-}
-
-.status-item {
-  background: var(--gray-bg);
-  border-radius: 9px;
-  padding: 8px 11px;
+.card-title {
+  color: var(--muted);
   font-size: 13px;
+  margin-bottom: 8px;
 }
 
-.status-ok {
-  color: #166534;
+.card-value {
+  font-size: 27px;
   font-weight: 750;
 }
 
-.status-loading {
-  color: #92400e;
-  font-weight: 750;
+.card-sub {
+  margin-top: 5px;
+  font-size: 12px;
+  color: var(--muted);
 }
-
-.status-error {
-  color: #991b1b;
-  font-weight: 750;
-}
-
-.refresh-btn {
-  border: 0;
-  border-radius: 9px;
-  padding: 8px 13px;
-  cursor: pointer;
-  background: var(--blue);
-  color: white;
-  font-weight: 700;
-}
-
-.refresh-btn:hover {
-  opacity: .9;
-}
-
-/* =========================================================
-   區塊
-========================================================= */
 
 .section {
-  margin-top: 22px;
-}
-
-.section-header {
-  display: flex;
-  align-items: flex-end;
-  justify-content: space-between;
-  gap: 12px;
-  margin-bottom: 11px;
+  margin-top: 20px;
 }
 
 .section-title {
-  margin: 0;
   font-size: 20px;
-  font-weight: 800;
+  font-weight: 750;
+  margin-bottom: 11px;
 }
 
 .section-subtitle {
-  margin: 4px 0 0;
   color: var(--muted);
   font-size: 12px;
+  margin-top: -6px;
+  margin-bottom: 10px;
 }
 
-/* =========================================================
-   總覽
-========================================================= */
-
-.overview-grid {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 12px;
-}
-
-.overview-card {
-  background: var(--card);
+.table-wrap {
+  overflow-x: auto;
+  background: white;
   border-radius: 14px;
-  padding: 17px;
-  box-shadow: 0 3px 12px rgba(0,0,0,.06);
+  box-shadow:
+    0 3px 12px rgba(0,0,0,.06);
 }
 
-.overview-label {
-  color: var(--muted);
+table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 760px;
+}
+
+th,
+td {
+  padding: 10px 9px;
+  border-bottom: 1px solid var(--border);
+  text-align: left;
   font-size: 13px;
-  margin-bottom: 7px;
+  white-space: nowrap;
 }
 
-.overview-value {
-  font-size: 25px;
-  font-weight: 800;
+th {
+  background: #f8fafc;
+  color: #475569;
+  position: sticky;
+  top: 0;
+  z-index: 2;
 }
 
-.overview-sub {
-  color: var(--muted);
-  font-size: 12px;
-  margin-top: 5px;
+tr:hover td {
+  background: #fafafa;
 }
-
-/* =========================================================
-   推薦卡片
-========================================================= */
-
-.recommend-grid {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 13px;
-}
-
-.recommend-card {
-  background: var(--card);
-  border-radius: 15px;
-  padding: 17px;
-  box-shadow: 0 3px 12px rgba(0,0,0,.06);
-  border: 1px solid transparent;
-  transition: transform .15s ease, box-shadow .15s ease;
-}
-
-.recommend-card:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 7px 18px rgba(0,0,0,.09);
-}
-
-.asset-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  gap: 10px;
-}
-
-.asset-code {
-  font-size: 19px;
-  font-weight: 800;
-}
-
-.asset-name {
-  margin-top: 3px;
-  color: var(--muted);
-  font-size: 13px;
-}
-
-.asset-price-row {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 10px;
-  margin-top: 19px;
-}
-
-.asset-price {
-  font-size: 28px;
-  font-weight: 800;
-}
-
-.asset-change {
-  font-size: 15px;
-  font-weight: 800;
-}
-
-.asset-bottom {
-  margin-top: 15px;
-  padding-top: 13px;
-  border-top: 1px solid var(--border);
-}
-
-.result-label {
-  color: var(--muted);
-  font-size: 11px;
-  margin-bottom: 5px;
-}
-
-.signal-text {
-  font-size: 15px;
-  font-weight: 800;
-}
-
-.advice {
-  margin-top: 10px;
-  background: var(--gray-bg);
-  border-radius: 9px;
-  padding: 10px;
-  font-size: 13px;
-  line-height: 1.5;
-}
-
-.advice strong {
-  font-weight: 800;
-}
-
-/* =========================================================
-   Badge
-========================================================= */
 
 .badge {
   display: inline-block;
-  padding: 5px 9px;
+  padding: 4px 9px;
   border-radius: 999px;
   font-size: 11px;
-  font-weight: 800;
-  white-space: nowrap;
+  font-weight: 750;
 }
 
 .badge-good {
@@ -310,224 +176,102 @@ h1 {
 }
 
 .badge-blue {
-  background: var(--blue-bg);
+  background: #dbeafe;
   color: #1d4ed8;
 }
 
-.badge-neutral {
-  background: #e5e7eb;
-  color: #475569;
+.up {
+  color: var(--red);
+  font-weight: 700;
 }
 
-/* =========================================================
-   Top 10
-========================================================= */
-
-.top-list {
-  background: var(--card);
-  border-radius: 14px;
-  overflow: hidden;
-  box-shadow: 0 3px 12px rgba(0,0,0,.06);
+.down {
+  color: var(--green);
+  font-weight: 700;
 }
 
-.top-row {
-  display: grid;
-  grid-template-columns: 58px 1.5fr 1fr 110px 120px 150px;
-  align-items: center;
-  gap: 10px;
-  padding: 13px 15px;
-  border-bottom: 1px solid var(--border);
-}
-
-.top-row:last-child {
-  border-bottom: 0;
-}
-
-.top-row:hover {
-  background: #fafafa;
-}
-
-.top-head {
-  background: var(--gray-bg);
-  color: #475569;
-  font-size: 12px;
-  font-weight: 750;
-}
-
-.rank {
-  font-size: 17px;
-  font-weight: 850;
-  text-align: center;
-}
-
-.rank-1 {
-  color: #b45309;
-}
-
-.rank-2 {
+.neutral {
   color: #64748b;
+  font-weight: 700;
 }
 
-.rank-3 {
-  color: #92400e;
+.status-box {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
 }
 
-.top-code {
-  font-weight: 800;
-}
-
-.top-name {
-  color: var(--muted);
-  font-size: 12px;
-  margin-top: 2px;
-}
-
-.top-price {
-  font-weight: 750;
-}
-
-.top-change {
-  font-weight: 800;
-}
-
-.top-signal {
-  font-weight: 750;
-}
-
-/* =========================================================
-   Top 分類
-========================================================= */
-
-.top-section {
-  margin-bottom: 16px;
-}
-
-.top-section-title {
-  font-size: 15px;
-  font-weight: 800;
-  margin-bottom: 8px;
-}
-
-/* =========================================================
-   追蹤
-========================================================= */
-
-.watch-card {
-  background: var(--card);
-  border-radius: 14px;
-  box-shadow: 0 3px 12px rgba(0,0,0,.06);
-  overflow: hidden;
-}
-
-.watch-table {
-  width: 100%;
-  border-collapse: collapse;
-}
-
-.watch-table th,
-.watch-table td {
-  padding: 11px 12px;
-  border-bottom: 1px solid var(--border);
-  text-align: left;
+.status-item {
+  background: #f8fafc;
+  border-radius: 10px;
+  padding: 9px 12px;
   font-size: 13px;
 }
 
-.watch-table th {
-  background: var(--gray-bg);
-  color: #475569;
-  font-weight: 750;
-}
-
-.watch-table tr:last-child td {
-  border-bottom: 0;
-}
-
-/* =========================================================
-   空資料
-========================================================= */
-
-.empty {
-  background: var(--card);
-  border-radius: 14px;
-  padding: 25px;
-  color: var(--muted);
-  text-align: center;
-  box-shadow: 0 3px 12px rgba(0,0,0,.06);
+.status-ok {
+  color: #166534;
+  font-weight: 700;
 }
 
 .notice {
   background: #eff6ff;
   color: #1e40af;
-  border-radius: 11px;
-  padding: 13px;
-  font-size: 13px;
-  line-height: 1.6;
-}
-
-.error {
-  background: var(--red-bg);
-  color: #991b1b;
+  padding: 14px;
   border-radius: 12px;
-  padding: 15px;
   line-height: 1.6;
 }
 
-.loading {
-  background: var(--card);
-  border-radius: 14px;
-  padding: 45px 20px;
+.meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 9px;
+}
+
+.meta-item {
+  background: #f8fafc;
+  border-radius: 9px;
+  padding: 8px 11px;
+  font-size: 13px;
+}
+
+button {
+  border: 0;
+  border-radius: 9px;
+  padding: 9px 14px;
+  cursor: pointer;
+  background: var(--blue);
+  color: white;
+  font-weight: 650;
+}
+
+button:hover {
+  opacity: .9;
+}
+
+.empty {
+  padding: 22px;
   color: var(--muted);
-  text-align: center;
-  box-shadow: 0 3px 12px rgba(0,0,0,.06);
 }
 
-/* =========================================================
-   隱藏
-========================================================= */
-
-.hidden {
-  display: none !important;
+.highlight {
+  font-weight: 750;
 }
 
-/* =========================================================
-   Footer
-========================================================= */
+.green-text {
+  color: #166534;
+}
+
+.red-text {
+  color: #991b1b;
+}
 
 footer {
-  max-width: 1180px;
+  max-width: 1280px;
   margin: 25px auto;
   padding: 0 18px 30px;
   color: var(--muted);
   font-size: 11px;
   line-height: 1.6;
-}
-
-/* =========================================================
-   Responsive
-========================================================= */
-
-@media (max-width: 900px) {
-
-  .overview-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .recommend-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .top-row {
-    grid-template-columns:
-      45px
-      1.4fr
-      90px
-      100px
-      125px;
-  }
-
-  .top-row > .top-hide-mobile {
-    display: none;
-  }
 }
 
 @media (max-width: 600px) {
@@ -544,40 +288,16 @@ footer {
     padding: 12px;
   }
 
+  .card {
+    padding: 14px;
+  }
+
+  .card-value {
+    font-size: 24px;
+  }
+
   .section-title {
     font-size: 18px;
-  }
-
-  .asset-price {
-    font-size: 25px;
-  }
-
-  .top-row {
-    grid-template-columns:
-      40px
-      minmax(130px, 1fr)
-      80px
-      90px;
-    padding: 11px 10px;
-    gap: 7px;
-  }
-
-  .top-row > .top-hide-mobile {
-    display: none;
-  }
-
-  .top-head {
-    font-size: 11px;
-  }
-
-  .top-name {
-    max-width: 100px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-
-  .status-item {
-    font-size: 12px;
   }
 }
 </style>
@@ -587,63 +307,157 @@ footer {
 
 <header>
   <div class="header-inner">
-    <h1>台股 AI 投資儀表板</h1>
+
+    <h1>台股 AI 選股儀表板</h1>
+
     <div class="subtitle">
-      股票・ETF・債券｜後台計算｜前台 READ ONLY
+      V8.1 FINAL｜後台計算｜前台 READ ONLY
     </div>
+
   </div>
 </header>
 
-<main class="container">
 
-  <!-- =======================================================
-       載入
-  ======================================================== -->
+<main class="container">
 
   <div id="loading" class="loading">
     正在讀取後台資料……
   </div>
 
-  <div id="error" class="hidden"></div>
+  <div id="error"></div>
 
-  <div id="app" class="hidden">
+  <div id="app" style="display:none">
+
+
+    <!-- =====================================================
+         核心概況
+         ===================================================== -->
+
+    <section>
+
+      <div class="grid">
+
+        <div class="card">
+          <div class="card-title">
+            股票數量
+          </div>
+
+          <div
+            id="stockCount"
+            class="card-value"
+          >
+            -
+          </div>
+
+          <div class="card-sub">
+            股票資料
+          </div>
+        </div>
+
+
+        <div class="card">
+          <div class="card-title">
+            ETF 數量
+          </div>
+
+          <div
+            id="etfCount"
+            class="card-value"
+          >
+            -
+          </div>
+
+          <div class="card-sub">
+            ETF 資料
+          </div>
+        </div>
+
+
+        <div class="card">
+          <div class="card-title">
+            今日推薦
+          </div>
+
+          <div
+            id="selectedCount"
+            class="card-value"
+          >
+            -
+          </div>
+
+          <div class="card-sub">
+            今日系統推薦
+          </div>
+        </div>
+
+
+        <div class="card">
+          <div class="card-title">
+            AI Top 10
+          </div>
+
+          <div
+            id="top10Count"
+            class="card-value"
+          >
+            -
+          </div>
+
+          <div class="card-sub">
+            AI 排名結果
+          </div>
+        </div>
+
+      </div>
+
+    </section>
+
 
     <!-- =====================================================
          系統狀態
-    ====================================================== -->
+         ===================================================== -->
 
-    <section class="status-card">
+    <section class="section">
 
-      <div class="status-row">
+      <div class="section-title">
+        系統狀態
+      </div>
 
-        <div class="status-item">
-          資料日期：
-          <strong id="dataDate">-</strong>
+      <div class="card">
+
+        <div class="status-box">
+
+          <div class="status-item">
+            版本：
+            <strong id="version">-</strong>
+          </div>
+
+          <div class="status-item">
+            資料狀態：
+            <strong
+              id="dataStatus"
+              class="status-ok"
+            >
+              -
+            </strong>
+          </div>
+
+          <div class="status-item">
+            資料日期：
+            <strong id="dataDate">-</strong>
+          </div>
+
+          <div class="status-item">
+            更新時間：
+            <strong id="updatedAt">-</strong>
+          </div>
+
         </div>
 
-        <div class="status-item">
-          最後更新：
-          <strong id="updatedAt">-</strong>
-        </div>
+        <br>
 
-        <div class="status-item">
-          系統狀態：
-          <strong id="dataStatus" class="status-ok">
-            -
-          </strong>
-        </div>
-
-        <div class="status-item">
-          版本：
-          <strong id="version">-</strong>
-        </div>
-
-        <button
-          class="refresh-btn"
-          type="button"
-          onclick="loadData()"
-        >
-          重新讀取
+        <button onclick="loadData()">
+          重新讀取後台資料
         </button>
 
       </div>
@@ -652,300 +466,114 @@ footer {
 
 
     <!-- =====================================================
-         今日總覽
-    ====================================================== -->
+         C. 今日推薦
+         ===================================================== -->
 
     <section class="section">
 
-      <div class="section-header">
-        <div>
-          <h2 class="section-title">
-            今日市場總覽
-          </h2>
-
-          <div class="section-subtitle">
-            顯示後台模型產生的最終結果。
-          </div>
-        </div>
+      <div class="section-title">
+        今日推薦
       </div>
 
-
-      <div class="overview-grid">
-
-        <div class="overview-card">
-
-          <div class="overview-label">
-            股票
-          </div>
-
-          <div
-            id="stockCount"
-            class="overview-value"
-          >
-            -
-          </div>
-
-          <div class="overview-sub">
-            今日推薦：
-            <strong id="stockRecommendationCount">
-              -
-            </strong>
-          </div>
-
-        </div>
-
-
-        <div class="overview-card">
-
-          <div class="overview-label">
-            ETF
-          </div>
-
-          <div
-            id="etfCount"
-            class="overview-value"
-          >
-            -
-          </div>
-
-          <div class="overview-sub">
-            今日推薦：
-            <strong id="etfRecommendationCount">
-              -
-            </strong>
-          </div>
-
-        </div>
-
-
-        <div class="overview-card">
-
-          <div class="overview-label">
-            債券
-          </div>
-
-          <div
-            id="bondCount"
-            class="overview-value"
-          >
-            -
-          </div>
-
-          <div class="overview-sub">
-            今日推薦：
-            <strong id="bondRecommendationCount">
-              -
-            </strong>
-          </div>
-
-        </div>
-
+      <div class="section-subtitle">
+        由後台系統產生，前台僅呈現推薦結果。
       </div>
-
-    </section>
-
-
-    <!-- =====================================================
-         今日推薦
-    ====================================================== -->
-
-    <section class="section">
-
-      <div class="section-header">
-        <div>
-
-          <h2 class="section-title">
-            今日推薦
-          </h2>
-
-          <div class="section-subtitle">
-            只顯示系統最終推薦結果，不顯示後台核心邏輯與指標條件。
-          </div>
-
-        </div>
-      </div>
-
-
-      <!-- 股票 -->
-
-      <div class="top-section">
-
-        <div class="top-section-title">
-          股票
-        </div>
-
-        <div
-          id="stockRecommendations"
-          class="recommend-grid"
-        ></div>
-
-      </div>
-
-
-      <!-- ETF -->
-
-      <div class="top-section">
-
-        <div class="top-section-title">
-          ETF
-        </div>
-
-        <div
-          id="etfRecommendations"
-          class="recommend-grid"
-        ></div>
-
-      </div>
-
-
-      <!-- 債券 -->
-
-      <div class="top-section">
-
-        <div class="top-section-title">
-          債券
-        </div>
-
-        <div
-          id="bondRecommendations"
-          class="recommend-grid"
-        ></div>
-
-      </div>
-
-    </section>
-
-
-    <!-- =====================================================
-         AI TOP 10
-    ====================================================== -->
-
-    <section class="section">
-
-      <div class="section-header">
-
-        <div>
-
-          <h2 class="section-title">
-            AI Top 10
-          </h2>
-
-          <div class="section-subtitle">
-            保留後台 AI 排名結果；前台不重新計算、不重新排序。
-          </div>
-
-        </div>
-
-      </div>
-
-
-      <!-- 股票 Top 10 -->
-
-      <div class="top-section">
-
-        <div class="top-section-title">
-          股票 Top 10
-        </div>
-
-        <div
-          id="stockTop10"
-          class="top-list"
-        ></div>
-
-      </div>
-
-
-      <!-- ETF Top 10 -->
-
-      <div class="top-section">
-
-        <div class="top-section-title">
-          ETF Top 10
-        </div>
-
-        <div
-          id="etfTop10"
-          class="top-list"
-        ></div>
-
-      </div>
-
-
-      <!-- 債券 Top 10 -->
-
-      <div class="top-section">
-
-        <div class="top-section-title">
-          債券 Top 10
-        </div>
-
-        <div
-          id="bondTop10"
-          class="top-list"
-        ></div>
-
-      </div>
-
-    </section>
-
-
-    <!-- =====================================================
-         我的追蹤
-    ====================================================== -->
-
-    <section class="section">
-
-      <div class="section-header">
-
-        <div>
-
-          <h2 class="section-title">
-            我的追蹤
-          </h2>
-
-          <div class="section-subtitle">
-            只顯示追蹤標的的最終狀態。
-          </div>
-
-        </div>
-
-      </div>
-
 
       <div
-        id="watchlist"
-        class="watch-card"
+        id="selectedTable"
+        class="table-wrap"
       ></div>
 
     </section>
 
 
     <!-- =====================================================
-         系統說明
-    ====================================================== -->
+         D. Top 10
+         ===================================================== -->
 
     <section class="section">
 
-      <div class="notice">
-
-        <strong>前台資料原則</strong>
-
-        <br>
-
-        本頁只負責呈現後台模型產生的最終結果。
-
-        <br>
-
-        股票、ETF、債券各自使用獨立的後台判斷模型。
-
-        <br>
-
-        前台不自行計算技術指標、不重新篩選、不重新排序，
-        也不顯示核心模型條件。
-
+      <div class="section-title">
+        AI Top 10
       </div>
 
+      <div class="section-subtitle">
+        保留後台 AI 排名結果，前台不重新排序。
+      </div>
+
+      <div
+        id="top10Table"
+        class="table-wrap"
+      ></div>
+
     </section>
+
+
+    <!-- =====================================================
+         ETF
+         ===================================================== -->
+
+    <section class="section">
+
+      <div class="section-title">
+        ETF
+      </div>
+
+      <div class="section-subtitle">
+        ETF 採用獨立於股票的評估結果。
+      </div>
+
+      <div
+        id="etfTable"
+        class="table-wrap"
+      ></div>
+
+    </section>
+
+
+    <!-- =====================================================
+         債券
+         ===================================================== -->
+
+    <section class="section">
+
+      <div class="section-title">
+        債券
+      </div>
+
+      <div class="section-subtitle">
+        債券採用獨立的評估結果。
+      </div>
+
+      <div
+        id="bondTable"
+        class="table-wrap"
+      ></div>
+
+    </section>
+
+
+    <!-- =====================================================
+         回測摘要
+         ===================================================== -->
+
+    <section class="section">
+
+      <div class="section-title">
+        歷史回測摘要
+      </div>
+
+      <div class="section-subtitle">
+        僅呈現後台回測結果，不顯示核心計算邏輯。
+      </div>
+
+      <div
+        id="backtestTable"
+        class="table-wrap"
+      ></div>
+
+    </section>
+
 
   </div>
 
@@ -954,10 +582,10 @@ footer {
 
 <footer>
 
-  台股 AI 投資儀表板｜
-  Frontend READ ONLY｜
-  Data source:
+  V8.1 FINAL｜Data source:
   <strong>Data/prices.json</strong>
+  <br>
+  Frontend READ ONLY。前台僅呈現後台結果，不自行計算或篩選。
 
 </footer>
 
@@ -966,31 +594,37 @@ footer {
 
 /*
 ================================================================
-台股 AI 投資儀表板
-Frontend UI Version
-
-設計原則
+台股 AI 選股儀表板 V8.1
 ================================================================
 
-1. 前台 READ ONLY
-2. 不計算 RSI
-3. 不計算 MACD
-4. 不計算 KD
-5. 不計算 MA
-6. 不計算成交量條件
-7. 不計算 Core Score
-8. 不計算 AI Score
-9. 不重新篩選
-10. 不重新排序
-11. 不顯示股票核心條件
-12. 不顯示 ETF 核心條件
-13. 不顯示債券核心條件
+前台定位：
 
-股票、ETF、債券：
-各自由後台模型產生最終結果。
+READ ONLY
 
-前台只負責：
-「把結果呈現給使用者」。
+前台禁止：
+
+- RSI 計算
+- MACD 計算
+- KD 計算
+- MA 計算
+- 成交量條件計算
+- Core Score 計算
+- AI Score 計算
+- 股票篩選
+- 股票排序
+- ETF 篩選
+- ETF 排序
+- 債券篩選
+- 債券排序
+- 回測計算
+
+所有結果由後台產生。
+
+重要：
+
+股票、ETF、債券為不同資產類型。
+
+前台不假設三者共用相同核心邏輯。
 
 ================================================================
 */
@@ -1000,7 +634,7 @@ const DATA_URL = "./Data/prices.json";
 
 
 /* ==============================================================
-   工具：HTML Escape
+   Escape
 ============================================================== */
 
 function escapeHtml(value) {
@@ -1022,7 +656,7 @@ function escapeHtml(value) {
 
 
 /* ==============================================================
-   工具：數字
+   Number
 ============================================================== */
 
 function formatNumber(value, digits = 2) {
@@ -1041,48 +675,12 @@ function formatNumber(value, digits = 2) {
     return "-";
   }
 
-  return n.toLocaleString(
-    "zh-TW",
-    {
-      minimumFractionDigits: digits,
-      maximumFractionDigits: digits
-    }
-  );
+  return n.toFixed(digits);
 }
 
 
 /* ==============================================================
-   工具：價格
-============================================================== */
-
-function formatPrice(value) {
-
-  if (
-    value === null ||
-    value === undefined ||
-    value === ""
-  ) {
-    return "-";
-  }
-
-  const n = Number(value);
-
-  if (!Number.isFinite(n)) {
-    return "-";
-  }
-
-  return n.toLocaleString(
-    "zh-TW",
-    {
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 2
-    }
-  );
-}
-
-
-/* ==============================================================
-   工具：漲跌幅
+   Change
 ============================================================== */
 
 function changeHtml(value) {
@@ -1092,28 +690,19 @@ function changeHtml(value) {
     value === undefined ||
     value === ""
   ) {
-    return `
-      <span class="badge badge-neutral">
-        -
-      </span>
-    `;
+    return "-";
   }
 
   const n = Number(value);
 
   if (!Number.isFinite(n)) {
-    return `
-      <span class="badge badge-neutral">
-        -
-      </span>
-    `;
+    return "-";
   }
 
   if (n > 0) {
 
     return `
-      <span class="asset-change"
-            style="color:var(--red)">
+      <span class="up">
         +${n.toFixed(2)}%
       </span>
     `;
@@ -1122,16 +711,14 @@ function changeHtml(value) {
   if (n < 0) {
 
     return `
-      <span class="asset-change"
-            style="color:var(--green)">
+      <span class="down">
         ${n.toFixed(2)}%
       </span>
     `;
   }
 
   return `
-    <span class="asset-change"
-          style="color:var(--muted)">
+    <span class="neutral">
       0.00%
     </span>
   `;
@@ -1139,804 +726,653 @@ function changeHtml(value) {
 
 
 /* ==============================================================
-   工具：評級 Badge
+   Signal
 ============================================================== */
 
-function ratingBadge(value) {
+function signalBadge(value) {
 
   if (
     value === null ||
     value === undefined ||
     value === ""
   ) {
-    return `
-      <span class="badge badge-neutral">
-        -
-      </span>
-    `;
+    return "-";
   }
 
-  const text =
-    escapeHtml(value);
+  const text = String(value);
 
-  const normalized =
-    String(value)
-      .toLowerCase();
+  const lower = text.toLowerCase();
 
   if (
-    normalized.includes("強") ||
-    normalized.includes("買") ||
-    normalized.includes("bull") ||
-    normalized.includes("excellent")
+    lower.includes("推薦") ||
+    lower.includes("買進") ||
+    lower.includes("強")
   ) {
 
     return `
       <span class="badge badge-good">
-        ${text}
+        ${escapeHtml(text)}
       </span>
     `;
   }
 
   if (
-    normalized.includes("觀望") ||
-    normalized.includes("中") ||
-    normalized.includes("hold") ||
-    normalized.includes("neutral")
+    lower.includes("觀察") ||
+    lower.includes("中立")
   ) {
 
     return `
       <span class="badge badge-mid">
-        ${text}
+        ${escapeHtml(text)}
       </span>
     `;
   }
 
   if (
-    normalized.includes("弱") ||
-    normalized.includes("賣") ||
-    normalized.includes("bear")
+    lower.includes("賣") ||
+    lower.includes("弱")
   ) {
 
     return `
       <span class="badge badge-low">
-        ${text}
+        ${escapeHtml(text)}
       </span>
     `;
   }
 
   return `
     <span class="badge badge-blue">
-      ${text}
+      ${escapeHtml(text)}
     </span>
   `;
 }
 
 
 /* ==============================================================
-   取得欄位
-   --------------------------------------------------------------
-   允許後台未來採不同命名。
-   UI 不需要跟著後台欄位小幅修改。
+   建議
 ============================================================== */
 
-function getCode(item) {
+function recommendationHtml(item) {
 
-  return (
-    item?.code ??
-    item?.stock_code ??
-    item?.symbol ??
-    item?.ticker ??
-    "-"
-  );
-}
+  const value =
+    item.recommendation ??
+    item.advice ??
+    item.suggestion ??
+    item.action ??
+    item.signal ??
+    "";
 
+  if (!value) {
+    return "-";
+  }
 
-function getName(item) {
-
-  return (
-    item?.name ??
-    item?.stock_name ??
-    item?.title ??
-    "-"
-  );
-}
-
-
-function getPrice(item) {
-
-  return (
-    item?.price ??
-    item?.current_price ??
-    item?.close ??
-    item?.last_price ??
-    null
-  );
-}
-
-
-function getChange(item) {
-
-  return (
-    item?.change_pct ??
-    item?.change_percent ??
-    item?.pct_change ??
-    item?.today_change_pct ??
-    null
-  );
-}
-
-
-function getSignal(item) {
-
-  return (
-    item?.signal ??
-    item?.rating ??
-    item?.system_signal ??
-    item?.system_rating ??
-    "-"
-  );
-}
-
-
-function getAdvice(item) {
-
-  return (
-    item?.advice ??
-    item?.recommendation ??
-    item?.suggestion ??
-    item?.action ??
-    "依系統訊號判斷"
-  );
+  return signalBadge(value);
 }
 
 
 /* ==============================================================
-   今日推薦卡片
+   股票：今日推薦
 ============================================================== */
 
-function renderRecommendationCard(item) {
-
-  const code =
-    getCode(item);
-
-  const name =
-    getName(item);
-
-  const price =
-    getPrice(item);
-
-  const change =
-    getChange(item);
-
-  const signal =
-    getSignal(item);
-
-  const advice =
-    getAdvice(item);
-
-
-  return `
-
-    <article class="recommend-card">
-
-      <div class="asset-header">
-
-        <div>
-
-          <div class="asset-code">
-            ${escapeHtml(code)}
-          </div>
-
-          <div class="asset-name">
-            ${escapeHtml(name)}
-          </div>
-
-        </div>
-
-        <div>
-          ${ratingBadge(signal)}
-        </div>
-
-      </div>
-
-
-      <div class="asset-price-row">
-
-        <div class="asset-price">
-          ${formatPrice(price)}
-        </div>
-
-        <div>
-          ${changeHtml(change)}
-        </div>
-
-      </div>
-
-
-      <div class="asset-bottom">
-
-        <div class="result-label">
-          系統訊號／評級
-        </div>
-
-        <div class="signal-text">
-          ${escapeHtml(signal)}
-        </div>
-
-
-        <div class="advice">
-
-          <strong>
-            建議：
-          </strong>
-
-          ${escapeHtml(advice)}
-
-        </div>
-
-      </div>
-
-    </article>
-
-  `;
-}
-
-
-/* ==============================================================
-   今日推薦
-============================================================== */
-
-function renderRecommendations(
-  items,
-  containerId,
-  emptyText
-) {
-
-  const container =
-    document.getElementById(
-      containerId
-    );
-
+function renderTodaySelected(items) {
 
   if (
     !Array.isArray(items) ||
     items.length === 0
   ) {
 
-    container.innerHTML = `
+    return `
       <div class="empty">
-        ${escapeHtml(emptyText)}
+        今日沒有系統推薦標的。
       </div>
     `;
-
-    return;
   }
 
 
-  container.innerHTML =
-    items
-      .map(renderRecommendationCard)
-      .join("");
+  let html = `
+
+<table>
+
+<thead>
+
+<tr>
+<th>股票代號</th>
+<th>股票名稱</th>
+<th>現價</th>
+<th>今日漲跌幅</th>
+<th>系統訊號／評級</th>
+<th>建議</th>
+</tr>
+
+</thead>
+
+<tbody>
+`;
+
+
+  items.forEach(item => {
+
+    const signal =
+      item.signal ??
+      item.rating ??
+      item.grade ??
+      item.rank_signal ??
+      "-";
+
+
+    html += `
+
+<tr>
+
+<td>
+<strong>
+${escapeHtml(item.code ?? "-")}
+</strong>
+</td>
+
+<td>
+${escapeHtml(item.name ?? "-")}
+</td>
+
+<td>
+${formatNumber(
+  item.price ??
+  item.close ??
+  item.current_price
+)}
+</td>
+
+<td>
+${changeHtml(
+  item.change_pct ??
+  item.change_percent ??
+  item.change
+)}
+</td>
+
+<td>
+${signalBadge(signal)}
+</td>
+
+<td>
+${recommendationHtml(item)}
+</td>
+
+</tr>
+
+`;
+  });
+
+
+  html += `
+</tbody>
+</table>
+`;
+
+  return html;
 }
 
 
 /* ==============================================================
-   Top 10
+   股票：Top 10
 ============================================================== */
 
-function renderTop10(
-  items,
-  containerId
-) {
-
-  const container =
-    document.getElementById(
-      containerId
-    );
-
+function renderTop10(items) {
 
   if (
     !Array.isArray(items) ||
     items.length === 0
   ) {
 
-    container.innerHTML = `
+    return `
       <div class="empty">
         目前沒有 Top 10 資料。
       </div>
     `;
-
-    return;
   }
+
+
+  /*
+   前台只取後台既有前 10 筆。
+   不重新排序。
+  */
+
+  const top10 =
+    items.slice(0, 10);
 
 
   let html = `
 
-    <div class="top-row top-head">
+<table>
 
-      <div>
-        排名
-      </div>
+<thead>
 
-      <div>
-        標的
-      </div>
+<tr>
+<th>排名</th>
+<th>股票代號</th>
+<th>股票名稱</th>
+<th>現價</th>
+<th>漲跌幅</th>
+<th>系統評級／訊號</th>
+</tr>
 
-      <div>
-        現價
-      </div>
+</thead>
 
-      <div>
-        漲跌幅
-      </div>
-
-      <div>
-        系統評級／訊號
-      </div>
-
-      <div class="top-hide-mobile">
-        建議
-      </div>
-
-    </div>
-
-  `;
+<tbody>
+`;
 
 
-  items
-    .slice(0, 10)
-    .forEach(
-      (item, index) => {
+  top10.forEach((item, index) => {
 
-        const rank =
-          Number(
-            item?.rank ??
-            item?.ranking ??
-            index + 1
-          );
+    const rank =
+      item.rank ??
+      item.ranking ??
+      (index + 1);
 
 
-        let rankClass =
-          "";
-
-        if (rank === 1) {
-          rankClass = "rank-1";
-        } else if (rank === 2) {
-          rankClass = "rank-2";
-        } else if (rank === 3) {
-          rankClass = "rank-3";
-        }
+    const signal =
+      item.signal ??
+      item.rating ??
+      item.grade ??
+      "-";
 
 
-        html += `
+    html += `
 
-          <div class="top-row">
+<tr>
 
-            <div class="rank ${rankClass}">
-              ${rank}
-            </div>
+<td>
+<strong>
+${escapeHtml(rank)}
+</strong>
+</td>
 
+<td>
+<strong>
+${escapeHtml(item.code ?? "-")}
+</strong>
+</td>
 
-            <div>
+<td>
+${escapeHtml(item.name ?? "-")}
+</td>
 
-              <div class="top-code">
-                ${escapeHtml(
-                  getCode(item)
-                )}
-              </div>
+<td>
+${formatNumber(
+  item.price ??
+  item.close ??
+  item.current_price
+)}
+</td>
 
-              <div class="top-name">
-                ${escapeHtml(
-                  getName(item)
-                )}
-              </div>
+<td>
+${changeHtml(
+  item.change_pct ??
+  item.change_percent ??
+  item.change
+)}
+</td>
 
-            </div>
+<td>
+${signalBadge(signal)}
+</td>
 
+</tr>
 
-            <div class="top-price">
-              ${formatPrice(
-                getPrice(item)
-              )}
-            </div>
-
-
-            <div class="top-change">
-              ${changeHtml(
-                getChange(item)
-              )}
-            </div>
-
-
-            <div class="top-signal">
-              ${ratingBadge(
-                getSignal(item)
-              )}
-            </div>
-
-
-            <div class="top-hide-mobile">
-
-              <span style="font-size:12px;color:var(--muted)">
-                ${escapeHtml(
-                  getAdvice(item)
-                )}
-              </span>
-
-            </div>
-
-          </div>
-
-        `;
-      }
-    );
+`;
+  });
 
 
-  container.innerHTML =
-    html;
+  html += `
+</tbody>
+</table>
+`;
+
+  return html;
 }
 
 
 /* ==============================================================
-   追蹤清單
+   ETF
 ============================================================== */
 
-function renderWatchlist(items) {
-
-  const container =
-    document.getElementById(
-      "watchlist"
-    );
-
+function renderETF(items) {
 
   if (
     !Array.isArray(items) ||
     items.length === 0
   ) {
 
-    container.innerHTML = `
+    return `
       <div class="empty">
-        尚未設定追蹤標的。
+        後台目前沒有 ETF 推薦資料。
       </div>
     `;
-
-    return;
   }
 
 
   let html = `
 
-    <table class="watch-table">
+<table>
 
-      <thead>
+<thead>
 
-        <tr>
+<tr>
+<th>代號</th>
+<th>名稱</th>
+<th>現價</th>
+<th>今日漲跌幅</th>
+<th>系統評級／訊號</th>
+<th>建議</th>
+</tr>
 
-          <th>
-            類型
-          </th>
+</thead>
 
-          <th>
-            代號
-          </th>
-
-          <th>
-            名稱
-          </th>
-
-          <th>
-            現價
-          </th>
-
-          <th>
-            漲跌幅
-          </th>
-
-          <th>
-            系統評級／訊號
-          </th>
-
-          <th>
-            建議
-          </th>
-
-        </tr>
-
-      </thead>
-
-      <tbody>
-
-  `;
+<tbody>
+`;
 
 
-  items.forEach(
-    item => {
+  items.forEach(item => {
 
-      html += `
+    const signal =
+      item.signal ??
+      item.rating ??
+      item.grade ??
+      "-";
 
-        <tr>
 
-          <td>
-            ${escapeHtml(
-              item?.type ??
-              item?.asset_type ??
-              "-"
-            )}
-          </td>
+    html += `
 
-          <td>
-            <strong>
-              ${escapeHtml(
-                getCode(item)
-              )}
-            </strong>
-          </td>
+<tr>
 
-          <td>
-            ${escapeHtml(
-              getName(item)
-            )}
-          </td>
+<td>
+<strong>
+${escapeHtml(item.code ?? "-")}
+</strong>
+</td>
 
-          <td>
-            ${formatPrice(
-              getPrice(item)
-            )}
-          </td>
+<td>
+${escapeHtml(item.name ?? "-")}
+</td>
 
-          <td>
-            ${changeHtml(
-              getChange(item)
-            )}
-          </td>
+<td>
+${formatNumber(
+  item.price ??
+  item.close ??
+  item.current_price
+)}
+</td>
 
-          <td>
-            ${ratingBadge(
-              getSignal(item)
-            )}
-          </td>
+<td>
+${changeHtml(
+  item.change_pct ??
+  item.change_percent ??
+  item.change
+)}
+</td>
 
-          <td>
-            ${escapeHtml(
-              getAdvice(item)
-            )}
-          </td>
+<td>
+${signalBadge(signal)}
+</td>
 
-        </tr>
+<td>
+${recommendationHtml(item)}
+</td>
 
-      `;
-    }
-  );
+</tr>
+
+`;
+  });
 
 
   html += `
+</tbody>
+</table>
+`;
 
-      </tbody>
-
-    </table>
-
-  `;
-
-
-  container.innerHTML =
-    html;
+  return html;
 }
 
 
 /* ==============================================================
-   陣列相容層
-   --------------------------------------------------------------
-   後台可以逐步從 V8.1 過渡到新的資料 Contract。
+   債券
 ============================================================== */
 
-function firstArray(
-  data,
-  keys
-) {
+function renderBonds(items) {
 
-  for (
-    const key of keys
+  if (
+    !Array.isArray(items) ||
+    items.length === 0
   ) {
 
-    if (
-      Array.isArray(
-        data?.[key]
-      )
-    ) {
-
-      return data[key];
-    }
+    return `
+      <div class="empty">
+        債券資料尚未提供。
+      </div>
+    `;
   }
 
-  return [];
+
+  let html = `
+
+<table>
+
+<thead>
+
+<tr>
+<th>代號</th>
+<th>名稱</th>
+<th>價格</th>
+<th>今日變化</th>
+<th>系統評級／訊號</th>
+<th>建議</th>
+</tr>
+
+</thead>
+
+<tbody>
+`;
+
+
+  items.forEach(item => {
+
+    const signal =
+      item.signal ??
+      item.rating ??
+      item.grade ??
+      "-";
+
+
+    html += `
+
+<tr>
+
+<td>
+<strong>
+${escapeHtml(
+  item.code ??
+  item.symbol ??
+  "-"
+)}
+</strong>
+</td>
+
+<td>
+${escapeHtml(
+  item.name ??
+  item.bond_name ??
+  "-"
+)}
+</td>
+
+<td>
+${formatNumber(
+  item.price ??
+  item.close ??
+  item.current_price
+)}
+</td>
+
+<td>
+${changeHtml(
+  item.change_pct ??
+  item.change_percent ??
+  item.change
+)}
+</td>
+
+<td>
+${signalBadge(signal)}
+</td>
+
+<td>
+${recommendationHtml(item)}
+</td>
+
+</tr>
+
+`;
+  });
+
+
+  html += `
+</tbody>
+</table>
+`;
+
+  return html;
 }
 
 
 /* ==============================================================
-   正規化後台資料
+   回測摘要
 ============================================================== */
 
-function normalizeData(data) {
+function renderBacktest(comparison) {
 
-  /*
-   -------------------------------------------------------------
-   股票
-   -------------------------------------------------------------
-  */
+  if (
+    !comparison ||
+    !comparison.strategies
+  ) {
 
-  const stocks =
-    firstArray(
-      data,
-      [
-        "stocks",
-        "stock_results",
-        "stock_data"
-      ]
-    );
+    return `
+      <div class="empty">
+        尚無回測摘要。
+      </div>
+    `;
+  }
 
 
-  /*
-   -------------------------------------------------------------
-   ETF
-   -------------------------------------------------------------
-  */
+  const A =
+    comparison.strategies.A_today_cross;
 
-  const etfs =
-    firstArray(
-      data,
-      [
-        "etfs",
-        "etf_results",
-        "etf_data"
-      ]
-    );
+  const B =
+    comparison.strategies.B_current_bullish;
 
 
-  /*
-   -------------------------------------------------------------
-   債券
-   -------------------------------------------------------------
-  */
+  if (!A || !B) {
 
-  const bonds =
-    firstArray(
-      data,
-      [
-        "bonds",
-        "bond_results",
-        "bond_data",
-        "bond_etfs"
-      ]
-    );
+    return `
+      <div class="empty">
+        尚無完整回測摘要。
+      </div>
+    `;
+  }
 
 
-  /*
-   -------------------------------------------------------------
-   今日推薦
-   -------------------------------------------------------------
-  */
+  return `
 
-  const stockRecommendations =
-    firstArray(
-      data,
-      [
-        "stock_recommendations",
-        "today_stock_recommendations",
-        "today_stocks",
-        "today_selected"
-      ]
-    );
+<table>
 
+<thead>
 
-  const etfRecommendations =
-    firstArray(
-      data,
-      [
-        "etf_recommendations",
-        "today_etf_recommendations",
-        "today_etfs"
-      ]
-    );
+<tr>
+<th>策略</th>
+<th>10日勝率</th>
+<th>20日勝率</th>
+<th>比較結果</th>
+</tr>
 
+</thead>
 
-  const bondRecommendations =
-    firstArray(
-      data,
-      [
-        "bond_recommendations",
-        "today_bond_recommendations",
-        "today_bonds"
-      ]
-    );
+<tbody>
 
+<tr>
 
-  /*
-   -------------------------------------------------------------
-   Top 10
-   -------------------------------------------------------------
-  */
+<td>
+<strong>
+A
+</strong>
+</td>
 
-  const stockTop10 =
-    firstArray(
-      data,
-      [
-        "stock_top10",
-        "top10_stocks",
-        "stock_top_10"
-      ]
-    );
+<td>
+${formatNumber(
+  A["10d"]?.win_rate
+)}%
+</td>
+
+<td>
+${formatNumber(
+  A["20d"]?.win_rate
+)}%
+</td>
+
+<td>
+-
+</td>
+
+</tr>
 
 
-  const etfTop10 =
-    firstArray(
-      data,
-      [
-        "etf_top10",
-        "top10_etfs",
-        "etf_top_10"
-      ]
-    );
+<tr>
 
+<td>
+<strong>
+B
+</strong>
+</td>
 
-  const bondTop10 =
-    firstArray(
-      data,
-      [
-        "bond_top10",
-        "top10_bonds",
-        "bond_top_10"
-      ]
-    );
+<td>
+${formatNumber(
+  B["10d"]?.win_rate
+)}%
+</td>
 
+<td>
+${formatNumber(
+  B["20d"]?.win_rate
+)}%
+</td>
 
-  /*
-   -------------------------------------------------------------
-   追蹤
-   -------------------------------------------------------------
-  */
+<td>
+-
+</td>
 
-  const watchlist =
-    firstArray(
-      data,
-      [
-        "watchlist",
-        "watch_list",
-        "tracking",
-        "tracked"
-      ]
-    );
+</tr>
 
+</tbody>
 
-  return {
+</table>
 
-    data,
+<div class="card-sub" style="padding:14px">
 
-    stocks,
+目前後台比較結果：
+<strong>
+${escapeHtml(
+  comparison.better_by_win_rate ??
+  comparison.better_strategy ??
+  "-"
+)}
+</strong>
 
-    etfs,
+</div>
 
-    bonds,
-
-    stockRecommendations,
-
-    etfRecommendations,
-
-    bondRecommendations,
-
-    stockTop10,
-
-    etfTop10,
-
-    bondTop10,
-
-    watchlist
-
-  };
+`;
 }
 
 
 /* ==============================================================
-   驗證資料
+   資料驗證
 ============================================================== */
 
 function validateData(data) {
@@ -1947,7 +1383,7 @@ function validateData(data) {
   ) {
 
     throw new Error(
-      "後台資料不是有效 JSON。"
+      "prices.json 不是有效 JSON"
     );
   }
 
@@ -1958,12 +1394,42 @@ function validateData(data) {
   ) {
 
     throw new Error(
-      "後台資料狀態不是 success。"
+      "後台資料狀態不是 success"
     );
   }
 
 
+  /*
+   不再硬性要求 V8.0 / prices.v8。
+
+   原因：
+
+   目前後台已進入 V8.1。
+   前台應能兼容 V8.1 Data Contract。
+  */
+
+
   return true;
+}
+
+
+/* ==============================================================
+   讀取陣列
+============================================================== */
+
+function firstArray(data, keys) {
+
+  for (const key of keys) {
+
+    if (
+      Array.isArray(data[key])
+    ) {
+
+      return data[key];
+    }
+  }
+
+  return [];
 }
 
 
@@ -1976,37 +1442,112 @@ function render(data) {
   validateData(data);
 
 
-  const normalized =
-    normalizeData(data);
+  const stats =
+    data.statistics || {};
 
 
-  const statistics =
-    data.statistics ||
-    {};
+  const stocks =
+    firstArray(
+      data,
+      [
+        "stocks"
+      ]
+    );
+
+
+  const etfs =
+    firstArray(
+      data,
+      [
+        "etfs",
+        "ETF",
+        "etf"
+      ]
+    );
+
+
+  const todaySelected =
+    firstArray(
+      data,
+      [
+        "today_selected",
+        "today_recommended",
+        "recommendations",
+        "selected"
+      ]
+    );
+
+
+  const top10 =
+    firstArray(
+      data,
+      [
+        "top10",
+        "top_10",
+        "top30"
+      ]
+    );
+
+
+  const bonds =
+    firstArray(
+      data,
+      [
+        "bonds",
+        "bond",
+        "bond_recommendations"
+      ]
+    );
 
 
   /*
-   -------------------------------------------------------------
-   系統狀態
-   -------------------------------------------------------------
+   =============================================================
+   頂部統計
+   =============================================================
   */
 
   document.getElementById(
-    "dataDate"
+    "stockCount"
   ).textContent =
-    data.date ??
-    data.data_date ??
-    data.trade_date ??
-    "-";
+    stats.stock_count ??
+    stocks.length;
 
 
   document.getElementById(
-    "updatedAt"
+    "etfCount"
   ).textContent =
-    data.updated_at_tw ??
-    data.updated_at ??
-    data.update_time ??
-    "-";
+    stats.etf_count ??
+    etfs.length;
+
+
+  document.getElementById(
+    "selectedCount"
+  ).textContent =
+    stats.today_selected_count ??
+    todaySelected.length;
+
+
+  document.getElementById(
+    "top10Count"
+  ).textContent =
+    Math.min(
+      10,
+      top10.length
+    );
+
+
+  /*
+   =============================================================
+   系統狀態
+   =============================================================
+  */
+
+  document.getElementById(
+    "version"
+  ).textContent =
+    data.version ??
+    data.data_version ??
+    "V8.1";
 
 
   document.getElementById(
@@ -2017,153 +1558,112 @@ function render(data) {
 
 
   document.getElementById(
-    "version"
+    "dataDate"
   ).textContent =
-    data.version ??
-    data.schema_version ??
+    data.date ??
+    data.data_date ??
+    "-";
+
+
+  document.getElementById(
+    "updatedAt"
+  ).textContent =
+    data.updated_at_tw ??
+    data.updated_at ??
     "-";
 
 
   /*
-   -------------------------------------------------------------
-   總覽
-   -------------------------------------------------------------
-  */
-
-  document.getElementById(
-    "stockCount"
-  ).textContent =
-    statistics.stock_count ??
-    normalized.stocks.length ??
-    0;
-
-
-  document.getElementById(
-    "etfCount"
-  ).textContent =
-    statistics.etf_count ??
-    normalized.etfs.length ??
-    0;
-
-
-  document.getElementById(
-    "bondCount"
-  ).textContent =
-    statistics.bond_count ??
-    normalized.bonds.length ??
-    0;
-
-
-  document.getElementById(
-    "stockRecommendationCount"
-  ).textContent =
-    normalized.stockRecommendations.length;
-
-
-  document.getElementById(
-    "etfRecommendationCount"
-  ).textContent =
-    normalized.etfRecommendations.length;
-
-
-  document.getElementById(
-    "bondRecommendationCount"
-  ).textContent =
-    normalized.bondRecommendations.length;
-
-
-  /*
-   -------------------------------------------------------------
+   =============================================================
    今日推薦
-   -------------------------------------------------------------
+   =============================================================
   */
 
-  renderRecommendations(
-    normalized.stockRecommendations,
-    "stockRecommendations",
-    "今日沒有股票推薦。"
-  );
-
-
-  renderRecommendations(
-    normalized.etfRecommendations,
-    "etfRecommendations",
-    "今日沒有 ETF 推薦。"
-  );
-
-
-  renderRecommendations(
-    normalized.bondRecommendations,
-    "bondRecommendations",
-    "今日沒有債券推薦。"
-  );
+  document.getElementById(
+    "selectedTable"
+  ).innerHTML =
+    renderTodaySelected(
+      todaySelected
+    );
 
 
   /*
-   -------------------------------------------------------------
+   =============================================================
    Top 10
-   -------------------------------------------------------------
+   =============================================================
   */
 
-  renderTop10(
-    normalized.stockTop10,
-    "stockTop10"
-  );
-
-
-  renderTop10(
-    normalized.etfTop10,
-    "etfTop10"
-  );
-
-
-  renderTop10(
-    normalized.bondTop10,
-    "bondTop10"
-  );
+  document.getElementById(
+    "top10Table"
+  ).innerHTML =
+    renderTop10(
+      top10
+    );
 
 
   /*
-   -------------------------------------------------------------
-   追蹤
-   -------------------------------------------------------------
+   =============================================================
+   ETF
+   =============================================================
   */
 
-  renderWatchlist(
-    normalized.watchlist
-  );
+  document.getElementById(
+    "etfTable"
+  ).innerHTML =
+    renderETF(
+      etfs
+    );
 
 
   /*
-   -------------------------------------------------------------
-   顯示 App
-   -------------------------------------------------------------
+   =============================================================
+   債券
+   =============================================================
+  */
+
+  document.getElementById(
+    "bondTable"
+  ).innerHTML =
+    renderBonds(
+      bonds
+    );
+
+
+  /*
+   =============================================================
+   回測
+   =============================================================
+  */
+
+  document.getElementById(
+    "backtestTable"
+  ).innerHTML =
+    renderBacktest(
+      data.backtest_summary
+    );
+
+
+  /*
+   =============================================================
+   完成
+   =============================================================
   */
 
   document.getElementById(
     "loading"
-  ).classList.add(
-    "hidden"
-  );
-
-
-  document.getElementById(
-    "error"
-  ).classList.add(
-    "hidden"
-  );
+  ).style.display =
+    "none";
 
 
   document.getElementById(
     "app"
-  ).classList.remove(
-    "hidden"
-  );
+  ).style.display =
+    "block";
 }
 
 
 /* ==============================================================
-   讀取資料
+   Load
 ============================================================== */
 
 async function loadData() {
@@ -2184,23 +1684,14 @@ async function loadData() {
     );
 
 
-  loading.classList.remove(
-    "hidden"
-  );
+  loading.style.display =
+    "block";
 
+  app.style.display =
+    "none";
 
-  error.classList.add(
-    "hidden"
-  );
-
-
-  app.classList.add(
-    "hidden"
-  );
-
-
-  loading.textContent =
-    "正在讀取後台資料……";
+  error.innerHTML =
+    "";
 
 
   try {
@@ -2216,9 +1707,7 @@ async function loadData() {
       );
 
 
-    if (
-      !response.ok
-    ) {
+    if (!response.ok) {
 
       throw new Error(
         "HTTP " +
@@ -2236,54 +1725,45 @@ async function loadData() {
 
   } catch (err) {
 
-    loading.classList.add(
-      "hidden"
-    );
-
-
-    app.classList.add(
-      "hidden"
-    );
-
-
-    error.classList.remove(
-      "hidden"
-    );
+    loading.style.display =
+      "none";
 
 
     error.innerHTML = `
 
-      <strong>
-        無法讀取後台資料
-      </strong>
+<div class="error">
 
-      <br><br>
+<strong>
+無法讀取後台資料
+</strong>
 
-      錯誤：
-      ${escapeHtml(
-        err.message
-      )}
+<br><br>
 
-      <br><br>
+錯誤：
+${escapeHtml(
+  err.message
+)}
 
-      請確認：
+<br><br>
 
-      <br>
-      1. Data/prices.json 是否存在。
-      <br>
-      2. GitHub Actions 是否成功執行。
-      <br>
-      3. JSON 是否為有效格式。
-      <br>
-      4. 後台資料狀態是否為 success。
+請確認：
 
-    `;
+<br>
+1. GitHub Actions 是否成功執行。
+<br>
+2. Data/prices.json 是否存在。
+<br>
+3. 後台 Data Contract 是否為 success。
+
+</div>
+
+`;
   }
 }
 
 
 /* ==============================================================
-   啟動
+   Start
 ============================================================== */
 
 loadData();
