@@ -2,29 +2,33 @@
 # -*- coding: utf-8 -*-
 
 """
-台股 AI 選股系統 fetch_data.py V10.2
+台股 AI 選股系統 fetch_data.py V10.3
 
-V10.2 核心修正
+V10.3 核心修正
 ============================================================
 1. stocks.json 不再是不可恢復的前置依賴
-2. stocks.json 不存在 / 空檔 / 格式錯誤時，自動嘗試恢復 universe
+2. stocks.json 不存在 / 空檔 / 格式錯誤時，自動恢復 universe
 3. 優先使用 stocks.json
-4. 若 stocks.json 無法使用，嘗試從既有 prices.json 恢復
-5. 若 prices.json 也無法恢復，使用系統固定 universe
-6. 不使用今天日期假造市場收盤日
-7. latest_market_date 一律使用實際取得行情的最新交易日
-8. date 與 latest_market_date 完全一致
-9. change_pct 無資料時保持 null，不灌 0
-10. RSI / MACD / KD / MA5 / MA20 統一使用同一交易日
-11. 六項核心條件必須同一有效交易日全部成立
-12. today_selected = 最新有效交易日 6/6 結果
-13. market_breadth 只統計最新有效交易日
-14. 非交易日不產生虛假收盤資料
-15. 歷史資料不足不允許誤判
-16. ETF / Bond / Stock 分類保留
-17. backtest 使用交易日而非日曆日
-18. JSON 加入資料品質資訊
-19. 避免 fetch_data.py 因 stocks.json 缺失直接 exit 1
+4. stocks.json 無法使用時，優先從既有 prices.json["universe"]["items"] 恢復
+5. 不再從 today_selected / top10 / etfs / bonds 反推 Universe
+6. prices.json 保存完整 universe items，避免 Universe 自我縮小
+7. 若 prices.json 也無法恢復，使用固定 FALLBACK_UNIVERSE
+8. 不使用今天日期假造市場收盤日
+9. latest_market_date 一律使用實際取得行情的最新交易日
+10. date 與 latest_market_date 完全一致
+11. change_pct 無資料時保持 null，不灌 0
+12. RSI / MACD / KD / MA5 / MA20 統一使用同一交易日
+13. 六項核心條件必須同一有效交易日全部成立
+14. today_selected = 最新有效交易日 6/6 結果
+15. market_breadth 只統計最新有效交易日
+16. 非交易日不產生虛假收盤資料
+17. 歷史資料不足不允許誤判
+18. ETF / Bond / Stock 分類保留
+19. backtest 使用交易日而非日曆日
+20. JSON 加入資料品質資訊
+21. Universe source / recovery 狀態寫入 prices.json
+22. 原子寫入 prices.json
+23. 避免 fetch_data.py 因 stocks.json 缺失直接 exit 1
 ============================================================
 """
 
@@ -40,6 +44,7 @@ import pandas as pd
 import numpy as np
 import requests
 
+
 warnings.filterwarnings("ignore")
 
 
@@ -47,7 +52,7 @@ warnings.filterwarnings("ignore")
 # 基本設定
 # ============================================================
 
-VERSION = "V10.2"
+VERSION = "V10.3"
 SCHEMA_VERSION = "ui.v10"
 
 BASE_DIR = os.path.dirname(
@@ -109,10 +114,11 @@ CORE_TOTAL = len(
 # ============================================================
 # 固定恢復 Universe
 #
-# 注意：
-# 這不是用來取代正常 stocks.json。
-# 只有 stocks.json / prices.json 都無法提供 universe 時，
-# 才使用這份清單避免整個 Actions 無法啟動。
+# 僅在：
+# 1. stocks.json 無法使用
+# 2. prices.json 也沒有完整 universe
+#
+# 時才啟用。
 # ============================================================
 
 FALLBACK_UNIVERSE = [
@@ -473,6 +479,12 @@ def normalize_universe_items(
 
     result = []
 
+    if not isinstance(
+        raw_items,
+        list
+    ):
+        return []
+
     for item in raw_items:
 
         if isinstance(
@@ -576,7 +588,7 @@ def normalize_universe_items(
                 "code": code,
                 "symbol": symbol,
                 "name": str(name),
-                "market": market,
+                "market": str(market),
                 "type": asset_type,
             }
         )
@@ -584,6 +596,7 @@ def normalize_universe_items(
     unique = {}
 
     for item in result:
+
         unique[
             item["symbol"]
         ] = item
@@ -602,9 +615,11 @@ def load_stocks_json():
     if not os.path.exists(
         STOCKS_FILE
     ):
+
         print(
             "⚠️ 找不到 Data/stocks.json"
         )
+
         return []
 
     try:
@@ -686,7 +701,23 @@ def load_stocks_json():
 
 
 # ============================================================
-# 從 prices.json 恢復 Universe
+# 從 prices.json 恢復完整 Universe
+#
+# V10.3 重要修正：
+#
+# 只接受：
+#
+# prices.json["universe"]["items"]
+#
+# 不再從：
+#
+# today_selected
+# top10
+# etfs
+# bonds
+# data
+#
+# 反推 Universe。
 # ============================================================
 
 def load_universe_from_prices():
@@ -694,7 +725,27 @@ def load_universe_from_prices():
     if not os.path.exists(
         PRICES_FILE
     ):
+
+        print(
+            "ℹ️ 找不到既有 prices.json"
+        )
+
         return []
+
+    try:
+
+        if os.path.getsize(
+            PRICES_FILE
+        ) == 0:
+
+            print(
+                "⚠️ 既有 prices.json 是空檔"
+            )
+
+            return []
+
+    except Exception:
+        pass
 
     try:
 
@@ -714,49 +765,52 @@ def load_universe_from_prices():
 
         return []
 
-    candidates = []
-
-    if isinstance(
+    if not isinstance(
         data,
         dict
     ):
 
-        for key in (
-            "stocks",
-            "today_selected",
-            "top10",
-            "etfs",
-            "bonds",
-            "data"
-        ):
+        return []
 
-            value = data.get(key)
+    universe = data.get(
+        "universe"
+    )
 
-            if isinstance(
-                value,
-                list
-            ):
+    if not isinstance(
+        universe,
+        dict
+    ):
 
-                candidates.extend(
-                    value
-                )
+        print(
+            "⚠️ prices.json 沒有完整 universe 結構"
+        )
 
-    elif isinstance(
-        data,
+        return []
+
+    items = universe.get(
+        "items"
+    )
+
+    if not isinstance(
+        items,
         list
     ):
 
-        candidates = data
+        print(
+            "⚠️ prices.json universe.items 不存在或格式錯誤"
+        )
+
+        return []
 
     result = normalize_universe_items(
-        candidates
+        items
     )
 
     if result:
 
         print(
-            "♻️ 已從既有 prices.json 恢復 universe："
-            f"{len(result)}"
+            "♻️ 已從既有 prices.json "
+            f"恢復完整 universe：{len(result)} 檔"
         )
 
     return result
@@ -769,7 +823,7 @@ def load_universe_from_prices():
 def load_existing_universe():
 
     # --------------------------------------------------------
-    # 第一優先：stocks.json
+    # 第一順位：stocks.json
     # --------------------------------------------------------
 
     result = load_stocks_json()
@@ -777,13 +831,13 @@ def load_existing_universe():
     if result:
 
         print(
-            "✅ 使用 Data/stocks.json 作為 universe"
+            "✅ Universe source：stocks.json"
         )
 
-        return result
+        return result, "stocks.json", False
 
     # --------------------------------------------------------
-    # 第二優先：prices.json
+    # 第二順位：prices.json 完整 universe
     # --------------------------------------------------------
 
     result = load_universe_from_prices()
@@ -795,22 +849,22 @@ def load_existing_universe():
         )
 
         print(
-            "✅ 改由既有 prices.json 恢復 universe"
+            "✅ Universe source：prices.json"
         )
 
-        return result
+        return result, "prices.json", True
 
     # --------------------------------------------------------
-    # 第三優先：固定恢復清單
+    # 第三順位：固定恢復清單
     # --------------------------------------------------------
 
     print(
         "⚠️ 無法從 stocks.json / prices.json "
-        "取得 universe"
+        "取得完整 universe"
     )
 
     print(
-        "♻️ 啟用固定恢復 universe"
+        "♻️ Universe source：fallback"
     )
 
     result = normalize_universe_items(
@@ -818,10 +872,10 @@ def load_existing_universe():
     )
 
     print(
-        f"✅ 恢復 universe：{len(result)} 檔"
+        f"✅ 固定恢復 universe：{len(result)} 檔"
     )
 
-    return result
+    return result, "fallback", True
 
 
 # ============================================================
@@ -862,6 +916,12 @@ def fetch_yahoo_history(
         )
 
         if response.status_code != 200:
+
+            print(
+                f"⚠️ {symbol} HTTP "
+                f"{response.status_code}"
+            )
+
             return None
 
         payload = response.json()
@@ -872,6 +932,7 @@ def fetch_yahoo_history(
         )
 
         if chart.get("error"):
+
             return None
 
         results = chart.get(
@@ -964,6 +1025,7 @@ def fetch_yahoo_history(
                 )
 
             except Exception:
+
                 continue
 
             close = (
@@ -1015,24 +1077,31 @@ def fetch_yahoo_history(
             rows.append(
                 {
                     "date": date_str,
+
                     "open":
                         safe_float(
                             open_price
                         ),
+
                     "high":
                         safe_float(
                             high
                         ),
+
                     "low":
                         safe_float(
                             low
                         ),
-                    "close": close,
+
+                    "close":
+                        close,
+
                     "adj_close":
                         safe_float(
                             adj,
                             close
                         ),
+
                     "volume":
                         safe_float(
                             volume,
@@ -1114,19 +1183,28 @@ def calculate_indicators(
         errors="coerce"
     ).fillna(0)
 
+    # --------------------------------------------------------
     # MA5
+    # --------------------------------------------------------
+
     df["ma5"] = close.rolling(
         5,
         min_periods=5
     ).mean()
 
+    # --------------------------------------------------------
     # MA20
+    # --------------------------------------------------------
+
     df["ma20"] = close.rolling(
         20,
         min_periods=20
     ).mean()
 
-    # MACD
+    # --------------------------------------------------------
+    # MACD 12 / 26 / 9
+    # --------------------------------------------------------
+
     ema12 = close.ewm(
         span=12,
         adjust=False,
@@ -1156,7 +1234,10 @@ def calculate_indicators(
         - df["macd_signal"]
     )
 
+    # --------------------------------------------------------
     # RSI 14
+    # --------------------------------------------------------
+
     delta = close.diff()
 
     gain = delta.clip(
@@ -1205,7 +1286,10 @@ def calculate_indicators(
         "rsi"
     ] = 100.0
 
-    # KD 9,3,3
+    # --------------------------------------------------------
+    # KD 9 / 3 / 3
+    # --------------------------------------------------------
+
     lowest_low = low.rolling(
         9,
         min_periods=9
@@ -1274,9 +1358,13 @@ def calculate_indicators(
         previous_d = current_d
 
     df["k"] = k_values
+
     df["d"] = d_values
 
+    # --------------------------------------------------------
     # Volume MA5
+    # --------------------------------------------------------
+
     df["volume_ma5"] = volume.rolling(
         5,
         min_periods=5
@@ -1311,7 +1399,10 @@ def evaluate_core_conditions(
 
     conditions = {}
 
-    # 1 MACD
+    # --------------------------------------------------------
+    # 1. MACD 多方
+    # --------------------------------------------------------
+
     conditions[
         "MACD 多方"
     ] = (
@@ -1325,7 +1416,10 @@ def evaluate_core_conditions(
         > latest["macd_signal"]
     )
 
-    # 2 RSI
+    # --------------------------------------------------------
+    # 2. RSI > 50
+    # --------------------------------------------------------
+
     conditions[
         "RSI > 50"
     ] = (
@@ -1335,7 +1429,10 @@ def evaluate_core_conditions(
         and latest["rsi"] > 50
     )
 
-    # 3 KD
+    # --------------------------------------------------------
+    # 3. KD 多方
+    # --------------------------------------------------------
+
     conditions[
         "KD 多方"
     ] = (
@@ -1349,7 +1446,10 @@ def evaluate_core_conditions(
         > latest["d"]
     )
 
-    # 4 Volume
+    # --------------------------------------------------------
+    # 4. 成交量 >= MA5 * 1.5
+    # --------------------------------------------------------
+
     conditions[
         "成交量 ≥ MA5 × 1.5"
     ] = (
@@ -1366,7 +1466,10 @@ def evaluate_core_conditions(
         )
     )
 
-    # 5 Price > MA20
+    # --------------------------------------------------------
+    # 5. 股價 > MA20
+    # --------------------------------------------------------
+
     conditions[
         "股價 > MA20"
     ] = (
@@ -1380,7 +1483,10 @@ def evaluate_core_conditions(
         > latest["ma20"]
     )
 
-    # 6 MA20 rising
+    # --------------------------------------------------------
+    # 6. MA20 今日 > 昨日
+    # --------------------------------------------------------
+
     conditions[
         "MA20 今日 > 昨日"
     ] = (
@@ -1396,8 +1502,7 @@ def evaluate_core_conditions(
 
     score = sum(
         1
-        for value
-        in conditions.values()
+        for value in conditions.values()
         if bool(value)
     )
 
@@ -1440,12 +1545,15 @@ def calculate_score(
     if rsi is not None:
 
         if rsi >= 70:
+
             score += 5.0
 
         elif rsi > 50:
+
             score += 8.0
 
         elif rsi >= 45:
+
             score += 3.0
 
     macd_hist = safe_float(
@@ -1458,6 +1566,7 @@ def calculate_score(
         macd_hist is not None
         and macd_hist > 0
     ):
+
         score += 5.0
 
     close = safe_float(
@@ -1479,6 +1588,7 @@ def calculate_score(
         ) * 100
 
         if bias >= 0:
+
             score += min(
                 max(bias, 0),
                 5
@@ -1506,9 +1616,11 @@ def calculate_score(
         )
 
         if ratio >= 1.5:
+
             score += 7.0
 
         elif ratio >= 1.0:
+
             score += 3.0
 
     score = min(
@@ -1525,12 +1637,14 @@ def calculate_score(
         macd_hist is not None
         and macd_hist > 0
     ):
+
         strength += 3
 
     if (
         rsi is not None
         and rsi > 50
     ):
+
         strength += 3
 
     strength = min(
@@ -1591,14 +1705,17 @@ def recommendation_from_core(
 ):
 
     if score == CORE_TOTAL:
+
         return (
             f"符合 {CORE_TOTAL}/{CORE_TOTAL} 核心條件"
         )
 
     if score >= CORE_TOTAL - 1:
+
         return "接近核心條件"
 
     if score >= CORE_TOTAL - 2:
+
         return "部分符合條件"
 
     return "暫不操作"
@@ -1643,6 +1760,10 @@ def analyze_symbol(
     previous_date = pd.Timestamp(
         previous["date"]
     ).date()
+
+    # --------------------------------------------------------
+    # 嚴格禁止未來日期
+    # --------------------------------------------------------
 
     if latest_date > today_tw_date():
         return None
@@ -1845,9 +1966,13 @@ def determine_latest_market_date(
             ).date()
 
             if dt <= today_tw_date():
-                dates.append(dt)
+
+                dates.append(
+                    dt
+                )
 
         except Exception:
+
             continue
 
     if not dates:
@@ -1906,18 +2031,32 @@ def calculate_market_breadth(
             continue
 
         if change > 0:
+
             rising += 1
 
         elif change < 0:
+
             falling += 1
 
         else:
+
             unchanged += 1
 
     return {
-        "rising": rising,
-        "falling": falling,
-        "unchanged": unchanged,
+
+        "rising":
+            rising,
+
+        "falling":
+            falling,
+
+        "unchanged":
+            unchanged,
+
+        "total_with_change":
+            rising
+            + falling
+            + unchanged,
     }
 
 
@@ -1926,14 +2065,16 @@ def calculate_market_breadth(
 # ============================================================
 
 def calculate_backtest(
-    analyzed_items,
+    universe,
     history_cache
 ):
 
     a_results = []
     b_results = []
 
-    for item in analyzed_items:
+    eligible_symbols = 0
+
+    for item in universe:
 
         symbol = item[
             "symbol"
@@ -1950,7 +2091,10 @@ def calculate_backtest(
             MIN_HISTORY_ROWS
             + BACKTEST_HORIZON
         ):
+
             continue
+
+        eligible_symbols += 1
 
         df = calculate_indicators(
             df
@@ -1972,7 +2116,9 @@ def calculate_backtest(
             (idx_b, b_results),
         ):
 
-            row = df.iloc[idx]
+            row = df.iloc[
+                idx
+            ]
 
             prev = df.iloc[
                 idx - 1
@@ -2073,6 +2219,7 @@ def calculate_backtest(
                 entry is None
                 or future is None
             ):
+
                 continue
 
             bucket.append(
@@ -2131,6 +2278,9 @@ def calculate_backtest(
         "comparison_horizon":
             BACKTEST_HORIZON,
 
+        "method":
+            "trading_days",
+
         "better_by_win_rate":
             better,
 
@@ -2145,6 +2295,54 @@ def calculate_backtest(
 
         "B_sample_count":
             len(b_results),
+
+        "eligible_history_count":
+            eligible_symbols,
+    }
+
+
+# ============================================================
+# Universe summary
+# ============================================================
+
+def build_universe_summary(
+    universe
+):
+
+    stock_count = sum(
+        1
+        for x in universe
+        if x["type"] == "stock"
+    )
+
+    etf_count = sum(
+        1
+        for x in universe
+        if x["type"] == "etf"
+    )
+
+    bond_count = sum(
+        1
+        for x in universe
+        if x["type"] == "bond"
+    )
+
+    return {
+
+        "stock_count":
+            stock_count,
+
+        "etf_count":
+            etf_count,
+
+        "bond_count":
+            bond_count,
+
+        "total_count":
+            len(universe),
+
+        "items":
+            universe,
     }
 
 
@@ -2218,32 +2416,44 @@ def main():
 
     print()
 
-    # --------------------------------------------------------
+    # ========================================================
     # 1. Universe
-    # --------------------------------------------------------
+    # ========================================================
 
-    universe = (
-        load_existing_universe()
-    )
+    (
+        universe,
+        universe_source,
+        universe_recovered
+    ) = load_existing_universe()
 
     if not universe:
 
         print(
-            "❌ 無法建立股票 universe"
+            "❌ 無法建立股票 Universe"
         )
 
         sys.exit(1)
 
     print(
-        f"📊 本次掃描 universe："
+        f"📊 本次掃描 Universe："
         f"{len(universe)} 檔"
+    )
+
+    print(
+        f"📌 Universe source："
+        f"{universe_source}"
+    )
+
+    print(
+        f"📌 Universe recovered："
+        f"{universe_recovered}"
     )
 
     print()
 
-    # --------------------------------------------------------
+    # ========================================================
     # 2. Fetch
-    # --------------------------------------------------------
+    # ========================================================
 
     analyzed = []
 
@@ -2348,9 +2558,9 @@ def main():
 
         sys.exit(1)
 
-    # --------------------------------------------------------
+    # ========================================================
     # 3. 最新有效交易日
-    # --------------------------------------------------------
+    # ========================================================
 
     latest_market_date = (
         determine_latest_market_date(
@@ -2388,9 +2598,9 @@ def main():
             "使用最近一個有效交易日。"
         )
 
-    # --------------------------------------------------------
+    # ========================================================
     # 4. 同一交易日
-    # --------------------------------------------------------
+    # ========================================================
 
     analyzed = (
         filter_to_latest_market_date(
@@ -2407,9 +2617,9 @@ def main():
 
         sys.exit(1)
 
-    # --------------------------------------------------------
+    # ========================================================
     # 5. Classification
-    # --------------------------------------------------------
+    # ========================================================
 
     stocks = [
         x
@@ -2429,9 +2639,9 @@ def main():
         if x["type"] == "bond"
     ]
 
-    # --------------------------------------------------------
+    # ========================================================
     # 6. 6/6
-    # --------------------------------------------------------
+    # ========================================================
 
     today_selected = [
         x
@@ -2439,9 +2649,9 @@ def main():
         if x["core_pass"] is True
     ]
 
-    # --------------------------------------------------------
+    # ========================================================
     # 7. Top10
-    # --------------------------------------------------------
+    # ========================================================
 
     top10 = sorted(
         today_selected,
@@ -2449,6 +2659,7 @@ def main():
             x.get(
                 "ai_score"
             ) or 0,
+
             x.get(
                 "strength_score"
             ) or 0,
@@ -2456,9 +2667,9 @@ def main():
         reverse=True
     )[:10]
 
-    # --------------------------------------------------------
+    # ========================================================
     # 8. ETF
-    # --------------------------------------------------------
+    # ========================================================
 
     etfs = sorted(
         etfs,
@@ -2466,6 +2677,7 @@ def main():
             x.get(
                 "ai_score"
             ) or 0,
+
             x.get(
                 "strength_score"
             ) or 0,
@@ -2473,9 +2685,9 @@ def main():
         reverse=True
     )[:10]
 
-    # --------------------------------------------------------
+    # ========================================================
     # 9. Bond
-    # --------------------------------------------------------
+    # ========================================================
 
     bonds = sorted(
         bonds,
@@ -2483,6 +2695,7 @@ def main():
             x.get(
                 "ai_score"
             ) or 0,
+
             x.get(
                 "strength_score"
             ) or 0,
@@ -2490,9 +2703,9 @@ def main():
         reverse=True
     )[:10]
 
-    # --------------------------------------------------------
+    # ========================================================
     # 10. Breadth
-    # --------------------------------------------------------
+    # ========================================================
 
     market_breadth = (
         calculate_market_breadth(
@@ -2500,44 +2713,40 @@ def main():
         )
     )
 
-    # --------------------------------------------------------
+    # ========================================================
     # 11. Backtest
-    # --------------------------------------------------------
+    #
+    # 注意：
+    # 使用完整 history_cache，
+    # 不使用已經過濾成 latest_market_date 的 analyzed。
+    # ========================================================
 
     backtest = (
         calculate_backtest(
-            stocks,
+            universe,
             history_cache
         )
     )
 
-    # --------------------------------------------------------
-    # 12. Universe statistics
-    # --------------------------------------------------------
+    # ========================================================
+    # 12. Universe summary
+    # ========================================================
 
-    universe_stock_count = sum(
-        1
-        for x in universe
-        if x["type"] == "stock"
+    universe_summary = (
+        build_universe_summary(
+            universe
+        )
     )
 
-    universe_etf_count = sum(
-        1
-        for x in universe
-        if x["type"] == "etf"
-    )
-
-    universe_bond_count = sum(
-        1
-        for x in universe
-        if x["type"] == "bond"
-    )
-
-    # --------------------------------------------------------
+    # ========================================================
     # 13. Output
-    # --------------------------------------------------------
+    # ========================================================
 
     output = {
+
+        # ----------------------------------------------------
+        # Version
+        # ----------------------------------------------------
 
         "version":
             VERSION,
@@ -2548,11 +2757,19 @@ def main():
         "status":
             "success",
 
+        # ----------------------------------------------------
+        # Market date
+        # ----------------------------------------------------
+
         "date":
             latest_market_date.isoformat(),
 
         "latest_market_date":
             latest_market_date.isoformat(),
+
+        # ----------------------------------------------------
+        # Update time
+        # ----------------------------------------------------
 
         "updated_at":
             start_time.isoformat(),
@@ -2564,6 +2781,10 @@ def main():
 
         "source":
             f"fetch_data.py {VERSION}",
+
+        # ----------------------------------------------------
+        # Data quality
+        # ----------------------------------------------------
 
         "data_quality": {
 
@@ -2591,12 +2812,31 @@ def main():
             "failed_history_count":
                 fail_count,
 
+            "universe_count":
+                len(universe),
+
+            "universe_source":
+                universe_source,
+
+            "universe_recovered":
+                universe_recovered,
+
             "min_history_rows":
                 MIN_HISTORY_ROWS,
 
             "backtest_horizon":
                 BACKTEST_HORIZON,
+
+            "backtest_uses_trading_days":
+                True,
+
+            "six_of_six_same_market_date":
+                True,
         },
+
+        # ----------------------------------------------------
+        # Summary
+        # ----------------------------------------------------
 
         "summary": {
 
@@ -2620,7 +2860,14 @@ def main():
 
             "core_condition_count":
                 CORE_TOTAL,
+
+            "latest_market_date":
+                latest_market_date.isoformat(),
         },
+
+        # ----------------------------------------------------
+        # Core conditions
+        # ----------------------------------------------------
 
         "core_conditions": {
 
@@ -2629,50 +2876,88 @@ def main():
 
             "names":
                 CORE_CONDITION_NAMES,
+
+            "logic": {
+
+                "macd":
+                    "MACD > MACD Signal",
+
+                "rsi":
+                    "RSI > 50",
+
+                "kd":
+                    "K > D",
+
+                "volume":
+                    "Volume >= MA5 Volume × 1.5",
+
+                "price_ma20":
+                    "Close > MA20",
+
+                "ma20_rising":
+                    "MA20[today] > MA20[yesterday]",
+            },
         },
+
+        # ----------------------------------------------------
+        # Selected
+        # ----------------------------------------------------
 
         "today_selected":
             today_selected,
 
+        # ----------------------------------------------------
+        # Top10
+        # ----------------------------------------------------
+
         "top10":
             top10,
+
+        # ----------------------------------------------------
+        # ETF
+        # ----------------------------------------------------
 
         "etfs":
             etfs,
 
+        # ----------------------------------------------------
+        # Bond
+        # ----------------------------------------------------
+
         "bonds":
             bonds,
+
+        # ----------------------------------------------------
+        # Backtest
+        # ----------------------------------------------------
 
         "backtest_summary":
             backtest,
 
-        "universe": {
+        # ----------------------------------------------------
+        # 完整 Universe
+        #
+        # V10.3 最重要修正：
+        # items 保存完整 Universe。
+        # 下一次 stocks.json 壞掉時，
+        # fetch_data.py 可以從這裡完整恢復。
+        # ----------------------------------------------------
 
-            "stock_count":
-                universe_stock_count,
-
-            "etf_count":
-                universe_etf_count,
-
-            "bond_count":
-                universe_bond_count,
-
-            "total_count":
-                len(universe),
-        },
+        "universe":
+            universe_summary,
     }
 
-    # --------------------------------------------------------
+    # ========================================================
     # 14. Save
-    # --------------------------------------------------------
+    # ========================================================
 
     save_json(
         output
     )
 
-    # --------------------------------------------------------
+    # ========================================================
     # 15. Final
-    # --------------------------------------------------------
+    # ========================================================
 
     print()
 
@@ -2694,6 +2979,21 @@ def main():
         output[
             "latest_market_date"
         ]
+    )
+
+    print(
+        "Universe source：",
+        universe_source
+    )
+
+    print(
+        "Universe recovered：",
+        universe_recovered
+    )
+
+    print(
+        "Universe：",
+        len(universe)
     )
 
     print(
