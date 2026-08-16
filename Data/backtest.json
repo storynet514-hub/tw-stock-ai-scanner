@@ -6,48 +6,48 @@
   "strategies": {
     "A_today_cross": {
       "5d": {
-        "signals": 39394,
-        "wins": 16880,
-        "losses": 22514,
-        "win_rate": 42.85,
-        "average_return": 0.2444
+        "signals": 39416,
+        "wins": 16882,
+        "losses": 22534,
+        "win_rate": 42.83,
+        "average_return": 0.2448
       },
       "10d": {
-        "signals": 38323,
-        "wins": 16711,
-        "losses": 21612,
-        "win_rate": 43.61,
+        "signals": 38343,
+        "wins": 16712,
+        "losses": 21631,
+        "win_rate": 43.59,
         "average_return": 0.6107
       },
       "20d": {
-        "signals": 37672,
-        "wins": 16219,
-        "losses": 21453,
-        "win_rate": 43.05,
-        "average_return": 0.813
+        "signals": 37690,
+        "wins": 16220,
+        "losses": 21470,
+        "win_rate": 43.04,
+        "average_return": 0.8099
       }
     },
     "B_current_bullish": {
       "5d": {
-        "signals": 185937,
-        "wins": 77957,
-        "losses": 107980,
-        "win_rate": 41.93,
-        "average_return": 0.1762
+        "signals": 185962,
+        "wins": 77927,
+        "losses": 108035,
+        "win_rate": 41.9,
+        "average_return": 0.1757
       },
       "10d": {
-        "signals": 183641,
-        "wins": 77629,
-        "losses": 106012,
-        "win_rate": 42.27,
-        "average_return": 0.4623
+        "signals": 183660,
+        "wins": 77595,
+        "losses": 106065,
+        "win_rate": 42.25,
+        "average_return": 0.4592
       },
       "20d": {
-        "signals": 181885,
-        "wins": 76371,
-        "losses": 105514,
-        "win_rate": 41.99,
-        "average_return": 0.9535
+        "signals": 181910,
+        "wins": 76330,
+        "losses": 105580,
+        "win_rate": 41.96,
+        "average_return": 0.9458
       }
     }
   },

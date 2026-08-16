@@ -2,8 +2,8 @@
   "version": "V10.0",
   "schema_version": "prices.v10",
   "status": "success",
-  "updated_at": "2026-08-16T12:39:44.761255+08:00",
-  "updated_at_tw": "2026-08-16 12:39:44",
+  "updated_at": "2026-08-16T14:00:01.050116+08:00",
+  "updated_at_tw": "2026-08-16 14:00:01",
   "date": "2026-08-16",
   "data_engine": "V10.0_INCREMENTAL_SQLITE",
   "history_mode": "BOOTSTRAP_YAHOO_BATCH+OFFICIAL_DAILY",
@@ -243,45 +243,6 @@
       "signal": "偏弱",
       "rating": "D",
       "recommendation": "暫不操作"
-    },
-    {
-      "code": "020032",
-      "symbol": "020032.TW",
-      "name": "元大綠能N",
-      "type": "stock",
-      "market": "TW",
-      "is_etf": false,
-      "is_bond": false,
-      "price": 10.54,
-      "close": 10.54,
-      "previous_close": 10.54,
-      "change_pct": 0.0,
-      "volume": 6000,
-      "volume_ma5": 29800.0,
-      "volume_ratio": 0.2013,
-      "rsi": 52.1103,
-      "k": 71.3236,
-      "d": 47.1058,
-      "macd": -0.0793,
-      "macd_signal": -0.0892,
-      "macd_hist": 0.0099,
-      "ma5": 10.288,
-      "ma20": 10.383,
-      "ma60": 10.3858,
-      "macd_golden_cross": true,
-      "rsi_over_50": true,
-      "kd_golden_cross": true,
-      "volume_expand": false,
-      "price_over_ma20": true,
-      "ma20_up": false,
-      "core_score": 4,
-      "core_total": 6,
-      "core_pass": false,
-      "strength_score": 67.0,
-      "ai_score": 63.55,
-      "signal": "多方觀察",
-      "rating": "B",
-      "recommendation": "列入觀察"
     },
     {
       "code": "1101",
@@ -18823,15 +18784,15 @@
       "volume": 31429456,
       "volume_ma5": 31095684.4,
       "volume_ratio": 1.0107,
-      "rsi": 39.0357,
-      "k": 11.997,
-      "d": 18.2308,
-      "macd": -0.0664,
-      "macd_signal": 0.0119,
-      "macd_hist": -0.0783,
+      "rsi": 28.8407,
+      "k": 8.9543,
+      "d": 11.2164,
+      "macd": -0.38,
+      "macd_signal": -0.2596,
+      "macd_hist": -0.1204,
       "ma5": 16.39,
-      "ma20": 16.7038,
-      "ma60": 16.3701,
+      "ma20": 17.2355,
+      "ma60": 17.3035,
       "macd_golden_cross": false,
       "rsi_over_50": false,
       "kd_golden_cross": false,
@@ -62542,15 +62503,15 @@
       "volume": 0,
       "volume_ma5": 461437.2,
       "volume_ratio": 0.0,
-      "rsi": 43.4013,
-      "k": 44.6338,
-      "d": 47.2676,
-      "macd": -0.8732,
-      "macd_signal": -0.8466,
-      "macd_hist": -0.0266,
+      "rsi": 44.0781,
+      "k": 43.4182,
+      "d": 48.2996,
+      "macd": -0.8537,
+      "macd_signal": -0.8002,
+      "macd_hist": -0.0535,
       "ma5": 85.04,
-      "ma20": 85.6944,
-      "ma60": 87.1401,
+      "ma20": 85.7941,
+      "ma60": 87.1733,
       "macd_golden_cross": false,
       "rsi_over_50": false,
       "kd_golden_cross": false,
@@ -72395,79 +72356,118 @@
       "recommendation": "暫不操作"
     },
     {
-      "code": "7734",
-      "symbol": "7734.TWO",
-      "name": "印能科技",
+      "code": "7556",
+      "symbol": "7556.TWO",
+      "name": "意德士",
       "type": "stock",
       "market": "TWO",
       "is_etf": false,
       "is_bond": false,
-      "price": 3090.0,
-      "close": 3090.0,
-      "previous_close": 3090.0,
+      "price": 239.0,
+      "close": 239.0,
+      "previous_close": 239.0,
       "change_pct": 0.0,
       "volume": 0,
-      "volume_ma5": 181526.6,
+      "volume_ma5": 28639.0,
       "volume_ratio": 0.0,
-      "rsi": 45.3644,
-      "k": 16.963,
-      "d": 32.5154,
-      "macd": 19.3682,
-      "macd_signal": 55.7474,
-      "macd_hist": -36.3793,
-      "ma5": 3202.0,
-      "ma20": 3305.25,
-      "ma60": 3211.0833,
+      "rsi": 57.5187,
+      "k": 89.385,
+      "d": 86.3134,
+      "macd": -1.4203,
+      "macd_signal": -5.9158,
+      "macd_hist": 4.4954,
+      "ma5": 234.5,
+      "ma20": 220.8,
+      "ma60": 247.8315,
+      "macd_golden_cross": true,
+      "rsi_over_50": true,
+      "kd_golden_cross": true,
+      "volume_expand": false,
+      "price_over_ma20": true,
+      "ma20_up": true,
+      "core_score": 5,
+      "core_total": 6,
+      "core_pass": false,
+      "strength_score": 82.0,
+      "ai_score": 78.3,
+      "signal": "強勢多方",
+      "rating": "B+",
+      "recommendation": "接近核心條件"
+    },
+    {
+      "code": "7704",
+      "symbol": "7704.TWO",
+      "name": "明遠精密",
+      "type": "stock",
+      "market": "TWO",
+      "is_etf": false,
+      "is_bond": false,
+      "price": 63.6,
+      "close": 63.6,
+      "previous_close": 63.6,
+      "change_pct": 0.0,
+      "volume": 0,
+      "volume_ma5": 34881.6,
+      "volume_ratio": 0.0,
+      "rsi": 60.6651,
+      "k": 48.7096,
+      "d": 62.9524,
+      "macd": 1.7456,
+      "macd_signal": 1.0038,
+      "macd_hist": 0.7418,
+      "ma5": 63.5,
+      "ma20": 58.505,
+      "ma60": 60.0183,
+      "macd_golden_cross": true,
+      "rsi_over_50": true,
+      "kd_golden_cross": false,
+      "volume_expand": false,
+      "price_over_ma20": true,
+      "ma20_up": true,
+      "core_score": 4,
+      "core_total": 6,
+      "core_pass": false,
+      "strength_score": 71.0,
+      "ai_score": 66.15,
+      "signal": "多方觀察",
+      "rating": "B",
+      "recommendation": "列入觀察"
+    },
+    {
+      "code": "7716",
+      "symbol": "7716.TWO",
+      "name": "昱臺國際",
+      "type": "stock",
+      "market": "TWO",
+      "is_etf": false,
+      "is_bond": false,
+      "price": 23.85,
+      "close": 23.85,
+      "previous_close": 23.85,
+      "change_pct": 0.0,
+      "volume": 0,
+      "volume_ma5": 800.0,
+      "volume_ratio": 0.0,
+      "rsi": 40.1143,
+      "k": 50.0741,
+      "d": 52.8813,
+      "macd": -0.2648,
+      "macd_signal": -0.2439,
+      "macd_hist": -0.0209,
+      "ma5": 23.94,
+      "ma20": 24.305,
+      "ma60": 24.9867,
       "macd_golden_cross": false,
       "rsi_over_50": false,
       "kd_golden_cross": false,
       "volume_expand": false,
       "price_over_ma20": false,
-      "ma20_up": true,
-      "core_score": 1,
+      "ma20_up": false,
+      "core_score": 0,
       "core_total": 6,
       "core_pass": false,
-      "strength_score": 15.0,
-      "ai_score": 14.75,
-      "signal": "偏弱",
-      "rating": "D",
-      "recommendation": "暫不操作"
-    },
-    {
-      "code": "7782",
-      "symbol": "7782.TWO",
-      "name": "光速火箭",
-      "type": "stock",
-      "market": "TWO",
-      "is_etf": false,
-      "is_bond": false,
-      "price": 25.8,
-      "close": 25.8,
-      "previous_close": 25.8,
-      "change_pct": 0.0,
-      "volume": 0,
-      "volume_ma5": 9809.0,
-      "volume_ratio": 0.0,
-      "rsi": 46.3798,
-      "k": 29.4808,
-      "d": 25.541,
-      "macd": -0.1863,
-      "macd_signal": -0.1778,
-      "macd_hist": -0.0085,
-      "ma5": 25.79,
-      "ma20": 26.04,
-      "ma60": 26.2475,
-      "macd_golden_cross": false,
-      "rsi_over_50": false,
-      "kd_golden_cross": true,
-      "volume_expand": false,
-      "price_over_ma20": false,
-      "ma20_up": true,
-      "core_score": 2,
-      "core_total": 6,
-      "core_pass": false,
-      "strength_score": 30.0,
-      "ai_score": 29.5,
+      "strength_score": 0.0,
+      "ai_score": 0,
       "signal": "偏弱",
       "rating": "D",
       "recommendation": "暫不操作"
@@ -83278,45 +83278,6 @@
       "recommendation": "暫不操作"
     },
     {
-      "code": "0061",
-      "symbol": "0061.TW",
-      "name": "元大寶滬深",
-      "type": "etf",
-      "market": "TW",
-      "is_etf": true,
-      "is_bond": false,
-      "price": 24.7,
-      "close": 24.7,
-      "previous_close": 24.7,
-      "change_pct": 0.0,
-      "volume": 113739,
-      "volume_ma5": 220212.2,
-      "volume_ratio": 0.5165,
-      "rsi": 47.2454,
-      "k": 52.2013,
-      "d": 65.3162,
-      "macd": -0.0103,
-      "macd_signal": -0.0233,
-      "macd_hist": 0.013,
-      "ma5": 24.934,
-      "ma20": 24.8415,
-      "ma60": 24.983,
-      "macd_golden_cross": true,
-      "rsi_over_50": false,
-      "kd_golden_cross": false,
-      "volume_expand": false,
-      "price_over_ma20": false,
-      "ma20_up": true,
-      "core_score": 2,
-      "core_total": 6,
-      "core_pass": false,
-      "strength_score": 35.0,
-      "ai_score": 32.75,
-      "signal": "偏弱",
-      "rating": "D",
-      "recommendation": "暫不操作"
-    },
-    {
       "code": "006207",
       "symbol": "006207.TW",
       "name": "復華滬深",
@@ -92615,48 +92576,48 @@
     "strategies": {
       "A_today_cross": {
         "5d": {
-          "signals": 39394,
-          "wins": 16880,
-          "losses": 22514,
-          "win_rate": 42.85,
-          "average_return": 0.2444
+          "signals": 39416,
+          "wins": 16882,
+          "losses": 22534,
+          "win_rate": 42.83,
+          "average_return": 0.2448
         },
         "10d": {
-          "signals": 38323,
-          "wins": 16711,
-          "losses": 21612,
-          "win_rate": 43.61,
+          "signals": 38343,
+          "wins": 16712,
+          "losses": 21631,
+          "win_rate": 43.59,
           "average_return": 0.6107
         },
         "20d": {
-          "signals": 37672,
-          "wins": 16219,
-          "losses": 21453,
-          "win_rate": 43.05,
-          "average_return": 0.813
+          "signals": 37690,
+          "wins": 16220,
+          "losses": 21470,
+          "win_rate": 43.04,
+          "average_return": 0.8099
         }
       },
       "B_current_bullish": {
         "5d": {
-          "signals": 185937,
-          "wins": 77957,
-          "losses": 107980,
-          "win_rate": 41.93,
-          "average_return": 0.1762
+          "signals": 185962,
+          "wins": 77927,
+          "losses": 108035,
+          "win_rate": 41.9,
+          "average_return": 0.1757
         },
         "10d": {
-          "signals": 183641,
-          "wins": 77629,
-          "losses": 106012,
-          "win_rate": 42.27,
-          "average_return": 0.4623
+          "signals": 183660,
+          "wins": 77595,
+          "losses": 106065,
+          "win_rate": 42.25,
+          "average_return": 0.4592
         },
         "20d": {
-          "signals": 181885,
-          "wins": 76371,
-          "losses": 105514,
-          "win_rate": 41.99,
-          "average_return": 0.9535
+          "signals": 181910,
+          "wins": 76330,
+          "losses": 105580,
+          "win_rate": 41.96,
+          "average_return": 0.9458
         }
       }
     },
@@ -92665,10 +92626,10 @@
   },
   "statistics": {
     "stock_count": 1965,
-    "stock_twse_count": 1125,
-    "stock_tpex_count": 840,
-    "etf_count": 268,
-    "etf_twse_count": 210,
+    "stock_twse_count": 1124,
+    "stock_tpex_count": 841,
+    "etf_count": 267,
+    "etf_twse_count": 209,
     "etf_tpex_count": 58,
     "bond_count": 55,
     "bond_twse_count": 5,
@@ -92678,7 +92639,7 @@
     "today_selected_count": 46,
     "core_6_count": 46,
     "backtest_stock_count": 1965,
-    "failed_count": 9579,
+    "failed_count": 9580,
     "twse_stock_universe": 1142,
     "tpex_stock_universe": 10372,
     "twse_etf_universe": 230,
@@ -92778,6 +92739,13 @@
       "code": "00410A",
       "symbol": "00410A.TW",
       "name": "主動永豐科技趨勢",
+      "market": "TW",
+      "reason": "insufficient_history"
+    },
+    {
+      "code": "0061",
+      "symbol": "0061.TW",
+      "name": "元大寶滬深",
       "market": "TW",
       "reason": "insufficient_history"
     },
@@ -92918,6 +92886,13 @@
       "code": "020031",
       "symbol": "020031.TW",
       "name": "統一IC設計臺灣N",
+      "market": "TW",
+      "reason": "insufficient_history"
+    },
+    {
+      "code": "020032",
+      "symbol": "020032.TW",
+      "name": "元大綠能N",
       "market": "TW",
       "reason": "insufficient_history"
     },
@@ -96447,7 +96422,7 @@
       "symbol": "703206.TWO",
       "name": "台星科群益58購01",
       "market": "TWO",
-      "reason": "insufficient_history"
+      "reason": "no_history"
     },
     {
       "code": "703210",
@@ -97308,7 +97283,7 @@
       "symbol": "703615.TWO",
       "name": "宜鼎統一61購01",
       "market": "TWO",
-      "reason": "no_history"
+      "reason": "insufficient_history"
     },
     {
       "code": "703616",
@@ -97434,7 +97409,7 @@
       "symbol": "703654.TWO",
       "name": "勤凱元大61購01",
       "market": "TWO",
-      "reason": "no_history"
+      "reason": "insufficient_history"
     },
     {
       "code": "703660",
@@ -98652,7 +98627,7 @@
       "symbol": "704088.TWO",
       "name": "世紀*統一71購02",
       "market": "TWO",
-      "reason": "insufficient_history"
+      "reason": "no_history"
     },
     {
       "code": "704089",
@@ -100437,7 +100412,7 @@
       "symbol": "704526.TWO",
       "name": "能率群益59購01",
       "market": "TWO",
-      "reason": "no_history"
+      "reason": "insufficient_history"
     },
     {
       "code": "704529",
@@ -100584,7 +100559,7 @@
       "symbol": "704551.TWO",
       "name": "能率亞統一71購01",
       "market": "TWO",
-      "reason": "no_history"
+      "reason": "insufficient_history"
     },
     {
       "code": "704552",
@@ -100661,7 +100636,7 @@
       "symbol": "704584.TWO",
       "name": "精材元大5A購02",
       "market": "TWO",
-      "reason": "no_history"
+      "reason": "insufficient_history"
     },
     {
       "code": "704587",
@@ -100675,7 +100650,7 @@
       "symbol": "704588.TWO",
       "name": "長科*富邦58購01",
       "market": "TWO",
-      "reason": "no_history"
+      "reason": "insufficient_history"
     },
     {
       "code": "704589",
@@ -100752,7 +100727,7 @@
       "symbol": "704617.TWO",
       "name": "宜鼎群益58購02",
       "market": "TWO",
-      "reason": "no_history"
+      "reason": "insufficient_history"
     },
     {
       "code": "704618",
@@ -100780,7 +100755,7 @@
       "symbol": "704621.TWO",
       "name": "智通*群益58購02",
       "market": "TWO",
-      "reason": "no_history"
+      "reason": "insufficient_history"
     },
     {
       "code": "704622",
@@ -100836,7 +100811,7 @@
       "symbol": "704630.TWO",
       "name": "旺矽元富58購03",
       "market": "TWO",
-      "reason": "no_history"
+      "reason": "insufficient_history"
     },
     {
       "code": "704636",
@@ -100871,7 +100846,7 @@
       "symbol": "704642.TWO",
       "name": "世界凱基58購01",
       "market": "TWO",
-      "reason": "no_history"
+      "reason": "insufficient_history"
     },
     {
       "code": "704649",
@@ -100997,7 +100972,7 @@
       "symbol": "704696.TWO",
       "name": "穩懋凱基59購06",
       "market": "TWO",
-      "reason": "no_history"
+      "reason": "insufficient_history"
     },
     {
       "code": "704702",
@@ -101060,14 +101035,14 @@
       "symbol": "704721.TWO",
       "name": "台燿永豐5A購02",
       "market": "TWO",
-      "reason": "no_history"
+      "reason": "insufficient_history"
     },
     {
       "code": "704723",
       "symbol": "704723.TWO",
       "name": "竹陞永豐59購02",
       "market": "TWO",
-      "reason": "no_history"
+      "reason": "insufficient_history"
     },
     {
       "code": "704724",
@@ -101095,7 +101070,7 @@
       "symbol": "704728.TWO",
       "name": "精材永豐5A購01",
       "market": "TWO",
-      "reason": "no_history"
+      "reason": "insufficient_history"
     },
     {
       "code": "704729",
@@ -101186,14 +101161,14 @@
       "symbol": "704750.TWO",
       "name": "系統電兆豐5A購01",
       "market": "TWO",
-      "reason": "no_history"
+      "reason": "insufficient_history"
     },
     {
       "code": "704751",
       "symbol": "704751.TWO",
       "name": "穩懋兆豐5A購01",
       "market": "TWO",
-      "reason": "no_history"
+      "reason": "insufficient_history"
     },
     {
       "code": "704756",
@@ -101207,21 +101182,21 @@
       "symbol": "704760.TWO",
       "name": "宜鼎元大5A購03",
       "market": "TWO",
-      "reason": "no_history"
+      "reason": "insufficient_history"
     },
     {
       "code": "704766",
       "symbol": "704766.TWO",
       "name": "精材元大61購05",
       "market": "TWO",
-      "reason": "no_history"
+      "reason": "insufficient_history"
     },
     {
       "code": "704767",
       "symbol": "704767.TWO",
       "name": "印能永豐5A購01",
       "market": "TWO",
-      "reason": "no_history"
+      "reason": "insufficient_history"
     },
     {
       "code": "704768",
@@ -101284,7 +101259,7 @@
       "symbol": "704781.TWO",
       "name": "點序群益62購01",
       "market": "TWO",
-      "reason": "no_history"
+      "reason": "insufficient_history"
     },
     {
       "code": "704784",
@@ -101347,7 +101322,7 @@
       "symbol": "704804.TWO",
       "name": "弘塑元大59購03",
       "market": "TWO",
-      "reason": "insufficient_history"
+      "reason": "no_history"
     },
     {
       "code": "704807",
@@ -101382,7 +101357,7 @@
       "symbol": "704823.TWO",
       "name": "穩得國泰59購01",
       "market": "TWO",
-      "reason": "no_history"
+      "reason": "insufficient_history"
     },
     {
       "code": "704824",
@@ -101466,7 +101441,7 @@
       "symbol": "704841.TWO",
       "name": "台半富邦5B購01",
       "market": "TWO",
-      "reason": "no_history"
+      "reason": "insufficient_history"
     },
     {
       "code": "704842",
@@ -101480,7 +101455,7 @@
       "symbol": "704843.TWO",
       "name": "合晶富邦5B購01",
       "market": "TWO",
-      "reason": "no_history"
+      "reason": "insufficient_history"
     },
     {
       "code": "704844",
@@ -101494,7 +101469,7 @@
       "symbol": "704845.TWO",
       "name": "信驊富邦5B購01",
       "market": "TWO",
-      "reason": "no_history"
+      "reason": "insufficient_history"
     },
     {
       "code": "704846",
@@ -102264,7 +102239,7 @@
       "symbol": "705063.TWO",
       "name": "穩懋元大61購02",
       "market": "TWO",
-      "reason": "no_history"
+      "reason": "insufficient_history"
     },
     {
       "code": "705069",
@@ -102621,7 +102596,7 @@
       "symbol": "705144.TWO",
       "name": "岳豐國票59購01",
       "market": "TWO",
-      "reason": "insufficient_history"
+      "reason": "no_history"
     },
     {
       "code": "705145",
@@ -102663,7 +102638,7 @@
       "symbol": "705161.TWO",
       "name": "雙鴻元大61購03",
       "market": "TWO",
-      "reason": "no_history"
+      "reason": "insufficient_history"
     },
     {
       "code": "705167",
@@ -102698,7 +102673,7 @@
       "symbol": "705173.TWO",
       "name": "宜鼎凱基59購04",
       "market": "TWO",
-      "reason": "no_history"
+      "reason": "insufficient_history"
     },
     {
       "code": "705174",
@@ -102782,7 +102757,7 @@
       "symbol": "705186.TWO",
       "name": "閎康富邦5A購01",
       "market": "TWO",
-      "reason": "no_history"
+      "reason": "insufficient_history"
     },
     {
       "code": "705187",
@@ -102859,7 +102834,7 @@
       "symbol": "705198.TWO",
       "name": "九豪國票58購01",
       "market": "TWO",
-      "reason": "no_history"
+      "reason": "insufficient_history"
     },
     {
       "code": "705199",
@@ -102887,7 +102862,7 @@
       "symbol": "705202.TWO",
       "name": "匯鑽科國票58購02",
       "market": "TWO",
-      "reason": "insufficient_history"
+      "reason": "no_history"
     },
     {
       "code": "705203",
@@ -102964,7 +102939,7 @@
       "symbol": "705213.TWO",
       "name": "雙鴻元大61購04",
       "market": "TWO",
-      "reason": "insufficient_history"
+      "reason": "no_history"
     },
     {
       "code": "705214",
@@ -102985,14 +102960,14 @@
       "symbol": "705216.TWO",
       "name": "雙鴻永豐61購01",
       "market": "TWO",
-      "reason": "no_history"
+      "reason": "insufficient_history"
     },
     {
       "code": "705218",
       "symbol": "705218.TWO",
       "name": "新應材元富58購01",
       "market": "TWO",
-      "reason": "insufficient_history"
+      "reason": "no_history"
     },
     {
       "code": "705219",
@@ -103118,7 +103093,7 @@
       "symbol": "705242.TWO",
       "name": "宸曜永豐59購01",
       "market": "TWO",
-      "reason": "no_history"
+      "reason": "insufficient_history"
     },
     {
       "code": "705243",
@@ -103202,7 +103177,7 @@
       "symbol": "705255.TWO",
       "name": "雙鴻富邦5A購03",
       "market": "TWO",
-      "reason": "no_history"
+      "reason": "insufficient_history"
     },
     {
       "code": "705257",
@@ -103342,7 +103317,7 @@
       "symbol": "705282.TWO",
       "name": "力旺元大58購03",
       "market": "TWO",
-      "reason": "insufficient_history"
+      "reason": "no_history"
     },
     {
       "code": "705284",
@@ -103419,7 +103394,7 @@
       "symbol": "705296.TWO",
       "name": "富喬凱基58購02",
       "market": "TWO",
-      "reason": "insufficient_history"
+      "reason": "no_history"
     },
     {
       "code": "705297",
@@ -103524,7 +103499,7 @@
       "symbol": "705311.TWO",
       "name": "富喬統一62購01",
       "market": "TWO",
-      "reason": "insufficient_history"
+      "reason": "no_history"
     },
     {
       "code": "705312",
@@ -103832,7 +103807,7 @@
       "symbol": "705358.TWO",
       "name": "良維兆豐5A購01",
       "market": "TWO",
-      "reason": "no_history"
+      "reason": "insufficient_history"
     },
     {
       "code": "705360",
@@ -104441,7 +104416,7 @@
       "symbol": "705451.TWO",
       "name": "穩懋國票5A購03",
       "market": "TWO",
-      "reason": "insufficient_history"
+      "reason": "no_history"
     },
     {
       "code": "705452",
@@ -104602,7 +104577,7 @@
       "symbol": "705477.TWO",
       "name": "台特化統一63購02",
       "market": "TWO",
-      "reason": "insufficient_history"
+      "reason": "no_history"
     },
     {
       "code": "705478",
@@ -104644,7 +104619,7 @@
       "symbol": "705483.TWO",
       "name": "新應材統一62購02",
       "market": "TWO",
-      "reason": "no_history"
+      "reason": "insufficient_history"
     },
     {
       "code": "705484",
@@ -104714,7 +104689,7 @@
       "symbol": "705494.TWO",
       "name": "台特化永豐5B購01",
       "market": "TWO",
-      "reason": "no_history"
+      "reason": "insufficient_history"
     },
     {
       "code": "705496",
@@ -104728,7 +104703,7 @@
       "symbol": "705497.TWO",
       "name": "宜鼎永豐5A購02",
       "market": "TWO",
-      "reason": "no_history"
+      "reason": "insufficient_history"
     },
     {
       "code": "705500",
@@ -104791,7 +104766,7 @@
       "symbol": "705508.TWO",
       "name": "宜特元富5A購01",
       "market": "TWO",
-      "reason": "no_history"
+      "reason": "insufficient_history"
     },
     {
       "code": "705509",
@@ -104805,7 +104780,7 @@
       "symbol": "705510.TWO",
       "name": "茂迪元富59購01",
       "market": "TWO",
-      "reason": "no_history"
+      "reason": "insufficient_history"
     },
     {
       "code": "705511",
@@ -104847,7 +104822,7 @@
       "symbol": "705517.TWO",
       "name": "台特化台新59購01",
       "market": "TWO",
-      "reason": "no_history"
+      "reason": "insufficient_history"
     },
     {
       "code": "705519",
@@ -104875,7 +104850,7 @@
       "symbol": "705522.TWO",
       "name": "雙鴻兆豐5B購01",
       "market": "TWO",
-      "reason": "insufficient_history"
+      "reason": "no_history"
     },
     {
       "code": "705523",
@@ -104903,7 +104878,7 @@
       "symbol": "705526.TWO",
       "name": "鈊象凱基59購01",
       "market": "TWO",
-      "reason": "no_history"
+      "reason": "insufficient_history"
     },
     {
       "code": "705527",
@@ -104924,7 +104899,7 @@
       "symbol": "705530.TWO",
       "name": "環球晶凱基59購04",
       "market": "TWO",
-      "reason": "insufficient_history"
+      "reason": "no_history"
     },
     {
       "code": "705531",
@@ -104945,7 +104920,7 @@
       "symbol": "705533.TWO",
       "name": "雙鴻凱基59購09",
       "market": "TWO",
-      "reason": "insufficient_history"
+      "reason": "no_history"
     },
     {
       "code": "705534",
@@ -105015,7 +104990,7 @@
       "symbol": "705546.TWO",
       "name": "雙鴻元大59購03",
       "market": "TWO",
-      "reason": "insufficient_history"
+      "reason": "no_history"
     },
     {
       "code": "705547",
@@ -105064,7 +105039,7 @@
       "symbol": "705553.TWO",
       "name": "穩懋元大5C購04",
       "market": "TWO",
-      "reason": "insufficient_history"
+      "reason": "no_history"
     },
     {
       "code": "705554",
@@ -105330,7 +105305,7 @@
       "symbol": "705595.TWO",
       "name": "閎康元大59購01",
       "market": "TWO",
-      "reason": "insufficient_history"
+      "reason": "no_history"
     },
     {
       "code": "705596",
@@ -105407,7 +105382,7 @@
       "symbol": "705606.TWO",
       "name": "旺矽國票61購01",
       "market": "TWO",
-      "reason": "no_history"
+      "reason": "insufficient_history"
     },
     {
       "code": "705608",
@@ -105442,7 +105417,7 @@
       "symbol": "705613.TWO",
       "name": "中美晶群益59購01",
       "market": "TWO",
-      "reason": "insufficient_history"
+      "reason": "no_history"
     },
     {
       "code": "705614",
@@ -105554,7 +105529,7 @@
       "symbol": "705631.TWO",
       "name": "大綜永豐5A購01",
       "market": "TWO",
-      "reason": "insufficient_history"
+      "reason": "no_history"
     },
     {
       "code": "705632",
@@ -105631,7 +105606,7 @@
       "symbol": "705643.TWO",
       "name": "茂迪群益5A購01",
       "market": "TWO",
-      "reason": "insufficient_history"
+      "reason": "no_history"
     },
     {
       "code": "705644",
@@ -105666,7 +105641,7 @@
       "symbol": "705649.TWO",
       "name": "印能凱基59購01",
       "market": "TWO",
-      "reason": "no_history"
+      "reason": "insufficient_history"
     },
     {
       "code": "705650",
@@ -105939,7 +105914,7 @@
       "symbol": "705697.TWO",
       "name": "新復興凱基5B購01",
       "market": "TWO",
-      "reason": "no_history"
+      "reason": "insufficient_history"
     },
     {
       "code": "705698",
@@ -106765,7 +106740,7 @@
       "symbol": "705832.TWO",
       "name": "系統電元富59購02",
       "market": "TWO",
-      "reason": "insufficient_history"
+      "reason": "no_history"
     },
     {
       "code": "705833",
@@ -106821,7 +106796,7 @@
       "symbol": "705843.TWO",
       "name": "台特化元大59購02",
       "market": "TWO",
-      "reason": "no_history"
+      "reason": "insufficient_history"
     },
     {
       "code": "705844",
@@ -107157,7 +107132,7 @@
       "symbol": "705897.TWO",
       "name": "巨漢凱基59購01",
       "market": "TWO",
-      "reason": "no_history"
+      "reason": "insufficient_history"
     },
     {
       "code": "705899",
@@ -107178,7 +107153,7 @@
       "symbol": "705901.TWO",
       "name": "新應材凱基5A購02",
       "market": "TWO",
-      "reason": "insufficient_history"
+      "reason": "no_history"
     },
     {
       "code": "705902",
@@ -107374,7 +107349,7 @@
       "symbol": "705933.TWO",
       "name": "宜鼎國票5C購01",
       "market": "TWO",
-      "reason": "no_history"
+      "reason": "insufficient_history"
     },
     {
       "code": "705934",
@@ -107402,7 +107377,7 @@
       "symbol": "705937.TWO",
       "name": "新應材國票59購01",
       "market": "TWO",
-      "reason": "insufficient_history"
+      "reason": "no_history"
     },
     {
       "code": "705938",
@@ -107528,7 +107503,7 @@
       "symbol": "705955.TWO",
       "name": "世界元大59購07",
       "market": "TWO",
-      "reason": "insufficient_history"
+      "reason": "no_history"
     },
     {
       "code": "705956",
@@ -107983,7 +107958,7 @@
       "symbol": "706038.TWO",
       "name": "聖暉*統一61購01",
       "market": "TWO",
-      "reason": "no_history"
+      "reason": "insufficient_history"
     },
     {
       "code": "706039",
@@ -108200,7 +108175,7 @@
       "symbol": "706072.TWO",
       "name": "弘塑凱基5A購01",
       "market": "TWO",
-      "reason": "no_history"
+      "reason": "insufficient_history"
     },
     {
       "code": "706073",
@@ -108620,7 +108595,7 @@
       "symbol": "706139.TWO",
       "name": "聚和統一73購01",
       "market": "TWO",
-      "reason": "no_history"
+      "reason": "insufficient_history"
     },
     {
       "code": "706140",
@@ -108767,7 +108742,7 @@
       "symbol": "706162.TWO",
       "name": "旺矽凱基63購02",
       "market": "TWO",
-      "reason": "insufficient_history"
+      "reason": "no_history"
     },
     {
       "code": "706163",
@@ -109012,7 +108987,7 @@
       "symbol": "706200.TWO",
       "name": "雙鴻元大59購16",
       "market": "TWO",
-      "reason": "no_history"
+      "reason": "insufficient_history"
     },
     {
       "code": "706201",
@@ -109026,7 +109001,7 @@
       "symbol": "706202.TWO",
       "name": "鑫科元大59購01",
       "market": "TWO",
-      "reason": "insufficient_history"
+      "reason": "no_history"
     },
     {
       "code": "706203",
@@ -109117,7 +109092,7 @@
       "symbol": "706216.TWO",
       "name": "東捷永豐61購01",
       "market": "TWO",
-      "reason": "insufficient_history"
+      "reason": "no_history"
     },
     {
       "code": "706217",
@@ -109145,7 +109120,7 @@
       "symbol": "706220.TWO",
       "name": "鑫科永豐5C購02",
       "market": "TWO",
-      "reason": "no_history"
+      "reason": "insufficient_history"
     },
     {
       "code": "706221",
@@ -109320,7 +109295,7 @@
       "symbol": "706245.TWO",
       "name": "M31凱基5B購01",
       "market": "TWO",
-      "reason": "no_history"
+      "reason": "insufficient_history"
     },
     {
       "code": "706246",
@@ -109362,7 +109337,7 @@
       "symbol": "706251.TWO",
       "name": "信驊凱基59購06",
       "market": "TWO",
-      "reason": "insufficient_history"
+      "reason": "no_history"
     },
     {
       "code": "706252",
@@ -109467,7 +109442,7 @@
       "symbol": "706271.TWO",
       "name": "M31群益59購01",
       "market": "TWO",
-      "reason": "insufficient_history"
+      "reason": "no_history"
     },
     {
       "code": "706273",
@@ -109572,7 +109547,7 @@
       "symbol": "706288.TWO",
       "name": "M31國票5A購01",
       "market": "TWO",
-      "reason": "no_history"
+      "reason": "insufficient_history"
     },
     {
       "code": "706289",
@@ -110055,14 +110030,14 @@
       "symbol": "706366.TWO",
       "name": "優群群益59購01",
       "market": "TWO",
-      "reason": "no_history"
+      "reason": "insufficient_history"
     },
     {
       "code": "706367",
       "symbol": "706367.TWO",
       "name": "譜瑞群益59購02",
       "market": "TWO",
-      "reason": "no_history"
+      "reason": "insufficient_history"
     },
     {
       "code": "706368",
@@ -110209,7 +110184,7 @@
       "symbol": "706390.TWO",
       "name": "湧德群益5B購01",
       "market": "TWO",
-      "reason": "no_history"
+      "reason": "insufficient_history"
     },
     {
       "code": "706391",
@@ -110356,7 +110331,7 @@
       "symbol": "706413.TWO",
       "name": "印能凱基5B購02",
       "market": "TWO",
-      "reason": "no_history"
+      "reason": "insufficient_history"
     },
     {
       "code": "706414",
@@ -110664,7 +110639,7 @@
       "symbol": "706460.TWO",
       "name": "雙鴻永豐5B購02",
       "market": "TWO",
-      "reason": "no_history"
+      "reason": "insufficient_history"
     },
     {
       "code": "706461",
@@ -110713,7 +110688,7 @@
       "symbol": "706467.TWO",
       "name": "信昌電元富59購01",
       "market": "TWO",
-      "reason": "insufficient_history"
+      "reason": "no_history"
     },
     {
       "code": "706468",
@@ -110818,7 +110793,7 @@
       "symbol": "706486.TWO",
       "name": "九豪國票59購02",
       "market": "TWO",
-      "reason": "no_history"
+      "reason": "insufficient_history"
     },
     {
       "code": "706488",
@@ -111497,7 +111472,7 @@
       "symbol": "706601.TWO",
       "name": "系微凱基5A購01",
       "market": "TWO",
-      "reason": "insufficient_history"
+      "reason": "no_history"
     },
     {
       "code": "706603",
@@ -111805,7 +111780,7 @@
       "symbol": "706652.TWO",
       "name": "華電網中信59購01",
       "market": "TWO",
-      "reason": "insufficient_history"
+      "reason": "no_history"
     },
     {
       "code": "706653",
@@ -112533,14 +112508,14 @@
       "symbol": "706770.TWO",
       "name": "矽科元大59購01",
       "market": "TWO",
-      "reason": "insufficient_history"
+      "reason": "no_history"
     },
     {
       "code": "706771",
       "symbol": "706771.TWO",
       "name": "矽科元大59購02",
       "market": "TWO",
-      "reason": "insufficient_history"
+      "reason": "no_history"
     },
     {
       "code": "706772",
@@ -112897,7 +112872,7 @@
       "symbol": "706829.TWO",
       "name": "元債20元大5B購02",
       "market": "TWO",
-      "reason": "insufficient_history"
+      "reason": "no_history"
     },
     {
       "code": "706830",
@@ -112960,7 +112935,7 @@
       "symbol": "706841.TWO",
       "name": "華電網元大5C購01",
       "market": "TWO",
-      "reason": "insufficient_history"
+      "reason": "no_history"
     },
     {
       "code": "706842",
@@ -113016,7 +112991,7 @@
       "symbol": "706849.TWO",
       "name": "台燿永豐5B購02",
       "market": "TWO",
-      "reason": "no_history"
+      "reason": "insufficient_history"
     },
     {
       "code": "706850",
@@ -113394,7 +113369,7 @@
       "symbol": "706911.TWO",
       "name": "台燿元富59購07",
       "market": "TWO",
-      "reason": "no_history"
+      "reason": "insufficient_history"
     },
     {
       "code": "706912",
@@ -114087,7 +114062,7 @@
       "symbol": "707020.TWO",
       "name": "信立元大5A購01",
       "market": "TWO",
-      "reason": "no_history"
+      "reason": "insufficient_history"
     },
     {
       "code": "707022",
@@ -114304,7 +114279,7 @@
       "symbol": "707055.TWO",
       "name": "宏碩永豐61購01",
       "market": "TWO",
-      "reason": "insufficient_history"
+      "reason": "no_history"
     },
     {
       "code": "707056",
@@ -114563,7 +114538,7 @@
       "symbol": "707094.TWO",
       "name": "正淩群益5A購01",
       "market": "TWO",
-      "reason": "no_history"
+      "reason": "insufficient_history"
     },
     {
       "code": "707095",
@@ -114731,7 +114706,7 @@
       "symbol": "707125.TWO",
       "name": "群翊國票5B購01",
       "market": "TWO",
-      "reason": "no_history"
+      "reason": "insufficient_history"
     },
     {
       "code": "707126",
@@ -114836,7 +114811,7 @@
       "symbol": "707140.TWO",
       "name": "萬泰科統一74購01",
       "market": "TWO",
-      "reason": "no_history"
+      "reason": "insufficient_history"
     },
     {
       "code": "707141",
@@ -114864,7 +114839,7 @@
       "symbol": "707144.TWO",
       "name": "頎邦統一67購01",
       "market": "TWO",
-      "reason": "insufficient_history"
+      "reason": "no_history"
     },
     {
       "code": "707146",
@@ -115025,7 +115000,7 @@
       "symbol": "707172.TWO",
       "name": "翔名凱基5A購01",
       "market": "TWO",
-      "reason": "no_history"
+      "reason": "insufficient_history"
     },
     {
       "code": "707173",
@@ -115207,7 +115182,7 @@
       "symbol": "707199.TWO",
       "name": "華景電統一68購01",
       "market": "TWO",
-      "reason": "no_history"
+      "reason": "insufficient_history"
     },
     {
       "code": "707200",
@@ -115480,7 +115455,7 @@
       "symbol": "707240.TWO",
       "name": "久元元大61購01",
       "market": "TWO",
-      "reason": "no_history"
+      "reason": "insufficient_history"
     },
     {
       "code": "707242",
@@ -115585,7 +115560,7 @@
       "symbol": "707257.TWO",
       "name": "台特化永豐5C購01",
       "market": "TWO",
-      "reason": "insufficient_history"
+      "reason": "no_history"
     },
     {
       "code": "707258",
@@ -115620,7 +115595,7 @@
       "symbol": "707262.TWO",
       "name": "新盛力永豐5C購01",
       "market": "TWO",
-      "reason": "insufficient_history"
+      "reason": "no_history"
     },
     {
       "code": "707263",
@@ -115711,7 +115686,7 @@
       "symbol": "707275.TWO",
       "name": "鉅橡統一66購01",
       "market": "TWO",
-      "reason": "no_history"
+      "reason": "insufficient_history"
     },
     {
       "code": "707276",
@@ -115767,7 +115742,7 @@
       "symbol": "707283.TWO",
       "name": "均豪凱基5B購01",
       "market": "TWO",
-      "reason": "insufficient_history"
+      "reason": "no_history"
     },
     {
       "code": "707284",
@@ -115844,7 +115819,7 @@
       "symbol": "707294.TWO",
       "name": "台燿元大5A購05",
       "market": "TWO",
-      "reason": "insufficient_history"
+      "reason": "no_history"
     },
     {
       "code": "707295",
@@ -115858,7 +115833,7 @@
       "symbol": "707296.TWO",
       "name": "台燿元大5A購07",
       "market": "TWO",
-      "reason": "insufficient_history"
+      "reason": "no_history"
     },
     {
       "code": "707297",
@@ -115977,7 +115952,7 @@
       "symbol": "707313.TWO",
       "name": "旺矽永豐5A購03",
       "market": "TWO",
-      "reason": "insufficient_history"
+      "reason": "no_history"
     },
     {
       "code": "707314",
@@ -115998,7 +115973,7 @@
       "symbol": "707316.TWO",
       "name": "長科*永豐5A購01",
       "market": "TWO",
-      "reason": "insufficient_history"
+      "reason": "no_history"
     },
     {
       "code": "707317",
@@ -116040,14 +116015,14 @@
       "symbol": "707322.TWO",
       "name": "廣閎科永豐5A購01",
       "market": "TWO",
-      "reason": "insufficient_history"
+      "reason": "no_history"
     },
     {
       "code": "707323",
       "symbol": "707323.TWO",
       "name": "均豪國泰61購01",
       "market": "TWO",
-      "reason": "insufficient_history"
+      "reason": "no_history"
     },
     {
       "code": "707324",
@@ -116068,7 +116043,7 @@
       "symbol": "707326.TWO",
       "name": "台燿富邦64購01",
       "market": "TWO",
-      "reason": "insufficient_history"
+      "reason": "no_history"
     },
     {
       "code": "707327",
@@ -116488,7 +116463,7 @@
       "symbol": "707387.TWO",
       "name": "前鼎群益5A購01",
       "market": "TWO",
-      "reason": "insufficient_history"
+      "reason": "no_history"
     },
     {
       "code": "707388",
@@ -116565,7 +116540,7 @@
       "symbol": "707399.TWO",
       "name": "勤凱元大5A購03",
       "market": "TWO",
-      "reason": "insufficient_history"
+      "reason": "no_history"
     },
     {
       "code": "707400",
@@ -116677,7 +116652,7 @@
       "symbol": "707415.TWO",
       "name": "宣德統一74購01",
       "market": "TWO",
-      "reason": "no_history"
+      "reason": "insufficient_history"
     },
     {
       "code": "707416",
@@ -117356,7 +117331,7 @@
       "symbol": "707517.TWO",
       "name": "宏捷科富邦5C購02",
       "market": "TWO",
-      "reason": "no_history"
+      "reason": "insufficient_history"
     },
     {
       "code": "707518",
@@ -117909,7 +117884,7 @@
       "symbol": "707598.TWO",
       "name": "蜜望實統一64購01",
       "market": "TWO",
-      "reason": "insufficient_history"
+      "reason": "no_history"
     },
     {
       "code": "707599",
@@ -119561,7 +119536,7 @@
       "symbol": "707841.TWO",
       "name": "信昌電國泰5B購02",
       "market": "TWO",
-      "reason": "no_history"
+      "reason": "insufficient_history"
     },
     {
       "code": "707842",
@@ -119974,7 +119949,7 @@
       "symbol": "707901.TWO",
       "name": "鈊象富邦61購01",
       "market": "TWO",
-      "reason": "insufficient_history"
+      "reason": "no_history"
     },
     {
       "code": "707902",
@@ -120023,7 +119998,7 @@
       "symbol": "707909.TWO",
       "name": "尼克森元大5A購01",
       "market": "TWO",
-      "reason": "insufficient_history"
+      "reason": "no_history"
     },
     {
       "code": "707910",
@@ -120331,7 +120306,7 @@
       "symbol": "707953.TWO",
       "name": "均豪凱基5A購02",
       "market": "TWO",
-      "reason": "insufficient_history"
+      "reason": "no_history"
     },
     {
       "code": "707954",
@@ -120443,7 +120418,7 @@
       "symbol": "707969.TWO",
       "name": "環球晶富邦5B購01",
       "market": "TWO",
-      "reason": "no_history"
+      "reason": "insufficient_history"
     },
     {
       "code": "707970",
@@ -120730,7 +120705,7 @@
       "symbol": "708010.TWO",
       "name": "鉅橡國票5B購02",
       "market": "TWO",
-      "reason": "no_history"
+      "reason": "insufficient_history"
     },
     {
       "code": "708011",
@@ -121003,7 +120978,7 @@
       "symbol": "708049.TWO",
       "name": "雙鴻群益5A購07",
       "market": "TWO",
-      "reason": "no_history"
+      "reason": "insufficient_history"
     },
     {
       "code": "708050",
@@ -121374,7 +121349,7 @@
       "symbol": "708102.TWO",
       "name": "金山電國票5C購01",
       "market": "TWO",
-      "reason": "insufficient_history"
+      "reason": "no_history"
     },
     {
       "code": "708103",
@@ -121493,7 +121468,7 @@
       "symbol": "708119.TWO",
       "name": "欣銓群益5B購01",
       "market": "TWO",
-      "reason": "insufficient_history"
+      "reason": "no_history"
     },
     {
       "code": "708120",
@@ -121584,7 +121559,7 @@
       "symbol": "708132.TWO",
       "name": "環球晶富邦5C購02",
       "market": "TWO",
-      "reason": "insufficient_history"
+      "reason": "no_history"
     },
     {
       "code": "708133",
@@ -121668,7 +121643,7 @@
       "symbol": "708144.TWO",
       "name": "雙鴻元大61購14",
       "market": "TWO",
-      "reason": "no_history"
+      "reason": "insufficient_history"
     },
     {
       "code": "708145",
@@ -122039,7 +122014,7 @@
       "symbol": "708197.TWO",
       "name": "精材元大5B購07",
       "market": "TWO",
-      "reason": "no_history"
+      "reason": "insufficient_history"
     },
     {
       "code": "708198",
@@ -122186,7 +122161,7 @@
       "symbol": "708219.TWO",
       "name": "華景電台新5B購01",
       "market": "TWO",
-      "reason": "no_history"
+      "reason": "insufficient_history"
     },
     {
       "code": "708220",
@@ -122298,7 +122273,7 @@
       "symbol": "708236.TWO",
       "name": "鉅橡永豐5C購01",
       "market": "TWO",
-      "reason": "no_history"
+      "reason": "insufficient_history"
     },
     {
       "code": "708237",
@@ -122424,7 +122399,7 @@
       "symbol": "708255.TWO",
       "name": "家登元大5B購03",
       "market": "TWO",
-      "reason": "no_history"
+      "reason": "insufficient_history"
     },
     {
       "code": "708256",
@@ -122620,7 +122595,7 @@
       "symbol": "708283.TWO",
       "name": "鉅橡台新5B購02",
       "market": "TWO",
-      "reason": "no_history"
+      "reason": "insufficient_history"
     },
     {
       "code": "708284",
@@ -122634,7 +122609,7 @@
       "symbol": "708285.TWO",
       "name": "系微兆豐65購01",
       "market": "TWO",
-      "reason": "no_history"
+      "reason": "insufficient_history"
     },
     {
       "code": "708286",
@@ -122970,7 +122945,7 @@
       "symbol": "708334.TWO",
       "name": "港建*凱基5B購01",
       "market": "TWO",
-      "reason": "no_history"
+      "reason": "insufficient_history"
     },
     {
       "code": "708335",
@@ -123313,7 +123288,7 @@
       "symbol": "708385.TWO",
       "name": "合晶國泰61購01",
       "market": "TWO",
-      "reason": "insufficient_history"
+      "reason": "no_history"
     },
     {
       "code": "708386",
@@ -123362,7 +123337,7 @@
       "symbol": "708392.TWO",
       "name": "正淩台新5B購01",
       "market": "TWO",
-      "reason": "no_history"
+      "reason": "insufficient_history"
     },
     {
       "code": "708393",
@@ -123411,7 +123386,7 @@
       "symbol": "708399.TWO",
       "name": "優群台新5B購01",
       "market": "TWO",
-      "reason": "insufficient_history"
+      "reason": "no_history"
     },
     {
       "code": "708400",
@@ -123481,7 +123456,7 @@
       "symbol": "708409.TWO",
       "name": "智通*凱基5B購01",
       "market": "TWO",
-      "reason": "no_history"
+      "reason": "insufficient_history"
     },
     {
       "code": "708410",
@@ -123537,7 +123512,7 @@
       "symbol": "708417.TWO",
       "name": "合晶元大5B購01",
       "market": "TWO",
-      "reason": "insufficient_history"
+      "reason": "no_history"
     },
     {
       "code": "708418",
@@ -123565,7 +123540,7 @@
       "symbol": "708421.TWO",
       "name": "鈺太元大5B購02",
       "market": "TWO",
-      "reason": "insufficient_history"
+      "reason": "no_history"
     },
     {
       "code": "708422",
@@ -123579,7 +123554,7 @@
       "symbol": "708423.TWO",
       "name": "精材元大5B購11",
       "market": "TWO",
-      "reason": "insufficient_history"
+      "reason": "no_history"
     },
     {
       "code": "708424",
@@ -123607,7 +123582,7 @@
       "symbol": "708427.TWO",
       "name": "朋億*國票5C購01",
       "market": "TWO",
-      "reason": "insufficient_history"
+      "reason": "no_history"
     },
     {
       "code": "708428",
@@ -123642,7 +123617,7 @@
       "symbol": "708432.TWO",
       "name": "合晶富邦62購01",
       "market": "TWO",
-      "reason": "insufficient_history"
+      "reason": "no_history"
     },
     {
       "code": "708433",
@@ -123719,14 +123694,14 @@
       "symbol": "708443.TWO",
       "name": "家登群益61購02",
       "market": "TWO",
-      "reason": "insufficient_history"
+      "reason": "no_history"
     },
     {
       "code": "708444",
       "symbol": "708444.TWO",
       "name": "新盛力群益5B購01",
       "market": "TWO",
-      "reason": "insufficient_history"
+      "reason": "no_history"
     },
     {
       "code": "708445",
@@ -123740,7 +123715,7 @@
       "symbol": "708446.TWO",
       "name": "環球晶群益5C購02",
       "market": "TWO",
-      "reason": "insufficient_history"
+      "reason": "no_history"
     },
     {
       "code": "708447",
@@ -123754,7 +123729,7 @@
       "symbol": "708448.TWO",
       "name": "世界凱基65購01",
       "market": "TWO",
-      "reason": "insufficient_history"
+      "reason": "no_history"
     },
     {
       "code": "708449",
@@ -124139,7 +124114,7 @@
       "symbol": "708506.TWO",
       "name": "雷科國泰5C購02",
       "market": "TWO",
-      "reason": "no_history"
+      "reason": "insufficient_history"
     },
     {
       "code": "708507",
@@ -124160,7 +124135,7 @@
       "symbol": "708509.TWO",
       "name": "久元國票5B購02",
       "market": "TWO",
-      "reason": "insufficient_history"
+      "reason": "no_history"
     },
     {
       "code": "708510",
@@ -124762,7 +124737,7 @@
       "symbol": "708595.TWO",
       "name": "順達元大5B購03",
       "market": "TWO",
-      "reason": "insufficient_history"
+      "reason": "no_history"
     },
     {
       "code": "708596",
@@ -124818,7 +124793,7 @@
       "symbol": "708603.TWO",
       "name": "群聯元大61購06",
       "market": "TWO",
-      "reason": "insufficient_history"
+      "reason": "no_history"
     },
     {
       "code": "708604",
@@ -124888,7 +124863,7 @@
       "symbol": "708613.TWO",
       "name": "精材永豐64購01",
       "market": "TWO",
-      "reason": "insufficient_history"
+      "reason": "no_history"
     },
     {
       "code": "708614",
@@ -125035,7 +125010,7 @@
       "symbol": "708634.TWO",
       "name": "譜瑞凱基5B購03",
       "market": "TWO",
-      "reason": "insufficient_history"
+      "reason": "no_history"
     },
     {
       "code": "708635",
@@ -125077,7 +125052,7 @@
       "symbol": "708640.TWO",
       "name": "順達元大5B購04",
       "market": "TWO",
-      "reason": "insufficient_history"
+      "reason": "no_history"
     },
     {
       "code": "708641",
@@ -125413,7 +125388,7 @@
       "symbol": "708688.TWO",
       "name": "凡甲台新5B購01",
       "market": "TWO",
-      "reason": "insufficient_history"
+      "reason": "no_history"
     },
     {
       "code": "708689",
@@ -126001,7 +125976,7 @@
       "symbol": "708772.TWO",
       "name": "博盛國票5C購02",
       "market": "TWO",
-      "reason": "no_history"
+      "reason": "insufficient_history"
     },
     {
       "code": "708773",
@@ -126974,7 +126949,7 @@
       "symbol": "708911.TWO",
       "name": "立敦統一66購01",
       "market": "TWO",
-      "reason": "insufficient_history"
+      "reason": "no_history"
     },
     {
       "code": "708912",
@@ -127247,7 +127222,7 @@
       "symbol": "708950.TWO",
       "name": "優群台新5B購02",
       "market": "TWO",
-      "reason": "no_history"
+      "reason": "insufficient_history"
     },
     {
       "code": "708951",
@@ -127331,7 +127306,7 @@
       "symbol": "708962.TWO",
       "name": "點序元大5B購01",
       "market": "TWO",
-      "reason": "insufficient_history"
+      "reason": "no_history"
     },
     {
       "code": "708963",
@@ -127499,7 +127474,7 @@
       "symbol": "708986.TWO",
       "name": "威剛統一5B購02",
       "market": "TWO",
-      "reason": "no_history"
+      "reason": "insufficient_history"
     },
     {
       "code": "708987",
@@ -127989,7 +127964,7 @@
       "symbol": "709056.TWO",
       "name": "立敦統一65購04",
       "market": "TWO",
-      "reason": "no_history"
+      "reason": "insufficient_history"
     },
     {
       "code": "709057",
@@ -128038,7 +128013,7 @@
       "symbol": "709063.TWO",
       "name": "閎康統一65購03",
       "market": "TWO",
-      "reason": "insufficient_history"
+      "reason": "no_history"
     },
     {
       "code": "709064",
@@ -128255,7 +128230,7 @@
       "symbol": "709095.TWO",
       "name": "群聯元大5B購16",
       "market": "TWO",
-      "reason": "no_history"
+      "reason": "insufficient_history"
     },
     {
       "code": "709096",
@@ -128283,7 +128258,7 @@
       "symbol": "709099.TWO",
       "name": "朋程國票5B購02",
       "market": "TWO",
-      "reason": "no_history"
+      "reason": "insufficient_history"
     },
     {
       "code": "709100",
@@ -128465,14 +128440,14 @@
       "symbol": "709125.TWO",
       "name": "博智台新5B購03",
       "market": "TWO",
-      "reason": "insufficient_history"
+      "reason": "no_history"
     },
     {
       "code": "709126",
       "symbol": "709126.TWO",
       "name": "順達台新5B購04",
       "market": "TWO",
-      "reason": "insufficient_history"
+      "reason": "no_history"
     },
     {
       "code": "709127",
@@ -128528,7 +128503,7 @@
       "symbol": "709134.TWO",
       "name": "鑫科台新5B購01",
       "market": "TWO",
-      "reason": "no_history"
+      "reason": "insufficient_history"
     },
     {
       "code": "709135",
@@ -128570,7 +128545,7 @@
       "symbol": "709140.TWO",
       "name": "朋程永豐5C購01",
       "market": "TWO",
-      "reason": "insufficient_history"
+      "reason": "no_history"
     },
     {
       "code": "709141",
@@ -128605,7 +128580,7 @@
       "symbol": "709145.TWO",
       "name": "群聯永豐65購04",
       "market": "TWO",
-      "reason": "no_history"
+      "reason": "insufficient_history"
     },
     {
       "code": "709146",
@@ -128640,7 +128615,7 @@
       "symbol": "709150.TWO",
       "name": "沛亨統一64購01",
       "market": "TWO",
-      "reason": "no_history"
+      "reason": "insufficient_history"
     },
     {
       "code": "709151",
@@ -128717,7 +128692,7 @@
       "symbol": "709161.TWO",
       "name": "博智統一63購02",
       "market": "TWO",
-      "reason": "insufficient_history"
+      "reason": "no_history"
     },
     {
       "code": "709162",
@@ -128738,7 +128713,7 @@
       "symbol": "709164.TWO",
       "name": "萬泰科統一75購01",
       "market": "TWO",
-      "reason": "no_history"
+      "reason": "insufficient_history"
     },
     {
       "code": "709165",
@@ -128773,7 +128748,7 @@
       "symbol": "709169.TWO",
       "name": "群聯統一65購02",
       "market": "TWO",
-      "reason": "insufficient_history"
+      "reason": "no_history"
     },
     {
       "code": "709170",
@@ -128829,7 +128804,7 @@
       "symbol": "709177.TWO",
       "name": "臺慶科統一65購03",
       "market": "TWO",
-      "reason": "insufficient_history"
+      "reason": "no_history"
     },
     {
       "code": "709178",
@@ -128885,7 +128860,7 @@
       "symbol": "709185.TWO",
       "name": "群聯中信63購01",
       "market": "TWO",
-      "reason": "insufficient_history"
+      "reason": "no_history"
     },
     {
       "code": "709186",
@@ -128913,14 +128888,14 @@
       "symbol": "709189.TWO",
       "name": "博智群益5B購03",
       "market": "TWO",
-      "reason": "no_history"
+      "reason": "insufficient_history"
     },
     {
       "code": "709190",
       "symbol": "709190.TWO",
       "name": "華容群益5B購01",
       "market": "TWO",
-      "reason": "insufficient_history"
+      "reason": "no_history"
     },
     {
       "code": "709191",
@@ -128969,7 +128944,7 @@
       "symbol": "709197.TWO",
       "name": "鑫科群益5B購02",
       "market": "TWO",
-      "reason": "no_history"
+      "reason": "insufficient_history"
     },
     {
       "code": "709198",
@@ -129046,7 +129021,7 @@
       "symbol": "709208.TWO",
       "name": "沛亨凱基5B購03",
       "market": "TWO",
-      "reason": "no_history"
+      "reason": "insufficient_history"
     },
     {
       "code": "709209",
@@ -129228,7 +129203,7 @@
       "symbol": "709234.TWO",
       "name": "台半國泰5C購02",
       "market": "TWO",
-      "reason": "insufficient_history"
+      "reason": "no_history"
     },
     {
       "code": "709235",
@@ -129326,7 +129301,7 @@
       "symbol": "709248.TWO",
       "name": "富喬元大5B購03",
       "market": "TWO",
-      "reason": "insufficient_history"
+      "reason": "no_history"
     },
     {
       "code": "709249",
@@ -129340,7 +129315,7 @@
       "symbol": "709250.TWO",
       "name": "富喬元大5B購05",
       "market": "TWO",
-      "reason": "insufficient_history"
+      "reason": "no_history"
     },
     {
       "code": "709251",
@@ -129536,7 +129511,7 @@
       "symbol": "709278.TWO",
       "name": "華容凱基5C購01",
       "market": "TWO",
-      "reason": "no_history"
+      "reason": "insufficient_history"
     },
     {
       "code": "709279",
@@ -129732,7 +129707,7 @@
       "symbol": "709306.TWO",
       "name": "久元群益65購01",
       "market": "TWO",
-      "reason": "insufficient_history"
+      "reason": "no_history"
     },
     {
       "code": "709307",
@@ -129970,7 +129945,7 @@
       "symbol": "709340.TWO",
       "name": "朋程群益5B購03",
       "market": "TWO",
-      "reason": "no_history"
+      "reason": "insufficient_history"
     },
     {
       "code": "709341",
@@ -130131,7 +130106,7 @@
       "symbol": "709363.TWO",
       "name": "台特化凱基5B購03",
       "market": "TWO",
-      "reason": "insufficient_history"
+      "reason": "no_history"
     },
     {
       "code": "709364",
@@ -130187,7 +130162,7 @@
       "symbol": "709371.TWO",
       "name": "群翊凱基62購01",
       "market": "TWO",
-      "reason": "insufficient_history"
+      "reason": "no_history"
     },
     {
       "code": "709372",
@@ -130467,7 +130442,7 @@
       "symbol": "709411.TWO",
       "name": "良維元大5C購02",
       "market": "TWO",
-      "reason": "no_history"
+      "reason": "insufficient_history"
     },
     {
       "code": "709412",
@@ -132420,7 +132395,7 @@
       "symbol": "709690.TWO",
       "name": "綠界*永豐61購01",
       "market": "TWO",
-      "reason": "no_history"
+      "reason": "insufficient_history"
     },
     {
       "code": "709691",
@@ -132798,7 +132773,7 @@
       "symbol": "709744.TWO",
       "name": "臺慶科凱基5C購02",
       "market": "TWO",
-      "reason": "insufficient_history"
+      "reason": "no_history"
     },
     {
       "code": "709745",
@@ -133211,7 +133186,7 @@
       "symbol": "709803.TWO",
       "name": "宏捷科台新5C購01",
       "market": "TWO",
-      "reason": "no_history"
+      "reason": "insufficient_history"
     },
     {
       "code": "709804",
@@ -133596,7 +133571,7 @@
       "symbol": "709858.TWO",
       "name": "廣閎科富邦5C購01",
       "market": "TWO",
-      "reason": "no_history"
+      "reason": "insufficient_history"
     },
     {
       "code": "709859",
@@ -133855,7 +133830,7 @@
       "symbol": "709895.TWO",
       "name": "騰雲凱基61購01",
       "market": "TWO",
-      "reason": "insufficient_history"
+      "reason": "no_history"
     },
     {
       "code": "709896",
@@ -133981,7 +133956,7 @@
       "symbol": "709913.TWO",
       "name": "博智統一6C購01",
       "market": "TWO",
-      "reason": "no_history"
+      "reason": "insufficient_history"
     },
     {
       "code": "709914",
@@ -134233,7 +134208,7 @@
       "symbol": "709949.TWO",
       "name": "東浦國票61購03",
       "market": "TWO",
-      "reason": "insufficient_history"
+      "reason": "no_history"
     },
     {
       "code": "709950",
@@ -134520,7 +134495,7 @@
       "symbol": "709990.TWO",
       "name": "朋億*國票61購02",
       "market": "TWO",
-      "reason": "no_history"
+      "reason": "insufficient_history"
     },
     {
       "code": "709991",
@@ -134534,7 +134509,7 @@
       "symbol": "709992.TWO",
       "name": "信音國票61購01",
       "market": "TWO",
-      "reason": "no_history"
+      "reason": "insufficient_history"
     },
     {
       "code": "709993",
@@ -134569,7 +134544,7 @@
       "symbol": "709997.TWO",
       "name": "綠界*國票61購01",
       "market": "TWO",
-      "reason": "no_history"
+      "reason": "insufficient_history"
     },
     {
       "code": "709998",
@@ -134597,7 +134572,7 @@
       "symbol": "710001.TWO",
       "name": "加高國泰61購01",
       "market": "TWO",
-      "reason": "no_history"
+      "reason": "insufficient_history"
     },
     {
       "code": "710002",
@@ -134737,7 +134712,7 @@
       "symbol": "710021.TWO",
       "name": "博智統一62購03",
       "market": "TWO",
-      "reason": "insufficient_history"
+      "reason": "no_history"
     },
     {
       "code": "710022",
@@ -134842,7 +134817,7 @@
       "symbol": "710036.TWO",
       "name": "台半台新5C購02",
       "market": "TWO",
-      "reason": "insufficient_history"
+      "reason": "no_history"
     },
     {
       "code": "710037",
@@ -134926,7 +134901,7 @@
       "symbol": "710048.TWO",
       "name": "加高國票61購03",
       "market": "TWO",
-      "reason": "insufficient_history"
+      "reason": "no_history"
     },
     {
       "code": "710049",
@@ -134975,7 +134950,7 @@
       "symbol": "710055.TWO",
       "name": "聖暉*國票61購03",
       "market": "TWO",
-      "reason": "insufficient_history"
+      "reason": "no_history"
     },
     {
       "code": "710056",
@@ -135346,7 +135321,7 @@
       "symbol": "710108.TWO",
       "name": "聖暉*台新5C購04",
       "market": "TWO",
-      "reason": "insufficient_history"
+      "reason": "no_history"
     },
     {
       "code": "710109",
@@ -135570,7 +135545,7 @@
       "symbol": "710140.TWO",
       "name": "聖暉*富邦5C購03",
       "market": "TWO",
-      "reason": "no_history"
+      "reason": "insufficient_history"
     },
     {
       "code": "710141",
@@ -135745,7 +135720,7 @@
       "symbol": "710165.TWO",
       "name": "鈊象富邦62購02",
       "market": "TWO",
-      "reason": "no_history"
+      "reason": "insufficient_history"
     },
     {
       "code": "710166",
@@ -136067,7 +136042,7 @@
       "symbol": "710211.TWO",
       "name": "博盛國票61購01",
       "market": "TWO",
-      "reason": "insufficient_history"
+      "reason": "no_history"
     },
     {
       "code": "710212",
@@ -136242,7 +136217,7 @@
       "symbol": "710236.TWO",
       "name": "威剛中信66購01",
       "market": "TWO",
-      "reason": "insufficient_history"
+      "reason": "no_history"
     },
     {
       "code": "710237",
@@ -136319,7 +136294,7 @@
       "symbol": "710247.TWO",
       "name": "台半元大63購03",
       "market": "TWO",
-      "reason": "insufficient_history"
+      "reason": "no_history"
     },
     {
       "code": "710248",
@@ -136795,7 +136770,7 @@
       "symbol": "710315.TWO",
       "name": "臺慶科凱基5C購07",
       "market": "TWO",
-      "reason": "insufficient_history"
+      "reason": "no_history"
     },
     {
       "code": "710316",
@@ -137460,7 +137435,7 @@
       "symbol": "710410.TWO",
       "name": "精材永豐5C購03",
       "market": "TWO",
-      "reason": "insufficient_history"
+      "reason": "no_history"
     },
     {
       "code": "710411",
@@ -137586,7 +137561,7 @@
       "symbol": "710428.TWO",
       "name": "杰力國泰61購01",
       "market": "TWO",
-      "reason": "no_history"
+      "reason": "insufficient_history"
     },
     {
       "code": "710429",
@@ -138727,7 +138702,7 @@
       "symbol": "710591.TWO",
       "name": "竹陞群益61購01",
       "market": "TWO",
-      "reason": "no_history"
+      "reason": "insufficient_history"
     },
     {
       "code": "710592",
@@ -138846,7 +138821,7 @@
       "symbol": "710608.TWO",
       "name": "富喬凱基61購04",
       "market": "TWO",
-      "reason": "insufficient_history"
+      "reason": "no_history"
     },
     {
       "code": "710609",
@@ -139182,7 +139157,7 @@
       "symbol": "710656.TWO",
       "name": "台嘉碩群益61購01",
       "market": "TWO",
-      "reason": "insufficient_history"
+      "reason": "no_history"
     },
     {
       "code": "710657",
@@ -139686,7 +139661,7 @@
       "symbol": "710728.TWO",
       "name": "華洋永豐61購01",
       "market": "TWO",
-      "reason": "insufficient_history"
+      "reason": "no_history"
     },
     {
       "code": "710729",
@@ -139728,7 +139703,7 @@
       "symbol": "710734.TWO",
       "name": "寬魚永豐61購02",
       "market": "TWO",
-      "reason": "no_history"
+      "reason": "insufficient_history"
     },
     {
       "code": "710735",
@@ -139861,7 +139836,7 @@
       "symbol": "710753.TWO",
       "name": "擎邦國票61購01",
       "market": "TWO",
-      "reason": "insufficient_history"
+      "reason": "no_history"
     },
     {
       "code": "710754",
@@ -140911,7 +140886,7 @@
       "symbol": "710903.TWO",
       "name": "鑫科元大61購01",
       "market": "TWO",
-      "reason": "no_history"
+      "reason": "insufficient_history"
     },
     {
       "code": "710904",
@@ -141289,7 +141264,7 @@
       "symbol": "710957.TWO",
       "name": "新普永豐61購02",
       "market": "TWO",
-      "reason": "insufficient_history"
+      "reason": "no_history"
     },
     {
       "code": "710958",
@@ -141590,7 +141565,7 @@
       "symbol": "711000.TWO",
       "name": "長聖國票65購01",
       "market": "TWO",
-      "reason": "no_history"
+      "reason": "insufficient_history"
     },
     {
       "code": "711001",
@@ -141632,7 +141607,7 @@
       "symbol": "711006.TWO",
       "name": "大中元大61購02",
       "market": "TWO",
-      "reason": "insufficient_history"
+      "reason": "no_history"
     },
     {
       "code": "711007",
@@ -141723,7 +141698,7 @@
       "symbol": "711019.TWO",
       "name": "原相元大61購02",
       "market": "TWO",
-      "reason": "no_history"
+      "reason": "insufficient_history"
     },
     {
       "code": "711020",
@@ -142101,7 +142076,7 @@
       "symbol": "711073.TWO",
       "name": "智崴國票65購01",
       "market": "TWO",
-      "reason": "insufficient_history"
+      "reason": "no_history"
     },
     {
       "code": "711074",
@@ -142150,7 +142125,7 @@
       "symbol": "711080.TWO",
       "name": "智通*元大61購02",
       "market": "TWO",
-      "reason": "insufficient_history"
+      "reason": "no_history"
     },
     {
       "code": "711081",
@@ -142388,7 +142363,7 @@
       "symbol": "711114.TWO",
       "name": "堡達統一6C購01",
       "market": "TWO",
-      "reason": "insufficient_history"
+      "reason": "no_history"
     },
     {
       "code": "711115",
@@ -142654,7 +142629,7 @@
       "symbol": "711152.TWO",
       "name": "精材國票65購01",
       "market": "TWO",
-      "reason": "insufficient_history"
+      "reason": "no_history"
     },
     {
       "code": "711153",
@@ -142948,7 +142923,7 @@
       "symbol": "711194.TWO",
       "name": "昇佳電統一67購01",
       "market": "TWO",
-      "reason": "no_history"
+      "reason": "insufficient_history"
     },
     {
       "code": "711195",
@@ -143305,7 +143280,7 @@
       "symbol": "711245.TWO",
       "name": "順達凱基61購04",
       "market": "TWO",
-      "reason": "no_history"
+      "reason": "insufficient_history"
     },
     {
       "code": "711246",
@@ -144068,7 +144043,7 @@
       "symbol": "711354.TWO",
       "name": "智通*元大61購05",
       "market": "TWO",
-      "reason": "insufficient_history"
+      "reason": "no_history"
     },
     {
       "code": "711355",
@@ -144243,7 +144218,7 @@
       "symbol": "711379.TWO",
       "name": "創泓國票61購02",
       "market": "TWO",
-      "reason": "no_history"
+      "reason": "insufficient_history"
     },
     {
       "code": "711380",
@@ -144866,7 +144841,7 @@
       "symbol": "711468.TWO",
       "name": "中美晶統一65購03",
       "market": "TWO",
-      "reason": "insufficient_history"
+      "reason": "no_history"
     },
     {
       "code": "711469",
@@ -145125,7 +145100,7 @@
       "symbol": "711505.TWO",
       "name": "順達凱基61購05",
       "market": "TWO",
-      "reason": "no_history"
+      "reason": "insufficient_history"
     },
     {
       "code": "711506",
@@ -145160,7 +145135,7 @@
       "symbol": "711510.TWO",
       "name": "立敦元大61購03",
       "market": "TWO",
-      "reason": "insufficient_history"
+      "reason": "no_history"
     },
     {
       "code": "711511",
@@ -145426,7 +145401,7 @@
       "symbol": "711548.TWO",
       "name": "榮田國票61購01",
       "market": "TWO",
-      "reason": "insufficient_history"
+      "reason": "no_history"
     },
     {
       "code": "711549",
@@ -146301,7 +146276,7 @@
       "symbol": "711673.TWO",
       "name": "博士旺永豐67購01",
       "market": "TWO",
-      "reason": "insufficient_history"
+      "reason": "no_history"
     },
     {
       "code": "711674",
@@ -146609,7 +146584,7 @@
       "symbol": "711717.TWO",
       "name": "磐儀群益61購01",
       "market": "TWO",
-      "reason": "insufficient_history"
+      "reason": "no_history"
     },
     {
       "code": "711718",
@@ -147533,7 +147508,7 @@
       "symbol": "711849.TWO",
       "name": "頎邦永豐63購01",
       "market": "TWO",
-      "reason": "no_history"
+      "reason": "insufficient_history"
     },
     {
       "code": "711850",
@@ -147771,7 +147746,7 @@
       "symbol": "711883.TWO",
       "name": "立碁國泰63購01",
       "market": "TWO",
-      "reason": "no_history"
+      "reason": "insufficient_history"
     },
     {
       "code": "711884",
@@ -148142,7 +148117,7 @@
       "symbol": "711936.TWO",
       "name": "加高國票65購01",
       "market": "TWO",
-      "reason": "no_history"
+      "reason": "insufficient_history"
     },
     {
       "code": "711937",
@@ -148611,7 +148586,7 @@
       "symbol": "712003.TWO",
       "name": "巨漢凱基63購01",
       "market": "TWO",
-      "reason": "no_history"
+      "reason": "insufficient_history"
     },
     {
       "code": "712004",
@@ -148660,7 +148635,7 @@
       "symbol": "712010.TWO",
       "name": "元太國票64購01",
       "market": "TWO",
-      "reason": "insufficient_history"
+      "reason": "no_history"
     },
     {
       "code": "712011",
@@ -148716,7 +148691,7 @@
       "symbol": "712018.TWO",
       "name": "譜瑞國票66購01",
       "market": "TWO",
-      "reason": "no_history"
+      "reason": "insufficient_history"
     },
     {
       "code": "712019",
@@ -148814,7 +148789,7 @@
       "symbol": "712032.TWO",
       "name": "新應材元大63購03",
       "market": "TWO",
-      "reason": "insufficient_history"
+      "reason": "no_history"
     },
     {
       "code": "712033",
@@ -148877,7 +148852,7 @@
       "symbol": "712041.TWO",
       "name": "台特化國票67購01",
       "market": "TWO",
-      "reason": "insufficient_history"
+      "reason": "no_history"
     },
     {
       "code": "712042",
@@ -149206,7 +149181,7 @@
       "symbol": "712088.TWO",
       "name": "新應材凱基63購03",
       "market": "TWO",
-      "reason": "insufficient_history"
+      "reason": "no_history"
     },
     {
       "code": "712089",
@@ -149332,7 +149307,7 @@
       "symbol": "712106.TWO",
       "name": "營邦台新62購02",
       "market": "TWO",
-      "reason": "insufficient_history"
+      "reason": "no_history"
     },
     {
       "code": "712107",
@@ -149409,7 +149384,7 @@
       "symbol": "712117.TWO",
       "name": "新應材統一71購02",
       "market": "TWO",
-      "reason": "insufficient_history"
+      "reason": "no_history"
     },
     {
       "code": "712118",
@@ -149563,7 +149538,7 @@
       "symbol": "712139.TWO",
       "name": "富喬中信64購01",
       "market": "TWO",
-      "reason": "no_history"
+      "reason": "insufficient_history"
     },
     {
       "code": "712140",
@@ -150928,7 +150903,7 @@
       "symbol": "712334.TWO",
       "name": "弘塑國票66購01",
       "market": "TWO",
-      "reason": "insufficient_history"
+      "reason": "no_history"
     },
     {
       "code": "712335",
@@ -151054,7 +151029,7 @@
       "symbol": "712352.TWO",
       "name": "新應材台新62購04",
       "market": "TWO",
-      "reason": "no_history"
+      "reason": "insufficient_history"
     },
     {
       "code": "712353",
@@ -151502,7 +151477,7 @@
       "symbol": "712416.TWO",
       "name": "艾訊群益63購01",
       "market": "TWO",
-      "reason": "insufficient_history"
+      "reason": "no_history"
     },
     {
       "code": "712417",
@@ -152685,7 +152660,7 @@
       "symbol": "712585.TWO",
       "name": "雙鴻凱基64購02",
       "market": "TWO",
-      "reason": "insufficient_history"
+      "reason": "no_history"
     },
     {
       "code": "712586",
@@ -152734,7 +152709,7 @@
       "symbol": "712592.TWO",
       "name": "宜鼎台新64購03",
       "market": "TWO",
-      "reason": "insufficient_history"
+      "reason": "no_history"
     },
     {
       "code": "712593",
@@ -152776,7 +152751,7 @@
       "symbol": "712598.TWO",
       "name": "穩懋台新65購01",
       "market": "TWO",
-      "reason": "no_history"
+      "reason": "insufficient_history"
     },
     {
       "code": "712599",
@@ -154253,14 +154228,14 @@
       "symbol": "72769U.TWO",
       "name": "穩懋元富58售03",
       "market": "TWO",
-      "reason": "no_history"
+      "reason": "insufficient_history"
     },
     {
       "code": "72770U",
       "symbol": "72770U.TWO",
       "name": "信驊凱基59售02",
       "market": "TWO",
-      "reason": "no_history"
+      "reason": "insufficient_history"
     },
     {
       "code": "72771U",
@@ -154323,7 +154298,7 @@
       "symbol": "72779U.TWO",
       "name": "穩懋元大59售08",
       "market": "TWO",
-      "reason": "no_history"
+      "reason": "insufficient_history"
     },
     {
       "code": "72780U",
@@ -154554,7 +154529,7 @@
       "symbol": "72810U.TWO",
       "name": "鑫聯國票5A售02",
       "market": "TWO",
-      "reason": "insufficient_history"
+      "reason": "no_history"
     },
     {
       "code": "72811U",
@@ -154617,7 +154592,7 @@
       "symbol": "72819U.TWO",
       "name": "鑫科國票59售02",
       "market": "TWO",
-      "reason": "insufficient_history"
+      "reason": "no_history"
     },
     {
       "code": "72820U",
@@ -154652,7 +154627,7 @@
       "symbol": "72824U.TWO",
       "name": "亞泰國票59售03",
       "market": "TWO",
-      "reason": "insufficient_history"
+      "reason": "no_history"
     },
     {
       "code": "72825U",
@@ -155954,7 +155929,7 @@
       "symbol": "72993U.TWO",
       "name": "中美晶凱基63售03",
       "market": "TWO",
-      "reason": "no_history"
+      "reason": "insufficient_history"
     },
     {
       "code": "72994U",
@@ -156080,7 +156055,7 @@
       "symbol": "73011U.TWO",
       "name": "中美晶國票66售01",
       "market": "TWO",
-      "reason": "insufficient_history"
+      "reason": "no_history"
     },
     {
       "code": "73012U",
@@ -157396,7 +157371,7 @@
       "symbol": "736436.TWO",
       "name": "晶呈統一59購01",
       "market": "TWO",
-      "reason": "no_history"
+      "reason": "insufficient_history"
     },
     {
       "code": "736439",
@@ -157417,7 +157392,7 @@
       "symbol": "736444.TWO",
       "name": "穩懋統一61購01",
       "market": "TWO",
-      "reason": "insufficient_history"
+      "reason": "no_history"
     },
     {
       "code": "736474",
@@ -157452,7 +157427,7 @@
       "symbol": "736478.TWO",
       "name": "新盛力統一67購01",
       "market": "TWO",
-      "reason": "insufficient_history"
+      "reason": "no_history"
     },
     {
       "code": "736479",
@@ -158236,7 +158211,7 @@
       "symbol": "738503.TWO",
       "name": "勤凱元大59購01",
       "market": "TWO",
-      "reason": "insufficient_history"
+      "reason": "no_history"
     },
     {
       "code": "738557",
@@ -158586,7 +158561,7 @@
       "symbol": "738870.TWO",
       "name": "群聯凱基59購02",
       "market": "TWO",
-      "reason": "insufficient_history"
+      "reason": "no_history"
     },
     {
       "code": "738874",
@@ -158831,7 +158806,7 @@
       "symbol": "739303.TWO",
       "name": "中美晶凱基59購01",
       "market": "TWO",
-      "reason": "insufficient_history"
+      "reason": "no_history"
     },
     {
       "code": "739372",
@@ -159429,13 +159404,6 @@
       "reason": "insufficient_history"
     },
     {
-      "code": "7556",
-      "symbol": "7556.TWO",
-      "name": "意德士",
-      "market": "TWO",
-      "reason": "insufficient_history"
-    },
-    {
       "code": "7584",
       "symbol": "7584.TWO",
       "name": "樂意",
@@ -159453,13 +159421,6 @@
       "code": "7703",
       "symbol": "7703.TWO",
       "name": "銳澤",
-      "market": "TWO",
-      "reason": "insufficient_history"
-    },
-    {
-      "code": "7704",
-      "symbol": "7704.TWO",
-      "name": "明遠精密",
       "market": "TWO",
       "reason": "insufficient_history"
     },
@@ -159506,13 +159467,6 @@
       "reason": "insufficient_history"
     },
     {
-      "code": "7716",
-      "symbol": "7716.TWO",
-      "name": "昱臺國際",
-      "market": "TWO",
-      "reason": "insufficient_history"
-    },
-    {
       "code": "7717",
       "symbol": "7717.TWO",
       "name": "萊德光電-KY",
@@ -159537,6 +159491,13 @@
       "code": "7728",
       "symbol": "7728.TWO",
       "name": "光焱科技",
+      "market": "TWO",
+      "reason": "insufficient_history"
+    },
+    {
+      "code": "7734",
+      "symbol": "7734.TWO",
+      "name": "印能科技",
       "market": "TWO",
       "reason": "insufficient_history"
     },
@@ -159614,6 +159575,13 @@
       "code": "7777",
       "symbol": "7777.TWO",
       "name": "能率亞洲",
+      "market": "TWO",
+      "reason": "insufficient_history"
+    },
+    {
+      "code": "7782",
+      "symbol": "7782.TWO",
+      "name": "光速火箭",
       "market": "TWO",
       "reason": "insufficient_history"
     },
