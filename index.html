@@ -4,31 +4,46 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-<title>台股 AI 選股儀表板 V8.1</title>
+<title>台股 AI 選股儀表板</title>
 
 <style>
+
 * {
   box-sizing: border-box;
 }
 
 :root {
-  --bg: #f3f5f8;
+  --bg: #f4f6f9;
   --card: #ffffff;
   --text: #172033;
-  --muted: #64748b;
-  --border: #e5e7eb;
+  --muted: #718096;
+  --border: #e6eaf0;
+
   --header: #111827;
+
   --blue: #2563eb;
+  --blue-bg: #eff6ff;
+
   --green: #16a34a;
-  --green-bg: #dcfce7;
+  --green-bg: #ecfdf3;
+
   --red: #dc2626;
-  --red-bg: #fee2e2;
-  --yellow: #92400e;
-  --yellow-bg: #fef3c7;
+  --red-bg: #fef2f2;
+
+  --yellow: #d97706;
+  --yellow-bg: #fffbeb;
+
+  --shadow:
+    0 4px 16px rgba(15, 23, 42, 0.06);
+
+  --radius: 16px;
 }
 
 body {
   margin: 0;
+  background: var(--bg);
+  color: var(--text);
+
   font-family:
     -apple-system,
     BlinkMacSystemFont,
@@ -36,9 +51,12 @@ body {
     "Noto Sans TC",
     Arial,
     sans-serif;
-  background: var(--bg);
-  color: var(--text);
 }
+
+
+/* =========================================================
+   Header
+========================================================= */
 
 header {
   background: var(--header);
@@ -47,240 +65,605 @@ header {
 }
 
 .header-inner {
-  max-width: 1280px;
+  max-width: 1180px;
   margin: auto;
 }
 
-h1 {
-  margin: 0 0 7px;
+.header-title {
   font-size: 25px;
+  font-weight: 800;
+  letter-spacing: .3px;
 }
 
-.subtitle {
+.header-subtitle {
+  margin-top: 6px;
   color: #cbd5e1;
   font-size: 13px;
 }
 
+
+/* =========================================================
+   Main
+========================================================= */
+
 .container {
-  max-width: 1280px;
+  max-width: 1180px;
   margin: auto;
   padding: 18px;
 }
 
-.grid {
-  display: grid;
-  grid-template-columns:
-    repeat(auto-fit, minmax(190px, 1fr));
-  gap: 12px;
-  margin-bottom: 16px;
+
+/* =========================================================
+   Loading / Error
+========================================================= */
+
+.loading {
+  text-align: center;
+  padding: 60px 20px;
+  color: var(--muted);
 }
 
-.card {
-  background: var(--card);
+.error {
+  background: var(--red-bg);
+  color: #991b1b;
   border-radius: 14px;
-  padding: 17px;
-  box-shadow:
-    0 3px 12px rgba(0,0,0,.06);
+  padding: 18px;
+  line-height: 1.7;
 }
 
-.card-title {
-  color: var(--muted);
-  font-size: 13px;
-  margin-bottom: 8px;
-}
 
-.card-value {
-  font-size: 27px;
-  font-weight: 750;
-}
-
-.card-sub {
-  margin-top: 5px;
-  font-size: 12px;
-  color: var(--muted);
-}
+/* =========================================================
+   Section
+========================================================= */
 
 .section {
-  margin-top: 20px;
+  margin-top: 24px;
+}
+
+.section:first-child {
+  margin-top: 0;
+}
+
+.section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: end;
+  gap: 12px;
+  margin-bottom: 12px;
 }
 
 .section-title {
   font-size: 20px;
-  font-weight: 750;
-  margin-bottom: 11px;
+  font-weight: 800;
 }
 
 .section-subtitle {
-  color: var(--muted);
+  margin-top: 4px;
   font-size: 12px;
-  margin-top: -6px;
-  margin-bottom: 10px;
+  color: var(--muted);
 }
 
-.table-wrap {
-  overflow-x: auto;
-  background: white;
-  border-radius: 14px;
-  box-shadow:
-    0 3px 12px rgba(0,0,0,.06);
+
+/* =========================================================
+   Overview
+========================================================= */
+
+.overview-grid {
+  display: grid;
+  grid-template-columns:
+    repeat(4, minmax(0, 1fr));
+
+  gap: 12px;
 }
 
-table {
-  width: 100%;
-  border-collapse: collapse;
-  min-width: 760px;
+.overview-card {
+  background: var(--card);
+  border-radius: var(--radius);
+  padding: 17px;
+
+  box-shadow: var(--shadow);
+  border: 1px solid var(--border);
 }
 
-th,
-td {
-  padding: 10px 9px;
-  border-bottom: 1px solid var(--border);
-  text-align: left;
+.overview-label {
   font-size: 13px;
-  white-space: nowrap;
+  color: var(--muted);
 }
 
-th {
-  background: #f8fafc;
-  color: #475569;
-  position: sticky;
-  top: 0;
-  z-index: 2;
+.overview-value {
+  margin-top: 7px;
+
+  font-size: 28px;
+  line-height: 1;
+
+  font-weight: 800;
 }
 
-tr:hover td {
-  background: #fafafa;
-}
+.overview-note {
+  margin-top: 7px;
 
-.badge {
-  display: inline-block;
-  padding: 4px 9px;
-  border-radius: 999px;
+  color: var(--muted);
   font-size: 11px;
-  font-weight: 750;
 }
 
-.badge-good {
-  background: var(--green-bg);
-  color: #166534;
+
+/* =========================================================
+   Data Status
+========================================================= */
+
+.status-card {
+  background: var(--card);
+  border-radius: var(--radius);
+  padding: 16px;
+
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow);
 }
 
-.badge-mid {
-  background: var(--yellow-bg);
-  color: var(--yellow);
-}
+.status-grid {
+  display: grid;
+  grid-template-columns:
+    repeat(4, minmax(0, 1fr));
 
-.badge-low {
-  background: var(--red-bg);
-  color: #991b1b;
-}
-
-.badge-blue {
-  background: #dbeafe;
-  color: #1d4ed8;
-}
-
-.up {
-  color: var(--red);
-  font-weight: 700;
-}
-
-.down {
-  color: var(--green);
-  font-weight: 700;
-}
-
-.neutral {
-  color: #64748b;
-  font-weight: 700;
-}
-
-.status-box {
-  display: flex;
-  flex-wrap: wrap;
   gap: 10px;
 }
 
 .status-item {
   background: #f8fafc;
-  border-radius: 10px;
-  padding: 9px 12px;
-  font-size: 13px;
+  border-radius: 11px;
+  padding: 11px 12px;
 }
 
-.status-ok {
-  color: #166534;
+.status-label {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.status-value {
+  margin-top: 3px;
+  font-size: 13px;
   font-weight: 700;
 }
 
-.notice {
-  background: #eff6ff;
-  color: #1e40af;
-  padding: 14px;
-  border-radius: 12px;
-  line-height: 1.6;
+.status-ok {
+  color: #15803d;
 }
 
-.meta {
+
+/* =========================================================
+   Recommendation Cards
+========================================================= */
+
+.recommend-grid {
+  display: grid;
+
+  grid-template-columns:
+    repeat(2, minmax(0, 1fr));
+
+  gap: 13px;
+}
+
+.stock-card {
+  background: var(--card);
+
+  border: 1px solid var(--border);
+
+  border-radius: var(--radius);
+
+  padding: 17px;
+
+  box-shadow: var(--shadow);
+
+  position: relative;
+
+  overflow: hidden;
+}
+
+.stock-card::before {
+  content: "";
+
+  position: absolute;
+
+  left: 0;
+  top: 0;
+  bottom: 0;
+
+  width: 4px;
+
+  background: var(--blue);
+}
+
+.stock-head {
   display: flex;
-  flex-wrap: wrap;
-  gap: 9px;
+  justify-content: space-between;
+  align-items: start;
+
+  gap: 10px;
 }
 
-.meta-item {
-  background: #f8fafc;
-  border-radius: 9px;
-  padding: 8px 11px;
+.stock-code {
+  font-size: 20px;
+  font-weight: 850;
+}
+
+.stock-name {
+  margin-top: 3px;
+
+  color: var(--muted);
   font-size: 13px;
 }
 
-button {
-  border: 0;
-  border-radius: 9px;
-  padding: 9px 14px;
-  cursor: pointer;
-  background: var(--blue);
-  color: white;
-  font-weight: 650;
+.stock-price {
+  margin-top: 16px;
+
+  display: flex;
+  justify-content: space-between;
+  align-items: end;
 }
 
-button:hover {
-  opacity: .9;
+.price {
+  font-size: 25px;
+  font-weight: 850;
 }
 
-.empty {
-  padding: 22px;
+.change {
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.up {
+  color: var(--red);
+}
+
+.down {
+  color: var(--green);
+}
+
+.neutral {
   color: var(--muted);
 }
 
-.highlight {
+.signal-area {
+  margin-top: 14px;
+
+  display: grid;
+  grid-template-columns:
+    1fr 1fr;
+
+  gap: 9px;
+}
+
+.info-box {
+  background: #f8fafc;
+
+  border-radius: 10px;
+
+  padding: 10px 11px;
+}
+
+.info-label {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.info-value {
+  margin-top: 3px;
+
+  font-size: 13px;
   font-weight: 750;
 }
 
-.green-text {
-  color: #166534;
+.recommendation {
+  margin-top: 12px;
+
+  background: var(--blue-bg);
+
+  color: #1d4ed8;
+
+  border-radius: 10px;
+
+  padding: 10px 11px;
+
+  font-size: 13px;
+  font-weight: 750;
 }
 
-.red-text {
-  color: #991b1b;
+
+/* =========================================================
+   Badge
+========================================================= */
+
+.badge {
+  display: inline-flex;
+
+  align-items: center;
+  justify-content: center;
+
+  padding: 5px 10px;
+
+  border-radius: 999px;
+
+  font-size: 11px;
+
+  font-weight: 800;
+
+  white-space: nowrap;
 }
 
-footer {
-  max-width: 1280px;
-  margin: 25px auto;
-  padding: 0 18px 30px;
+.badge-good {
+  background: var(--green-bg);
+  color: #15803d;
+}
+
+.badge-blue {
+  background: var(--blue-bg);
+  color: #1d4ed8;
+}
+
+.badge-mid {
+  background: var(--yellow-bg);
+  color: #a16207;
+}
+
+.badge-low {
+  background: var(--red-bg);
+  color: #b91c1c;
+}
+
+
+/* =========================================================
+   Top 10
+========================================================= */
+
+.top-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.top-row {
+  background: var(--card);
+
+  border: 1px solid var(--border);
+
+  border-radius: 13px;
+
+  padding: 13px 15px;
+
+  display: grid;
+
+  grid-template-columns:
+    48px
+    minmax(100px, 1fr)
+    minmax(90px, 120px)
+    minmax(80px, 110px)
+    minmax(100px, 140px);
+
+  align-items: center;
+
+  gap: 10px;
+
+  box-shadow: 0 2px 8px rgba(15, 23, 42, .04);
+}
+
+.top-rank {
+  font-size: 18px;
+  font-weight: 850;
+  color: #475569;
+}
+
+.top-stock-code {
+  font-weight: 800;
+}
+
+.top-stock-name {
   color: var(--muted);
   font-size: 11px;
+  margin-top: 2px;
+}
+
+.top-price {
+  font-weight: 800;
+}
+
+.top-signal {
+  text-align: left;
+}
+
+
+/* =========================================================
+   ETF / Bond
+========================================================= */
+
+.asset-grid {
+  display: grid;
+
+  grid-template-columns:
+    repeat(2, minmax(0, 1fr));
+
+  gap: 13px;
+}
+
+.asset-card {
+  background: var(--card);
+
+  border: 1px solid var(--border);
+
+  border-radius: var(--radius);
+
+  padding: 16px;
+
+  box-shadow: var(--shadow);
+}
+
+.asset-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.asset-code {
+  font-size: 18px;
+  font-weight: 850;
+}
+
+.asset-name {
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.asset-price {
+  margin-top: 15px;
+
+  display: flex;
+  justify-content: space-between;
+  align-items: end;
+}
+
+.asset-price-value {
+  font-size: 22px;
+  font-weight: 850;
+}
+
+
+/* =========================================================
+   Empty
+========================================================= */
+
+.empty {
+  background: var(--card);
+
+  border: 1px solid var(--border);
+
+  border-radius: var(--radius);
+
+  padding: 28px;
+
+  color: var(--muted);
+
+  text-align: center;
+}
+
+
+/* =========================================================
+   Backtest
+========================================================= */
+
+.backtest-card {
+  background: var(--card);
+
+  border: 1px solid var(--border);
+
+  border-radius: var(--radius);
+
+  padding: 16px;
+
+  box-shadow: var(--shadow);
+}
+
+.backtest-grid {
+  display: grid;
+
+  grid-template-columns:
+    repeat(2, minmax(0, 1fr));
+
+  gap: 12px;
+}
+
+.backtest-item {
+  background: #f8fafc;
+
+  border-radius: 12px;
+
+  padding: 14px;
+}
+
+.backtest-name {
+  font-weight: 800;
+}
+
+.backtest-value {
+  margin-top: 8px;
+
+  font-size: 24px;
+
+  font-weight: 850;
+}
+
+.backtest-note {
+  margin-top: 4px;
+
+  color: var(--muted);
+  font-size: 11px;
+}
+
+
+/* =========================================================
+   Footer
+========================================================= */
+
+footer {
+  max-width: 1180px;
+
+  margin: 28px auto;
+
+  padding: 0 18px 30px;
+
+  color: var(--muted);
+
+  font-size: 11px;
+
   line-height: 1.6;
 }
 
-@media (max-width: 600px) {
 
-  header {
-    padding: 18px 14px;
+/* =========================================================
+   Mobile
+========================================================= */
+
+@media (max-width: 850px) {
+
+  .overview-grid {
+    grid-template-columns:
+      repeat(2, minmax(0, 1fr));
   }
 
-  h1 {
+  .status-grid {
+    grid-template-columns:
+      repeat(2, minmax(0, 1fr));
+  }
+
+  .recommend-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .asset-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .top-row {
+    grid-template-columns:
+      38px
+      1fr
+      90px
+      90px;
+  }
+
+  .top-signal {
+    grid-column: 2 / -1;
+  }
+
+}
+
+
+@media (max-width: 560px) {
+
+  header {
+    padding: 19px 14px;
+  }
+
+  .header-title {
     font-size: 21px;
   }
 
@@ -288,354 +671,488 @@ footer {
     padding: 12px;
   }
 
-  .card {
+  .overview-grid {
+    grid-template-columns: 1fr 1fr;
+    gap: 9px;
+  }
+
+  .overview-card {
     padding: 14px;
   }
 
-  .card-value {
-    font-size: 24px;
+  .overview-value {
+    font-size: 23px;
   }
 
-  .section-title {
-    font-size: 18px;
+  .status-grid {
+    grid-template-columns: 1fr;
   }
+
+  .signal-area {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .top-row {
+    grid-template-columns:
+      35px
+      1fr
+      80px;
+  }
+
+  .top-change {
+    display: none;
+  }
+
 }
+
+
+/* =========================================================
+   Very small screen
+========================================================= */
+
+@media (max-width: 390px) {
+
+  .overview-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .stock-price {
+    align-items: start;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .signal-area {
+    grid-template-columns: 1fr;
+  }
+
+}
+
 </style>
 </head>
 
+
 <body>
 
+
 <header>
+
   <div class="header-inner">
 
-    <h1>台股 AI 選股儀表板</h1>
+    <div class="header-title">
+      台股 AI 選股儀表板
+    </div>
 
-    <div class="subtitle">
-      V8.1 FINAL｜後台計算｜前台 READ ONLY
+    <div class="header-subtitle">
+      今日市場掃描｜AI 精選｜Top 10｜ETF｜債券
     </div>
 
   </div>
+
 </header>
 
 
 <main class="container">
 
-  <div id="loading" class="loading">
-    正在讀取後台資料……
-  </div>
 
-  <div id="error"></div>
-
-  <div id="app" style="display:none">
+<div id="loading" class="loading">
+  正在讀取最新市場資料……
+</div>
 
 
-    <!-- =====================================================
-         核心概況
-         ===================================================== -->
-
-    <section>
-
-      <div class="grid">
-
-        <div class="card">
-          <div class="card-title">
-            股票數量
-          </div>
-
-          <div
-            id="stockCount"
-            class="card-value"
-          >
-            -
-          </div>
-
-          <div class="card-sub">
-            股票資料
-          </div>
-        </div>
+<div id="error"></div>
 
 
-        <div class="card">
-          <div class="card-title">
-            ETF 數量
-          </div>
-
-          <div
-            id="etfCount"
-            class="card-value"
-          >
-            -
-          </div>
-
-          <div class="card-sub">
-            ETF 資料
-          </div>
-        </div>
+<div id="app" style="display:none">
 
 
-        <div class="card">
-          <div class="card-title">
-            今日推薦
-          </div>
+<!-- =========================================================
+     今日概況
+========================================================= -->
 
-          <div
-            id="selectedCount"
-            class="card-value"
-          >
-            -
-          </div>
+<section class="section">
 
-          <div class="card-sub">
-            今日系統推薦
-          </div>
-        </div>
+  <div class="section-header">
 
-
-        <div class="card">
-          <div class="card-title">
-            AI Top 10
-          </div>
-
-          <div
-            id="top10Count"
-            class="card-value"
-          >
-            -
-          </div>
-
-          <div class="card-sub">
-            AI 排名結果
-          </div>
-        </div>
-
-      </div>
-
-    </section>
-
-
-    <!-- =====================================================
-         系統狀態
-         ===================================================== -->
-
-    <section class="section">
+    <div>
 
       <div class="section-title">
-        系統狀態
+        今日市場概況
       </div>
 
-      <div class="card">
-
-        <div class="status-box">
-
-          <div class="status-item">
-            版本：
-            <strong id="version">-</strong>
-          </div>
-
-          <div class="status-item">
-            資料狀態：
-            <strong
-              id="dataStatus"
-              class="status-ok"
-            >
-              -
-            </strong>
-          </div>
-
-          <div class="status-item">
-            資料日期：
-            <strong id="dataDate">-</strong>
-          </div>
-
-          <div class="status-item">
-            更新時間：
-            <strong id="updatedAt">-</strong>
-          </div>
-
-        </div>
-
-        <br>
-
-        <button onclick="loadData()">
-          重新讀取後台資料
-        </button>
-
+      <div class="section-subtitle">
+        顯示系統今日掃描結果
       </div>
 
-    </section>
+    </div>
+
+  </div>
 
 
-    <!-- =====================================================
-         C. 今日推薦
-         ===================================================== -->
+  <div class="overview-grid">
 
-    <section class="section">
+
+    <div class="overview-card">
+
+      <div class="overview-label">
+        股票資料
+      </div>
+
+      <div
+        id="stockCount"
+        class="overview-value"
+      >
+        -
+      </div>
+
+      <div class="overview-note">
+        系統成功取得
+      </div>
+
+    </div>
+
+
+    <div class="overview-card">
+
+      <div class="overview-label">
+        ETF 資料
+      </div>
+
+      <div
+        id="etfCount"
+        class="overview-value"
+      >
+        -
+      </div>
+
+      <div class="overview-note">
+        系統成功取得
+      </div>
+
+    </div>
+
+
+    <div class="overview-card">
+
+      <div class="overview-label">
+        今日符合條件
+      </div>
+
+      <div
+        id="selectedCount"
+        class="overview-value"
+      >
+        -
+      </div>
+
+      <div class="overview-note">
+        後台掃描結果
+      </div>
+
+    </div>
+
+
+    <div class="overview-card">
+
+      <div class="overview-label">
+        AI Top 10
+      </div>
+
+      <div
+        id="top10Count"
+        class="overview-value"
+      >
+        10
+      </div>
+
+      <div class="overview-note">
+        前台精選排名
+      </div>
+
+    </div>
+
+
+  </div>
+
+</section>
+
+
+<!-- =========================================================
+     今日推薦
+========================================================= -->
+
+<section class="section">
+
+  <div class="section-header">
+
+    <div>
 
       <div class="section-title">
         今日推薦
       </div>
 
       <div class="section-subtitle">
-        由後台系統產生，前台僅呈現推薦結果。
+        從今日後台結果中呈現精選標的，不直接展示全部符合條件股票。
       </div>
 
-      <div
-        id="selectedTable"
-        class="table-wrap"
-      ></div>
+    </div>
 
-    </section>
+  </div>
 
 
-    <!-- =====================================================
-         D. Top 10
-         ===================================================== -->
+  <div
+    id="recommendGrid"
+    class="recommend-grid"
+  ></div>
 
-    <section class="section">
+</section>
+
+
+<!-- =========================================================
+     AI Top 10
+========================================================= -->
+
+<section class="section">
+
+  <div class="section-header">
+
+    <div>
 
       <div class="section-title">
         AI Top 10
       </div>
 
       <div class="section-subtitle">
-        保留後台 AI 排名結果，前台不重新排序。
+        保留後台既有排名結果
       </div>
 
-      <div
-        id="top10Table"
-        class="table-wrap"
-      ></div>
+    </div>
 
-    </section>
+  </div>
 
 
-    <!-- =====================================================
-         ETF
-         ===================================================== -->
+  <div
+    id="top10List"
+    class="top-list"
+  ></div>
 
-    <section class="section">
+</section>
+
+
+<!-- =========================================================
+     ETF
+========================================================= -->
+
+<section class="section">
+
+  <div class="section-header">
+
+    <div>
 
       <div class="section-title">
         ETF
       </div>
 
       <div class="section-subtitle">
-        ETF 採用獨立於股票的評估結果。
+        ETF 獨立呈現，不與股票推薦混合
       </div>
 
-      <div
-        id="etfTable"
-        class="table-wrap"
-      ></div>
+    </div>
 
-    </section>
+  </div>
 
 
-    <!-- =====================================================
-         債券
-         ===================================================== -->
+  <div
+    id="etfGrid"
+    class="asset-grid"
+  ></div>
 
-    <section class="section">
+</section>
+
+
+<!-- =========================================================
+     債券
+========================================================= -->
+
+<section class="section">
+
+  <div class="section-header">
+
+    <div>
 
       <div class="section-title">
         債券
       </div>
 
       <div class="section-subtitle">
-        債券採用獨立的評估結果。
+        債券獨立呈現，不套用股票選股邏輯
       </div>
 
-      <div
-        id="bondTable"
-        class="table-wrap"
-      ></div>
+    </div>
 
-    </section>
+  </div>
 
 
-    <!-- =====================================================
-         回測摘要
-         ===================================================== -->
+  <div
+    id="bondGrid"
+    class="asset-grid"
+  ></div>
 
-    <section class="section">
+</section>
+
+
+<!-- =========================================================
+     回測摘要
+========================================================= -->
+
+<section class="section">
+
+  <div class="section-header">
+
+    <div>
 
       <div class="section-title">
-        歷史回測摘要
+        系統歷史表現
       </div>
 
       <div class="section-subtitle">
-        僅呈現後台回測結果，不顯示核心計算邏輯。
+        僅顯示摘要，不展示後台計算細節
       </div>
 
-      <div
-        id="backtestTable"
-        class="table-wrap"
-      ></div>
-
-    </section>
-
+    </div>
 
   </div>
+
+
+  <div
+    id="backtest"
+    class="backtest-card"
+  ></div>
+
+</section>
+
+
+<!-- =========================================================
+     系統狀態
+========================================================= -->
+
+<section class="section">
+
+  <div class="section-header">
+
+    <div>
+
+      <div class="section-title">
+        資料狀態
+      </div>
+
+    </div>
+
+  </div>
+
+
+  <div class="status-card">
+
+    <div class="status-grid">
+
+
+      <div class="status-item">
+
+        <div class="status-label">
+          系統版本
+        </div>
+
+        <div
+          id="version"
+          class="status-value"
+        >
+          -
+        </div>
+
+      </div>
+
+
+      <div class="status-item">
+
+        <div class="status-label">
+          資料日期
+        </div>
+
+        <div
+          id="dataDate"
+          class="status-value"
+        >
+          -
+        </div>
+
+      </div>
+
+
+      <div class="status-item">
+
+        <div class="status-label">
+          更新時間
+        </div>
+
+        <div
+          id="updatedAt"
+          class="status-value"
+        >
+          -
+        </div>
+
+      </div>
+
+
+      <div class="status-item">
+
+        <div class="status-label">
+          資料狀態
+        </div>
+
+        <div
+          id="dataStatus"
+          class="status-value status-ok"
+        >
+          -
+        </div>
+
+      </div>
+
+
+    </div>
+
+  </div>
+
+</section>
+
+
+</div>
 
 </main>
 
 
 <footer>
 
-  V8.1 FINAL｜Data source:
-  <strong>Data/prices.json</strong>
+  台股 AI 選股儀表板｜Frontend READ ONLY
   <br>
-  Frontend READ ONLY。前台僅呈現後台結果，不自行計算或篩選。
+  前台僅負責呈現後台結果，不重新計算選股條件、不修改後台排名。
 
 </footer>
 
 
 <script>
 
-/*
-================================================================
-台股 AI 選股儀表板 V8.1
-================================================================
-
-前台定位：
-
-READ ONLY
-
-前台禁止：
-
-- RSI 計算
-- MACD 計算
-- KD 計算
-- MA 計算
-- 成交量條件計算
-- Core Score 計算
-- AI Score 計算
-- 股票篩選
-- 股票排序
-- ETF 篩選
-- ETF 排序
-- 債券篩選
-- 債券排序
-- 回測計算
-
-所有結果由後台產生。
-
-重要：
-
-股票、ETF、債券為不同資產類型。
-
-前台不假設三者共用相同核心邏輯。
-
-================================================================
-*/
-
+/* ============================================================
+   DATA
+============================================================ */
 
 const DATA_URL = "./Data/prices.json";
 
 
-/* ==============================================================
-   Escape
-============================================================== */
+/* ============================================================
+   HTML Escape
+============================================================ */
 
 function escapeHtml(value) {
 
@@ -655,11 +1172,11 @@ function escapeHtml(value) {
 }
 
 
-/* ==============================================================
+/* ============================================================
    Number
-============================================================== */
+============================================================ */
 
-function formatNumber(value, digits = 2) {
+function number(value, digits = 2) {
 
   if (
     value === null ||
@@ -679,24 +1196,28 @@ function formatNumber(value, digits = 2) {
 }
 
 
-/* ==============================================================
+/* ============================================================
    Change
-============================================================== */
+============================================================ */
 
-function changeHtml(value) {
+function change(value) {
 
   if (
     value === null ||
     value === undefined ||
     value === ""
   ) {
-    return "-";
+    return `
+      <span class="neutral">-</span>
+    `;
   }
 
   const n = Number(value);
 
   if (!Number.isFinite(n)) {
-    return "-";
+    return `
+      <span class="neutral">-</span>
+    `;
   }
 
   if (n > 0) {
@@ -725,96 +1246,255 @@ function changeHtml(value) {
 }
 
 
-/* ==============================================================
-   Signal
-============================================================== */
+/* ============================================================
+   Signal Badge
+============================================================ */
 
-function signalBadge(value) {
+function signalBadge(item) {
 
-  if (
-    value === null ||
-    value === undefined ||
-    value === ""
-  ) {
-    return "-";
-  }
+  const signal =
+    item?.signal ||
+    item?.rating ||
+    item?.system_signal ||
+    item?.system_rating ||
+    "觀察";
 
-  const text = String(value);
+  const text =
+    String(signal);
 
-  const lower = text.toLowerCase();
 
-  if (
-    lower.includes("推薦") ||
-    lower.includes("買進") ||
-    lower.includes("強")
-  ) {
+  let cls = "badge-blue";
 
-    return `
-      <span class="badge badge-good">
-        ${escapeHtml(text)}
-      </span>
-    `;
-  }
+
+  const lower =
+    text.toLowerCase();
+
 
   if (
-    lower.includes("觀察") ||
-    lower.includes("中立")
+    text.includes("推薦") ||
+    text.includes("強") ||
+    text.includes("買進") ||
+    text.includes("多方") ||
+    lower.includes("strong")
   ) {
 
-    return `
-      <span class="badge badge-mid">
-        ${escapeHtml(text)}
-      </span>
-    `;
-  }
+    cls = "badge-good";
 
-  if (
-    lower.includes("賣") ||
-    lower.includes("弱")
+  } else if (
+    text.includes("觀察") ||
+    text.includes("中性") ||
+    text.includes("留意")
   ) {
 
-    return `
-      <span class="badge badge-low">
-        ${escapeHtml(text)}
-      </span>
-    `;
+    cls = "badge-mid";
   }
+
 
   return `
-    <span class="badge badge-blue">
+    <span class="badge ${cls}">
       ${escapeHtml(text)}
     </span>
   `;
 }
 
 
-/* ==============================================================
-   建議
-============================================================== */
+/* ============================================================
+   Recommendation
+============================================================ */
 
-function recommendationHtml(item) {
+function recommendationText(item) {
 
-  const value =
-    item.recommendation ??
-    item.advice ??
-    item.suggestion ??
-    item.action ??
-    item.signal ??
-    "";
+  if (
+    item?.recommendation !== undefined &&
+    item?.recommendation !== null &&
+    String(item.recommendation).trim() !== ""
+  ) {
 
-  if (!value) {
-    return "-";
+    return String(item.recommendation);
   }
 
-  return signalBadge(value);
+
+  if (
+    item?.advice !== undefined &&
+    item?.advice !== null &&
+    String(item.advice).trim() !== ""
+  ) {
+
+    return String(item.advice);
+  }
+
+
+  if (
+    item?.suggestion !== undefined &&
+    item?.suggestion !== null &&
+    String(item.suggestion).trim() !== ""
+  ) {
+
+    return String(item.suggestion);
+  }
+
+
+  const signal =
+    item?.signal ||
+    item?.rating ||
+    item?.system_signal ||
+    item?.system_rating;
+
+
+  if (signal) {
+    return String(signal);
+  }
+
+
+  return "持續觀察";
 }
 
 
-/* ==============================================================
-   股票：今日推薦
-============================================================== */
+/* ============================================================
+   Stock Card
+============================================================ */
 
-function renderTodaySelected(items) {
+function renderRecommendationCard(item) {
+
+  const code =
+    item?.code ||
+    item?.symbol ||
+    "-";
+
+
+  const name =
+    item?.name ||
+    item?.stock_name ||
+    "-";
+
+
+  const price =
+    item?.price ??
+    item?.close ??
+    item?.current_price;
+
+
+  const pct =
+    item?.change_pct ??
+    item?.change_percent ??
+    item?.change;
+
+
+  return `
+
+  <div class="stock-card">
+
+
+    <div class="stock-head">
+
+      <div>
+
+        <div class="stock-code">
+          ${escapeHtml(code)}
+        </div>
+
+        <div class="stock-name">
+          ${escapeHtml(name)}
+        </div>
+
+      </div>
+
+
+      ${signalBadge(item)}
+
+    </div>
+
+
+    <div class="stock-price">
+
+      <div>
+
+        <div class="info-label">
+          現價
+        </div>
+
+        <div class="price">
+          ${number(price)}
+        </div>
+
+      </div>
+
+
+      <div class="change">
+
+        ${change(pct)}
+
+      </div>
+
+    </div>
+
+
+    <div class="signal-area">
+
+
+      <div class="info-box">
+
+        <div class="info-label">
+          系統訊號
+        </div>
+
+        <div class="info-value">
+          ${escapeHtml(
+            item?.signal ||
+            item?.system_signal ||
+            item?.rating ||
+            item?.system_rating ||
+            "觀察"
+          )}
+        </div>
+
+      </div>
+
+
+      <div class="info-box">
+
+        <div class="info-label">
+          系統評級
+        </div>
+
+        <div class="info-value">
+
+          ${escapeHtml(
+            item?.rating ||
+            item?.system_rating ||
+            item?.signal ||
+            "-"
+          )}
+
+        </div>
+
+      </div>
+
+
+    </div>
+
+
+    <div class="recommendation">
+
+      建議：
+      ${escapeHtml(
+        recommendationText(item)
+      )}
+
+    </div>
+
+
+  </div>
+
+  `;
+}
+
+
+/* ============================================================
+   Today Recommendation
+============================================================ */
+
+function renderRecommendations(items) {
 
   if (
     !Array.isArray(items) ||
@@ -823,99 +1503,42 @@ function renderTodaySelected(items) {
 
     return `
       <div class="empty">
-        今日沒有系統推薦標的。
+        今日暫無推薦標的。
       </div>
     `;
   }
 
 
-  let html = `
+  /*
+   * 重要：
+   *
+   * today_selected 可能有很多檔。
+   *
+   * 這裡不把全部後台資料塞進 UI。
+   *
+   * 前台只呈現精選區。
+   *
+   * 不重新計算。
+   * 不重新篩選。
+   * 不重新排序。
+   *
+   * 直接使用後台原始順序，
+   * 最多顯示 10 檔。
+   */
 
-<table>
-
-<thead>
-
-<tr>
-<th>股票代號</th>
-<th>股票名稱</th>
-<th>現價</th>
-<th>今日漲跌幅</th>
-<th>系統訊號／評級</th>
-<th>建議</th>
-</tr>
-
-</thead>
-
-<tbody>
-`;
-
-
-  items.forEach(item => {
-
-    const signal =
-      item.signal ??
-      item.rating ??
-      item.grade ??
-      item.rank_signal ??
-      "-";
+  const display =
+    items.slice(0, 10);
 
 
-    html += `
-
-<tr>
-
-<td>
-<strong>
-${escapeHtml(item.code ?? "-")}
-</strong>
-</td>
-
-<td>
-${escapeHtml(item.name ?? "-")}
-</td>
-
-<td>
-${formatNumber(
-  item.price ??
-  item.close ??
-  item.current_price
-)}
-</td>
-
-<td>
-${changeHtml(
-  item.change_pct ??
-  item.change_percent ??
-  item.change
-)}
-</td>
-
-<td>
-${signalBadge(signal)}
-</td>
-
-<td>
-${recommendationHtml(item)}
-</td>
-
-</tr>
-
-`;
-  });
-
-
-  html += `
-</tbody>
-</table>
-`;
-
-  return html;
+  return display
+    .map(renderRecommendationCard)
+    .join("");
 }
 
 
-/* ==============================================================
-   股票：Top 10
-============================================================== */
+/* ============================================================
+   Top 10
+============================================================ */
 
 function renderTop10(items) {
 
@@ -926,115 +1549,95 @@ function renderTop10(items) {
 
     return `
       <div class="empty">
-        目前沒有 Top 10 資料。
+        尚無 AI Top 10 資料。
       </div>
     `;
   }
 
 
-  /*
-   前台只取後台既有前 10 筆。
-   不重新排序。
-  */
-
-  const top10 =
+  const display =
     items.slice(0, 10);
 
 
-  let html = `
+  return display
+    .map(
+      (item, index) => {
 
-<table>
-
-<thead>
-
-<tr>
-<th>排名</th>
-<th>股票代號</th>
-<th>股票名稱</th>
-<th>現價</th>
-<th>漲跌幅</th>
-<th>系統評級／訊號</th>
-</tr>
-
-</thead>
-
-<tbody>
-`;
+        const code =
+          item?.code ||
+          item?.symbol ||
+          "-";
 
 
-  top10.forEach((item, index) => {
-
-    const rank =
-      item.rank ??
-      item.ranking ??
-      (index + 1);
+        const name =
+          item?.name ||
+          item?.stock_name ||
+          "-";
 
 
-    const signal =
-      item.signal ??
-      item.rating ??
-      item.grade ??
-      "-";
+        const price =
+          item?.price ??
+          item?.close ??
+          item?.current_price;
 
 
-    html += `
-
-<tr>
-
-<td>
-<strong>
-${escapeHtml(rank)}
-</strong>
-</td>
-
-<td>
-<strong>
-${escapeHtml(item.code ?? "-")}
-</strong>
-</td>
-
-<td>
-${escapeHtml(item.name ?? "-")}
-</td>
-
-<td>
-${formatNumber(
-  item.price ??
-  item.close ??
-  item.current_price
-)}
-</td>
-
-<td>
-${changeHtml(
-  item.change_pct ??
-  item.change_percent ??
-  item.change
-)}
-</td>
-
-<td>
-${signalBadge(signal)}
-</td>
-
-</tr>
-
-`;
-  });
+        const pct =
+          item?.change_pct ??
+          item?.change_percent ??
+          item?.change;
 
 
-  html += `
-</tbody>
-</table>
-`;
+        return `
 
-  return html;
+        <div class="top-row">
+
+
+          <div class="top-rank">
+            #${index + 1}
+          </div>
+
+
+          <div>
+
+            <div class="top-stock-code">
+              ${escapeHtml(code)}
+            </div>
+
+            <div class="top-stock-name">
+              ${escapeHtml(name)}
+            </div>
+
+          </div>
+
+
+          <div class="top-price">
+            ${number(price)}
+          </div>
+
+
+          <div class="top-change">
+            ${change(pct)}
+          </div>
+
+
+          <div class="top-signal">
+            ${signalBadge(item)}
+          </div>
+
+
+        </div>
+
+        `;
+
+      }
+    )
+    .join("");
 }
 
 
-/* ==============================================================
+/* ============================================================
    ETF
-============================================================== */
+============================================================ */
 
 function renderETF(items) {
 
@@ -1045,100 +1648,107 @@ function renderETF(items) {
 
     return `
       <div class="empty">
-        後台目前沒有 ETF 推薦資料。
+        目前沒有 ETF 資料。
       </div>
     `;
   }
 
 
-  let html = `
-
-<table>
-
-<thead>
-
-<tr>
-<th>代號</th>
-<th>名稱</th>
-<th>現價</th>
-<th>今日漲跌幅</th>
-<th>系統評級／訊號</th>
-<th>建議</th>
-</tr>
-
-</thead>
-
-<tbody>
-`;
+  const display =
+    items.slice(0, 10);
 
 
-  items.forEach(item => {
+  return display
+    .map(
+      item => {
 
-    const signal =
-      item.signal ??
-      item.rating ??
-      item.grade ??
-      "-";
-
-
-    html += `
-
-<tr>
-
-<td>
-<strong>
-${escapeHtml(item.code ?? "-")}
-</strong>
-</td>
-
-<td>
-${escapeHtml(item.name ?? "-")}
-</td>
-
-<td>
-${formatNumber(
-  item.price ??
-  item.close ??
-  item.current_price
-)}
-</td>
-
-<td>
-${changeHtml(
-  item.change_pct ??
-  item.change_percent ??
-  item.change
-)}
-</td>
-
-<td>
-${signalBadge(signal)}
-</td>
-
-<td>
-${recommendationHtml(item)}
-</td>
-
-</tr>
-
-`;
-  });
+        const code =
+          item?.code ||
+          item?.symbol ||
+          "-";
 
 
-  html += `
-</tbody>
-</table>
-`;
+        const name =
+          item?.name ||
+          item?.stock_name ||
+          "-";
 
-  return html;
+
+        const price =
+          item?.price ??
+          item?.close ??
+          item?.current_price;
+
+
+        const pct =
+          item?.change_pct ??
+          item?.change_percent ??
+          item?.change;
+
+
+        return `
+
+        <div class="asset-card">
+
+
+          <div class="asset-header">
+
+            <div>
+
+              <div class="asset-code">
+                ${escapeHtml(code)}
+              </div>
+
+              <div class="asset-name">
+                ${escapeHtml(name)}
+              </div>
+
+            </div>
+
+            ${signalBadge(item)}
+
+          </div>
+
+
+          <div class="asset-price">
+
+            <div>
+
+              <div class="info-label">
+                現價
+              </div>
+
+              <div class="asset-price-value">
+                ${number(price)}
+              </div>
+
+            </div>
+
+
+            <div>
+
+              ${change(pct)}
+
+            </div>
+
+          </div>
+
+
+        </div>
+
+        `;
+
+      }
+    )
+    .join("");
 }
 
 
-/* ==============================================================
-   債券
-============================================================== */
+/* ============================================================
+   Bond
+============================================================ */
 
-function renderBonds(items) {
+function renderBond(items) {
 
   if (
     !Array.isArray(items) ||
@@ -1147,233 +1757,190 @@ function renderBonds(items) {
 
     return `
       <div class="empty">
-        債券資料尚未提供。
+        目前沒有債券資料。
       </div>
     `;
   }
 
 
-  let html = `
-
-<table>
-
-<thead>
-
-<tr>
-<th>代號</th>
-<th>名稱</th>
-<th>價格</th>
-<th>今日變化</th>
-<th>系統評級／訊號</th>
-<th>建議</th>
-</tr>
-
-</thead>
-
-<tbody>
-`;
+  const display =
+    items.slice(0, 10);
 
 
-  items.forEach(item => {
+  return display
+    .map(
+      item => {
 
-    const signal =
-      item.signal ??
-      item.rating ??
-      item.grade ??
-      "-";
-
-
-    html += `
-
-<tr>
-
-<td>
-<strong>
-${escapeHtml(
-  item.code ??
-  item.symbol ??
-  "-"
-)}
-</strong>
-</td>
-
-<td>
-${escapeHtml(
-  item.name ??
-  item.bond_name ??
-  "-"
-)}
-</td>
-
-<td>
-${formatNumber(
-  item.price ??
-  item.close ??
-  item.current_price
-)}
-</td>
-
-<td>
-${changeHtml(
-  item.change_pct ??
-  item.change_percent ??
-  item.change
-)}
-</td>
-
-<td>
-${signalBadge(signal)}
-</td>
-
-<td>
-${recommendationHtml(item)}
-</td>
-
-</tr>
-
-`;
-  });
+        const code =
+          item?.code ||
+          item?.symbol ||
+          "-";
 
 
-  html += `
-</tbody>
-</table>
-`;
+        const name =
+          item?.name ||
+          item?.bond_name ||
+          "-";
 
-  return html;
+
+        const price =
+          item?.price ??
+          item?.close ??
+          item?.current_price;
+
+
+        const pct =
+          item?.change_pct ??
+          item?.change_percent ??
+          item?.change;
+
+
+        return `
+
+        <div class="asset-card">
+
+
+          <div class="asset-header">
+
+            <div>
+
+              <div class="asset-code">
+                ${escapeHtml(code)}
+              </div>
+
+              <div class="asset-name">
+                ${escapeHtml(name)}
+              </div>
+
+            </div>
+
+            ${signalBadge(item)}
+
+          </div>
+
+
+          <div class="asset-price">
+
+            <div>
+
+              <div class="info-label">
+                現價
+              </div>
+
+              <div class="asset-price-value">
+                ${number(price)}
+              </div>
+
+            </div>
+
+
+            <div>
+
+              ${change(pct)}
+
+            </div>
+
+          </div>
+
+
+        </div>
+
+        `;
+
+      }
+    )
+    .join("");
 }
 
 
-/* ==============================================================
-   回測摘要
-============================================================== */
+/* ============================================================
+   Backtest
+============================================================ */
 
-function renderBacktest(comparison) {
+function renderBacktest(data) {
 
   if (
-    !comparison ||
-    !comparison.strategies
+    !data ||
+    !data.strategies
   ) {
 
     return `
       <div class="empty">
-        尚無回測摘要。
+        尚無歷史表現摘要。
       </div>
     `;
   }
 
 
   const A =
-    comparison.strategies.A_today_cross;
+    data.strategies.A_today_cross ||
+    null;
+
 
   const B =
-    comparison.strategies.B_current_bullish;
+    data.strategies.B_current_bullish ||
+    null;
 
 
-  if (!A || !B) {
+  const A10 =
+    A?.["10d"] ||
+    {};
 
-    return `
-      <div class="empty">
-        尚無完整回測摘要。
-      </div>
-    `;
-  }
+
+  const B10 =
+    B?.["10d"] ||
+    {};
 
 
   return `
 
-<table>
-
-<thead>
-
-<tr>
-<th>策略</th>
-<th>10日勝率</th>
-<th>20日勝率</th>
-<th>比較結果</th>
-</tr>
-
-</thead>
-
-<tbody>
-
-<tr>
-
-<td>
-<strong>
-A
-</strong>
-</td>
-
-<td>
-${formatNumber(
-  A["10d"]?.win_rate
-)}%
-</td>
-
-<td>
-${formatNumber(
-  A["20d"]?.win_rate
-)}%
-</td>
-
-<td>
--
-</td>
-
-</tr>
+  <div class="backtest-grid">
 
 
-<tr>
+    <div class="backtest-item">
 
-<td>
-<strong>
-B
-</strong>
-</td>
+      <div class="backtest-name">
+        A 策略
+      </div>
 
-<td>
-${formatNumber(
-  B["10d"]?.win_rate
-)}%
-</td>
+      <div class="backtest-value">
+        ${number(A10.win_rate)}%
+      </div>
 
-<td>
-${formatNumber(
-  B["20d"]?.win_rate
-)}%
-</td>
+      <div class="backtest-note">
+        歷史 10 個交易日勝率
+      </div>
 
-<td>
--
-</td>
+    </div>
 
-</tr>
 
-</tbody>
+    <div class="backtest-item">
 
-</table>
+      <div class="backtest-name">
+        B 策略
+      </div>
 
-<div class="card-sub" style="padding:14px">
+      <div class="backtest-value">
+        ${number(B10.win_rate)}%
+      </div>
 
-目前後台比較結果：
-<strong>
-${escapeHtml(
-  comparison.better_by_win_rate ??
-  comparison.better_strategy ??
-  "-"
-)}
-</strong>
+      <div class="backtest-note">
+        歷史 10 個交易日勝率
+      </div>
 
-</div>
+    </div>
 
-`;
+
+  </div>
+
+  `;
+
 }
 
 
-/* ==============================================================
-   資料驗證
-============================================================== */
+/* ============================================================
+   Validate
+============================================================ */
 
 function validateData(data) {
 
@@ -1383,7 +1950,7 @@ function validateData(data) {
   ) {
 
     throw new Error(
-      "prices.json 不是有效 JSON"
+      "prices.json 格式錯誤"
     );
   }
 
@@ -1399,43 +1966,13 @@ function validateData(data) {
   }
 
 
-  /*
-   不再硬性要求 V8.0 / prices.v8。
-
-   原因：
-
-   目前後台已進入 V8.1。
-   前台應能兼容 V8.1 Data Contract。
-  */
-
-
   return true;
 }
 
 
-/* ==============================================================
-   讀取陣列
-============================================================== */
-
-function firstArray(data, keys) {
-
-  for (const key of keys) {
-
-    if (
-      Array.isArray(data[key])
-    ) {
-
-      return data[key];
-    }
-  }
-
-  return [];
-}
-
-
-/* ==============================================================
+/* ============================================================
    Render
-============================================================== */
+============================================================ */
 
 function render(data) {
 
@@ -1443,68 +1980,61 @@ function render(data) {
 
 
   const stats =
-    data.statistics || {};
+    data.statistics ||
+    {};
 
 
   const stocks =
-    firstArray(
-      data,
-      [
-        "stocks"
-      ]
-    );
+    Array.isArray(data.stocks)
+      ? data.stocks
+      : [];
 
 
   const etfs =
-    firstArray(
-      data,
-      [
-        "etfs",
-        "ETF",
-        "etf"
-      ]
-    );
+    Array.isArray(data.etfs)
+      ? data.etfs
+      : [];
 
 
-  const todaySelected =
-    firstArray(
-      data,
-      [
-        "today_selected",
-        "today_recommended",
-        "recommendations",
-        "selected"
-      ]
-    );
+  const today =
+    Array.isArray(data.today_selected)
+      ? data.today_selected
+      : [];
 
 
-  const top10 =
-    firstArray(
-      data,
-      [
-        "top10",
-        "top_10",
-        "top30"
-      ]
-    );
-
-
-  const bonds =
-    firstArray(
-      data,
-      [
-        "bonds",
-        "bond",
-        "bond_recommendations"
-      ]
-    );
+  const top =
+    Array.isArray(data.top30)
+      ? data.top30
+      : (
+        Array.isArray(data.top10)
+          ? data.top10
+          : []
+      );
 
 
   /*
-   =============================================================
-   頂部統計
-   =============================================================
-  */
+   * 債券資料容錯：
+   *
+   * 不同版本後台可能使用不同名稱。
+   */
+
+  const bonds =
+    Array.isArray(data.bonds)
+      ? data.bonds
+      : (
+        Array.isArray(data.bond)
+          ? data.bond
+          : (
+            Array.isArray(data.bond_data)
+              ? data.bond_data
+              : []
+          )
+      );
+
+
+  /* ========================================================
+     Overview
+  ======================================================== */
 
   document.getElementById(
     "stockCount"
@@ -1524,7 +2054,7 @@ function render(data) {
     "selectedCount"
   ).textContent =
     stats.today_selected_count ??
-    todaySelected.length;
+    today.length;
 
 
   document.getElementById(
@@ -1532,122 +2062,100 @@ function render(data) {
   ).textContent =
     Math.min(
       10,
-      top10.length
+      top.length
     );
 
 
-  /*
-   =============================================================
-   系統狀態
-   =============================================================
-  */
+  /* ========================================================
+     Recommendation
+  ======================================================== */
 
   document.getElementById(
-    "version"
-  ).textContent =
-    data.version ??
-    data.data_version ??
-    "V8.1";
-
-
-  document.getElementById(
-    "dataStatus"
-  ).textContent =
-    data.status ??
-    "success";
-
-
-  document.getElementById(
-    "dataDate"
-  ).textContent =
-    data.date ??
-    data.data_date ??
-    "-";
-
-
-  document.getElementById(
-    "updatedAt"
-  ).textContent =
-    data.updated_at_tw ??
-    data.updated_at ??
-    "-";
-
-
-  /*
-   =============================================================
-   今日推薦
-   =============================================================
-  */
-
-  document.getElementById(
-    "selectedTable"
+    "recommendGrid"
   ).innerHTML =
-    renderTodaySelected(
-      todaySelected
-    );
+    renderRecommendations(today);
 
 
-  /*
-   =============================================================
-   Top 10
-   =============================================================
-  */
+  /* ========================================================
+     Top 10
+  ======================================================== */
 
   document.getElementById(
-    "top10Table"
+    "top10List"
   ).innerHTML =
-    renderTop10(
-      top10
-    );
+    renderTop10(top);
 
 
-  /*
-   =============================================================
-   ETF
-   =============================================================
-  */
+  /* ========================================================
+     ETF
+  ======================================================== */
 
   document.getElementById(
-    "etfTable"
+    "etfGrid"
   ).innerHTML =
-    renderETF(
-      etfs
-    );
+    renderETF(etfs);
 
 
-  /*
-   =============================================================
-   債券
-   =============================================================
-  */
+  /* ========================================================
+     Bond
+  ======================================================== */
 
   document.getElementById(
-    "bondTable"
+    "bondGrid"
   ).innerHTML =
-    renderBonds(
-      bonds
-    );
+    renderBond(bonds);
 
 
-  /*
-   =============================================================
-   回測
-   =============================================================
-  */
+  /* ========================================================
+     Backtest
+  ======================================================== */
 
   document.getElementById(
-    "backtestTable"
+    "backtest"
   ).innerHTML =
     renderBacktest(
       data.backtest_summary
     );
 
 
-  /*
-   =============================================================
-   完成
-   =============================================================
-  */
+  /* ========================================================
+     Status
+  ======================================================== */
+
+  document.getElementById(
+    "version"
+  ).textContent =
+    data.version ||
+    data.schema_version ||
+    "-";
+
+
+  document.getElementById(
+    "dataDate"
+  ).textContent =
+    data.date ||
+    data.data_date ||
+    "-";
+
+
+  document.getElementById(
+    "updatedAt"
+  ).textContent =
+    data.updated_at_tw ||
+    data.updated_at ||
+    "-";
+
+
+  document.getElementById(
+    "dataStatus"
+  ).textContent =
+    data.status ||
+    "success";
+
+
+  /* ========================================================
+     Show
+  ======================================================== */
 
   document.getElementById(
     "loading"
@@ -1659,12 +2167,13 @@ function render(data) {
     "app"
   ).style.display =
     "block";
+
 }
 
 
-/* ==============================================================
+/* ============================================================
    Load
-============================================================== */
+============================================================ */
 
 async function loadData() {
 
@@ -1673,10 +2182,12 @@ async function loadData() {
       "loading"
     );
 
+
   const error =
     document.getElementById(
       "error"
     );
+
 
   const app =
     document.getElementById(
@@ -1687,8 +2198,10 @@ async function loadData() {
   loading.style.display =
     "block";
 
+
   app.style.display =
     "none";
+
 
   error.innerHTML =
     "";
@@ -1713,6 +2226,7 @@ async function loadData() {
         "HTTP " +
         response.status
       );
+
     }
 
 
@@ -1731,40 +2245,35 @@ async function loadData() {
 
     error.innerHTML = `
 
-<div class="error">
+      <div class="error">
 
-<strong>
-無法讀取後台資料
-</strong>
+        <strong>
+          無法讀取後台資料
+        </strong>
 
-<br><br>
+        <br><br>
 
-錯誤：
-${escapeHtml(
-  err.message
-)}
+        ${escapeHtml(
+          err.message
+        )}
 
-<br><br>
+        <br><br>
 
-請確認：
+        請確認 GitHub Actions、
+        Data/prices.json 與資料版本是否正常。
 
-<br>
-1. GitHub Actions 是否成功執行。
-<br>
-2. Data/prices.json 是否存在。
-<br>
-3. 後台 Data Contract 是否為 success。
+      </div>
 
-</div>
+    `;
 
-`;
   }
+
 }
 
 
-/* ==============================================================
+/* ============================================================
    Start
-============================================================== */
+============================================================ */
 
 loadData();
 
