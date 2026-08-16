@@ -62,7 +62,36 @@ jobs:
           import os
 
           path = "Data/prices.json"
+      - name: Debug 1319 RSI backend data
+        run: |
+          python - <<'PY'
+          import json
 
+          with open("Data/prices.json", "r", encoding="utf-8") as f:
+              data = json.load(f)
+
+          found = []
+
+          for key in ["today_selected", "top10", "etfs", "bonds"]:
+              for item in data.get(key, []):
+                  if str(item.get("code")) == "1319":
+                      found.append(item)
+
+          if not found:
+              print("❌ 找不到 1319 東陽")
+          else:
+              item = found[0]
+
+              print("===== 1319 東陽後台資料 =====")
+              print("code:", item.get("code"))
+              print("name:", item.get("name"))
+              print("price:", item.get("price"))
+              print("change_pct:", item.get("change_pct"))
+              print("ai_score:", item.get("ai_score"))
+              print("strength_score:", item.get("strength_score"))
+              print("indicators:", item.get("indicators"))
+              print("============================")
+          PY
           if not os.path.exists(path):
               raise SystemExit("❌ Data/prices.json 不存在")
 
