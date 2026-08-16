@@ -1,7 +1,9 @@
-name: Update Stock Data
+name: 台股AI選股系統自動更新
 
 on:
   schedule:
+    # 台灣時間 16:30
+    # GitHub Actions 使用 UTC，所以是 08:30 UTC
     - cron: "30 8 * * 1-5"
 
   workflow_dispatch:
@@ -10,223 +12,146 @@ permissions:
   contents: write
 
 jobs:
-  update:
+  update-stock-data:
+
     runs-on: ubuntu-latest
 
     steps:
 
-      # ======================================================
-      # 1. 取得目前 repository
-      # ======================================================
+      # =====================================================
+      # 1. 取得 Repository
+      # =====================================================
 
-      - name: Checkout
+      - name: Checkout Repository
         uses: actions/checkout@v4
 
-      # ======================================================
-      # 2. Python
-      # ======================================================
+      # =====================================================
+      # 2. 設定 Python
+      # =====================================================
 
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
 
-      # ======================================================
+      # =====================================================
       # 3. 安裝套件
-      # ======================================================
+      # =====================================================
 
-      - name: Install dependencies
+      - name: Install Dependencies
         run: |
           python -m pip install --upgrade pip
           pip install pandas numpy requests
 
-      # ======================================================
-      # 4. 檢查 Data 目錄
-      # ======================================================
+      # =====================================================
+      # 4. 執行台股資料更新
+      # =====================================================
 
-      - name: Check data files
-        run: |
-          echo "================================"
-          echo "檢查 Data 目錄"
-          echo "================================"
-
-          mkdir -p Data
-
-          echo "目前 Data 內容："
-          ls -lah Data || true
-
-          echo ""
-          echo "stocks.json："
-          if [ -f Data/stocks.json ]; then
-            wc -c Data/stocks.json
-          else
-            echo "不存在"
-          fi
-
-          echo ""
-          echo "prices.json："
-          if [ -f Data/prices.json ]; then
-            wc -c Data/prices.json
-          else
-            echo "不存在"
-          fi
-
-      # ======================================================
-      # 5. Fetch
-      #
-      # V10.2 已經不要求 stocks.json 必須存在。
-      # ======================================================
-
-      - name: Fetch stock data V10.2
+      - name: Fetch Taiwan Stock Data
         run: |
           python Scripts/fetch_data.py
 
-      # ======================================================
-      # 6. 分類 / UI 對應修正
-      # ======================================================
+      # =====================================================
+      # 5. 驗證 prices.json
+      # =====================================================
 
-      - name: Add classification
-        run: |
-          python Scripts/add_classification.py
-
-      # ======================================================
-      # 7. 驗證 prices.json
-      # ======================================================
-
-      - name: Validate generated prices.json
+      - name: Validate prices.json
         run: |
           python - <<'PY'
           import json
-          from pathlib import Path
+          import os
 
-          path = Path("Data/prices.json")
+          path = "Data/prices.json"
 
-          if not path.exists():
-              raise SystemExit(
-                  "❌ Data/prices.json 不存在"
-              )
+          if not os.path.exists(path):
+              raise SystemExit("❌ Data/prices.json 不存在")
 
-          if path.stat().st_size == 0:
-              raise SystemExit(
-                  "❌ Data/prices.json 是空檔案"
-              )
+          if os.path.getsize(path) == 0:
+              raise SystemExit("❌ Data/prices.json 是空檔案")
 
-          with path.open(
-              "r",
-              encoding="utf-8"
-          ) as f:
+          with open(path, "r", encoding="utf-8") as f:
               data = json.load(f)
 
-          print("================================")
-          print("prices.json 驗證")
-          print("================================")
+          if not isinstance(data, dict):
+              raise SystemExit("❌ prices.json 格式錯誤：不是 JSON object")
 
-          print(
-              "status:",
-              data.get("status")
-          )
+          required = [
+              "version",
+              "schema_version",
+              "status",
+              "date",
+              "latest_market_date",
+              "today_selected",
+              "top10",
+              "summary"
+          ]
 
-          print(
-              "version:",
-              data.get("version")
-          )
+          missing = [
+              key for key in required
+              if key not in data
+          ]
 
-          print(
-              "date:",
-              data.get("date")
-          )
-
-          print(
-              "latest_market_date:",
-              data.get(
-                  "latest_market_date"
+          if missing:
+              raise SystemExit(
+                  "❌ prices.json 缺少欄位："
+                  + ", ".join(missing)
               )
-          )
 
-          summary = data.get(
-              "summary",
-              {}
-          )
-
+          print("✅ prices.json 驗證成功")
+          print("版本：", data.get("version"))
+          print("日期：", data.get("date"))
           print(
-              "stock_count:",
-              summary.get(
-                  "stock_count"
-              )
+              "最新市場日期：",
+              data.get("latest_market_date")
           )
-
           print(
-              "today_selected_count:",
-              summary.get(
+              "6/6 選股數量：",
+              data.get("summary", {}).get(
                   "today_selected_count"
               )
           )
-
           print(
-              "core_condition_count:",
-              summary.get(
-                  "core_condition_count"
+              "股票數量：",
+              data.get("summary", {}).get(
+                  "stock_count"
               )
           )
-
-          if data.get("status") != "success":
-              raise SystemExit(
-                  "❌ prices.json status 不是 success"
-              )
-
-          if not data.get("date"):
-              raise SystemExit(
-                  "❌ prices.json 缺少 date"
-              )
-
-          if not data.get(
-              "latest_market_date"
-          ):
-              raise SystemExit(
-                  "❌ prices.json 缺少 latest_market_date"
-              )
-
-          if (
-              data.get("date")
-              != data.get(
-                  "latest_market_date"
-              )
-          ):
-              raise SystemExit(
-                  "❌ date 與 latest_market_date 不一致"
-              )
-
           print(
-              "================================"
+              "ETF 數量：",
+              data.get("summary", {}).get(
+                  "etf_count"
+              )
           )
-
           print(
-              "✅ prices.json 驗證通過"
+              "債券數量：",
+              data.get("summary", {}).get(
+                  "bond_count"
+              )
           )
           PY
 
-      # ======================================================
-      # 8. Git commit
-      # ======================================================
+      # =====================================================
+      # 6. 顯示 Git 差異
+      # =====================================================
 
-      - name: Commit updated data
+      - name: Check Updated Files
         run: |
-          git config user.name \
-            "github-actions[bot]"
+          git status --short
 
-          git config user.email \
-            "41898282+github-actions[bot]@users.noreply.github.com"
+      # =====================================================
+      # 7. 提交更新
+      # =====================================================
 
-          git add \
-            Data/prices.json \
-            Data/stocks.json \
-            index.html
+      - name: Commit Updated Data
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git add Data/prices.json
 
           if git diff --cached --quiet; then
-            echo "沒有資料需要提交"
+            echo "ℹ️ Data/prices.json 沒有新的變更"
           else
-            git commit \
-              -m "Update Taiwan stock data V10.2"
-
+            git commit -m "chore: update Taiwan stock data"
             git push
           fi
