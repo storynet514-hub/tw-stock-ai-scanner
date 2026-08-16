@@ -1,2943 +1,1401 @@
 <!DOCTYPE html>
 <html lang="zh-TW">
 <head>
-
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-
 <title>台股 AI 智能選股儀表板</title>
-
 <style>
-
 /* =========================================================
    ROOT
 ========================================================= */
-
 :root {
-
     --bg: #070b12;
     --bg2: #0b111b;
-
     --panel: #101824;
     --panel2: #131d2a;
     --panel3: #182333;
-
     --border: rgba(255,255,255,.08);
     --border-light: rgba(255,255,255,.13);
-
     --text: #f3f6fb;
     --text2: #a9b4c5;
     --text3: #738095;
-
     --green: #25d98a;
     --green-soft: rgba(37,217,138,.12);
-
     --red: #ff5f6d;
     --red-soft: rgba(255,95,109,.12);
-
     --yellow: #ffc857;
     --yellow-soft: rgba(255,200,87,.12);
-
-    --blue: #5aa9ff;
-    --blue-soft: rgba(90,169,255,.12);
-
-    --purple: #9d7cff;
-    --purple-soft: rgba(157,124,255,.12);
-
+    --blue: #5ca9ff;
+    --blue-soft: rgba(92,169,255,.12);
+    --purple: #a78bfa;
+    --purple-soft: rgba(167,139,250,.12);
     --shadow:
-        0 12px 40px rgba(0,0,0,.28);
-
+        0 18px 50px rgba(0,0,0,.28);
     --radius: 18px;
 }
-
-
 /* =========================================================
    RESET
 ========================================================= */
-
 * {
     box-sizing: border-box;
 }
-
 html {
     scroll-behavior: smooth;
 }
-
 body {
-
     margin: 0;
-
+    min-height: 100vh;
     background:
         radial-gradient(
-            circle at 15% 0%,
-            rgba(45,95,160,.13),
-            transparent 35%
-        ),
-        radial-gradient(
-            circle at 85% 10%,
-            rgba(106,74,180,.10),
+            circle at top right,
+            rgba(92,169,255,.08),
             transparent 32%
         ),
+        radial-gradient(
+            circle at top left,
+            rgba(37,217,138,.05),
+            transparent 28%
+        ),
         var(--bg);
-
     color: var(--text);
-
     font-family:
         -apple-system,
         BlinkMacSystemFont,
         "Segoe UI",
         "Noto Sans TC",
+        "PingFang TC",
         "Microsoft JhengHei",
         sans-serif;
-
-    min-height: 100vh;
 }
-
+/* =========================================================
+   COMMON
+========================================================= */
 button,
 input {
     font: inherit;
 }
-
 button {
     cursor: pointer;
 }
-
-a {
-    color: inherit;
-    text-decoration: none;
-}
-
-
-/* =========================================================
-   APP
-========================================================= */
-
-.app {
-    width: 100%;
-    min-height: 100vh;
-}
-
-.container {
-
-    width:
-        min(
-            1440px,
-            calc(100% - 32px)
-        );
-
-    margin: 0 auto;
-}
-
-
-/* =========================================================
-   HEADER
-========================================================= */
-
-.header {
-
-    position: sticky;
-
-    top: 0;
-
-    z-index: 100;
-
-    background:
-        rgba(7,11,18,.88);
-
-    backdrop-filter:
-        blur(18px);
-
-    border-bottom:
-        1px solid var(--border);
-}
-
-.header-inner {
-
-    min-height: 76px;
-
-    display: flex;
-
-    align-items: center;
-
-    justify-content: space-between;
-
-    gap: 20px;
-}
-
-.brand {
-
-    display: flex;
-
-    align-items: center;
-
-    gap: 13px;
-}
-
-.brand-icon {
-
-    width: 42px;
-    height: 42px;
-
-    border-radius: 13px;
-
-    display: flex;
-
-    align-items: center;
-    justify-content: center;
-
-    background:
-        linear-gradient(
-            135deg,
-            #1e73ff,
-            #7a5cff
-        );
-
-    box-shadow:
-        0 8px 28px
-        rgba(75,105,255,.25);
-
-    font-weight: 900;
-    font-size: 18px;
-}
-
-.brand-title {
-
-    font-size: 17px;
-
-    font-weight: 800;
-
-    letter-spacing: .2px;
-}
-
-.brand-subtitle {
-
-    margin-top: 2px;
-
-    font-size: 11px;
-
-    color: var(--text3);
-}
-
-.header-status {
-
-    display: flex;
-
-    align-items: center;
-
-    gap: 9px;
-
-    color: var(--text2);
-
-    font-size: 12px;
-}
-
-.status-dot {
-
-    width: 8px;
-    height: 8px;
-
-    border-radius: 50%;
-
-    background:
-        var(--green);
-
-    box-shadow:
-        0 0 12px
-        rgba(37,217,138,.8);
-}
-
-
-/* =========================================================
-   MAIN
-========================================================= */
-
-main {
-    padding: 28px 0 60px;
-}
-
-
-/* =========================================================
-   HERO
-========================================================= */
-
-.hero {
-
-    display: grid;
-
-    grid-template-columns:
-        minmax(0, 1.4fr)
-        minmax(300px, .6fr);
-
-    gap: 18px;
-
-    margin-bottom: 20px;
-}
-
-.hero-main {
-
-    position: relative;
-
-    overflow: hidden;
-
-    min-height: 230px;
-
-    border:
-        1px solid var(--border);
-
-    border-radius:
-        24px;
-
-    padding: 30px;
-
-    background:
-        linear-gradient(
-            145deg,
-            rgba(23,37,57,.98),
-            rgba(12,18,29,.98)
-        );
-
-    box-shadow:
-        var(--shadow);
-}
-
-.hero-main::after {
-
-    content: "";
-
-    position: absolute;
-
-    width: 300px;
-    height: 300px;
-
-    right: -100px;
-    top: -140px;
-
-    border-radius: 50%;
-
-    background:
-        radial-gradient(
-            circle,
-            rgba(90,169,255,.16),
-            transparent 70%
-        );
-
-    pointer-events: none;
-}
-
-.hero-eyebrow {
-
-    color: var(--blue);
-
-    font-size: 12px;
-
-    font-weight: 800;
-
-    letter-spacing: 1px;
-
-    margin-bottom: 10px;
-}
-
-.hero-title {
-
-    position: relative;
-
-    z-index: 1;
-
-    margin: 0;
-
-    font-size:
-        clamp(28px, 4vw, 44px);
-
-    line-height: 1.15;
-
-    letter-spacing: -1px;
-}
-
-.hero-description {
-
-    position: relative;
-
-    z-index: 1;
-
-    margin-top: 15px;
-
-    max-width: 760px;
-
-    color: var(--text2);
-
-    line-height: 1.75;
-
-    font-size: 14px;
-}
-
-.hero-side {
-
-    display: grid;
-
-    grid-template-columns:
-        1fr 1fr;
-
-    gap: 12px;
-}
-
-.metric-card {
-
-    padding: 20px;
-
-    border:
-        1px solid var(--border);
-
-    border-radius:
-        var(--radius);
-
-    background:
-        linear-gradient(
-            145deg,
-            var(--panel2),
-            var(--panel)
-        );
-
-    box-shadow:
-        var(--shadow);
-}
-
-.metric-label {
-
-    color: var(--text3);
-
-    font-size: 12px;
-
-    margin-bottom: 10px;
-}
-
-.metric-value {
-
-    font-size: 28px;
-
-    font-weight: 900;
-
-    letter-spacing: -.5px;
-}
-
-.metric-note {
-
-    color: var(--text3);
-
-    font-size: 11px;
-
-    margin-top: 5px;
-}
-
-
-/* =========================================================
-   SEARCH
-========================================================= */
-
-.search-section {
-    margin-bottom: 20px;
-}
-
-.search-panel {
-
-    border:
-        1px solid var(--border);
-
-    border-radius:
-        var(--radius);
-
-    background:
-        linear-gradient(
-            145deg,
-            var(--panel2),
-            var(--panel)
-        );
-
-    padding: 18px;
-
-    box-shadow:
-        var(--shadow);
-}
-
-.search-header {
-
-    display: flex;
-
-    justify-content: space-between;
-
-    align-items: center;
-
-    gap: 15px;
-
-    margin-bottom: 14px;
-}
-
-.section-title {
-
-    font-size: 16px;
-
-    font-weight: 800;
-}
-
-.section-subtitle {
-
-    color: var(--text3);
-
-    font-size: 11px;
-
-    margin-top: 3px;
-}
-
-.search-box {
-
-    display: flex;
-
-    gap: 10px;
-}
-
-.search-input {
-
-    flex: 1;
-
-    min-width: 0;
-
-    height: 48px;
-
-    padding: 0 16px;
-
-    border:
-        1px solid var(--border-light);
-
-    border-radius: 13px;
-
-    background:
-        rgba(0,0,0,.20);
-
-    color: var(--text);
-
-    outline: none;
-
-    transition:
-        border-color .2s,
-        box-shadow .2s;
-}
-
-.search-input::placeholder {
-    color: var(--text3);
-}
-
-.search-input:focus {
-
-    border-color:
-        rgba(90,169,255,.6);
-
-    box-shadow:
-        0 0 0 3px
-        rgba(90,169,255,.10);
-}
-
-.search-button {
-
-    width: 110px;
-
-    border: 0;
-
-    border-radius: 13px;
-
-    color: white;
-
-    font-weight: 800;
-
-    background:
-        linear-gradient(
-            135deg,
-            #287dff,
-            #6957ff
-        );
-}
-
-.search-results {
-
-    display: none;
-
-    margin-top: 12px;
-
-    border-top:
-        1px solid var(--border);
-
-    padding-top: 12px;
-}
-
-.search-results.active {
-    display: block;
-}
-
-.search-result-item {
-
-    display: flex;
-
-    align-items: center;
-
-    justify-content: space-between;
-
-    gap: 12px;
-
-    padding: 13px 12px;
-
-    border-radius: 12px;
-
-    transition:
-        background .15s;
-}
-
-.search-result-item:hover {
-
-    background:
-        rgba(255,255,255,.035);
-}
-
-.search-result-main {
-    min-width: 0;
-}
-
-.stock-code {
-
-    font-weight: 900;
-
-    font-size: 15px;
-}
-
-.stock-name {
-
-    margin-left: 7px;
-
-    color: var(--text2);
-
-    font-size: 13px;
-}
-
-.stock-market {
-
-    display: inline-flex;
-
-    margin-left: 7px;
-
-    padding: 3px 7px;
-
-    border-radius: 6px;
-
-    font-size: 10px;
-
-    color: var(--text3);
-
-    background:
-        rgba(255,255,255,.05);
-}
-
-.search-result-actions {
-
-    display: flex;
-
-    gap: 7px;
-}
-
-.small-button {
-
-    border:
-        1px solid var(--border-light);
-
-    background:
-        rgba(255,255,255,.04);
-
-    color: var(--text2);
-
-    border-radius: 9px;
-
-    padding: 7px 11px;
-
-    font-size: 11px;
-}
-
-.small-button.primary {
-
-    border: 0;
-
-    color: white;
-
-    background:
-        linear-gradient(
-            135deg,
-            #287dff,
-            #6957ff
-        );
-}
-
-.small-button.remove {
-    color: var(--red);
-}
-
-
-/* =========================================================
-   NAV
-========================================================= */
-
-.nav {
-
-    display: flex;
-
-    gap: 7px;
-
-    margin-bottom: 20px;
-
-    padding: 6px;
-
-    border:
-        1px solid var(--border);
-
-    border-radius: 14px;
-
-    background:
-        rgba(12,18,28,.8);
-
-    overflow-x: auto;
-}
-
-.nav-button {
-
-    flex: 0 0 auto;
-
-    border: 0;
-
-    background: transparent;
-
-    color: var(--text3);
-
-    padding: 10px 15px;
-
-    border-radius: 9px;
-
-    font-size: 12px;
-
-    font-weight: 700;
-}
-
-.nav-button.active {
-
-    color: white;
-
-    background:
-        rgba(255,255,255,.08);
-}
-
-
-/* =========================================================
-   SECTION
-========================================================= */
-
-.section {
-    margin-top: 26px;
-}
-
-.section-heading {
-
-    display: flex;
-
-    align-items: flex-end;
-
-    justify-content: space-between;
-
-    gap: 15px;
-
-    margin-bottom: 12px;
-}
-
-.section-heading-left {
-    min-width: 0;
-}
-
-.section-heading-title {
-
-    font-size: 19px;
-
-    font-weight: 900;
-}
-
-.section-heading-description {
-
-    color: var(--text3);
-
-    font-size: 11px;
-
-    margin-top: 4px;
-}
-
-.section-count {
-
-    flex: 0 0 auto;
-
-    color: var(--text3);
-
-    font-size: 11px;
-}
-
-
-/* =========================================================
-   SIGNAL / RECOMMENDATION
-========================================================= */
-
-.signal {
-
-    display: inline-flex;
-
-    align-items: center;
-
-    width: fit-content;
-
-    padding: 6px 9px;
-
-    border-radius: 8px;
-
-    font-size: 10px;
-
-    font-weight: 900;
-
-    white-space: nowrap;
-}
-
-.signal.bullish {
-
-    color: var(--green);
-
-    background:
-        var(--green-soft);
-}
-
-.signal.weak {
-
-    color: var(--red);
-
-    background:
-        var(--red-soft);
-}
-
-.signal.neutral {
-
-    color: var(--yellow);
-
-    background:
-        var(--yellow-soft);
-}
-
-.signal.wait {
-
-    color: var(--blue);
-
-    background:
-        var(--blue-soft);
-}
-
-.recommendation {
-
-    margin-top: 12px;
-
-    padding: 11px 12px;
-
-    border-radius: 10px;
-
-    background:
-        rgba(255,255,255,.035);
-
-    border:
-        1px solid var(--border);
-
-    color: var(--text);
-
-    font-size: 12px;
-
-    font-weight: 800;
-
-    line-height: 1.55;
-}
-
-
-/* =========================================================
-   FEATURED
-========================================================= */
-
-.featured-grid {
-
-    display: grid;
-
-    grid-template-columns:
-        repeat(
-            auto-fit,
-            minmax(290px, 1fr)
-        );
-
-    gap: 14px;
-}
-
-.featured-card {
-
-    position: relative;
-
-    overflow: hidden;
-
-    border:
-        1px solid
-        rgba(90,169,255,.18);
-
-    border-radius:
-        20px;
-
-    padding: 21px;
-
-    background:
-        linear-gradient(
-            145deg,
-            #142238,
-            #0d1521
-        );
-
-    box-shadow:
-        0 14px 45px
-        rgba(0,0,0,.28);
-
-    transition:
-        transform .2s,
-        border-color .2s;
-}
-
-.featured-card:hover {
-
-    transform:
-        translateY(-2px);
-
-    border-color:
-        rgba(90,169,255,.35);
-}
-
-.featured-card::before {
-
-    content: "";
-
-    position: absolute;
-
-    left: 0;
-    top: 0;
-
-    width: 4px;
-    height: 100%;
-
-    background:
-        linear-gradient(
-            180deg,
-            var(--blue),
-            var(--purple)
-        );
-}
-
-.featured-top {
-
-    display: flex;
-
-    align-items: center;
-
-    justify-content: space-between;
-
-    gap: 10px;
-
-    margin-bottom: 17px;
-}
-
-.featured-label {
-
-    color: var(--blue);
-
-    font-size: 10px;
-
-    font-weight: 900;
-
-    letter-spacing: .8px;
-
-    text-transform: uppercase;
-}
-
-.featured-stock {
-
-    display: flex;
-
-    align-items: baseline;
-
-    gap: 9px;
-
-    margin-bottom: 13px;
-}
-
-.featured-code {
-
-    font-size: 25px;
-
-    font-weight: 950;
-}
-
-.featured-name {
-
-    color: var(--text2);
-
-    font-size: 14px;
-}
-
-.price-row {
-
-    display: flex;
-
-    align-items: flex-end;
-
-    justify-content: space-between;
-
-    gap: 15px;
-}
-
-.price {
-
-    font-size: 30px;
-
-    font-weight: 950;
-
-    letter-spacing: -1px;
-}
-
-.change {
-
-    font-size: 14px;
-
-    font-weight: 900;
-}
-
-.change.up {
-    color: var(--green);
-}
-
-.change.down {
-    color: var(--red);
-}
-
-.change.flat {
-    color: var(--text2);
-}
-
-.featured-bottom {
-
-    display: grid;
-
-    grid-template-columns:
-        1fr;
-
-    gap: 7px;
-
-    margin-top: 18px;
-}
-
-
-/* =========================================================
-   TOP 10
-========================================================= */
-
-.table-card {
-
-    overflow: hidden;
-
-    border:
-        1px solid var(--border);
-
-    border-radius:
-        var(--radius);
-
-    background:
-        var(--panel);
-
-    box-shadow:
-        var(--shadow);
-}
-
-.table-wrap {
-
-    width: 100%;
-
-    overflow-x: auto;
-}
-
-.stock-table {
-
-    width: 100%;
-
-    border-collapse: collapse;
-
-    min-width: 900px;
-}
-
-.stock-table th {
-
-    text-align: left;
-
-    padding: 13px 15px;
-
-    color: var(--text3);
-
-    font-size: 10px;
-
-    font-weight: 800;
-
-    letter-spacing: .5px;
-
-    background:
-        rgba(255,255,255,.025);
-
-    border-bottom:
-        1px solid var(--border);
-}
-
-.stock-table td {
-
-    padding: 14px 15px;
-
-    border-bottom:
-        1px solid
-        rgba(255,255,255,.045);
-
-    font-size: 12px;
-}
-
-.stock-table tbody tr {
-
-    transition:
-        background .15s;
-}
-
-.stock-table tbody tr:hover {
-
-    background:
-        rgba(255,255,255,.025);
-}
-
-.rank {
-
-    width: 42px;
-
-    color: var(--text3);
-
-    font-weight: 900;
-}
-
-.table-stock {
-
-    display: flex;
-
-    align-items: center;
-
-    gap: 9px;
-}
-
-.table-stock-code {
-
-    font-weight: 900;
-}
-
-.table-stock-name {
-
-    color: var(--text2);
-}
-
-.recommendation-table {
-
-    max-width: 180px;
-
-    line-height: 1.45;
-
-    font-weight: 800;
-}
-
-
-/* =========================================================
-   ASSETS
-========================================================= */
-
-.asset-grid {
-
-    display: grid;
-
-    grid-template-columns:
-        repeat(
-            auto-fit,
-            minmax(280px, 1fr)
-        );
-
-    gap: 13px;
-}
-
-.asset-card {
-
-    border:
-        1px solid var(--border);
-
-    border-radius:
-        17px;
-
-    padding: 18px;
-
-    background:
-        linear-gradient(
-            145deg,
-            var(--panel2),
-            var(--panel)
-        );
-}
-
-.asset-header {
-
-    display: flex;
-
-    align-items: flex-start;
-
-    justify-content: space-between;
-
-    gap: 10px;
-
-    margin-bottom: 15px;
-}
-
-.asset-type {
-
-    display: inline-block;
-
-    padding: 5px 7px;
-
-    border-radius: 7px;
-
-    background:
-        var(--purple-soft);
-
-    color:
-        var(--purple);
-
-    font-size: 9px;
-
-    font-weight: 900;
-}
-
-.asset-code {
-
-    font-size: 20px;
-
-    font-weight: 950;
-}
-
-.asset-name {
-
-    color: var(--text2);
-
-    font-size: 12px;
-}
-
-.asset-price {
-
-    font-size: 25px;
-
-    font-weight: 950;
-}
-
-.asset-change {
-
-    font-size: 12px;
-
-    margin-top: 3px;
-}
-
-
-/* =========================================================
-   WATCHLIST
-========================================================= */
-
-.watchlist-grid {
-
-    display: grid;
-
-    grid-template-columns:
-        repeat(
-            auto-fit,
-            minmax(290px, 1fr)
-        );
-
-    gap: 12px;
-}
-
-.watch-card {
-
-    border:
-        1px solid var(--border);
-
-    border-radius:
-        18px;
-
-    padding: 17px;
-
-    background:
-        linear-gradient(
-            145deg,
-            var(--panel2),
-            var(--panel)
-        );
-
-    box-shadow:
-        0 8px 25px
-        rgba(0,0,0,.16);
-}
-
-.watch-top {
-
-    display: flex;
-
-    align-items: flex-start;
-
-    justify-content: space-between;
-
-    gap: 10px;
-}
-
-.watch-code {
-
-    font-size: 18px;
-
-    font-weight: 900;
-}
-
-.watch-name {
-
-    color: var(--text2);
-
-    font-size: 12px;
-
-    margin-top: 3px;
-}
-
-.watch-price {
-
-    margin-top: 14px;
-
-    font-size: 27px;
-
-    font-weight: 950;
-}
-
-.watch-change {
-
-    margin-top: 4px;
-
-    font-size: 12px;
-
-    font-weight: 800;
-}
-
-.watch-status-row {
-
-    display: flex;
-
-    align-items: center;
-
-    justify-content: space-between;
-
-    gap: 10px;
-
-    margin-top: 14px;
-}
-
-.watch-status-label {
-
-    color: var(--text3);
-
-    font-size: 10px;
-}
-
-.watch-recommendation {
-
-    margin-top: 13px;
-
-    padding: 12px;
-
-    border:
-        1px solid var(--border);
-
-    border-radius: 11px;
-
-    background:
-        rgba(255,255,255,.025);
-
-    font-size: 12px;
-
-    line-height: 1.55;
-
-    font-weight: 800;
-}
-
-.holding-box {
-
-    margin-top: 14px;
-
-    padding: 13px;
-
-    border-radius: 12px;
-
-    background:
-        rgba(0,0,0,.17);
-
-    border:
-        1px solid var(--border);
-}
-
-.holding-header {
-
-    display: flex;
-
-    justify-content: space-between;
-
-    align-items: center;
-
-    gap: 10px;
-
-    margin-bottom: 10px;
-}
-
-.holding-title {
-
-    color: var(--text2);
-
-    font-size: 11px;
-
-    font-weight: 900;
-}
-
-.holding-toggle {
-
-    border: 0;
-
-    border-radius: 8px;
-
-    padding: 6px 9px;
-
-    color: var(--text2);
-
-    background:
-        rgba(255,255,255,.06);
-
-    font-size: 10px;
-
-    font-weight: 800;
-}
-
-.holding-fields {
-
-    display: grid;
-
-    grid-template-columns:
-        1fr 1fr;
-
-    gap: 8px;
-}
-
-.holding-field label {
-
-    display: block;
-
-    color: var(--text3);
-
-    font-size: 9px;
-
-    margin-bottom: 5px;
-}
-
-.holding-field input {
-
-    width: 100%;
-
-    height: 34px;
-
-    border:
-        1px solid var(--border-light);
-
-    border-radius: 8px;
-
-    background:
-        rgba(0,0,0,.25);
-
-    color: var(--text);
-
-    padding:
-        0 9px;
-
-    outline: none;
-
-    font-size: 11px;
-}
-
-.holding-field input:focus {
-
-    border-color:
-        rgba(90,169,255,.55);
-}
-
-.holding-summary {
-
-    display: grid;
-
-    grid-template-columns:
-        1fr 1fr;
-
-    gap: 7px;
-
-    margin-top: 10px;
-}
-
-.holding-stat {
-
-    padding: 9px;
-
-    border-radius: 9px;
-
-    background:
-        rgba(255,255,255,.025);
-}
-
-.holding-stat-label {
-
-    color: var(--text3);
-
-    font-size: 9px;
-
-    margin-bottom: 4px;
-}
-
-.holding-stat-value {
-
-    font-size: 12px;
-
-    font-weight: 900;
-}
-
-.holding-stat-value.profit {
-    color: var(--green);
-}
-
-.holding-stat-value.loss {
-    color: var(--red);
-}
-
-.not-holding {
-
-    color: var(--text3);
-
-    font-size: 11px;
-
-    margin-top: 13px;
-
-    padding: 10px;
-
-    border-radius: 9px;
-
-    background:
-        rgba(255,255,255,.025);
-}
-
-
-/* =========================================================
-   EMPTY
-========================================================= */
-
-.empty {
-
-    padding: 42px 20px;
-
-    text-align: center;
-
-    color: var(--text3);
-
-    border:
-        1px dashed
-        var(--border-light);
-
-    border-radius:
-        var(--radius);
-
-    background:
-        rgba(255,255,255,.015);
-}
-
-.empty-title {
-
-    color: var(--text2);
-
-    font-size: 14px;
-
-    font-weight: 800;
-
-    margin-bottom: 5px;
-}
-
-.empty-description {
-
-    font-size: 11px;
-
-    line-height: 1.7;
-}
-
-
-/* =========================================================
-   ERROR
-========================================================= */
-
-.error-panel {
-
-    display: none;
-
-    margin-bottom: 20px;
-
-    padding: 18px;
-
-    border:
-        1px solid
-        rgba(255,95,109,.25);
-
-    border-radius:
-        var(--radius);
-
-    background:
-        var(--red-soft);
-
-    color: var(--text2);
-}
-
-.error-panel.active {
-    display: block;
-}
-
-.error-title {
-
-    color: var(--red);
-
-    font-weight: 900;
-
-    margin-bottom: 7px;
-}
-
-.error-message {
-
-    font-size: 12px;
-
-    line-height: 1.7;
-}
-
-
-/* =========================================================
-   LOADING
-========================================================= */
-
-.loading {
-
-    padding: 60px 20px;
-
-    text-align: center;
-
-    color: var(--text3);
-}
-
-.spinner {
-
-    width: 32px;
-    height: 32px;
-
-    margin:
-        0 auto 14px;
-
-    border:
-        3px solid
-        rgba(255,255,255,.08);
-
-    border-top-color:
-        var(--blue);
-
-    border-radius: 50%;
-
-    animation:
-        spin .8s linear infinite;
-}
-
-@keyframes spin {
-
-    to {
-        transform: rotate(360deg);
-    }
-
-}
-
-
-/* =========================================================
-   FOOTER
-========================================================= */
-
-.footer {
-
-    margin-top: 45px;
-
-    padding: 25px 0;
-
-    border-top:
-        1px solid var(--border);
-
-    color: var(--text3);
-
-    font-size: 10px;
-
-    line-height: 1.8;
-}
-
-
-/* =========================================================
-   MOBILE
-========================================================= */
-
-@media (max-width: 850px) {
-
-    .container {
-
-        width:
-            min(
-                100% - 20px,
-                1440px
-            );
-    }
-
-    .header-inner {
-
-        min-height: 68px;
-    }
-
-    .hero {
-
-        grid-template-columns: 1fr;
-    }
-
-    .hero-main {
-
-        min-height: 210px;
-
-        padding: 23px;
-    }
-
-    .hero-side {
-
-        grid-template-columns:
-            repeat(2, 1fr);
-    }
-
-    .metric-value {
-
-        font-size: 23px;
-    }
-
-}
-
-@media (max-width: 600px) {
-
-    main {
-        padding-top: 18px;
-    }
-
-    .brand-subtitle {
-        display: none;
-    }
-
-    .header-status {
-        font-size: 10px;
-    }
-
-    .hero-title {
-        font-size: 29px;
-    }
-
-    .hero-description {
-        font-size: 12px;
-    }
-
-    .search-box {
-        flex-direction: column;
-    }
-
-    .search-button {
-
-        width: 100%;
-
-        height: 45px;
-    }
-
-    .featured-grid {
-
-        grid-template-columns: 1fr;
-    }
-
-    .section-heading-title {
-
-        font-size: 17px;
-    }
-
-    .price {
-
-        font-size: 27px;
-    }
-
-    .holding-fields {
-
-        grid-template-columns:
-            1fr;
-    }
-
-}
-
-
-/* =========================================================
-   HIDDEN
-========================================================= */
-
 .hidden {
     display: none !important;
 }
-
+/* =========================================================
+   APP
+========================================================= */
+.app {
+    width: min(
+        1400px,
+        calc(100% - 32px)
+    );
+    margin: 0 auto;
+    padding: 28px 0 50px;
+}
+/* =========================================================
+   HEADER
+========================================================= */
+.header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 20px;
+    margin-bottom: 24px;
+}
+.brand {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+.brand-title {
+    font-size: 28px;
+    font-weight: 800;
+    letter-spacing: .5px;
+}
+.brand-subtitle {
+    color: var(--text2);
+    font-size: 13px;
+}
+.header-status {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 9px 13px;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    background: rgba(255,255,255,.025);
+    color: var(--text2);
+    font-size: 12px;
+}
+.status-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--green);
+    box-shadow:
+        0 0 12px
+        rgba(37,217,138,.6);
+}
+/* =========================================================
+   SEARCH
+========================================================= */
+.search-area {
+    position: relative;
+    margin-bottom: 24px;
+}
+.search-box {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+}
+.search-icon {
+    padding-left: 8px;
+    color: var(--text3);
+}
+.search-input {
+    flex: 1;
+    min-width: 0;
+    border: 0;
+    outline: 0;
+    background: transparent;
+    color: var(--text);
+    padding: 10px;
+}
+.search-input::placeholder {
+    color: var(--text3);
+}
+.search-button {
+    border: 0;
+    border-radius: 12px;
+    padding: 10px 18px;
+    background: var(--blue);
+    color: #07101d;
+    font-weight: 700;
+}
+.search-button:hover {
+    filter: brightness(1.08);
+}
+.search-results {
+    display: none;
+    position: absolute;
+    z-index: 20;
+    top: calc(100% + 8px);
+    left: 0;
+    right: 0;
+    max-height: 420px;
+    overflow-y: auto;
+    background: var(--panel2);
+    border: 1px solid var(--border-light);
+    border-radius: 16px;
+    box-shadow: var(--shadow);
+}
+.search-results.active {
+    display: block;
+}
+.search-result-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 15px;
+    padding: 14px 16px;
+    border-bottom: 1px solid var(--border);
+}
+.search-result-item:last-child {
+    border-bottom: 0;
+}
+.search-result-main {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
+}
+.stock-code {
+    font-weight: 800;
+}
+.stock-name {
+    color: var(--text2);
+}
+.stock-market {
+    color: var(--text3);
+    font-size: 11px;
+}
+.search-result-actions {
+    flex-shrink: 0;
+}
+/* =========================================================
+   BUTTON
+========================================================= */
+.small-button {
+    border: 1px solid var(--border-light);
+    background: transparent;
+    color: var(--text2);
+    border-radius: 9px;
+    padding: 7px 11px;
+    font-size: 11px;
+}
+.small-button.primary {
+    border-color:
+        rgba(92,169,255,.35);
+    background:
+        var(--blue-soft);
+    color: var(--blue);
+}
+.small-button.remove {
+    border-color:
+        rgba(255,95,109,.25);
+    background:
+        var(--red-soft);
+    color: var(--red);
+}
+/* =========================================================
+   ERROR
+========================================================= */
+.error-panel {
+    display: none;
+    margin-bottom: 22px;
+    padding: 18px;
+    border: 1px solid
+        rgba(255,95,109,.3);
+    border-radius: var(--radius);
+    background: var(--red-soft);
+}
+.error-panel.active {
+    display: block;
+}
+.error-title {
+    color: var(--red);
+    font-weight: 800;
+    margin-bottom: 6px;
+}
+.error-message {
+    color: var(--text2);
+    font-size: 12px;
+    white-space: pre-wrap;
+}
+/* =========================================================
+   LOADING
+========================================================= */
+.loading {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 160px;
+    color: var(--text2);
+}
+.loading-inner {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+}
+.loading-spinner {
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    border: 3px solid
+        rgba(255,255,255,.08);
+    border-top-color: var(--blue);
+    animation:
+        spin .8s linear infinite;
+}
+@keyframes spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+/* =========================================================
+   METRICS
+========================================================= */
+.metrics-grid {
+    display: grid;
+    grid-template-columns:
+        repeat(4, minmax(0, 1fr));
+    gap: 14px;
+    margin-bottom: 26px;
+}
+.metric-card {
+    padding: 20px;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+}
+.metric-label {
+    color: var(--text3);
+    font-size: 11px;
+    margin-bottom: 9px;
+}
+.metric-value {
+    font-size: 26px;
+    font-weight: 800;
+}
+.metric-note {
+    margin-top: 5px;
+    color: var(--text2);
+    font-size: 11px;
+}
+/* =========================================================
+   SECTION
+========================================================= */
+.section {
+    margin-bottom: 30px;
+}
+.section-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 15px;
+    margin-bottom: 14px;
+}
+.section-title {
+    font-size: 18px;
+    font-weight: 800;
+}
+.section-count {
+    color: var(--text3);
+    font-size: 11px;
+}
+/* =========================================================
+   FEATURED
+========================================================= */
+.featured-grid {
+    display: grid;
+    grid-template-columns:
+        repeat(4, minmax(0, 1fr));
+    gap: 14px;
+}
+.featured-card {
+    padding: 18px;
+    background:
+        linear-gradient(
+            145deg,
+            rgba(92,169,255,.07),
+            transparent
+        ),
+        var(--panel);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    min-height: 190px;
+}
+.featured-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 10px;
+}
+.featured-label {
+    color: var(--blue);
+    font-size: 10px;
+    font-weight: 800;
+}
+.featured-stock {
+    margin-top: 20px;
+}
+.featured-code {
+    font-size: 22px;
+    font-weight: 850;
+}
+.featured-name {
+    margin-top: 3px;
+    color: var(--text2);
+    font-size: 12px;
+}
+.price-row {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 10px;
+    margin-top: 18px;
+}
+.price {
+    font-size: 25px;
+    font-weight: 800;
+}
+.change {
+    font-size: 12px;
+    font-weight: 700;
+}
+.up {
+    color: var(--green);
+}
+.down {
+    color: var(--red);
+}
+.flat {
+    color: var(--text3);
+}
+.featured-bottom {
+    margin-top: 15px;
+    padding-top: 12px;
+    border-top: 1px solid var(--border);
+}
+.recommendation {
+    color: var(--text2);
+    font-size: 11px;
+    line-height: 1.5;
+}
+/* =========================================================
+   SIGNAL
+========================================================= */
+.signal {
+    display: inline-flex;
+    align-items: center;
+    padding: 5px 8px;
+    border-radius: 999px;
+    font-size: 9px;
+    font-weight: 800;
+    white-space: nowrap;
+}
+.signal.bullish {
+    color: var(--green);
+    background: var(--green-soft);
+}
+.signal.weak {
+    color: var(--red);
+    background: var(--red-soft);
+}
+.signal.wait {
+    color: var(--yellow);
+    background: var(--yellow-soft);
+}
+.signal.neutral {
+    color: var(--text2);
+    background: rgba(255,255,255,.06);
+}
+/* =========================================================
+   TOP TABLE
+========================================================= */
+.table-wrap {
+    overflow-x: auto;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+}
+.top-table {
+    width: 100%;
+    min-width: 720px;
+    border-collapse: collapse;
+}
+.top-table th {
+    color: var(--text3);
+    font-size: 10px;
+    font-weight: 600;
+    text-align: left;
+    padding: 13px 15px;
+    border-bottom: 1px solid var(--border);
+}
+.top-table td {
+    padding: 15px;
+    border-bottom: 1px solid var(--border);
+    font-size: 12px;
+}
+.top-table tr:last-child td {
+    border-bottom: 0;
+}
+.rank {
+    color: var(--yellow);
+    font-weight: 900;
+}
+.table-stock-code {
+    font-weight: 800;
+}
+.table-stock-name {
+    margin-top: 3px;
+    color: var(--text3);
+    font-size: 10px;
+}
+.recommendation-table {
+    max-width: 250px;
+    color: var(--text2);
+    line-height: 1.5;
+}
+/* =========================================================
+   ASSET
+========================================================= */
+.asset-grid {
+    display: grid;
+    grid-template-columns:
+        repeat(4, minmax(0, 1fr));
+    gap: 14px;
+}
+.asset-card {
+    padding: 17px;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+}
+.asset-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 10px;
+}
+.asset-code {
+    font-size: 16px;
+    font-weight: 800;
+}
+.asset-name {
+    margin-top: 3px;
+    color: var(--text2);
+    font-size: 11px;
+}
+.asset-type {
+    padding: 4px 7px;
+    border-radius: 7px;
+    color: var(--purple);
+    background: var(--purple-soft);
+    font-size: 9px;
+    font-weight: 800;
+}
+.asset-price {
+    margin-top: 20px;
+    font-size: 22px;
+    font-weight: 800;
+}
+.asset-change {
+    margin-top: 5px;
+    font-size: 11px;
+}
+/* =========================================================
+   WATCHLIST
+========================================================= */
+.watch-grid {
+    display: grid;
+    grid-template-columns:
+        repeat(3, minmax(0, 1fr));
+    gap: 14px;
+}
+.watch-card {
+    padding: 18px;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+}
+.watch-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 10px;
+}
+.watch-code {
+    font-size: 20px;
+    font-weight: 850;
+}
+.watch-name {
+    color: var(--text2);
+    font-size: 11px;
+    margin-top: 3px;
+}
+.watch-price {
+    margin-top: 18px;
+    font-size: 27px;
+    font-weight: 850;
+}
+.watch-change {
+    margin-top: 4px;
+    font-size: 11px;
+}
+.watch-status-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 10px;
+    margin-top: 16px;
+    padding-top: 12px;
+    border-top: 1px solid var(--border);
+}
+.watch-status-label {
+    color: var(--text3);
+    font-size: 10px;
+}
+.watch-recommendation {
+    margin-top: 13px;
+    padding: 11px;
+    border-radius: 11px;
+    background: rgba(255,255,255,.025);
+    color: var(--text2);
+    font-size: 11px;
+    line-height: 1.55;
+}
+/* =========================================================
+   HOLDING
+========================================================= */
+.not-holding {
+    margin-top: 13px;
+    padding: 11px;
+    color: var(--text3);
+    background: rgba(255,255,255,.025);
+    border-radius: 11px;
+    font-size: 10px;
+}
+.holding-box {
+    margin-top: 14px;
+    padding: 14px;
+    border-radius: 13px;
+    background:
+        rgba(92,169,255,.045);
+    border: 1px solid
+        rgba(92,169,255,.12);
+}
+.holding-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    margin-bottom: 13px;
+}
+.holding-title {
+    font-size: 11px;
+    font-weight: 800;
+}
+.holding-toggle {
+    border: 0;
+    background: transparent;
+    color: var(--red);
+    font-size: 9px;
+}
+.holding-fields {
+    display: grid;
+    grid-template-columns:
+        repeat(2, minmax(0,1fr));
+    gap: 9px;
+}
+.holding-field label {
+    display: block;
+    margin-bottom: 5px;
+    color: var(--text3);
+    font-size: 9px;
+}
+.holding-field input {
+    width: 100%;
+    padding: 8px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    outline: 0;
+    background: var(--bg2);
+    color: var(--text);
+    font-size: 11px;
+}
+.holding-field input:focus {
+    border-color:
+        rgba(92,169,255,.5);
+}
+.holding-summary {
+    display: grid;
+    grid-template-columns:
+        repeat(2, minmax(0,1fr));
+    gap: 8px;
+    margin-top: 12px;
+}
+.holding-stat {
+    padding: 9px;
+    border-radius: 8px;
+    background: rgba(255,255,255,.025);
+}
+.holding-stat-label {
+    color: var(--text3);
+    font-size: 8px;
+}
+.holding-stat-value {
+    margin-top: 4px;
+    font-size: 11px;
+    font-weight: 800;
+}
+.holding-stat-value.profit {
+    color: var(--green);
+}
+.holding-stat-value.loss {
+    color: var(--red);
+}
+/* =========================================================
+   EMPTY
+========================================================= */
+.empty {
+    padding: 35px 20px;
+    text-align: center;
+}
+.empty-title {
+    color: var(--text2);
+    font-weight: 700;
+}
+.empty-description {
+    margin-top: 7px;
+    color: var(--text3);
+    font-size: 11px;
+}
+/* =========================================================
+   FOOTER
+========================================================= */
+.footer {
+    padding-top: 20px;
+    color: var(--text3);
+    font-size: 10px;
+    text-align: center;
+}
+/* =========================================================
+   RESPONSIVE
+========================================================= */
+@media (max-width: 1050px) {
+    .featured-grid {
+        grid-template-columns:
+            repeat(3, minmax(0,1fr));
+    }
+    .asset-grid {
+        grid-template-columns:
+            repeat(3, minmax(0,1fr));
+    }
+    .watch-grid {
+        grid-template-columns:
+            repeat(2, minmax(0,1fr));
+    }
+}
+@media (max-width: 800px) {
+    .metrics-grid {
+        grid-template-columns:
+            repeat(2, minmax(0,1fr));
+    }
+    .featured-grid {
+        grid-template-columns:
+            repeat(2, minmax(0,1fr));
+    }
+    .asset-grid {
+        grid-template-columns:
+            repeat(2, minmax(0,1fr));
+    }
+}
+@media (max-width: 600px) {
+    .app {
+        width: min(
+            100% - 20px,
+            1400px
+        );
+        padding-top: 18px;
+    }
+    .header {
+        flex-direction: column;
+    }
+    .brand-title {
+        font-size: 23px;
+    }
+    .metrics-grid,
+    .featured-grid,
+    .asset-grid,
+    .watch-grid {
+        grid-template-columns:
+            1fr;
+    }
+    .search-button {
+        padding-left: 12px;
+        padding-right: 12px;
+    }
+    .search-result-main {
+        flex-wrap: wrap;
+    }
+}
+/* =========================================================
+   END CSS
+========================================================= */
 </style>
-
 </head>
-
-
 <body>
-
 <div class="app">
-
-
-<!-- =========================================================
+<!-- =====================================================
      HEADER
-========================================================= -->
-
+====================================================== -->
 <header class="header">
-
-    <div class="container header-inner">
-
-        <div class="brand">
-
-            <div class="brand-icon">
-                AI
-            </div>
-
-            <div>
-
-                <div class="brand-title">
-                    台股 AI 智能選股
-                </div>
-
-                <div class="brand-subtitle">
-                    Quantitative Market Dashboard
-                </div>
-
-            </div>
-
+    <div class="brand">
+        <div class="brand-title">
+            台股 AI 智能選股儀表板
         </div>
-
-
-        <div class="header-status">
-
-            <span class="status-dot"></span>
-
-            <span id="systemStatus">
-                資料載入中
-            </span>
-
+        <div class="brand-subtitle">
+            收盤資料 × AI 選股 × 市場趨勢 × 個人追蹤
         </div>
-
     </div>
-
+    <div class="header-status">
+        <span class="status-dot"></span>
+        <span>
+            系統運作中
+        </span>
+    </div>
 </header>
-
-
-<!-- =========================================================
-     MAIN
-========================================================= -->
-
-<main>
-
-<div class="container">
-
-
-<!-- =========================================================
+<!-- =====================================================
+     SEARCH
+====================================================== -->
+<section class="search-area">
+    <div class="search-box">
+        <div class="search-icon">
+            🔎
+        </div>
+        <input
+            id="searchInput"
+            class="search-input"
+            type="search"
+            autocomplete="off"
+            placeholder="查詢個股，例如：2330、台積電、聯亞"
+        >
+        <button
+            id="searchButton"
+            class="search-button"
+            type="button"
+        >
+            查詢個股
+        </button>
+    </div>
+    <div
+        id="searchResults"
+        class="search-results"
+    ></div>
+</section>
+<!-- =====================================================
      ERROR
-========================================================= -->
-
-<div
+====================================================== -->
+<section
     id="errorPanel"
     class="error-panel"
 >
-
     <div
         id="errorTitle"
         class="error-title"
     >
         無法載入儀表板資料
     </div>
-
     <div
         id="errorMessage"
         class="error-message"
-    >
-    </div>
-
-</div>
-
-
-<!-- =========================================================
+    ></div>
+</section>
+<!-- =====================================================
      LOADING
-========================================================= -->
-
+====================================================== -->
 <div
     id="loading"
     class="loading"
 >
-
-    <div class="spinner"></div>
-
-    正在載入最新市場資料……
-
+    <div class="loading-inner">
+        <div class="loading-spinner"></div>
+        <div>
+            正在載入最新市場資料…
+        </div>
+    </div>
 </div>
-
-
-<!-- =========================================================
+<!-- =====================================================
      DASHBOARD
-========================================================= -->
-
-<div
+====================================================== -->
+<main
     id="dashboard"
     class="hidden"
 >
-
-
-<!-- =========================================================
-     HERO
-========================================================= -->
-
-<section class="hero">
-
-    <div class="hero-main">
-
-        <div class="hero-eyebrow">
-            AI MARKET INTELLIGENCE
-        </div>
-
-        <h1 class="hero-title">
-            台股市場<br>
-            今日量化訊號
-        </h1>
-
-        <div class="hero-description">
-            系統由後端分析市場資料，
-            綜合判斷市場趨勢與個股狀態。
-            前端只呈現最終的趨勢判斷與操作建議，
-            不直接顯示底層技術指標計算。
-        </div>
-
-    </div>
-
-
-    <div class="hero-side">
-
-        <div class="metric-card">
-
+    <!-- =================================================
+         METRICS
+    ================================================== -->
+    <section class="metrics-grid">
+        <article class="metric-card">
             <div class="metric-label">
-                今日精選
+                今日符合條件
             </div>
-
             <div
                 id="featuredCount"
                 class="metric-value"
             >
-                -
+                --
             </div>
-
             <div class="metric-note">
-                今日符合選股結果
+                AI 今日精選
             </div>
-
-        </div>
-
-
-        <div class="metric-card">
-
+        </article>
+        <article class="metric-card">
             <div class="metric-label">
-                股票池
+                股票資料
             </div>
-
             <div
                 id="stockCount"
                 class="metric-value"
             >
-                -
+                --
             </div>
-
             <div class="metric-note">
-                成功分析
+                後端有效股票資料
             </div>
-
-        </div>
-
-
-        <div class="metric-card">
-
+        </article>
+        <article class="metric-card">
             <div class="metric-label">
                 ETF
             </div>
-
             <div
                 id="etfCount"
                 class="metric-value"
             >
-                -
+                --
             </div>
-
             <div class="metric-note">
-                獨立資產區
+                ETF 資料
             </div>
-
-        </div>
-
-
-        <div class="metric-card">
-
+        </article>
+        <article class="metric-card">
             <div class="metric-label">
-                更新日期
+                最新交易日
             </div>
-
             <div
                 id="dataDate"
                 class="metric-value"
-                style="font-size:18px;"
             >
-                -
+                --
             </div>
-
             <div class="metric-note">
-                台灣時間
+                市場資料日期
             </div>
-
-        </div>
-
-    </div>
-
-</section>
-
-
-<!-- =========================================================
-     SEARCH
-========================================================= -->
-
-<section class="search-section">
-
-<div class="search-panel">
-
-    <div class="search-header">
-
-        <div>
-
+        </article>
+    </section>
+    <!-- =================================================
+         FEATURED
+    ================================================== -->
+    <section class="section">
+        <div class="section-header">
             <div class="section-title">
-                查詢個股
+                今日精選
             </div>
-
-            <div class="section-subtitle">
-                輸入股票代號或名稱，加入你的股票清單
+            <div
+                id="featuredSectionCount"
+                class="section-count"
+            >
+                0 檔
             </div>
-
         </div>
-
-    </div>
-
-
-    <div class="search-box">
-
-        <input
-            id="searchInput"
-            class="search-input"
-            type="text"
-            autocomplete="off"
-            placeholder="例如：2330、台積電、4905"
-        >
-
-        <button
-            id="searchButton"
-            class="search-button"
-            type="button"
-        >
-            搜尋
-        </button>
-
-    </div>
-
-
-    <div
-        id="searchResults"
-        class="search-results"
-    >
-    </div>
-
-</div>
-
-</section>
-
-
-<!-- =========================================================
-     NAV
-========================================================= -->
-
-<nav class="nav">
-
-    <button
-        class="nav-button active"
-        data-target="featuredSection"
-    >
-        今日精選
-    </button>
-
-    <button
-        class="nav-button"
-        data-target="topSection"
-    >
-        AI Top 10
-    </button>
-
-    <button
-        class="nav-button"
-        data-target="etfSection"
-    >
-        ETF
-    </button>
-
-    <button
-        class="nav-button"
-        data-target="bondSection"
-    >
-        債券
-    </button>
-
-    <button
-        class="nav-button"
-        data-target="watchSection"
-    >
-        我的清單
-    </button>
-
-</nav>
-
-
-<!-- =========================================================
-     TODAY FEATURED
-========================================================= -->
-
-<section
-    id="featuredSection"
-    class="section"
->
-
-<div class="section-heading">
-
-    <div class="section-heading-left">
-
-        <div class="section-heading-title">
-            今日精選
+        <div
+            id="featuredGrid"
+            class="featured-grid"
+        ></div>
+    </section>
+    <!-- =================================================
+         TOP 10
+    ================================================== -->
+    <section class="section">
+        <div class="section-header">
+            <div class="section-title">
+                AI Top 10
+            </div>
+            <div
+                id="topCount"
+                class="section-count"
+            >
+                0 檔
+            </div>
         </div>
-
-        <div class="section-heading-description">
-            顯示後端判斷為今日值得關注的標的
+        <div class="table-wrap">
+            <table class="top-table">
+                <thead>
+                    <tr>
+                        <th>
+                            #
+                        </th>
+                        <th>
+                            標的
+                        </th>
+                        <th>
+                            股價
+                        </th>
+                        <th>
+                            漲跌
+                        </th>
+                        <th>
+                            趨勢
+                        </th>
+                        <th>
+                            建議
+                        </th>
+                    </tr>
+                </thead>
+                <tbody
+                    id="topTableBody"
+                ></tbody>
+            </table>
         </div>
-
-    </div>
-
-    <div
-        id="featuredSectionCount"
-        class="section-count"
-    >
-        -
-    </div>
-
-</div>
-
-
-<div
-    id="featuredGrid"
-    class="featured-grid"
->
-</div>
-
-</section>
-
-
-<!-- =========================================================
-     TOP 10
-========================================================= -->
-
-<section
-    id="topSection"
-    class="section"
->
-
-<div class="section-heading">
-
-    <div class="section-heading-left">
-
-        <div class="section-heading-title">
-            AI Top 10
+    </section>
+    <!-- =================================================
+         ETF
+    ================================================== -->
+    <section class="section">
+        <div class="section-header">
+            <div class="section-title">
+                ETF
+            </div>
+            <div
+                id="etfSectionCount"
+                class="section-count"
+            >
+                0 檔
+            </div>
         </div>
-
-        <div class="section-heading-description">
-            綜合後端分析結果排序，前端只呈現判斷結果
+        <div
+            id="etfGrid"
+            class="asset-grid"
+        ></div>
+    </section>
+    <!-- =================================================
+         BONDS
+    ================================================== -->
+    <section class="section">
+        <div class="section-header">
+            <div class="section-title">
+                債券
+            </div>
         </div>
-
-    </div>
-
-    <div
-        id="topCount"
-        class="section-count"
-    >
-        -
-    </div>
-
-</div>
-
-
-<div class="table-card">
-
-<div class="table-wrap">
-
-<table class="stock-table">
-
-<thead>
-
-<tr>
-
-    <th>#</th>
-
-    <th>標的</th>
-
-    <th>現價</th>
-
-    <th>今日漲跌</th>
-
-    <th>趨勢</th>
-
-    <th>操作建議</th>
-
-</tr>
-
-</thead>
-
-
-<tbody
-    id="topTableBody"
->
-</tbody>
-
-</table>
-
-</div>
-
-</div>
-
-</section>
-
-
-<!-- =========================================================
-     ETF
-========================================================= -->
-
-<section
-    id="etfSection"
-    class="section"
->
-
-<div class="section-heading">
-
-    <div class="section-heading-left">
-
-        <div class="section-heading-title">
-            ETF
+        <div
+            id="bondGrid"
+            class="asset-grid"
+        ></div>
+    </section>
+    <!-- =================================================
+         WATCHLIST
+    ================================================== -->
+    <section class="section">
+        <div class="section-header">
+            <div class="section-title">
+                我的追蹤清單
+            </div>
+            <div
+                id="watchCount"
+                class="section-count"
+            >
+                0 檔
+            </div>
         </div>
-
-        <div class="section-heading-description">
-            ETF 獨立於個股選股邏輯呈現
+        <div
+            id="watchlistGrid"
+            class="watch-grid"
+        ></div>
+    </section>
+    <!-- =================================================
+         FOOTER
+    ================================================== -->
+    <footer class="footer">
+        <div id="footerUpdated"></div>
+        <div style="margin-top:5px;">
+            AI 分析結果僅供資訊參考，不構成投資建議。
         </div>
-
-    </div>
-
-    <div
-        id="etfSectionCount"
-        class="section-count"
-    >
-        -
-    </div>
-
-</div>
-
-
-<div
-    id="etfGrid"
-    class="asset-grid"
->
-</div>
-
-</section>
-
-
-<!-- =========================================================
-     BOND
-========================================================= -->
-
-<section
-    id="bondSection"
-    class="section"
->
-
-<div class="section-heading">
-
-    <div class="section-heading-left">
-
-        <div class="section-heading-title">
-            債券
-        </div>
-
-        <div class="section-heading-description">
-            債券不套用股票選股邏輯
-        </div>
-
-    </div>
-
-</div>
-
-
-<div
-    id="bondGrid"
-    class="asset-grid"
->
-</div>
-
-</section>
-
-
-<!-- =========================================================
-     WATCHLIST
-========================================================= -->
-
-<section
-    id="watchSection"
-    class="section"
->
-
-<div class="section-heading">
-
-    <div class="section-heading-left">
-
-        <div class="section-heading-title">
-            我的清單
-        </div>
-
-        <div class="section-heading-description">
-            追蹤標的會自動取得最新分析結果；持有者可另外設定持股資料
-        </div>
-
-    </div>
-
-    <div
-        id="watchCount"
-        class="section-count"
-    >
-        0 檔
-    </div>
-
-</div>
-
-
-<div
-    id="watchlistGrid"
-    class="watchlist-grid"
->
-</div>
-
-</section>
-
-
-<!-- =========================================================
-     FOOTER
-========================================================= -->
-
-<footer class="footer">
-
-    <div>
-        台股 AI 智能選股系統
-    </div>
-
-    <div>
-        本頁面資料由 GitHub Actions
-        後端資料引擎產生。
-        前端僅負責資料呈現、
-        搜尋、追蹤清單與持有狀態管理。
-    </div>
-
-    <div id="footerUpdated"></div>
-
-</footer>
-
-
-</div>
-
-</div>
-
+    </footer>
 </main>
-
 </div>
-
-
 <script>
-
-/* ============================================================
-   V11 FRONTEND
-   ------------------------------------------------------------
-   前端原則：
-
-   1. 不重新計算技術指標
-   2. 不顯示 RSI
-   3. 不顯示 MACD
-   4. 不顯示 KD
-   5. 不顯示 MA20
-   6. 不顯示成交量倍率
-   7. 不顯示 AI Score
-   8. 不顯示核心條件分數
-   9. 不顯示 6/6
-   10. 只顯示後端最終判斷
-   11. 我的清單可管理持有股數與成本
-   12. 持有資料只存在瀏覽器 localStorage
-
-   資料來源：
-
-   Data/ui_data.json
-   Data/securities.json
-
-============================================================ */
-
-
-const UI_DATA_URL =
-    "./Data/ui_data.json";
-
+/* =========================================================
+   CONFIG
+========================================================= */
+const DATA_URL =
+    "Data/ui_data.json";
 const SECURITIES_URL =
-    "./Data/securities.json";
-
-
+    "Data/securities.json";
 /* =========================================================
    GLOBAL STATE
 ========================================================= */
-
-let uiData = null;
-
+let uiData = {
+    statistics: {},
+    today_selected: [],
+    top10: [],
+    stocks: [],
+    stock: [],
+    etfs: [],
+    bonds: [],
+    latest_market_date: "",
+    date: "",
+    updated_at: "",
+    updated_at_tw: ""
+};
 let securitiesData = [];
-
 let watchlist = [];
-
 let holdings = {};
-
-let searchTimer = null;
-
-
 /* =========================================================
-   DOM
+   DOM HELPER
 ========================================================= */
-
-const $ =
-    id =>
-        document.getElementById(id);
-
-
+function $(
+    id
+) {
+    return document.getElementById(id);
+}
 /* =========================================================
    INIT
 ========================================================= */
-
 document.addEventListener(
     "DOMContentLoaded",
     init
 );
-
-
 async function init() {
-
     loadWatchlist();
-
     loadHoldings();
-
     bindEvents();
-
-    await loadDashboard();
-
+    showLoading(true);
+    hideError();
+    try {
+        const result =
+            await loadAllData();
+        uiData =
+            normalizeUiData(
+                result.ui
+            );
+        securitiesData =
+            normalizeSecurities(
+                result.securities
+            );
+        renderDashboard();
+        $("dashboard")
+            .classList
+            .remove("hidden");
+    } catch(error) {
+        console.error(
+            "Dashboard load error:",
+            error
+        );
+        showError(
+            error
+        );
+    } finally {
+        showLoading(false);
+    }
 }
-
-
 /* =========================================================
    EVENTS
 ========================================================= */
-
 function bindEvents() {
-
     $("searchButton")
         .addEventListener(
             "click",
             performSearch
         );
-
-
     $("searchInput")
         .addEventListener(
             "input",
-            () => {
-
-                clearTimeout(
-                    searchTimer
-                );
-
-                const value =
-                    $("searchInput")
-                        .value
-                        .trim();
-
-
-                if (!value) {
-
-                    clearSearchResults();
-
-                    return;
-
-                }
-
-
-                searchTimer =
-                    setTimeout(
-                        performSearch,
-                        180
-                    );
-
-            }
+            performSearch
         );
-
-
     $("searchInput")
         .addEventListener(
             "keydown",
             event => {
-
                 if (
-                    event.key ===
-                    "Enter"
+                    event.key === "Escape"
                 ) {
-
-                    event.preventDefault();
-
-                    performSearch();
-
+                    $("searchInput")
+                        .value = "";
+                    clearSearchResults();
                 }
-
             }
         );
-
-
-    document
-        .querySelectorAll(
-            ".nav-button"
-        )
-        .forEach(
-            button => {
-
-                button.addEventListener(
-                    "click",
-                    () => {
-
-                        document
-                            .querySelectorAll(
-                                ".nav-button"
-                            )
-                            .forEach(
-                                x =>
-                                    x.classList
-                                        .remove(
-                                            "active"
-                                        )
-                            );
-
-
-                        button
-                            .classList
-                            .add(
-                                "active"
-                            );
-
-
-                        const target =
-                            $(
-                                button.dataset.target
-                            );
-
-
-                        if (target) {
-
-                            target.scrollIntoView({
-                                behavior:
-                                    "smooth",
-
-                                block:
-                                    "start"
-                            });
-
-                        }
-
-                    }
+    document.addEventListener(
+        "click",
+        event => {
+            const area =
+                document.querySelector(
+                    ".search-area"
                 );
-
-            }
-        );
-
-}
-
-
-/* =========================================================
-   LOAD DASHBOARD
-========================================================= */
-
-async function loadDashboard() {
-
-    showLoading(true);
-
-    hideError();
-
-    try {
-
-        const results =
-            await Promise.all([
-                fetchJson(
-                    UI_DATA_URL
-                ),
-                fetchJson(
-                    SECURITIES_URL
+            if (
+                area
+                &&
+                !area.contains(
+                    event.target
                 )
-            ]);
-
-
-        uiData =
-            normalizeUiData(
-                results[0]
-            );
-
-
-        securitiesData =
-            normalizeSecurities(
-                results[1]
-            );
-
-
-        validateUiData(
-            uiData
-        );
-
-
-        renderDashboard();
-
-
-        $("dashboard")
-            .classList
-            .remove(
-                "hidden"
-            );
-
-
-        $("systemStatus")
-            .textContent =
-            "資料正常";
-
-
-    } catch (error) {
-
-        console.error(
-            error
-        );
-
-
-        $("systemStatus")
-            .textContent =
-            "資料載入失敗";
-
-
-        showError(
-            error
-        );
-
-    } finally {
-
-        showLoading(false);
-
-    }
-
+            ) {
+                clearSearchResults();
+            }
+        }
+    );
 }
-
-
 /* =========================================================
-   FETCH JSON
+   LOAD DATA
 ========================================================= */
-
-async function fetchJson(
-    url
-) {
-
-    const response =
+async function loadAllData() {
+    const uiResponse =
         await fetch(
-            url,
+            `${DATA_URL}?t=${Date.now()}`,
             {
-                cache:
-                    "no-store"
+                cache: "no-store"
             }
         );
-
-
-    if (!response.ok) {
-
+    if (
+        !uiResponse.ok
+    ) {
         throw new Error(
-            `HTTP ${response.status}：${url}`
+            `無法讀取 ${DATA_URL}，HTTP ${uiResponse.status}`
         );
-
     }
-
-
+    const ui =
+        await uiResponse.json();
+    let securities = [];
     try {
-
-        return await response.json();
-
-    } catch {
-
-        throw new Error(
-            `JSON 格式錯誤：${url}`
+        const securitiesResponse =
+            await fetch(
+                `${SECURITIES_URL}?t=${Date.now()}`,
+                {
+                    cache: "no-store"
+                }
+            );
+        if (
+            securitiesResponse.ok
+        ) {
+            securities =
+                await securitiesResponse.json();
+        }
+    } catch(error) {
+        console.warn(
+            "securities.json load warning:",
+            error
         );
-
     }
-
+    return {
+        ui,
+        securities
+    };
 }
-
-
 /* =========================================================
-   VALIDATE
+   NORMALIZE UI DATA
 ========================================================= */
-
-function validateUiData(
+function normalizeUiData(
     data
 ) {
-
     if (
         !data
         ||
         typeof data !== "object"
     ) {
-
-        throw new Error(
-            "ui_data.json 格式錯誤"
-        );
-
+        return {
+            statistics: {},
+            today_selected: [],
+            top10: [],
+            stocks: [],
+            stock: [],
+            etfs: [],
+            bonds: []
+        };
     }
-
-}
-
-
-/* =========================================================
-   NORMALIZE UI
-========================================================= */
-
-function normalizeUiData(
-    data
-) {
-
     const result = {
         ...data
     };
-
-
     result.today_selected =
         firstArray(
             data.today_selected,
             data.todaySelected,
             data.featured,
-            data.today
+            data.recommended,
+            data.recommendations
         );
-
-
     result.top10 =
         firstArray(
             data.top10,
-            data.top_10
+            data.top_10,
+            data.ai_top10,
+            data.ranking
         );
-
-
+    result.stocks =
+        firstArray(
+            data.stocks,
+            data.stock_data,
+            data.stockData,
+            data.items
+        );
+    result.stock =
+        firstArray(
+            data.stock
+        );
     result.etfs =
         firstArray(
             data.etfs,
+            data.ETF,
             data.etf
         );
-
-
     result.bonds =
         firstArray(
             data.bonds,
             data.bond
         );
-
-
     result.statistics =
         data.statistics
         ||
         data.summary
         ||
         {};
-
-
     return result;
-
 }
-
-
 /* =========================================================
    NORMALIZE SECURITIES
 ========================================================= */
-
 function normalizeSecurities(
     data
 ) {
-
     if (
         Array.isArray(data)
     ) {
-
         return data;
-
     }
-
-
     if (
         data &&
         Array.isArray(
             data.securities
         )
     ) {
-
         return data.securities;
-
     }
-
-
     if (
         data &&
         Array.isArray(
             data.items
         )
     ) {
-
         return data.items;
-
     }
-
-
     return [];
-
 }
-
-
 /* =========================================================
    ARRAY HELPER
 ========================================================= */
-
 function firstArray(
     ...values
 ) {
-
     for (
         const value
         of values
     ) {
-
         if (
             Array.isArray(value)
         ) {
-
             return value;
-
         }
-
     }
-
     return [];
-
 }
-
-
 /* =========================================================
    RENDER DASHBOARD
 ========================================================= */
-
 function renderDashboard() {
-
     renderMetrics();
-
     renderFeatured();
-
     renderTop10();
-
     renderEtf();
-
     renderBonds();
-
     renderWatchlist();
-
     renderFooter();
-
 }
-
-
 /* =========================================================
    METRICS
 ========================================================= */
-
 function renderMetrics() {
-
     const stats =
         uiData.statistics
         ||
         {};
-
-
     const featured =
         uiData.today_selected
         ||
         [];
-
-
     const stocks =
         Number(
             stats.stock_count
             ??
             stats.stocks
             ??
+            uiData.stocks.length
+            ??
             0
         );
-
-
     const etfs =
         Number(
             stats.etf_count
@@ -2948,29 +1406,21 @@ function renderMetrics() {
             ??
             0
         );
-
-
     $("featuredCount")
         .textContent =
         formatNumber(
             featured.length
         );
-
-
     $("stockCount")
         .textContent =
         formatNumber(
             stocks
         );
-
-
     $("etfCount")
         .textContent =
         formatNumber(
             etfs
         );
-
-
     const date =
         uiData.latest_market_date
         ||
@@ -2981,55 +1431,37 @@ function renderMetrics() {
         uiData.updated_at
         ||
         "-";
-
-
     $("dataDate")
         .textContent =
         formatDateShort(
             date
         );
-
 }
-
-
 /* =========================================================
    FEATURED
 ========================================================= */
-
 function renderFeatured() {
-
     const container =
         $("featuredGrid");
-
-
     const items =
         Array.isArray(
             uiData.today_selected
         )
             ? uiData.today_selected
             : [];
-
-
     $("featuredSectionCount")
         .textContent =
         `${items.length} 檔`;
-
-
     if (
         !items.length
     ) {
-
         container.innerHTML =
             emptyHtml(
                 "今日沒有符合推薦條件的標的",
                 "系統不會為了填滿畫面而虛構推薦。"
             );
-
         return;
-
     }
-
-
     container.innerHTML =
         items
             .slice(0, 10)
@@ -3037,133 +1469,84 @@ function renderFeatured() {
                 renderFeaturedCard
             )
             .join("");
-
 }
-
-
 /* =========================================================
    FEATURED CARD
 ========================================================= */
-
 function renderFeaturedCard(
     item
 ) {
-
     const code =
         getCode(item);
-
     const name =
         getName(item);
-
     const price =
         getPrice(item);
-
     const change =
         getChange(item);
-
     const trend =
         getTrend(item);
-
     const recommendation =
         getRecommendation(item);
-
-
     return `
-
         <article class="featured-card">
-
             <div class="featured-top">
-
                 <div class="featured-label">
                     今日精選
                 </div>
-
                 ${renderSignal(trend)}
-
             </div>
-
-
             <div class="featured-stock">
-
                 <div class="featured-code">
                     ${escapeHtml(code)}
                 </div>
-
                 <div class="featured-name">
                     ${escapeHtml(name)}
                 </div>
-
             </div>
-
-
             <div class="price-row">
-
                 <div class="price">
                     ${formatPrice(price)}
                 </div>
-
                 <div
                     class="change ${changeClass(change)}"
                 >
                     ${formatChange(change)}
                 </div>
-
             </div>
-
-
             <div class="featured-bottom">
-
                 <div class="recommendation">
-
                     ${escapeHtml(
                         recommendation
                     )}
-
                 </div>
-
             </div>
-
         </article>
-
     `;
-
 }
-
-
 /* =========================================================
    TOP 10
 ========================================================= */
-
 function renderTop10() {
-
     const body =
         $("topTableBody");
-
-
     const items =
         Array.isArray(
             uiData.top10
         )
             ? uiData.top10
             : [];
-
-
     const top10 =
         items.slice(
             0,
             10
         );
-
-
     $("topCount")
         .textContent =
         `${top10.length} 檔`;
-
-
     if (
         !top10.length
     ) {
-
         body.innerHTML =
             `
             <tr>
@@ -3178,12 +1561,8 @@ function renderTop10() {
                 </td>
             </tr>
             `;
-
         return;
-
     }
-
-
     body.innerHTML =
         top10
             .map(
@@ -3197,87 +1576,55 @@ function renderTop10() {
                     )
             )
             .join("");
-
 }
-
-
 /* =========================================================
    TOP ROW
 ========================================================= */
-
 function renderTopRow(
     item,
     rank
 ) {
-
     const code =
         getCode(item);
-
     const name =
         getName(item);
-
     const price =
         getPrice(item);
-
     const change =
         getChange(item);
-
     const trend =
         getTrend(item);
-
     const recommendation =
         getRecommendation(item);
-
-
     return `
-
         <tr>
-
             <td class="rank">
                 ${rank}
             </td>
-
-
             <td>
-
                 <div class="table-stock">
-
                     <div>
-
                         <div class="table-stock-code">
                             ${escapeHtml(code)}
                         </div>
-
                         <div class="table-stock-name">
                             ${escapeHtml(name)}
                         </div>
-
                     </div>
-
                 </div>
-
             </td>
-
-
             <td>
                 ${formatPrice(price)}
             </td>
-
-
             <td
                 class="${changeClass(change)}"
             >
                 ${formatChange(change)}
             </td>
-
-
             <td>
                 ${renderSignal(trend)}
             </td>
-
-
             <td>
-
                 <div
                     class="recommendation-table"
                 >
@@ -3285,168 +1632,109 @@ function renderTopRow(
                         recommendation
                     )}
                 </div>
-
             </td>
-
         </tr>
-
     `;
-
 }
-
-
 /* =========================================================
    ETF
 ========================================================= */
-
 function renderEtf() {
-
     const container =
         $("etfGrid");
-
-
     const items =
         Array.isArray(
             uiData.etfs
         )
             ? uiData.etfs
             : [];
-
-
     $("etfSectionCount")
         .textContent =
         `${items.length} 檔`;
-
-
     const display =
         items.slice(
             0,
             12
         );
-
-
     if (
         !display.length
     ) {
-
         container.innerHTML =
             emptyHtml(
                 "目前沒有 ETF 資料",
                 "請確認後端 ETF 資料是否正常產生。"
             );
-
         return;
-
     }
-
-
     container.innerHTML =
         display
             .map(
                 renderAssetCard
             )
             .join("");
-
 }
-
-
 /* =========================================================
    ASSET CARD
 ========================================================= */
-
 function renderAssetCard(
     item
 ) {
-
     const code =
         getCode(item);
-
     const name =
         getName(item);
-
     const price =
         getPrice(item);
-
     const change =
         getChange(item);
-
-
     return `
-
         <article class="asset-card">
-
             <div class="asset-header">
-
                 <div>
-
                     <div class="asset-code">
                         ${escapeHtml(code)}
                     </div>
-
                     <div class="asset-name">
                         ${escapeHtml(name)}
                     </div>
-
                 </div>
-
                 <div class="asset-type">
                     ETF
                 </div>
-
             </div>
-
-
             <div class="asset-price">
                 ${formatPrice(price)}
             </div>
-
-
             <div
                 class="asset-change ${changeClass(change)}"
             >
                 ${formatChange(change)}
             </div>
-
         </article>
-
     `;
-
 }
-
-
 /* =========================================================
    BONDS
 ========================================================= */
-
 function renderBonds() {
-
     const container =
         $("bondGrid");
-
-
     const items =
         Array.isArray(
             uiData.bonds
         )
             ? uiData.bonds
             : [];
-
-
     if (
         !items.length
     ) {
-
         container.innerHTML =
             emptyHtml(
                 "目前沒有債券資料",
                 "債券資料由後端明確提供。"
             );
-
         return;
-
     }
-
-
     container.innerHTML =
         items
             .slice(0, 12)
@@ -3454,46 +1742,30 @@ function renderBonds() {
                 renderBondCard
             )
             .join("");
-
 }
-
-
 /* =========================================================
    BOND CARD
 ========================================================= */
-
 function renderBondCard(
     item
 ) {
-
     const code =
         getCode(item);
-
     const name =
         getName(item);
-
     const price =
         getPrice(item);
-
-
     return `
-
         <article class="asset-card">
-
             <div class="asset-header">
-
                 <div>
-
                     <div class="asset-code">
                         ${escapeHtml(code)}
                     </div>
-
                     <div class="asset-name">
                         ${escapeHtml(name)}
                     </div>
-
                 </div>
-
                 <div
                     class="asset-type"
                     style="
@@ -3503,52 +1775,31 @@ function renderBondCard(
                 >
                     債券
                 </div>
-
             </div>
-
-
             <div class="asset-price">
                 ${formatPrice(price)}
             </div>
-
-
             <div class="asset-name">
                 債券資產資料
             </div>
-
         </article>
-
     `;
-
 }
-
-
 /* =========================================================
    SEARCH
 ========================================================= */
-
 function performSearch() {
-
     const keyword =
         $("searchInput")
             .value
             .trim()
             .toLowerCase();
-
-
     const results =
         $("searchResults");
-
-
     if (!keyword) {
-
         clearSearchResults();
-
         return;
-
     }
-
-
     if (
         !Array.isArray(
             securitiesData
@@ -3556,22 +1807,16 @@ function performSearch() {
         ||
         !securitiesData.length
     ) {
-
         results.innerHTML =
             emptyHtml(
                 "資料檔尚未部署",
                 "目前沒有可供搜尋的 securities.json。"
             );
-
         results
             .classList
             .add("active");
-
         return;
-
     }
-
-
     const matches =
         securitiesData
             .filter(
@@ -3585,65 +1830,44 @@ function performSearch() {
                 0,
                 20
             );
-
-
     if (!matches.length) {
-
         results.innerHTML =
             emptyHtml(
                 "找不到符合的標的",
                 `沒有找到「${escapeHtml(keyword)}」相關資料。`
             );
-
         results
             .classList
             .add("active");
-
         return;
-
     }
-
-
     results.innerHTML =
         matches
             .map(
                 renderSearchResult
             )
             .join("");
-
-
     results
         .classList
         .add("active");
-
 }
-
-
 /* =========================================================
    CLEAR SEARCH
 ========================================================= */
-
 function clearSearchResults() {
-
     $("searchResults")
         .innerHTML = "";
-
     $("searchResults")
         .classList
         .remove("active");
-
 }
-
-
 /* =========================================================
    SECURITY MATCH
 ========================================================= */
-
 function securityMatches(
     item,
     keyword
 ) {
-
     const code =
         String(
             item?.code
@@ -3653,8 +1877,6 @@ function securityMatches(
             ""
         )
         .toLowerCase();
-
-
     const name =
         String(
             item?.name
@@ -3664,8 +1886,6 @@ function securityMatches(
             ""
         )
         .toLowerCase();
-
-
     const symbol =
         String(
             item?.symbol
@@ -3673,8 +1893,6 @@ function securityMatches(
             ""
         )
         .toLowerCase();
-
-
     return (
         code.includes(keyword)
         ||
@@ -3682,31 +1900,21 @@ function securityMatches(
         ||
         symbol.includes(keyword)
     );
-
 }
-
-
 /* =========================================================
    SEARCH RESULT
 ========================================================= */
-
 function renderSearchResult(
     item
 ) {
-
     const code =
         getCode(item);
-
     const name =
         getName(item);
-
     const market =
         getMarket(item);
-
     const key =
         securityKey(item);
-
-
     const exists =
         watchlist.some(
             x =>
@@ -3714,31 +1922,20 @@ function renderSearchResult(
                 ===
                 key
         );
-
-
     return `
-
         <div class="search-result-item">
-
             <div class="search-result-main">
-
                 <span class="stock-code">
                     ${escapeHtml(code)}
                 </span>
-
                 <span class="stock-name">
                     ${escapeHtml(name)}
                 </span>
-
                 <span class="stock-market">
                     ${escapeHtml(market)}
                 </span>
-
             </div>
-
-
             <div class="search-result-actions">
-
                 ${
                     exists
                     ?
@@ -3762,156 +1959,100 @@ function renderSearchResult(
                     </button>
                     `
                 }
-
             </div>
-
         </div>
-
     `;
-
 }
-
-
 /* =========================================================
    WATCHLIST STORAGE
 ========================================================= */
-
 function loadWatchlist() {
-
     try {
-
         const raw =
             localStorage.getItem(
                 "tw_ai_watchlist_v11"
             );
-
-
         watchlist =
             raw
                 ? JSON.parse(raw)
                 : [];
-
-
         if (
             !Array.isArray(
                 watchlist
             )
         ) {
-
             watchlist = [];
-
         }
-
     } catch {
-
         watchlist = [];
-
     }
-
 }
-
-
 /* =========================================================
    HOLDINGS STORAGE
 ========================================================= */
-
 function loadHoldings() {
-
     try {
-
         const raw =
             localStorage.getItem(
                 "tw_ai_holdings_v11"
             );
-
-
         holdings =
             raw
                 ? JSON.parse(raw)
                 : {};
-
-
         if (
             !holdings
             ||
             typeof holdings !== "object"
         ) {
-
             holdings = {};
-
         }
-
     } catch {
-
         holdings = {};
-
     }
-
 }
-
-
 /* =========================================================
    SAVE WATCHLIST
 ========================================================= */
-
 function saveWatchlist() {
-
     try {
-
         localStorage.setItem(
             "tw_ai_watchlist_v11",
             JSON.stringify(
                 watchlist
             )
         );
-
     } catch(error) {
-
         console.warn(
             "Watchlist save error:",
             error
         );
-
     }
-
 }
-
-
 /* =========================================================
    SAVE HOLDINGS
 ========================================================= */
-
 function saveHoldings() {
-
     try {
-
         localStorage.setItem(
             "tw_ai_holdings_v11",
             JSON.stringify(
                 holdings
             )
         );
-
     } catch(error) {
-
         console.warn(
             "Holdings save error:",
             error
         );
-
     }
-
 }
-
-
 /* =========================================================
    ADD WATCHLIST
 ========================================================= */
-
 function addToWatchlist(
     key
 ) {
-
     const item =
         securitiesData.find(
             x =>
@@ -3919,13 +2060,9 @@ function addToWatchlist(
                 ===
                 key
         );
-
-
     if (!item) {
         return;
     }
-
-
     const exists =
         watchlist.some(
             x =>
@@ -3933,37 +2070,24 @@ function addToWatchlist(
                 ===
                 key
         );
-
-
     if (exists) {
         return;
     }
-
-
     watchlist.push(
         normalizeWatchItem(
             item
         )
     );
-
-
     saveWatchlist();
-
     renderWatchlist();
-
     performSearch();
-
 }
-
-
 /* =========================================================
    REMOVE WATCHLIST
 ========================================================= */
-
 function removeFromWatchlistByKey(
     key
 ) {
-
     watchlist =
         watchlist.filter(
             item =>
@@ -3971,170 +2095,115 @@ function removeFromWatchlistByKey(
                 !==
                 key
         );
-
-
     saveWatchlist();
-
     renderWatchlist();
-
     performSearch();
-
 }
-
-
 /* =========================================================
    NORMALIZE WATCH ITEM
 ========================================================= */
-
 function normalizeWatchItem(
     item
 ) {
-
     return {
-
         code:
             item.code
             ??
             item.symbol
             ??
             "",
-
         symbol:
             item.symbol
             ??
             "",
-
         name:
             item.name
             ??
             item.CompanyName
             ??
             "",
-
         market:
             item.market
             ??
             item.exchange
             ??
             "",
-
         type:
             item.type
             ??
             "stock",
-
         is_etf:
             Boolean(
                 item.is_etf
             )
-
     };
-
 }
-
-
 /* =========================================================
    RENDER WATCHLIST
 ========================================================= */
-
 function renderWatchlist() {
-
     const container =
         $("watchlistGrid");
-
-
     const count =
         $("watchCount");
-
-
     count.textContent =
         `${watchlist.length} 檔`;
-
-
     if (
         !watchlist.length
     ) {
-
         container.innerHTML =
             emptyHtml(
                 "目前沒有追蹤標的",
                 "請使用上方「查詢個股」搜尋股票，再加入你的清單。"
             );
-
         return;
-
     }
-
-
     container.innerHTML =
         watchlist
             .map(
                 renderWatchCard
             )
             .join("");
-
 }
-
-
 /* =========================================================
    WATCH CARD
 ========================================================= */
-
 function renderWatchCard(
     item
 ) {
-
     const code =
         getCode(item);
-
     const name =
         getName(item);
-
     const key =
         securityKey(item);
-
-
     const live =
         findCurrentRecord(
             code,
             item.market
         );
-
-
     const price =
         live
             ? getPrice(live)
             : null;
-
-
     const change =
         live
             ? getChange(live)
             : null;
-
-
     const trend =
         live
             ? getTrend(live)
             : "待分析";
-
-
     const normalRecommendation =
         live
             ? getRecommendation(live)
             : "等待最新市場資料";
-
-
     const holding =
         getHolding(key);
-
-
     const isHolding =
         isValidHolding(
             holding
         );
-
-
     const recommendation =
         isHolding
             ? getHoldingRecommendation(
@@ -4142,27 +2211,17 @@ function renderWatchCard(
                 holding
               )
             : normalRecommendation;
-
-
     return `
-
         <article class="watch-card">
-
             <div class="watch-top">
-
                 <div>
-
                     <div class="watch-code">
                         ${escapeHtml(code)}
                     </div>
-
                     <div class="watch-name">
                         ${escapeHtml(name)}
                     </div>
-
                 </div>
-
-
                 <button
                     class="small-button remove"
                     type="button"
@@ -4170,12 +2229,8 @@ function renderWatchCard(
                 >
                     移除
                 </button>
-
             </div>
-
-
             <div class="watch-price">
-
                 ${
                     price !== null
                     ?
@@ -4183,15 +2238,11 @@ function renderWatchCard(
                     :
                     "--"
                 }
-
             </div>
-
-
             <div
                 class="watch-change
                 ${changeClass(change)}"
             >
-
                 ${
                     live
                     ?
@@ -4199,23 +2250,14 @@ function renderWatchCard(
                     :
                     "尚無行情"
                 }
-
             </div>
-
-
             <div class="watch-status-row">
-
                 <span class="watch-status-label">
                     趨勢狀態
                 </span>
-
                 ${renderSignal(trend)}
-
             </div>
-
-
             <div class="watch-recommendation">
-
                 <div
                     style="
                         color:var(--text3);
@@ -4227,14 +2269,10 @@ function renderWatchCard(
                         ? "持有狀態建議"
                         : "目前建議"}
                 </div>
-
                 ${escapeHtml(
                     recommendation
                 )}
-
             </div>
-
-
             ${
                 isHolding
                 ?
@@ -4246,9 +2284,7 @@ function renderWatchCard(
                 :
                 `
                 <div class="not-holding">
-
                     目前未設定持有部位。
-
                     <button
                         class="small-button primary"
                         style="margin-left:6px;"
@@ -4257,58 +2293,40 @@ function renderWatchCard(
                     >
                         設定持有
                     </button>
-
                 </div>
                 `
             }
-
         </article>
-
     `;
-
 }
-
-
 /* =========================================================
    HOLDING BOX
 ========================================================= */
-
 function renderHoldingBox(
     key,
     holding,
     currentPrice
 ) {
-
     const shares =
         Number(
             holding.shares
         ) || 0;
-
-
     const cost =
         Number(
             holding.cost
         ) || 0;
-
-
     const marketValue =
         Number.isFinite(
             currentPrice
         )
             ? currentPrice * shares
             : null;
-
-
     const costValue =
         cost * shares;
-
-
     const pnl =
         marketValue !== null
             ? marketValue - costValue
             : null;
-
-
     const returnPct =
         cost > 0
         &&
@@ -4323,20 +2341,14 @@ function renderHoldingBox(
                 )
                 /
                 cost
-            ) * 100
+              ) * 100
             : null;
-
-
     return `
-
         <div class="holding-box">
-
             <div class="holding-header">
-
                 <div class="holding-title">
                     我的持有部位
                 </div>
-
                 <button
                     class="holding-toggle"
                     type="button"
@@ -4344,18 +2356,12 @@ function renderHoldingBox(
                 >
                     清除持有
                 </button>
-
             </div>
-
-
             <div class="holding-fields">
-
                 <div class="holding-field">
-
                     <label>
                         持有股數
                     </label>
-
                     <input
                         type="number"
                         min="0"
@@ -4363,16 +2369,11 @@ function renderHoldingBox(
                         value="${shares || ""}"
                         onchange="updateHoldingShares('${escapeAttribute(key)}', this.value)"
                     >
-
                 </div>
-
-
                 <div class="holding-field">
-
                     <label>
                         持有成本
                     </label>
-
                     <input
                         type="number"
                         min="0"
@@ -4380,20 +2381,13 @@ function renderHoldingBox(
                         value="${cost || ""}"
                         onchange="updateHoldingCost('${escapeAttribute(key)}', this.value)"
                     >
-
                 </div>
-
             </div>
-
-
             <div class="holding-summary">
-
                 <div class="holding-stat">
-
                     <div class="holding-stat-label">
                         目前市值
                     </div>
-
                     <div class="holding-stat-value">
                         ${
                             marketValue !== null
@@ -4405,16 +2399,11 @@ function renderHoldingBox(
                             "--"
                         }
                     </div>
-
                 </div>
-
-
                 <div class="holding-stat">
-
                     <div class="holding-stat-label">
                         未實現損益
                     </div>
-
                     <div
                         class="
                             holding-stat-value
@@ -4438,16 +2427,11 @@ function renderHoldingBox(
                             "--"
                         }
                     </div>
-
                 </div>
-
-
                 <div class="holding-stat">
-
                     <div class="holding-stat-label">
                         報酬率
                     </div>
-
                     <div
                         class="
                             holding-stat-value
@@ -4470,16 +2454,11 @@ function renderHoldingBox(
                             "--"
                         }
                     </div>
-
                 </div>
-
-
                 <div class="holding-stat">
-
                     <div class="holding-stat-label">
                         成本總額
                     </div>
-
                     <div class="holding-stat-value">
                         ${
                             costValue > 0
@@ -4491,61 +2470,36 @@ function renderHoldingBox(
                             "--"
                         }
                     </div>
-
                 </div>
-
             </div>
-
         </div>
-
     `;
-
 }
-
-
 /* =========================================================
    HOLDING ACTIONS
 ========================================================= */
-
 function startHolding(
     key
 ) {
-
     holdings[key] = {
-
         shares: 0,
-
         cost: 0
-
     };
-
-
     saveHoldings();
-
     renderWatchlist();
-
 }
-
-
 function updateHoldingShares(
     key,
     value
 ) {
-
     if (!holdings[key]) {
-
         holdings[key] = {
             shares: 0,
             cost: 0
         };
-
     }
-
-
     const shares =
         Number(value);
-
-
     holdings[key].shares =
         Number.isFinite(shares)
             ? Math.max(
@@ -4553,34 +2507,21 @@ function updateHoldingShares(
                 shares
               )
             : 0;
-
-
     saveHoldings();
-
     renderWatchlist();
-
 }
-
-
 function updateHoldingCost(
     key,
     value
 ) {
-
     if (!holdings[key]) {
-
         holdings[key] = {
             shares: 0,
             cost: 0
         };
-
     }
-
-
     const cost =
         Number(value);
-
-
     holdings[key].cost =
         Number.isFinite(cost)
             ? Math.max(
@@ -4588,68 +2529,42 @@ function updateHoldingCost(
                 cost
               )
             : 0;
-
-
     saveHoldings();
-
     renderWatchlist();
-
 }
-
-
 function clearHolding(
     key
 ) {
-
     delete holdings[key];
-
     saveHoldings();
-
     renderWatchlist();
-
 }
-
-
 /* =========================================================
    HOLDING VALIDATION
 ========================================================= */
-
 function getHolding(
     key
 ) {
-
     return holdings[key]
         ||
         null;
-
 }
-
-
 function isValidHolding(
     holding
 ) {
-
     if (
         !holding
     ) {
-
         return false;
-
     }
-
-
     const shares =
         Number(
             holding.shares
         );
-
-
     const cost =
         Number(
             holding.cost
         );
-
-
     return (
         Number.isFinite(shares)
         &&
@@ -4659,25 +2574,17 @@ function isValidHolding(
         &&
         cost > 0
     );
-
 }
-
-
 /* =========================================================
    HOLDING RECOMMENDATION
    ---------------------------------------------------------
    優先使用後端提供的 holding_recommendation。
-
-   若後端暫時沒有，
-   前端只使用一般 recommendation，
-   不自行重算技術指標。
+   前端不自行重算 RSI / MACD / KD。
 ========================================================= */
-
 function getHoldingRecommendation(
     live,
     holding
 ) {
-
     if (
         live
         &&
@@ -4685,14 +2592,10 @@ function getHoldingRecommendation(
         &&
         live.holding_recommendation
     ) {
-
         return String(
             live.holding_recommendation
         );
-
     }
-
-
     if (
         live
         &&
@@ -4700,14 +2603,10 @@ function getHoldingRecommendation(
         &&
         live.recommendation_holding
     ) {
-
         return String(
             live.recommendation_holding
         );
-
     }
-
-
     if (
         live
         &&
@@ -4715,78 +2614,50 @@ function getHoldingRecommendation(
         &&
         live.holder_recommendation
     ) {
-
         return String(
             live.holder_recommendation
         );
-
     }
-
-
     return getRecommendation(
         live
     );
-
 }
-
-
 /* =========================================================
    FIND CURRENT RECORD
 ========================================================= */
-
 function findCurrentRecord(
     code,
     market
 ) {
-
     const arrays = [
-
         uiData?.today_selected,
-
         uiData?.top10,
-
         uiData?.stocks,
-
         uiData?.stock
-
     ];
-
-
     for (
         const array
         of arrays
     ) {
-
         if (
             !Array.isArray(
                 array
             )
         ) {
-
             continue;
-
         }
-
-
         const found =
             array.find(
                 item => {
-
                     const itemCode =
                         String(
                             getCode(item)
                         );
-
-
                     const sameCode =
                         itemCode ===
                         String(code);
-
-
                     const itemMarket =
                         getMarket(item);
-
-
                     const sameMarket =
                         !market
                         ||
@@ -4794,51 +2665,31 @@ function findCurrentRecord(
                         ||
                         itemMarket ===
                         market;
-
-
                     return (
                         sameCode
                         &&
                         sameMarket
                     );
-
                 }
             );
-
-
         if (found) {
-
             return found;
-
         }
-
     }
-
-
     return null;
-
 }
-
-
 /* =========================================================
    TREND
 ========================================================= */
-
 function getTrend(
     item
 ) {
-
     if (
         !item
     ) {
-
         return "待分析";
-
     }
-
-
     return String(
-
         item.trend_status
         ??
         item.trend
@@ -4846,31 +2697,20 @@ function getTrend(
         item.market_trend
         ??
         "待分析"
-
     );
-
 }
-
-
 /* =========================================================
    RECOMMENDATION
 ========================================================= */
-
 function getRecommendation(
     item
 ) {
-
     if (
         !item
     ) {
-
         return "等待最新市場資料";
-
     }
-
-
     return String(
-
         item.recommendation
         ??
         item.action
@@ -4878,108 +2718,71 @@ function getRecommendation(
         item.advice
         ??
         "等待後端分析"
-
     );
-
 }
-
-
 /* =========================================================
    SIGNAL
 ========================================================= */
-
 function renderSignal(
     trend
 ) {
-
     const text =
         String(
             trend
             ||
             "待分析"
         );
-
-
     const cls =
         trendClass(
             text
         );
-
-
     return `
-
         <span
             class="signal ${cls}"
         >
             ${escapeHtml(text)}
         </span>
-
     `;
-
 }
-
-
 /* =========================================================
    TREND CLASS
 ========================================================= */
-
 function trendClass(
     trend
 ) {
-
     const text =
         String(
             trend
             ||
             ""
         );
-
-
     if (
         /強勢|偏多|多方|上升|轉強|看多|積極/
             .test(text)
     ) {
-
         return "bullish";
-
     }
-
-
     if (
         /偏弱|弱勢|空方|下降|轉弱|看空/
             .test(text)
     ) {
-
         return "weak";
-
     }
-
-
     if (
         /等待|觀望|確認|待分析/
             .test(text)
     ) {
-
         return "wait";
-
     }
-
-
     return "neutral";
-
 }
-
-
 /* =========================================================
    BASIC DATA HELPERS
 ========================================================= */
-
 function getCode(
     item
 ) {
-
     return String(
-
         item?.code
         ??
         item?.symbol
@@ -4987,7 +2790,6 @@ function getCode(
         item?.ticker
         ??
         ""
-
     )
     .replace(
         ".TW",
@@ -4996,16 +2798,11 @@ function getCode(
     .replace(
         ".TWO",
         "");
-
 }
-
-
 function getName(
     item
 ) {
-
     return String(
-
         item?.name
         ??
         item?.CompanyName
@@ -5013,72 +2810,45 @@ function getName(
         item?.company_name
         ??
         "未命名"
-
     );
-
 }
-
-
 function getMarket(
     item
 ) {
-
     return String(
-
         item?.market
         ??
         item?.exchange
         ??
         ""
-
     );
-
 }
-
-
 function getPrice(
     item
 ) {
-
     if (!item) {
-
         return null;
-
     }
-
-
     const value =
         item.price
         ??
         item.close
         ??
         item.Close;
-
-
     const number =
         Number(value);
-
-
     return Number.isFinite(
         number
     )
         ? number
         : null;
-
 }
-
-
 function getChange(
     item
 ) {
-
     if (!item) {
-
         return null;
-
     }
-
-
     const value =
         item.change_pct
         ??
@@ -5087,57 +2857,37 @@ function getChange(
         item.change
         ??
         null;
-
-
     const number =
         Number(value);
-
-
     return Number.isFinite(
         number
     )
         ? number
         : null;
-
 }
-
-
 /* =========================================================
    SECURITY KEY
 ========================================================= */
-
 function securityKey(
     item
 ) {
-
     return `${getMarket(item)}:${getCode(item)}`;
-
 }
-
-
 /* =========================================================
    FORMAT
 ========================================================= */
-
 function formatNumber(
     value
 ) {
-
     const number =
         Number(value);
-
-
     if (
         !Number.isFinite(
             number
         )
     ) {
-
         return "--";
-
     }
-
-
     return number.toLocaleString(
         "zh-TW",
         {
@@ -5145,271 +2895,171 @@ function formatNumber(
                 2
         }
     );
-
 }
-
-
 function formatPrice(
     value
 ) {
-
     const number =
         Number(value);
-
-
     if (
         !Number.isFinite(
             number
         )
     ) {
-
         return "--";
-
     }
-
-
     return number.toLocaleString(
         "zh-TW",
         {
             minimumFractionDigits:
                 2,
-
             maximumFractionDigits:
                 2
         }
     );
-
 }
-
-
 function formatMoney(
     value,
     signed = false
 ) {
-
     const number =
         Number(value);
-
-
     if (
         !Number.isFinite(
             number
         )
     ) {
-
         return "--";
-
     }
-
-
     const prefix =
         signed && number > 0
             ? "+"
             : "";
-
-
     return prefix +
         number.toLocaleString(
             "zh-TW",
             {
                 minimumFractionDigits:
                     0,
-
                 maximumFractionDigits:
                     2
             }
         ) +
         " 元";
-
 }
-
-
 function formatPercent(
     value
 ) {
-
     const number =
         Number(value);
-
-
     if (
         !Number.isFinite(
             number
         )
     ) {
-
         return "--";
-
     }
-
-
     const prefix =
         number > 0
             ? "+"
             : "";
-
-
     return `${prefix}${number.toFixed(2)}%`;
-
 }
-
-
 function formatChange(
     value
 ) {
-
     const number =
         Number(value);
-
-
     if (
         !Number.isFinite(
             number
         )
     ) {
-
         return "--";
-
     }
-
-
     const prefix =
         number > 0
             ? "+"
             : "";
-
-
     return `${prefix}${number.toFixed(2)}%`;
-
 }
-
-
 function changeClass(
     value
 ) {
-
     const number =
         Number(value);
-
-
     if (
         !Number.isFinite(
             number
         )
     ) {
-
         return "flat";
-
     }
-
-
     if (
         number > 0
     ) {
-
         return "up";
-
     }
-
-
     if (
         number < 0
     ) {
-
         return "down";
-
     }
-
-
     return "flat";
-
 }
-
-
 /* =========================================================
    DATE
 ========================================================= */
-
 function formatDateShort(
     value
 ) {
-
     if (!value) {
-
         return "-";
-
     }
-
-
     const text =
         String(value);
-
-
     if (
         /^\d{4}-\d{2}-\d{2}$/
             .test(text)
     ) {
-
         return text.slice(
             5
         );
-
     }
-
-
     if (
         text.length >= 10
     ) {
-
         return text.slice(
             5,
             10
         );
-
     }
-
-
     return text;
-
 }
-
-
 /* =========================================================
    EMPTY
 ========================================================= */
-
 function emptyHtml(
     title,
     description
 ) {
-
     return `
-
         <div class="empty">
-
             <div class="empty-title">
                 ${escapeHtml(title)}
             </div>
-
             <div class="empty-description">
                 ${escapeHtml(description)}
             </div>
-
         </div>
-
     `;
-
 }
-
-
 /* =========================================================
    ESCAPE
 ========================================================= */
-
 function escapeHtml(
     value
 ) {
-
     return String(
         value
         ??
@@ -5435,14 +3085,10 @@ function escapeHtml(
         /'/g,
         "&#039;"
     );
-
 }
-
-
 function escapeAttribute(
     value
 ) {
-
     return String(
         value
         ??
@@ -5456,90 +3102,61 @@ function escapeAttribute(
         /'/g,
         "\\'"
     );
-
 }
-
-
 /* =========================================================
    ERROR
 ========================================================= */
-
 function showError(
     error
 ) {
-
     $("errorPanel")
         .classList
         .add(
             "active"
         );
-
-
     $("errorTitle")
         .textContent =
         "無法載入儀表板資料";
-
-
     $("errorMessage")
         .textContent =
         `${error.message || error}`;
-
-
     $("dashboard")
         .classList
         .add(
             "hidden"
         );
-
 }
-
-
 function hideError() {
-
     $("errorPanel")
         .classList
         .remove(
             "active"
         );
-
 }
-
-
 /* =========================================================
    LOADING
 ========================================================= */
-
 function showLoading(
     visible
 ) {
-
     if (visible) {
-
         $("loading")
             .classList
             .remove(
                 "hidden"
             );
-
     } else {
-
         $("loading")
             .classList
             .add(
                 "hidden"
             );
-
     }
-
 }
-
-
 /* =========================================================
    FOOTER
 ========================================================= */
-
 function renderFooter() {
-
     const date =
         uiData?.updated_at_tw
         ||
@@ -5550,40 +3167,27 @@ function renderFooter() {
         uiData?.date
         ||
         "";
-
-
     $("footerUpdated")
         .textContent =
         date
             ? `最後資料更新：${date}`
             : "";
-
 }
-
-
 /* =========================================================
    GLOBAL FUNCTIONS
 ========================================================= */
-
 window.addToWatchlist =
     addToWatchlist;
-
 window.removeFromWatchlistByKey =
     removeFromWatchlistByKey;
-
 window.startHolding =
     startHolding;
-
 window.updateHoldingShares =
     updateHoldingShares;
-
 window.updateHoldingCost =
     updateHoldingCost;
-
 window.clearHolding =
     clearHolding;
-
 </script>
-
 </body>
 </html>
