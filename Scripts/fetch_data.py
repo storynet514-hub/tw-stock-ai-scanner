@@ -1813,1306 +1813,271 @@ def parse_daily_item(
 # 官方每日更新
 # ================================================================
 
-def fetch_official_daily(
-    universe
-):
+# ================================================================
+# TWSE Universe
+# ================================================================
 
-    print(
-        "================================================"
-    )
+def fetch_twse_universe():
 
-    print(
-        "更新官方當日收盤資料"
-    )
+    import time
 
-    print(
-        "================================================"
-    )
+    print("")
+    print("=" * 64)
+    print("TWSE Universe")
+    print("=" * 64)
 
-    now = datetime.now(
-        TW_TZ
-    )
+    url = TWSE_UNIVERSE_URL
 
-    today = now.strftime(
-        "%Y-%m-%d"
-    )
-
-    universe_map = {
-
-        (
-            x["market"],
-            x["code"]
-        ): x
-
-        for x in universe
-
+    headers = {
+        "User-Agent": (
+            "Mozilla/5.0 "
+            "(Windows NT 10.0; Win64; x64) "
+            "AppleWebKit/537.36 "
+            "(KHTML, like Gecko) "
+            "Chrome/120.0 Safari/537.36"
+        ),
+        "Accept": "application/json,text/plain,*/*",
+        "Accept-Language": "zh-TW,zh;q=0.9,en;q=0.8",
+        "Connection": "keep-alive",
     }
 
-    records = []
+    max_attempts = 5
+
+    last_error = None
 
     # ------------------------------------------------------------
-    # TWSE
+    # 主要來源：TWSE OpenAPI
     # ------------------------------------------------------------
 
-    try:
+    for attempt in range(
+        1,
+        max_attempts + 1
+    ):
 
-        response = requests.get(
-            TWSE_DAILY_URL,
-            timeout=30
-        )
+        try:
 
-        response.raise_for_status()
-
-        data = response.json()
-
-        for item in data:
-
-            parsed = parse_daily_item(
-                item,
-                "TW"
+            print(
+                f"TWSE Universe API "
+                f"第 {attempt}/{max_attempts} 次嘗試"
             )
 
-            key = (
-                "TW",
-                parsed["code"]
+            response = requests.get(
+                url,
+                headers=headers,
+                timeout=30
             )
 
-            if key not in universe_map:
-                continue
-
-            if parsed["close"] is None:
-                continue
-
-            records.append((
-
-                "TW",
-
-                parsed["code"],
-
-                today,
-
-                parsed["open"],
-
-                parsed["high"],
-
-                parsed["low"],
-
-                parsed["close"],
-
-                parsed["volume"]
-
-            ))
-
-        print(
-            f"[TWSE] "
-            f"{sum(1 for x in records if x[0] == 'TW')}"
-        )
-
-    except Exception as exc:
-
-        print(
-            f"[ERROR] TWSE daily：{exc}"
-        )
-
-    # ------------------------------------------------------------
-    # TPEx
-    # ------------------------------------------------------------
-
-    try:
-
-        response = requests.get(
-            TPEx_DAILY_URL,
-            timeout=30
-        )
-
-        response.raise_for_status()
-
-        data = response.json()
-
-        for item in data:
-
-            parsed = parse_daily_item(
-                item,
-                "TWO"
+            print(
+                f"HTTP Status："
+                f"{response.status_code}"
             )
 
-            key = (
-                "TWO",
-                parsed["code"]
+            content_type = response.headers.get(
+                "Content-Type",
+                ""
             )
 
-            if key not in universe_map:
-                continue
-
-            if parsed["close"] is None:
-                continue
-
-            records.append((
-
-                "TWO",
-
-                parsed["code"],
-
-                today,
-
-                parsed["open"],
-
-                parsed["high"],
-
-                parsed["low"],
-
-                parsed["close"],
-
-                parsed["volume"]
-
-            ))
-
-        print(
-            f"[TPEx] "
-            f"{sum(1 for x in records if x[0] == 'TWO')}"
-        )
-
-    except Exception as exc:
-
-        print(
-            f"[ERROR] TPEx daily：{exc}"
-        )
-
-    if not records:
-
-        raise RuntimeError(
-            "官方每日資料為空"
-        )
-
-    conn = get_connection()
-
-    try:
-
-        conn.executemany(
-
-            """
-            INSERT OR REPLACE INTO
-            daily_prices (
-
-                market,
-                code,
-                date,
-                open,
-                high,
-                low,
-                close,
-                volume
-
+            print(
+                f"Content-Type："
+                f"{content_type}"
             )
-            VALUES (
-                ?, ?, ?, ?, ?, ?, ?, ?
+
+            # ----------------------------------------------------
+            # HTTP 狀態檢查
+            # ----------------------------------------------------
+
+            response.raise_for_status()
+
+            # ----------------------------------------------------
+            # 空內容檢查
+            # ----------------------------------------------------
+
+            raw_text = response.text.strip()
+
+            if not raw_text:
+
+                raise RuntimeError(
+                    "TWSE API 回傳空內容"
+                )
+
+            print(
+                f"TWSE 回傳資料長度："
+                f"{len(raw_text)} bytes"
             )
-            """,
 
-            records
+            # ----------------------------------------------------
+            # JSON 解析
+            #
+            # 不直接使用 response.json()
+            # 避免 API 回傳 HTML / 空內容時直接
+            # JSONDecodeError 導致整個 Actions 終止
+            # ----------------------------------------------------
 
-        )
+            try:
 
-        conn.commit()
+                data = response.json()
 
-    finally:
+            except ValueError as exc:
 
-        conn.close()
+                preview = raw_text[:300]
 
+                raise RuntimeError(
+                    "TWSE API 回傳內容不是有效 JSON。"
+                    f"內容前 300 字：{preview}"
+                ) from exc
+
+            # ----------------------------------------------------
+            # 資料格式檢查
+            # ----------------------------------------------------
+
+            if not isinstance(
+                data,
+                list
+            ):
+
+                raise RuntimeError(
+                    "TWSE Universe API 格式錯誤："
+                    f"預期 list，實際為 "
+                    f"{type(data).__name__}"
+                )
+
+            if len(data) == 0:
+
+                raise RuntimeError(
+                    "TWSE Universe API 回傳空 list"
+                )
+
+            print(
+                f"TWSE Universe 原始資料："
+                f"{len(data)} 筆"
+            )
+
+            # ----------------------------------------------------
+            # 建立 Universe
+            # ----------------------------------------------------
+
+            universe = []
+
+            for item in data:
+
+                if not isinstance(
+                    item,
+                    dict
+                ):
+                    continue
+
+                code = clean_code(
+                    item.get("Code")
+                )
+
+                name = clean_text(
+                    item.get("Name")
+                )
+
+                if not code:
+                    continue
+
+                if not code.isalnum():
+                    continue
+
+                if is_invalid_security(
+                    name
+                ):
+                    continue
+
+                (
+                    security_type,
+                    etf,
+                    bond
+                ) = classify_security(
+                    code,
+                    name
+                )
+
+                universe.append({
+
+                    "market": "TW",
+
+                    "code": code,
+
+                    "name": name,
+
+                    "type":
+                        security_type,
+
+                    "is_etf":
+                        etf,
+
+                    "is_bond":
+                        bond
+
+                })
+
+            # ----------------------------------------------------
+            # 最終資料量檢查
+            # ----------------------------------------------------
+
+            if len(universe) < 50:
+
+                raise RuntimeError(
+                    "TWSE Universe 過濾後資料異常："
+                    f"{len(universe)} 筆"
+                )
+
+            print(
+                f"TWSE Universe 建立成功："
+                f"{len(universe)} 筆"
+            )
+
+            print("=" * 64)
+
+            return universe
+
+        except Exception as exc:
+
+            last_error = exc
+
+            print(
+                f"TWSE Universe 第 "
+                f"{attempt} 次失敗："
+                f"{exc}"
+            )
+
+            if attempt < max_attempts:
+
+                wait_seconds = attempt * 3
+
+                print(
+                    f"{wait_seconds} 秒後重試..."
+                )
+
+                time.sleep(
+                    wait_seconds
+                )
+
+    # ============================================================
+    # TWSE API 五次都失敗
+    #
+    # 不在這裡假裝有資料。
+    #
+    # 直接回報明確錯誤，讓後續 fallback 機制
+    # （如果 V10.0 已經存在）接手。
+    # ============================================================
+
+    print("")
+    print("=" * 64)
+    print("ERROR：TWSE Universe API 無法取得")
+    print("=" * 64)
     print(
-        f"官方資料寫入：{len(records)}"
+        f"最後錯誤：{last_error}"
     )
+    print("=" * 64)
 
-    return len(records)
-
-
-# ================================================================
-# 取得股票歷史
-# ================================================================
-
-def load_history(
-    market,
-    code
-):
-
-    conn = get_connection()
-
-    try:
-
-        df = pd.read_sql_query(
-
-            """
-            SELECT
-
-                date,
-                open,
-                high,
-                low,
-                close,
-                volume
-
-            FROM daily_prices
-
-            WHERE market = ?
-
-              AND code = ?
-
-            ORDER BY date ASC
-
-            """,
-
-            conn,
-
-            params=(
-                market,
-                code
-            )
-
-        )
-
-    finally:
-
-        conn.close()
-
-    if df.empty:
-        return None
-
-    df["date"] = pd.to_datetime(
-        df["date"]
+    raise RuntimeError(
+        "TWSE Universe API 在 "
+        f"{max_attempts} 次嘗試後仍無法取得有效 JSON。"
+        f"最後錯誤：{last_error}"
     )
-
-    df = df.set_index(
-        "date"
-    )
-
-    df.rename(
-
-        columns={
-
-            "open": "Open",
-            "high": "High",
-            "low": "Low",
-            "close": "Close",
-            "volume": "Volume"
-
-        },
-
-        inplace=True
-
-    )
-
-    return df
-
-
-# ================================================================
-# RSI
-# ================================================================
-
-def calculate_rsi(
-    close,
-    period=14
-):
-
-    delta = close.diff()
-
-    gain = delta.clip(
-        lower=0
-    )
-
-    loss = -delta.clip(
-        upper=0
-    )
-
-    avg_gain = gain.ewm(
-
-        alpha=1 / period,
-
-        adjust=False,
-
-        min_periods=period
-
-    ).mean()
-
-    avg_loss = loss.ewm(
-
-        alpha=1 / period,
-
-        adjust=False,
-
-        min_periods=period
-
-    ).mean()
-
-    rs = (
-
-        avg_gain /
-
-        avg_loss.replace(
-            0,
-            np.nan
-        )
-
-    )
-
-    result = (
-
-        100 -
-
-        100 /
-
-        (1 + rs)
-
-    )
-
-    result = result.where(
-
-        ~(
-            avg_loss.eq(0)
-            &
-            avg_gain.gt(0)
-        ),
-
-        100
-
-    )
-
-    return result
-
-
-# ================================================================
-# MACD
-# ================================================================
-
-def calculate_macd(
-    close
-):
-
-    ema12 = close.ewm(
-
-        span=12,
-
-        adjust=False
-
-    ).mean()
-
-    ema26 = close.ewm(
-
-        span=26,
-
-        adjust=False
-
-    ).mean()
-
-    macd = (
-        ema12 -
-        ema26
-    )
-
-    signal = macd.ewm(
-
-        span=9,
-
-        adjust=False
-
-    ).mean()
-
-    hist = (
-        macd -
-        signal
-    )
-
-    return (
-        macd,
-        signal,
-        hist
-    )
-
-
-# ================================================================
-# KD
-# ================================================================
-
-def calculate_kd(
-    high,
-    low,
-    close
-):
-
-    low9 = (
-        low
-        .rolling(9)
-        .min()
-    )
-
-    high9 = (
-        high
-        .rolling(9)
-        .max()
-    )
-
-    denominator = (
-        high9 -
-        low9
-    ).replace(
-        0,
-        np.nan
-    )
-
-    rsv = (
-
-        (
-            close -
-            low9
-        )
-
-        /
-
-        denominator
-
-        *
-
-        100
-
-    )
-
-    k = rsv.ewm(
-
-        alpha=1 / 3,
-
-        adjust=False
-
-    ).mean()
-
-    d = k.ewm(
-
-        alpha=1 / 3,
-
-        adjust=False
-
-    ).mean()
-
-    return (
-        k,
-        d
-    )
-
-
-# ================================================================
-# 技術指標
-# ================================================================
-
-def calculate_indicators(
-    df
-):
-
-    df = df.copy()
-
-    df["MA5"] = (
-        df["Close"]
-        .rolling(5)
-        .mean()
-    )
-
-    df["MA20"] = (
-        df["Close"]
-        .rolling(20)
-        .mean()
-    )
-
-    df["MA60"] = (
-        df["Close"]
-        .rolling(60)
-        .mean()
-    )
-
-    df["RSI"] = calculate_rsi(
-        df["Close"]
-    )
-
-    (
-        df["MACD"],
-        df["MACD_SIGNAL"],
-        df["MACD_HIST"]
-    ) = calculate_macd(
-        df["Close"]
-    )
-
-    (
-        df["K"],
-        df["D"]
-    ) = calculate_kd(
-
-        df["High"],
-
-        df["Low"],
-
-        df["Close"]
-
-    )
-
-    df["VOL_MA5"] = (
-        df["Volume"]
-        .rolling(5)
-        .mean()
-    )
-
-    return df
-
-
-# ================================================================
-# 核心 6/6
-# ================================================================
-
-def evaluate_core(
-    df
-):
-
-    if len(df) < 21:
-        return None
-
-    latest = df.iloc[-1]
-
-    previous = df.iloc[-2]
-
-    values = {
-
-        "macd_golden_cross":
-            bool(
-
-                latest["MACD"]
-
-                >
-
-                latest["MACD_SIGNAL"]
-
-            ),
-
-        "rsi_over_50":
-            bool(
-
-                latest["RSI"]
-
-                >
-
-                50
-
-            ),
-
-        "kd_golden_cross":
-            bool(
-
-                latest["K"]
-
-                >
-
-                latest["D"]
-
-            ),
-
-        "volume_expand":
-            bool(
-
-                latest["Volume"]
-
-                >=
-
-                latest["VOL_MA5"]
-
-                *
-
-                1.5
-
-            ),
-
-        "price_over_ma20":
-            bool(
-
-                latest["Close"]
-
-                >
-
-                latest["MA20"]
-
-            ),
-
-        "ma20_up":
-            bool(
-
-                latest["MA20"]
-
-                >
-
-                previous["MA20"]
-
-            )
-
-    }
-
-    score = sum(
-
-        1
-
-        for value
-        in values.values()
-
-        if value
-
-    )
-
-    values["core_score"] = score
-
-    values["core_total"] = 6
-
-    values["core_pass"] = (
-        score == 6
-    )
-
-    return values
-
-
-# ================================================================
-# Strength Score
-# ================================================================
-
-def calculate_strength_score(
-    df
-):
-
-    latest = df.iloc[-1]
-
-    score = 0.0
-
-    rsi = latest["RSI"]
-
-    if pd.notna(rsi):
-
-        rsi = float(rsi)
-
-        if rsi >= 70:
-
-            score += 20
-
-        elif rsi >= 60:
-
-            score += 16
-
-        elif rsi >= 50:
-
-            score += 12
-
-    if (
-
-        latest["MACD"]
-
-        >
-
-        latest["MACD_SIGNAL"]
-
-    ):
-
-        score += 20
-
-    if (
-
-        latest["K"]
-
-        >
-
-        latest["D"]
-
-    ):
-
-        score += 15
-
-    if (
-
-        latest["Close"]
-
-        >
-
-        latest["MA20"]
-
-    ):
-
-        score += 20
-
-    if len(df) >= 2:
-
-        if (
-
-            latest["MA20"]
-
-            >
-
-            df.iloc[-2]["MA20"]
-
-        ):
-
-            score += 15
-
-    if (
-
-        pd.notna(
-            latest["VOL_MA5"]
-        )
-
-        and
-
-        latest["VOL_MA5"] > 0
-
-        and
-
-        latest["Volume"]
-
-        >=
-
-        latest["VOL_MA5"]
-
-        *
-
-        1.5
-
-    ):
-
-        score += 10
-
-    return round(
-
-        min(
-            score,
-            100
-        ),
-
-        2
-
-    )
-
-
-# ================================================================
-# AI Score
-# ================================================================
-
-def calculate_ai_score(
-    strength_score,
-    core_score,
-    change_pct
-):
-
-    strength = float(
-        strength_score
-        or 0
-    )
-
-    core = float(
-        core_score
-        or 0
-    )
-
-    change = float(
-        change_pct
-        or 0
-    )
-
-    momentum_bonus = min(
-
-        max(
-            change,
-            -10
-        ),
-
-        10
-
-    )
-
-    score = (
-
-        strength * 0.65
-
-        +
-
-        (core / 6) * 30
-
-        +
-
-        momentum_bonus * 0.5
-
-    )
-
-    return round(
-
-        max(
-
-            0,
-
-            min(
-                score,
-                100
-            )
-
-        ),
-
-        2
-
-    )
-
-
-# ================================================================
-# 系統訊號
-#
-# 注意：
-#
-# 「今日精選」不再塞進 signal。
-#
-# 今日精選由 core_pass 決定。
-#
-# ================================================================
-
-def make_signal(
-    core_score,
-    ai_score
-):
-
-    if core_score >= 5:
-
-        return "強勢多方"
-
-    if core_score >= 4:
-
-        return "多方觀察"
-
-    if ai_score >= 70:
-
-        return "偏多"
-
-    if ai_score >= 50:
-
-        return "中性"
-
-    return "偏弱"
-
-
-# ================================================================
-# 系統評級
-# ================================================================
-
-def make_rating(
-    ai_score,
-    core_score
-):
-
-    if core_score == 6:
-
-        return "A+"
-
-    if ai_score >= 80:
-
-        return "A"
-
-    if ai_score >= 70:
-
-        return "B+"
-
-    if ai_score >= 60:
-
-        return "B"
-
-    if ai_score >= 50:
-
-        return "C"
-
-    return "D"
-
-
-# ================================================================
-# 建議
-# ================================================================
-
-def make_recommendation(
-    core_pass,
-    core_score,
-    ai_score
-):
-
-    if core_pass:
-
-        return "符合 6/6 核心條件"
-
-    if core_score >= 5:
-
-        return "接近核心條件"
-
-    if core_score >= 4:
-
-        return "列入觀察"
-
-    if ai_score >= 70:
-
-        return "偏多觀察"
-
-    return "暫不操作"
-
-
-# ================================================================
-# 建立單一 Record
-# ================================================================
-
-def build_security_record(
-    item,
-    df
-):
-
-    if df is None:
-        return None
-
-    if len(df) < MIN_HISTORY:
-        return None
-
-    df = calculate_indicators(
-        df
-    )
-
-    latest = df.iloc[-1]
-
-    previous = df.iloc[-2]
-
-    core = evaluate_core(
-        df
-    )
-
-    if core is None:
-        return None
-
-    close = safe_float(
-        latest["Close"]
-    )
-
-    previous_close = safe_float(
-        previous["Close"]
-    )
-
-    if (
-
-        close is None
-
-        or
-
-        previous_close is None
-
-    ):
-
-        return None
-
-    change_pct = 0
-
-    if previous_close != 0:
-
-        change_pct = (
-
-            (
-
-                close -
-
-                previous_close
-
-            )
-
-            /
-
-            previous_close
-
-            *
-
-            100
-
-        )
-
-    strength_score = (
-        calculate_strength_score(
-            df
-        )
-    )
-
-    ai_score = (
-        calculate_ai_score(
-
-            strength_score,
-
-            core["core_score"],
-
-            change_pct
-
-        )
-    )
-
-    volume_ma5 = safe_float(
-        latest["VOL_MA5"]
-    )
-
-    volume = safe_int(
-        latest["Volume"]
-    )
-
-    volume_ratio = None
-
-    if (
-
-        volume_ma5
-
-        and
-
-        volume_ma5 > 0
-
-    ):
-
-        volume_ratio = (
-
-            volume /
-
-            volume_ma5
-
-        )
-
-    core_score = core[
-        "core_score"
-    ]
-
-    core_pass = core[
-        "core_pass"
-    ]
-
-    return {
-
-        "code":
-            item["code"],
-
-        "symbol":
-            yahoo_symbol(
-                item["code"],
-                item["market"]
-            ),
-
-        "name":
-            item["name"],
-
-        "type":
-            item["type"],
-
-        "market":
-            item["market"],
-
-        "is_etf":
-            bool(
-                item["is_etf"]
-            ),
-
-        "is_bond":
-            bool(
-                item["is_bond"]
-            ),
-
-        "price":
-            close,
-
-        "close":
-            close,
-
-        "previous_close":
-            previous_close,
-
-        "change_pct":
-            safe_float(
-                change_pct
-            ),
-
-        "volume":
-            volume,
-
-        "volume_ma5":
-            volume_ma5,
-
-        "volume_ratio":
-            safe_float(
-                volume_ratio
-            ),
-
-        "rsi":
-            safe_float(
-                latest["RSI"]
-            ),
-
-        "k":
-            safe_float(
-                latest["K"]
-            ),
-
-        "d":
-            safe_float(
-                latest["D"]
-            ),
-
-        "macd":
-            safe_float(
-                latest["MACD"]
-            ),
-
-        "macd_signal":
-            safe_float(
-                latest["MACD_SIGNAL"]
-            ),
-
-        "macd_hist":
-            safe_float(
-                latest["MACD_HIST"]
-            ),
-
-        "ma5":
-            safe_float(
-                latest["MA5"]
-            ),
-
-        "ma20":
-            safe_float(
-                latest["MA20"]
-            ),
-
-        "ma60":
-            safe_float(
-                latest["MA60"]
-            ),
-
-        "macd_golden_cross":
-            core[
-                "macd_golden_cross"
-            ],
-
-        "rsi_over_50":
-            core[
-                "rsi_over_50"
-            ],
-
-        "kd_golden_cross":
-            core[
-                "kd_golden_cross"
-            ],
-
-        "volume_expand":
-            core[
-                "volume_expand"
-            ],
-
-        "price_over_ma20":
-            core[
-                "price_over_ma20"
-            ],
-
-        "ma20_up":
-            core[
-                "ma20_up"
-            ],
-
-        "core_score":
-            core_score,
-
-        "core_total":
-            6,
-
-        "core_pass":
-            core_pass,
-
-        "strength_score":
-            strength_score,
-
-        "ai_score":
-            ai_score,
-
-        "signal":
-            make_signal(
-                core_score,
-                ai_score
-            ),
-
-        "rating":
-            make_rating(
-                ai_score,
-                core_score
-            ),
-
-        "recommendation":
-            make_recommendation(
-                core_pass,
-                core_score,
-                ai_score
-            )
-
-    }
-
-
-# ================================================================
-# 從 DB 讀取 Universe
-# ================================================================
-
-def load_active_universe():
-
-    conn = get_connection()
-
-    try:
-
-        rows = conn.execute(
-
-            """
-            SELECT
-
-                market,
-                code,
-                name,
-                type,
-                is_etf,
-                is_bond
-
-            FROM securities
-
-            WHERE active = 1
-
-            ORDER BY
-                market,
-                code
-
-            """
-
-        ).fetchall()
-
-    finally:
-
-        conn.close()
-
-    universe = []
-
-    for row in rows:
-
-        universe.append({
-
-            "market":
-                row[0],
-
-            "code":
-                row[1],
-
-            "name":
-                row[2],
-
-            "type":
-                row[3],
-
-            "is_etf":
-                bool(row[4]),
-
-            "is_bond":
-                bool(row[5])
-
-        })
-
-    return universe
-
 
 # ================================================================
 # 掃描
