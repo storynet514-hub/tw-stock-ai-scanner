@@ -1,24 +1,8 @@
 name: 台股 AI 選股系統自動更新
 
 on:
-  # ------------------------------------------------------------
-  # 手動執行
-  # ------------------------------------------------------------
   workflow_dispatch:
 
-  # ------------------------------------------------------------
-  # 台灣時間 6 個固定更新時段
-  #
-  # GitHub Actions cron 使用 UTC
-  # 台灣 = UTC+8
-  #
-  # 09:15 → 01:15 UTC
-  # 10:30 → 02:30 UTC
-  # 12:00 → 04:00 UTC
-  # 14:20 → 06:20 UTC
-  # 15:30 → 07:30 UTC
-  # 17:30 → 09:30 UTC
-  # ------------------------------------------------------------
   schedule:
     - cron: "15 1 * * 1-5"
     - cron: "30 2 * * 1-5"
@@ -27,30 +11,12 @@ on:
     - cron: "30 7 * * 1-5"
     - cron: "30 9 * * 1-5"
 
-
-# ================================================================
-# 權限
-# ================================================================
-
 permissions:
   contents: write
-
-
-# ================================================================
-# 避免同一時間多個更新互相寫入
-#
-# 不取消正在執行的工作。
-# 後續排程會等待前一個完成。
-# ================================================================
 
 concurrency:
   group: tw-stock-ai-scanner-update
   cancel-in-progress: false
-
-
-# ================================================================
-# 工作
-# ================================================================
 
 jobs:
 
@@ -60,7 +26,6 @@ jobs:
 
     runs-on: ubuntu-latest
 
-
     steps:
 
       # ==========================================================
@@ -68,28 +33,19 @@ jobs:
       # ==========================================================
 
       - name: Checkout repository
-
         uses: actions/checkout@v4
-
         with:
-
           fetch-depth: 0
-
-          # 使用 GitHub Actions Token
-          # 確保後續可以 push
           persist-credentials: true
 
 
       # ==========================================================
-      # 2. 設定 Python
+      # 2. Python
       # ==========================================================
 
       - name: Setup Python
-
         uses: actions/setup-python@v5
-
         with:
-
           python-version: "3.11"
 
 
@@ -98,9 +54,7 @@ jobs:
       # ==========================================================
 
       - name: Install dependencies
-
         run: |
-
           python -m pip install --upgrade pip
 
           pip install \
@@ -111,47 +65,10 @@ jobs:
 
 
       # ==========================================================
-      # 4. 確認目前版本庫狀態
-      # ==========================================================
-
-      - name: Check repository state
-
-        run: |
-
-          echo "=============================================="
-          echo "Git repository"
-          echo "=============================================="
-
-          git status --short
-
-          echo ""
-
-          git branch --show-current
-
-          echo ""
-
-          git log -1 \
-            --oneline
-
-
-      # ==========================================================
-      # 5. 執行 fetch_data.py
-      #
-      # 重要：
-      # 這裡只執行一次。
-      #
-      # fetch_data.py 本身會完成：
-      #
-      # 1. Universe
-      # 2. 股票分析
-      # 3. ETF 分析
-      # 4. A/B 回測
-      # 5. prices.json
-      # 6. backtest.json
+      # 4. 執行 fetch_data.py
       # ==========================================================
 
       - name: Run fetch_data.py
-
         run: |
 
           echo "=============================================="
@@ -169,11 +86,10 @@ jobs:
 
 
       # ==========================================================
-      # 6. 驗證輸出檔案
+      # 5. 驗證 fetch_data.py 產生的正式資料
       # ==========================================================
 
       - name: Validate generated files
-
         run: |
 
           echo "=============================================="
@@ -181,41 +97,75 @@ jobs:
           echo "=============================================="
 
           test -f Data/prices.json
-
           test -f Data/backtest.json
+          test -f Data/ui_data.json
+          test -f Data/securities.json
 
           echo ""
-
           echo "✓ Data/prices.json"
-
           echo "✓ Data/backtest.json"
+          echo "✓ Data/ui_data.json"
+          echo "✓ Data/securities.json"
+
+          echo ""
+          echo "檔案大小："
+
+          ls -lh \
+            Data/prices.json \
+            Data/backtest.json \
+            Data/ui_data.json \
+            Data/securities.json
 
 
       # ==========================================================
-      # 7. 直接從 prices.json 印出今日 6/6
-      #
-      # 不重新計算。
-      #
-      # 直接讀取 fetch_data.py 已經產生的正式結果。
-      #
-      # 這樣可以避免前台與後台出現不同判斷。
+      # 6. 驗證 ui_data.json JSON 格式
       # ==========================================================
 
-      - name: Print today's 6-6 selections
-
+      - name: Validate ui_data.json
         run: |
 
           python <<'PY'
 
           import json
-
           from pathlib import Path
 
+          path = Path("Data/ui_data.json")
 
-          path = Path(
-              "Data/prices.json"
+          with path.open("r", encoding="utf-8") as f:
+              data = json.load(f)
+
+          if not isinstance(data, dict):
+              raise RuntimeError(
+                  "ui_data.json 不是 JSON object"
+              )
+
+          print("✓ ui_data.json JSON 格式正常")
+
+          print(
+              "JSON keys:",
+              list(data.keys())
           )
 
+          PY
+
+
+      # ==========================================================
+      # 7. 驗證今日正式 6/6 結果
+      #
+      # 注意：
+      # 這裡只讀取 prices.json 已產生的正式結果。
+      # 不重新計算。
+      # ==========================================================
+
+      - name: Print today's 6-6 selections
+        run: |
+
+          python <<'PY'
+
+          import json
+          from pathlib import Path
+
+          path = Path("Data/prices.json")
 
           with path.open(
               "r",
@@ -224,12 +174,10 @@ jobs:
 
               data = json.load(f)
 
-
           print("")
           print("=" * 72)
           print("今日正式 6/6 選股結果")
           print("=" * 72)
-
 
           updated_at = data.get(
               "updated_at_tw",
@@ -240,19 +188,16 @@ jobs:
               f"更新時間：{updated_at}"
           )
 
-
           selected = data.get(
               "today_selected",
               []
           )
-
 
           print(
               f"符合 6/6 個股數量：{len(selected)}"
           )
 
           print("")
-
 
           if not selected:
 
@@ -334,12 +279,9 @@ jobs:
 
                   print("")
 
-
           print("=" * 72)
 
-          print(
-              "核心條件："
-          )
+          print("核心條件：")
 
           for condition in data.get(
               "core_conditions",
@@ -353,24 +295,21 @@ jobs:
                   f"✓ {condition}"
               )
 
-
           print("=" * 72)
 
           PY
 
 
       # ==========================================================
-      # 8. 印出 A/B 回測摘要
+      # 8. A/B 回測摘要
       # ==========================================================
 
       - name: Print backtest summary
-
         run: |
 
           python <<'PY'
 
           import json
-
 
           with open(
               "Data/backtest.json",
@@ -380,18 +319,15 @@ jobs:
 
               data = json.load(f)
 
-
           print("")
           print("=" * 72)
           print("A/B 歷史回測摘要")
           print("=" * 72)
 
-
           comparison = data.get(
               "comparison",
               {}
           )
-
 
           print(
               "比較基準："
@@ -399,15 +335,12 @@ jobs:
               "交易日"
           )
 
-
           print("")
-
 
           strategies = comparison.get(
               "strategies",
               {}
           )
-
 
           for strategy_name in [
               "A_today_cross",
@@ -418,7 +351,6 @@ jobs:
                   strategy_name,
                   {}
               )
-
 
               if strategy_name == "A_today_cross":
 
@@ -432,7 +364,6 @@ jobs:
                       "B = 目前維持多方"
                   )
 
-
               for horizon in [
                   "5d",
                   "10d",
@@ -444,7 +375,6 @@ jobs:
                       {}
                   )
 
-
                   print(
                       f"  {horizon}: "
                       f"樣本={stats.get('signals', 0)} "
@@ -452,15 +382,12 @@ jobs:
                       f"平均報酬={stats.get('average_return', 0)}%"
                   )
 
-
               print("")
-
 
           print(
               "勝率較高："
               f"{comparison.get('better_by_win_rate')}"
           )
-
 
           print("=" * 72)
 
@@ -472,7 +399,6 @@ jobs:
       # ==========================================================
 
       - name: Configure Git
-
         run: |
 
           git config user.name \
@@ -483,68 +409,38 @@ jobs:
 
 
       # ==========================================================
-      # 10. 同步遠端 main
+      # 10. 同步最新 main
       #
-      # 不使用 git pull --rebase。
+      # 這裡非常重要：
       #
-      # 原因：
-      # fetch_data.py 已經產生本地資料變更，
-      # 此時直接 pull --rebase 會得到：
+      # 四個正式資料檔全部暫存。
       #
-      # cannot pull with rebase:
-      # You have unstaged changes
-      #
-      # 正確方式：
-      #
-      # 先保存資料變更
-      # → fetch 遠端
-      # → 將資料變更重新套回最新 main
+      # ui_data.json 不再漏掉。
       # ==========================================================
 
       - name: Sync with latest main
-
         run: |
 
           echo "=============================================="
           echo "同步最新 main"
           echo "=============================================="
 
-
-          # --------------------------------------------------------
-          # 先暫存 fetch_data.py 產生的資料
-          # --------------------------------------------------------
-
           git add \
             Data/prices.json \
-            Data/backtest.json
-
+            Data/backtest.json \
+            Data/ui_data.json \
+            Data/securities.json
 
           git stash push \
             -m "temporary generated stock data"
 
-
-          # --------------------------------------------------------
-          # 抓取最新遠端
-          # --------------------------------------------------------
-
           git fetch origin main
-
-
-          # --------------------------------------------------------
-          # 工作樹回到遠端最新 main
-          # --------------------------------------------------------
 
           git reset \
             --hard \
             origin/main
 
-
-          # --------------------------------------------------------
-          # 恢復剛剛產生的資料
-          # --------------------------------------------------------
-
           git stash pop || true
-
 
           echo ""
 
@@ -552,26 +448,55 @@ jobs:
 
 
       # ==========================================================
-      # 11. 加入資料檔
+      # 11. 再次確認 ui_data.json 還存在
+      # ==========================================================
+
+      - name: Verify generated files after sync
+        run: |
+
+          echo "=============================================="
+          echo "同步後再次驗證"
+          echo "=============================================="
+
+          test -f Data/prices.json
+          test -f Data/backtest.json
+          test -f Data/ui_data.json
+          test -f Data/securities.json
+
+          echo ""
+          echo "✓ prices.json"
+          echo "✓ backtest.json"
+          echo "✓ ui_data.json"
+          echo "✓ securities.json"
+
+
+      # ==========================================================
+      # 12. Stage 正式資料
       # ==========================================================
 
       - name: Stage generated data
-
         run: |
 
           git add \
             Data/prices.json \
-            Data/backtest.json
+            Data/backtest.json \
+            Data/ui_data.json \
+            Data/securities.json
+
+          echo ""
+          echo "已加入 Git："
+
+          git diff \
+            --cached \
+            --name-status
 
 
       # ==========================================================
-      # 12. 檢查是否有資料變更
+      # 13. 檢查資料變更
       # ==========================================================
 
       - name: Check data changes
-
         id: changes
-
         run: |
 
           if git diff --cached --quiet; then
@@ -596,13 +521,11 @@ jobs:
 
 
       # ==========================================================
-      # 13. Commit
+      # 14. Commit
       # ==========================================================
 
       - name: Commit generated data
-
         if: steps.changes.outputs.changed == 'true'
-
         run: |
 
           git commit \
@@ -610,24 +533,21 @@ jobs:
 
 
       # ==========================================================
-      # 14. Push
+      # 15. Push
       # ==========================================================
 
       - name: Push generated data
-
         if: steps.changes.outputs.changed == 'true'
-
         run: |
 
           git push origin HEAD:main
 
 
       # ==========================================================
-      # 15. 最終結果
+      # 16. 最終確認
       # ==========================================================
 
       - name: Final result
-
         run: |
 
           echo ""
@@ -644,15 +564,12 @@ jobs:
           echo ""
 
           echo "✓ fetch_data.py 完成"
-
           echo "✓ prices.json 完成"
-
           echo "✓ backtest.json 完成"
-
+          echo "✓ ui_data.json 完成"
+          echo "✓ securities.json 完成"
           echo "✓ 6/6 選股驗證完成"
-
           echo "✓ A/B 回測驗證完成"
-
           echo "✓ GitHub 資料同步完成"
 
           echo ""
