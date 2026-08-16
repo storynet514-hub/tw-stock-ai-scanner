@@ -4,2275 +4,5216 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-<title>台股 AI 選股儀表板</title>
+<title>台股 AI 選股｜動態風控儀表板</title>
+
+<meta name="theme-color" content="#0b0f17">
 
 <style>
-
-* {
-  box-sizing: border-box;
-}
+/* =========================================================
+   ROOT
+========================================================= */
 
 :root {
-  --bg: #f4f6f9;
-  --card: #ffffff;
-  --text: #172033;
-  --muted: #718096;
-  --border: #e6eaf0;
+    --bg: #080b12;
+    --bg-2: #0d111a;
+    --panel: #111722;
+    --panel-2: #151c28;
+    --panel-3: #1a2230;
 
-  --header: #111827;
+    --border: rgba(255,255,255,.08);
+    --border-light: rgba(255,255,255,.12);
 
-  --blue: #2563eb;
-  --blue-bg: #eff6ff;
+    --text: #f4f7fb;
+    --text-2: #aab4c3;
+    --text-3: #707b8d;
 
-  --green: #16a34a;
-  --green-bg: #ecfdf3;
+    --green: #31d49b;
+    --green-soft: rgba(49,212,155,.12);
 
-  --red: #dc2626;
-  --red-bg: #fef2f2;
+    --red: #ff5f6d;
+    --red-soft: rgba(255,95,109,.12);
 
-  --yellow: #d97706;
-  --yellow-bg: #fffbeb;
+    --blue: #5ca9ff;
+    --blue-soft: rgba(92,169,255,.12);
 
-  --shadow:
-    0 4px 16px rgba(15, 23, 42, 0.06);
+    --yellow: #f5c85b;
+    --yellow-soft: rgba(245,200,91,.12);
 
-  --radius: 16px;
+    --purple: #a78bfa;
+    --purple-soft: rgba(167,139,250,.12);
+
+    --shadow:
+        0 16px 40px rgba(0,0,0,.28);
+
+    --radius: 18px;
+    --radius-sm: 12px;
+
+    --max-width: 1440px;
+}
+
+/* =========================================================
+   RESET
+========================================================= */
+
+* {
+    box-sizing: border-box;
+}
+
+html {
+    scroll-behavior: smooth;
 }
 
 body {
-  margin: 0;
-  background: var(--bg);
-  color: var(--text);
+    margin: 0;
+    min-height: 100vh;
 
-  font-family:
-    -apple-system,
-    BlinkMacSystemFont,
-    "Segoe UI",
-    "Noto Sans TC",
-    Arial,
-    sans-serif;
+    font-family:
+        -apple-system,
+        BlinkMacSystemFont,
+        "SF Pro Display",
+        "Segoe UI",
+        "Noto Sans TC",
+        Arial,
+        sans-serif;
+
+    color: var(--text);
+
+    background:
+        radial-gradient(
+            circle at 15% -10%,
+            rgba(92,169,255,.13),
+            transparent 35%
+        ),
+        radial-gradient(
+            circle at 90% 0%,
+            rgba(167,139,250,.10),
+            transparent 30%
+        ),
+        var(--bg);
 }
 
+button,
+input,
+select {
+    font: inherit;
+}
+
+button {
+    cursor: pointer;
+}
+
+a {
+    color: inherit;
+    text-decoration: none;
+}
 
 /* =========================================================
-   Header
+   APP
 ========================================================= */
 
-header {
-  background: var(--header);
-  color: white;
-  padding: 22px 18px;
+.app {
+    width: 100%;
+    min-height: 100vh;
+}
+
+.container {
+    width: min(
+        calc(100% - 32px),
+        var(--max-width)
+    );
+
+    margin: 0 auto;
+}
+
+/* =========================================================
+   HEADER
+========================================================= */
+
+.header {
+    position: sticky;
+    top: 0;
+    z-index: 100;
+
+    background:
+        rgba(8,11,18,.88);
+
+    backdrop-filter: blur(18px);
+
+    border-bottom:
+        1px solid var(--border);
 }
 
 .header-inner {
-  max-width: 1180px;
-  margin: auto;
+    min-height: 72px;
+
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+
+    gap: 18px;
 }
 
-.header-title {
-  font-size: 25px;
-  font-weight: 800;
-  letter-spacing: .3px;
+.brand {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-width: 0;
 }
 
-.header-subtitle {
-  margin-top: 6px;
-  color: #cbd5e1;
-  font-size: 13px;
+.brand-icon {
+    width: 42px;
+    height: 42px;
+
+    border-radius: 13px;
+
+    display: grid;
+    place-items: center;
+
+    background:
+        linear-gradient(
+            135deg,
+            #1c2738,
+            #101722
+        );
+
+    border:
+        1px solid var(--border-light);
+
+    box-shadow:
+        0 8px 25px rgba(0,0,0,.25);
 }
 
+.brand-icon svg {
+    width: 23px;
+    height: 23px;
+}
+
+.brand-text {
+    min-width: 0;
+}
+
+.brand-title {
+    font-size: 17px;
+    font-weight: 800;
+    letter-spacing: .3px;
+}
+
+.brand-subtitle {
+    margin-top: 2px;
+
+    color: var(--text-3);
+
+    font-size: 11px;
+}
+
+.header-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.icon-button {
+    width: 42px;
+    height: 42px;
+
+    border-radius: 12px;
+
+    border: 1px solid var(--border);
+
+    background: var(--panel);
+
+    color: var(--text);
+
+    display: grid;
+    place-items: center;
+
+    transition:
+        .2s ease;
+}
+
+.icon-button:hover {
+    background: var(--panel-2);
+    border-color: var(--border-light);
+    transform: translateY(-1px);
+}
 
 /* =========================================================
-   Main
+   MAIN
 ========================================================= */
 
-.container {
-  max-width: 1180px;
-  margin: auto;
-  padding: 18px;
+main {
+    padding:
+        28px 0
+        70px;
 }
-
-
-/* =========================================================
-   Loading / Error
-========================================================= */
-
-.loading {
-  text-align: center;
-  padding: 60px 20px;
-  color: var(--muted);
-}
-
-.error {
-  background: var(--red-bg);
-  color: #991b1b;
-  border-radius: 14px;
-  padding: 18px;
-  line-height: 1.7;
-}
-
-
-/* =========================================================
-   Section
-========================================================= */
 
 .section {
-  margin-top: 24px;
-}
-
-.section:first-child {
-  margin-top: 0;
+    margin-bottom: 34px;
 }
 
 .section-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: end;
-  gap: 12px;
-  margin-bottom: 12px;
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+
+    gap: 16px;
+
+    margin-bottom: 16px;
+}
+
+.section-title-wrap {
+    min-width: 0;
+}
+
+.section-kicker {
+    color: var(--blue);
+
+    font-size: 11px;
+    font-weight: 800;
+
+    letter-spacing: 1.2px;
+
+    text-transform: uppercase;
+
+    margin-bottom: 5px;
 }
 
 .section-title {
-  font-size: 20px;
-  font-weight: 800;
+    margin: 0;
+
+    font-size: 24px;
+    line-height: 1.2;
+
+    letter-spacing: -.4px;
 }
 
-.section-subtitle {
-  margin-top: 4px;
-  font-size: 12px;
-  color: var(--muted);
-}
+.section-description {
+    margin-top: 6px;
 
+    color: var(--text-3);
+
+    font-size: 13px;
+}
 
 /* =========================================================
-   Overview
+   STATUS
 ========================================================= */
 
-.overview-grid {
-  display: grid;
-  grid-template-columns:
-    repeat(4, minmax(0, 1fr));
+.status-bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
 
-  gap: 12px;
+    padding:
+        8px 12px;
+
+    border-radius: 10px;
+
+    background: var(--panel);
+
+    border:
+        1px solid var(--border);
+
+    color: var(--text-2);
+
+    font-size: 12px;
 }
 
-.overview-card {
-  background: var(--card);
-  border-radius: var(--radius);
-  padding: 17px;
+.status-dot {
+    width: 7px;
+    height: 7px;
 
-  box-shadow: var(--shadow);
-  border: 1px solid var(--border);
+    border-radius: 50%;
+
+    background: var(--green);
+
+    box-shadow:
+        0 0 10px rgba(49,212,155,.7);
 }
-
-.overview-label {
-  font-size: 13px;
-  color: var(--muted);
-}
-
-.overview-value {
-  margin-top: 7px;
-
-  font-size: 28px;
-  line-height: 1;
-
-  font-weight: 800;
-}
-
-.overview-note {
-  margin-top: 7px;
-
-  color: var(--muted);
-  font-size: 11px;
-}
-
 
 /* =========================================================
-   Data Status
+   SEARCH
 ========================================================= */
 
-.status-card {
-  background: var(--card);
-  border-radius: var(--radius);
-  padding: 16px;
-
-  border: 1px solid var(--border);
-  box-shadow: var(--shadow);
+.search-section {
+    margin-bottom: 28px;
 }
 
-.status-grid {
-  display: grid;
-  grid-template-columns:
-    repeat(4, minmax(0, 1fr));
-
-  gap: 10px;
+.search-box {
+    position: relative;
 }
 
-.status-item {
-  background: #f8fafc;
-  border-radius: 11px;
-  padding: 11px 12px;
+.search-input-wrap {
+    display: flex;
+    align-items: center;
+
+    gap: 10px;
+
+    padding:
+        0 14px;
+
+    height: 52px;
+
+    background:
+        linear-gradient(
+            180deg,
+            rgba(255,255,255,.045),
+            rgba(255,255,255,.02)
+        );
+
+    border:
+        1px solid var(--border-light);
+
+    border-radius: 15px;
+
+    box-shadow:
+        0 10px 30px rgba(0,0,0,.16);
 }
 
-.status-label {
-  color: var(--muted);
-  font-size: 11px;
+.search-icon {
+    width: 19px;
+    height: 19px;
+
+    color: var(--text-3);
+
+    flex: 0 0 auto;
 }
 
-.status-value {
-  margin-top: 3px;
-  font-size: 13px;
-  font-weight: 700;
+#searchInput {
+    width: 100%;
+
+    border: 0;
+    outline: 0;
+
+    color: var(--text);
+
+    background: transparent;
+
+    font-size: 15px;
 }
 
-.status-ok {
-  color: #15803d;
+#searchInput::placeholder {
+    color: var(--text-3);
 }
 
+.search-results {
+    position: absolute;
+
+    left: 0;
+    right: 0;
+
+    top: calc(100% + 8px);
+
+    z-index: 50;
+
+    display: none;
+
+    max-height: 380px;
+
+    overflow-y: auto;
+
+    padding: 8px;
+
+    border:
+        1px solid var(--border-light);
+
+    border-radius: 15px;
+
+    background:
+        rgba(17,23,34,.98);
+
+    box-shadow:
+        var(--shadow);
+}
+
+.search-results.show {
+    display: block;
+}
+
+.search-result {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+
+    gap: 12px;
+
+    padding: 12px;
+
+    border-radius: 11px;
+
+    transition: .15s ease;
+}
+
+.search-result:hover {
+    background: var(--panel-3);
+}
+
+.result-main {
+    min-width: 0;
+}
+
+.result-code {
+    font-size: 14px;
+    font-weight: 800;
+}
+
+.result-name {
+    margin-top: 3px;
+
+    color: var(--text-2);
+
+    font-size: 12px;
+
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.result-type {
+    margin-top: 4px;
+
+    font-size: 10px;
+
+    color: var(--text-3);
+}
+
+.add-button {
+    flex: 0 0 auto;
+
+    border:
+        1px solid rgba(92,169,255,.25);
+
+    color: var(--blue);
+
+    background: var(--blue-soft);
+
+    border-radius: 9px;
+
+    padding:
+        7px 10px;
+
+    font-size: 11px;
+    font-weight: 700;
+}
+
+.add-button.added {
+    color: var(--green);
+    background: var(--green-soft);
+    border-color: rgba(49,212,155,.22);
+}
 
 /* =========================================================
-   Recommendation Cards
+   HERO / TODAY SELECTED
 ========================================================= */
 
-.recommend-grid {
-  display: grid;
+.hero-card {
+    position: relative;
 
-  grid-template-columns:
-    repeat(2, minmax(0, 1fr));
+    overflow: hidden;
 
-  gap: 13px;
+    border-radius: 24px;
+
+    padding: 24px;
+
+    background:
+        radial-gradient(
+            circle at 100% 0%,
+            rgba(92,169,255,.13),
+            transparent 35%
+        ),
+        linear-gradient(
+            135deg,
+            #121b29,
+            #0f151f 55%,
+            #0c1119
+        );
+
+    border:
+        1px solid var(--border-light);
+
+    box-shadow:
+        var(--shadow);
 }
+
+.hero-card::after {
+    content: "";
+
+    position: absolute;
+
+    width: 180px;
+    height: 180px;
+
+    right: -70px;
+    bottom: -100px;
+
+    border-radius: 50%;
+
+    border:
+        1px solid rgba(92,169,255,.14);
+}
+
+.hero-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+
+    gap: 16px;
+
+    margin-bottom: 20px;
+}
+
+.hero-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+
+    padding:
+        6px 10px;
+
+    border-radius: 9px;
+
+    background:
+        rgba(49,212,155,.10);
+
+    color: var(--green);
+
+    font-size: 11px;
+    font-weight: 800;
+}
+
+.hero-date {
+    color: var(--text-3);
+    font-size: 11px;
+}
+
+.selected-grid {
+    display: grid;
+
+    grid-template-columns:
+        repeat(
+            auto-fit,
+            minmax(260px, 1fr)
+        );
+
+    gap: 14px;
+}
+
+/* =========================================================
+   STOCK CARD
+========================================================= */
 
 .stock-card {
-  background: var(--card);
+    position: relative;
 
-  border: 1px solid var(--border);
+    overflow: hidden;
 
-  border-radius: var(--radius);
+    padding: 18px;
 
-  padding: 17px;
+    border-radius: var(--radius);
 
-  box-shadow: var(--shadow);
+    background:
+        linear-gradient(
+            145deg,
+            rgba(255,255,255,.045),
+            rgba(255,255,255,.015)
+        );
 
-  position: relative;
+    border:
+        1px solid var(--border);
 
-  overflow: hidden;
+    transition:
+        transform .2s ease,
+        border-color .2s ease,
+        box-shadow .2s ease;
+
+    cursor: pointer;
 }
 
-.stock-card::before {
-  content: "";
+.stock-card:hover {
+    transform: translateY(-3px);
 
-  position: absolute;
+    border-color:
+        rgba(255,255,255,.16);
 
-  left: 0;
-  top: 0;
-  bottom: 0;
-
-  width: 4px;
-
-  background: var(--blue);
+    box-shadow:
+        0 16px 32px rgba(0,0,0,.20);
 }
 
-.stock-head {
-  display: flex;
-  justify-content: space-between;
-  align-items: start;
+.stock-card.selected {
+    border-color:
+        rgba(49,212,155,.22);
 
-  gap: 10px;
+    background:
+        linear-gradient(
+            145deg,
+            rgba(49,212,155,.07),
+            rgba(255,255,255,.015)
+        );
+}
+
+.card-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+
+    gap: 10px;
+
+    margin-bottom: 18px;
+}
+
+.stock-ident {
+    min-width: 0;
 }
 
 .stock-code {
-  font-size: 20px;
-  font-weight: 850;
+    font-size: 17px;
+    font-weight: 850;
+
+    letter-spacing: .3px;
 }
 
 .stock-name {
-  margin-top: 3px;
+    margin-top: 4px;
 
-  color: var(--muted);
-  font-size: 13px;
+    color: var(--text-2);
+
+    font-size: 12px;
+
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
-.stock-price {
-  margin-top: 16px;
+.signal-badge {
+    flex: 0 0 auto;
 
-  display: flex;
-  justify-content: space-between;
-  align-items: end;
+    padding:
+        6px 9px;
+
+    border-radius: 8px;
+
+    font-size: 10px;
+    font-weight: 800;
+
+    color: var(--green);
+
+    background: var(--green-soft);
+
+    border:
+        1px solid rgba(49,212,155,.18);
+}
+
+.signal-badge.observe {
+    color: var(--yellow);
+    background: var(--yellow-soft);
+    border-color: rgba(245,200,91,.18);
+}
+
+.signal-badge.neutral {
+    color: var(--text-2);
+    background: rgba(255,255,255,.05);
+    border-color: var(--border);
+}
+
+.price-row {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+
+    gap: 12px;
+
+    margin-bottom: 18px;
 }
 
 .price {
-  font-size: 25px;
-  font-weight: 850;
+    font-size: 28px;
+    font-weight: 850;
+
+    letter-spacing: -.7px;
 }
 
-.change {
-  font-size: 14px;
-  font-weight: 800;
+.price-change {
+    font-size: 13px;
+    font-weight: 800;
+
+    margin-bottom: 4px;
 }
 
-.up {
-  color: var(--red);
+.positive {
+    color: var(--green);
 }
 
-.down {
-  color: var(--green);
+.negative {
+    color: var(--red);
 }
 
-.neutral {
-  color: var(--muted);
+.neutral-text {
+    color: var(--text-2);
 }
-
-.signal-area {
-  margin-top: 14px;
-
-  display: grid;
-  grid-template-columns:
-    1fr 1fr;
-
-  gap: 9px;
-}
-
-.info-box {
-  background: #f8fafc;
-
-  border-radius: 10px;
-
-  padding: 10px 11px;
-}
-
-.info-label {
-  color: var(--muted);
-  font-size: 11px;
-}
-
-.info-value {
-  margin-top: 3px;
-
-  font-size: 13px;
-  font-weight: 750;
-}
-
-.recommendation {
-  margin-top: 12px;
-
-  background: var(--blue-bg);
-
-  color: #1d4ed8;
-
-  border-radius: 10px;
-
-  padding: 10px 11px;
-
-  font-size: 13px;
-  font-weight: 750;
-}
-
 
 /* =========================================================
-   Badge
+   CARD METRICS
 ========================================================= */
 
-.badge {
-  display: inline-flex;
+.metrics {
+    display: grid;
 
-  align-items: center;
-  justify-content: center;
-
-  padding: 5px 10px;
-
-  border-radius: 999px;
-
-  font-size: 11px;
-
-  font-weight: 800;
-
-  white-space: nowrap;
-}
-
-.badge-good {
-  background: var(--green-bg);
-  color: #15803d;
-}
-
-.badge-blue {
-  background: var(--blue-bg);
-  color: #1d4ed8;
-}
-
-.badge-mid {
-  background: var(--yellow-bg);
-  color: #a16207;
-}
-
-.badge-low {
-  background: var(--red-bg);
-  color: #b91c1c;
-}
-
-
-/* =========================================================
-   Top 10
-========================================================= */
-
-.top-list {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.top-row {
-  background: var(--card);
-
-  border: 1px solid var(--border);
-
-  border-radius: 13px;
-
-  padding: 13px 15px;
-
-  display: grid;
-
-  grid-template-columns:
-    48px
-    minmax(100px, 1fr)
-    minmax(90px, 120px)
-    minmax(80px, 110px)
-    minmax(100px, 140px);
-
-  align-items: center;
-
-  gap: 10px;
-
-  box-shadow: 0 2px 8px rgba(15, 23, 42, .04);
-}
-
-.top-rank {
-  font-size: 18px;
-  font-weight: 850;
-  color: #475569;
-}
-
-.top-stock-code {
-  font-weight: 800;
-}
-
-.top-stock-name {
-  color: var(--muted);
-  font-size: 11px;
-  margin-top: 2px;
-}
-
-.top-price {
-  font-weight: 800;
-}
-
-.top-signal {
-  text-align: left;
-}
-
-
-/* =========================================================
-   ETF / Bond
-========================================================= */
-
-.asset-grid {
-  display: grid;
-
-  grid-template-columns:
-    repeat(2, minmax(0, 1fr));
-
-  gap: 13px;
-}
-
-.asset-card {
-  background: var(--card);
-
-  border: 1px solid var(--border);
-
-  border-radius: var(--radius);
-
-  padding: 16px;
-
-  box-shadow: var(--shadow);
-}
-
-.asset-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-
-.asset-code {
-  font-size: 18px;
-  font-weight: 850;
-}
-
-.asset-name {
-  margin-top: 3px;
-  color: var(--muted);
-  font-size: 12px;
-}
-
-.asset-price {
-  margin-top: 15px;
-
-  display: flex;
-  justify-content: space-between;
-  align-items: end;
-}
-
-.asset-price-value {
-  font-size: 22px;
-  font-weight: 850;
-}
-
-
-/* =========================================================
-   Empty
-========================================================= */
-
-.empty {
-  background: var(--card);
-
-  border: 1px solid var(--border);
-
-  border-radius: var(--radius);
-
-  padding: 28px;
-
-  color: var(--muted);
-
-  text-align: center;
-}
-
-
-/* =========================================================
-   Backtest
-========================================================= */
-
-.backtest-card {
-  background: var(--card);
-
-  border: 1px solid var(--border);
-
-  border-radius: var(--radius);
-
-  padding: 16px;
-
-  box-shadow: var(--shadow);
-}
-
-.backtest-grid {
-  display: grid;
-
-  grid-template-columns:
-    repeat(2, minmax(0, 1fr));
-
-  gap: 12px;
-}
-
-.backtest-item {
-  background: #f8fafc;
-
-  border-radius: 12px;
-
-  padding: 14px;
-}
-
-.backtest-name {
-  font-weight: 800;
-}
-
-.backtest-value {
-  margin-top: 8px;
-
-  font-size: 24px;
-
-  font-weight: 850;
-}
-
-.backtest-note {
-  margin-top: 4px;
-
-  color: var(--muted);
-  font-size: 11px;
-}
-
-
-/* =========================================================
-   Footer
-========================================================= */
-
-footer {
-  max-width: 1180px;
-
-  margin: 28px auto;
-
-  padding: 0 18px 30px;
-
-  color: var(--muted);
-
-  font-size: 11px;
-
-  line-height: 1.6;
-}
-
-
-/* =========================================================
-   Mobile
-========================================================= */
-
-@media (max-width: 850px) {
-
-  .overview-grid {
     grid-template-columns:
-      repeat(2, minmax(0, 1fr));
-  }
+        repeat(3, 1fr);
 
-  .status-grid {
-    grid-template-columns:
-      repeat(2, minmax(0, 1fr));
-  }
-
-  .recommend-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .asset-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .top-row {
-    grid-template-columns:
-      38px
-      1fr
-      90px
-      90px;
-  }
-
-  .top-signal {
-    grid-column: 2 / -1;
-  }
-
+    gap: 7px;
 }
 
+.metric {
+    min-width: 0;
 
-@media (max-width: 560px) {
+    padding:
+        9px 8px;
 
-  header {
-    padding: 19px 14px;
-  }
+    border-radius: 10px;
 
-  .header-title {
-    font-size: 21px;
-  }
+    background:
+        rgba(0,0,0,.16);
 
-  .container {
-    padding: 12px;
-  }
+    border:
+        1px solid rgba(255,255,255,.04);
+}
 
-  .overview-grid {
-    grid-template-columns: 1fr 1fr;
-    gap: 9px;
-  }
+.metric-label {
+    color: var(--text-3);
 
-  .overview-card {
+    font-size: 9px;
+
+    margin-bottom: 4px;
+}
+
+.metric-value {
+    color: var(--text);
+
+    font-size: 12px;
+    font-weight: 750;
+
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.core-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+
+    margin-top: 13px;
+
+    padding-top: 13px;
+
+    border-top:
+        1px solid var(--border);
+
+    font-size: 11px;
+}
+
+.core-label {
+    color: var(--text-3);
+}
+
+.core-value {
+    color: var(--green);
+
+    font-weight: 800;
+}
+
+/* =========================================================
+   EMPTY
+========================================================= */
+
+.empty-state {
+    padding: 38px 20px;
+
+    text-align: center;
+
+    border-radius: var(--radius);
+
+    border:
+        1px dashed var(--border-light);
+
+    background:
+        rgba(255,255,255,.015);
+}
+
+.empty-icon {
+    width: 45px;
+    height: 45px;
+
+    margin:
+        0 auto 12px;
+
+    border-radius: 14px;
+
+    display: grid;
+    place-items: center;
+
+    background: var(--panel-2);
+
+    color: var(--text-3);
+}
+
+.empty-title {
+    font-weight: 750;
+}
+
+.empty-text {
+    margin-top: 6px;
+
+    color: var(--text-3);
+
+    font-size: 12px;
+}
+
+/* =========================================================
+   TOP 10
+========================================================= */
+
+.top-grid {
+    display: grid;
+
+    grid-template-columns:
+        repeat(
+            auto-fit,
+            minmax(250px, 1fr)
+        );
+
+    gap: 12px;
+}
+
+.rank-card {
+    display: grid;
+
+    grid-template-columns:
+        38px 1fr auto;
+
+    align-items: center;
+
+    gap: 12px;
+
     padding: 14px;
-  }
 
-  .overview-value {
-    font-size: 23px;
-  }
+    border-radius: 14px;
 
-  .status-grid {
-    grid-template-columns: 1fr;
-  }
+    background: var(--panel);
 
-  .signal-area {
-    grid-template-columns: 1fr 1fr;
-  }
+    border:
+        1px solid var(--border);
 
-  .top-row {
-    grid-template-columns:
-      35px
-      1fr
-      80px;
-  }
-
-  .top-change {
-    display: none;
-  }
-
+    transition: .2s ease;
 }
 
+.rank-card:hover {
+    background: var(--panel-2);
+    border-color: var(--border-light);
+}
+
+.rank-number {
+    width: 34px;
+    height: 34px;
+
+    display: grid;
+    place-items: center;
+
+    border-radius: 10px;
+
+    background:
+        rgba(255,255,255,.05);
+
+    color: var(--text-2);
+
+    font-size: 12px;
+    font-weight: 850;
+}
+
+.rank-number.top {
+    color: var(--yellow);
+    background: var(--yellow-soft);
+}
+
+.rank-info {
+    min-width: 0;
+}
+
+.rank-code {
+    font-weight: 800;
+    font-size: 13px;
+}
+
+.rank-name {
+    color: var(--text-3);
+    font-size: 11px;
+    margin-top: 3px;
+}
+
+.rank-price {
+    text-align: right;
+
+    font-weight: 800;
+
+    font-size: 13px;
+}
+
+.rank-change {
+    margin-top: 3px;
+
+    font-size: 10px;
+}
 
 /* =========================================================
-   Very small screen
+   TWO COLUMN
 ========================================================= */
 
-@media (max-width: 390px) {
+.two-column {
+    display: grid;
 
-  .overview-grid {
-    grid-template-columns: 1fr;
-  }
+    grid-template-columns:
+        minmax(0, 1.35fr)
+        minmax(300px, .65fr);
 
-  .stock-price {
-    align-items: start;
+    gap: 18px;
+}
+
+@media (max-width: 900px) {
+
+    .two-column {
+        grid-template-columns: 1fr;
+    }
+}
+
+/* =========================================================
+   LIST PANEL
+========================================================= */
+
+.panel {
+    border-radius: var(--radius);
+
+    background:
+        linear-gradient(
+            145deg,
+            rgba(255,255,255,.035),
+            rgba(255,255,255,.012)
+        );
+
+    border:
+        1px solid var(--border);
+
+    overflow: hidden;
+}
+
+.panel-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+
+    gap: 10px;
+
+    padding:
+        18px 18px 14px;
+
+    border-bottom:
+        1px solid var(--border);
+}
+
+.panel-title {
+    font-size: 15px;
+    font-weight: 800;
+}
+
+.panel-count {
+    color: var(--text-3);
+    font-size: 11px;
+}
+
+.panel-body {
+    padding: 10px;
+}
+
+.compact-list {
+    display: flex;
     flex-direction: column;
     gap: 4px;
-  }
-
-  .signal-area {
-    grid-template-columns: 1fr;
-  }
-
 }
 
+.compact-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+
+    gap: 12px;
+
+    padding: 12px;
+
+    border-radius: 11px;
+
+    transition: .15s ease;
+
+    cursor: pointer;
+}
+
+.compact-item:hover {
+    background: var(--panel-2);
+}
+
+.compact-left {
+    min-width: 0;
+
+    display: flex;
+    align-items: center;
+
+    gap: 10px;
+}
+
+.compact-icon {
+    width: 34px;
+    height: 34px;
+
+    flex: 0 0 auto;
+
+    display: grid;
+    place-items: center;
+
+    border-radius: 10px;
+
+    background: var(--blue-soft);
+
+    color: var(--blue);
+
+    font-size: 10px;
+    font-weight: 850;
+}
+
+.compact-code {
+    font-size: 12px;
+    font-weight: 800;
+}
+
+.compact-name {
+    margin-top: 3px;
+
+    color: var(--text-3);
+
+    font-size: 10px;
+
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.compact-right {
+    text-align: right;
+    flex: 0 0 auto;
+}
+
+.compact-price {
+    font-size: 12px;
+    font-weight: 800;
+}
+
+.compact-change {
+    margin-top: 3px;
+    font-size: 10px;
+}
+
+/* =========================================================
+   WATCHLIST
+========================================================= */
+
+.watchlist {
+    min-height: 100px;
+}
+
+.watchlist-empty {
+    padding: 30px 15px;
+
+    text-align: center;
+
+    color: var(--text-3);
+
+    font-size: 12px;
+}
+
+/* =========================================================
+   SYSTEM OVERVIEW
+========================================================= */
+
+.system-grid {
+    display: grid;
+
+    grid-template-columns:
+        repeat(
+            auto-fit,
+            minmax(150px, 1fr)
+        );
+
+    gap: 10px;
+}
+
+.system-stat {
+    padding: 16px;
+
+    border-radius: 14px;
+
+    background: var(--panel);
+
+    border:
+        1px solid var(--border);
+}
+
+.system-stat-label {
+    color: var(--text-3);
+
+    font-size: 10px;
+}
+
+.system-stat-value {
+    margin-top: 7px;
+
+    font-size: 22px;
+    font-weight: 850;
+}
+
+.system-stat-sub {
+    margin-top: 4px;
+
+    color: var(--text-3);
+
+    font-size: 10px;
+}
+
+/* =========================================================
+   FOOTER
+========================================================= */
+
+.footer {
+    padding:
+        25px 0 50px;
+
+    color: var(--text-3);
+
+    text-align: center;
+
+    font-size: 10px;
+
+    border-top:
+        1px solid var(--border);
+}
+
+/* =========================================================
+   MODAL
+========================================================= */
+
+.modal-overlay {
+    position: fixed;
+
+    inset: 0;
+
+    z-index: 500;
+
+    display: none;
+
+    align-items: center;
+    justify-content: center;
+
+    padding: 18px;
+
+    background:
+        rgba(0,0,0,.72);
+
+    backdrop-filter: blur(8px);
+}
+
+.modal-overlay.show {
+    display: flex;
+}
+
+.modal {
+    width: min(
+        720px,
+        100%
+    );
+
+    max-height:
+        calc(100vh - 36px);
+
+    overflow-y: auto;
+
+    border-radius: 22px;
+
+    background:
+        #101722;
+
+    border:
+        1px solid var(--border-light);
+
+    box-shadow:
+        0 30px 80px rgba(0,0,0,.55);
+}
+
+.modal-header {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+
+    gap: 12px;
+
+    padding: 20px;
+
+    background:
+        rgba(16,23,34,.95);
+
+    backdrop-filter: blur(15px);
+
+    border-bottom:
+        1px solid var(--border);
+}
+
+.modal-code {
+    font-size: 22px;
+    font-weight: 850;
+}
+
+.modal-name {
+    margin-top: 4px;
+
+    color: var(--text-2);
+
+    font-size: 12px;
+}
+
+.modal-close {
+    width: 36px;
+    height: 36px;
+
+    border-radius: 10px;
+
+    border: 1px solid var(--border);
+
+    background: var(--panel-2);
+
+    color: var(--text);
+
+    display: grid;
+    place-items: center;
+}
+
+.modal-body {
+    padding: 20px;
+}
+
+.detail-price {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+
+    gap: 15px;
+
+    padding-bottom: 20px;
+
+    border-bottom:
+        1px solid var(--border);
+}
+
+.detail-price-number {
+    font-size: 35px;
+    font-weight: 900;
+}
+
+.detail-grid {
+    display: grid;
+
+    grid-template-columns:
+        repeat(2, 1fr);
+
+    gap: 9px;
+
+    margin-top: 18px;
+}
+
+.detail-item {
+    padding: 12px;
+
+    border-radius: 11px;
+
+    background: rgba(255,255,255,.035);
+
+    border:
+        1px solid var(--border);
+}
+
+.detail-item-label {
+    color: var(--text-3);
+
+    font-size: 10px;
+
+    margin-bottom: 6px;
+}
+
+.detail-item-value {
+    font-size: 14px;
+    font-weight: 800;
+}
+
+.condition-list {
+    margin-top: 20px;
+}
+
+.condition-title {
+    margin-bottom: 10px;
+
+    font-size: 13px;
+    font-weight: 800;
+}
+
+.condition {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+
+    gap: 10px;
+
+    padding: 10px 12px;
+
+    border-bottom:
+        1px solid var(--border);
+
+    font-size: 11px;
+}
+
+.condition:last-child {
+    border-bottom: 0;
+}
+
+.condition-status {
+    padding:
+        4px 7px;
+
+    border-radius: 7px;
+
+    font-size: 9px;
+    font-weight: 800;
+}
+
+.condition-pass {
+    color: var(--green);
+    background: var(--green-soft);
+}
+
+.condition-fail {
+    color: var(--red);
+    background: var(--red-soft);
+}
+
+.modal-footer {
+    display: flex;
+    gap: 8px;
+
+    margin-top: 20px;
+}
+
+.modal-action {
+    flex: 1;
+
+    padding:
+        11px;
+
+    border-radius: 11px;
+
+    border:
+        1px solid var(--border-light);
+
+    background: var(--panel-2);
+
+    color: var(--text);
+
+    font-weight: 750;
+}
+
+.modal-action.primary {
+    background: var(--blue-soft);
+    color: var(--blue);
+    border-color: rgba(92,169,255,.22);
+}
+
+/* =========================================================
+   TOAST
+========================================================= */
+
+.toast {
+    position: fixed;
+
+    left: 50%;
+    bottom: 25px;
+
+    z-index: 1000;
+
+    transform:
+        translate(-50%, 20px);
+
+    opacity: 0;
+
+    pointer-events: none;
+
+    padding:
+        11px 16px;
+
+    border-radius: 11px;
+
+    background:
+        rgba(22,29,42,.97);
+
+    border:
+        1px solid var(--border-light);
+
+    box-shadow:
+        var(--shadow);
+
+    font-size: 12px;
+
+    transition: .25s ease;
+}
+
+.toast.show {
+    opacity: 1;
+
+    transform:
+        translate(-50%, 0);
+}
+
+/* =========================================================
+   LOADING
+========================================================= */
+
+.loading {
+    min-height: 300px;
+
+    display: grid;
+    place-items: center;
+}
+
+.loading-inner {
+    text-align: center;
+}
+
+.spinner {
+    width: 32px;
+    height: 32px;
+
+    margin: 0 auto 12px;
+
+    border-radius: 50%;
+
+    border:
+        3px solid rgba(255,255,255,.08);
+
+    border-top-color:
+        var(--blue);
+
+    animation:
+        spin .8s linear infinite;
+}
+
+@keyframes spin {
+
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+.error-box {
+    padding: 20px;
+
+    border-radius: 15px;
+
+    background: var(--red-soft);
+
+    border:
+        1px solid rgba(255,95,109,.2);
+
+    color: var(--red);
+
+    font-size: 12px;
+
+    line-height: 1.7;
+}
+
+/* =========================================================
+   RESPONSIVE
+========================================================= */
+
+@media (max-width: 680px) {
+
+    .container {
+        width:
+            calc(100% - 20px);
+    }
+
+    main {
+        padding-top: 18px;
+    }
+
+    .header-inner {
+        min-height: 64px;
+    }
+
+    .brand-title {
+        font-size: 15px;
+    }
+
+    .brand-subtitle {
+        display: none;
+    }
+
+    .section-title {
+        font-size: 20px;
+    }
+
+    .hero-card {
+        padding: 17px;
+        border-radius: 19px;
+    }
+
+    .selected-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .top-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .metrics {
+        grid-template-columns:
+            repeat(3, 1fr);
+    }
+
+    .detail-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .price {
+        font-size: 25px;
+    }
+
+    .hero-top {
+        align-items: flex-start;
+        flex-direction: column;
+        gap: 8px;
+    }
+}
+
+/* =========================================================
+   SCROLLBAR
+========================================================= */
+
+::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+
+::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+    background: #293242;
+    border-radius: 99px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: #364255;
+}
 </style>
 </head>
 
-
 <body>
 
+<div class="app">
 
-<header>
+    <!-- =====================================================
+         HEADER
+    ====================================================== -->
 
-  <div class="header-inner">
+    <header class="header">
 
-    <div class="header-title">
-      台股 AI 選股儀表板
-    </div>
+        <div class="container header-inner">
 
-    <div class="header-subtitle">
-      今日市場掃描｜AI 精選｜Top 10｜ETF｜債券
-    </div>
+            <div class="brand">
 
-  </div>
+                <div class="brand-icon">
 
-</header>
+                    <svg
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="1.8"
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                    >
+                        <path d="M4 19V5"/>
+                        <path d="M4 19h16"/>
+                        <path d="M7 15l4-5 3 3 5-7"/>
+                    </svg>
+
+                </div>
+
+                <div class="brand-text">
+
+                    <div class="brand-title">
+                        台股 AI 選股
+                    </div>
+
+                    <div class="brand-subtitle">
+                        Dynamic Risk Control Dashboard
+                    </div>
+
+                </div>
+
+            </div>
+
+            <div class="header-actions">
+
+                <div
+                    class="status-bar"
+                    id="systemStatus"
+                >
+
+                    <span class="status-dot"></span>
+
+                    <span>
+                        系統載入中
+                    </span>
+
+                </div>
+
+                <button
+                    class="icon-button"
+                    id="refreshButton"
+                    title="重新載入"
+                >
+
+                    <svg
+                        width="18"
+                        height="18"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="2"
+                        stroke-linecap="round"
+                    >
+                        <path d="M20 11a8.1 8.1 0 0 0-15.5-2"/>
+                        <path d="M4 5v4h4"/>
+                        <path d="M4 13a8.1 8.1 0 0 0 15.5 2"/>
+                        <path d="M20 19v-4h-4"/>
+                    </svg>
+
+                </button>
+
+            </div>
+
+        </div>
+
+    </header>
 
 
-<main class="container">
+    <!-- =====================================================
+         MAIN
+    ====================================================== -->
+
+    <main>
+
+        <div class="container">
+
+            <div id="appContent">
+
+                <div class="loading">
+
+                    <div class="loading-inner">
+
+                        <div class="spinner"></div>
+
+                        <div>
+                            正在載入 AI 選股資料…
+                        </div>
+
+                    </div>
+
+                </div>
+
+            </div>
+
+        </div>
+
+    </main>
 
 
-<div id="loading" class="loading">
-  正在讀取最新市場資料……
+    <!-- =====================================================
+         FOOTER
+    ====================================================== -->
+
+    <footer class="footer">
+
+        <div class="container">
+
+            台股 AI 選股系統
+            ·
+            前台資料由 Data/ui_data.json 提供
+
+        </div>
+
+    </footer>
+
 </div>
 
 
-<div id="error"></div>
-
-
-<div id="app" style="display:none">
-
-
 <!-- =========================================================
-     今日概況
-========================================================= -->
+     MODAL
+========================================================== -->
+
+<div
+    class="modal-overlay"
+    id="detailModal"
+>
+
+    <div class="modal">
+
+        <div class="modal-header">
+
+            <div>
+
+                <div
+                    class="modal-code"
+                    id="modalCode"
+                >
+                    -
+                </div>
+
+                <div
+                    class="modal-name"
+                    id="modalName"
+                >
+                    -
+                </div>
+
+            </div>
+
+            <button
+                class="modal-close"
+                id="modalClose"
+            >
+                ×
+            </button>
 
-<section class="section">
-
-  <div class="section-header">
-
-    <div>
-
-      <div class="section-title">
-        今日市場概況
-      </div>
-
-      <div class="section-subtitle">
-        顯示系統今日掃描結果
-      </div>
-
-    </div>
-
-  </div>
-
-
-  <div class="overview-grid">
-
-
-    <div class="overview-card">
-
-      <div class="overview-label">
-        股票資料
-      </div>
-
-      <div
-        id="stockCount"
-        class="overview-value"
-      >
-        -
-      </div>
-
-      <div class="overview-note">
-        系統成功取得
-      </div>
-
-    </div>
-
-
-    <div class="overview-card">
-
-      <div class="overview-label">
-        ETF 資料
-      </div>
-
-      <div
-        id="etfCount"
-        class="overview-value"
-      >
-        -
-      </div>
-
-      <div class="overview-note">
-        系統成功取得
-      </div>
-
-    </div>
-
-
-    <div class="overview-card">
-
-      <div class="overview-label">
-        今日符合條件
-      </div>
-
-      <div
-        id="selectedCount"
-        class="overview-value"
-      >
-        -
-      </div>
-
-      <div class="overview-note">
-        後台掃描結果
-      </div>
-
-    </div>
-
-
-    <div class="overview-card">
-
-      <div class="overview-label">
-        AI Top 10
-      </div>
-
-      <div
-        id="top10Count"
-        class="overview-value"
-      >
-        10
-      </div>
-
-      <div class="overview-note">
-        前台精選排名
-      </div>
-
-    </div>
-
-
-  </div>
-
-</section>
-
-
-<!-- =========================================================
-     今日推薦
-========================================================= -->
-
-<section class="section">
-
-  <div class="section-header">
-
-    <div>
-
-      <div class="section-title">
-        今日推薦
-      </div>
-
-      <div class="section-subtitle">
-        從今日後台結果中呈現精選標的，不直接展示全部符合條件股票。
-      </div>
-
-    </div>
-
-  </div>
-
-
-  <div
-    id="recommendGrid"
-    class="recommend-grid"
-  ></div>
-
-</section>
-
-
-<!-- =========================================================
-     AI Top 10
-========================================================= -->
-
-<section class="section">
-
-  <div class="section-header">
-
-    <div>
-
-      <div class="section-title">
-        AI Top 10
-      </div>
-
-      <div class="section-subtitle">
-        保留後台既有排名結果
-      </div>
-
-    </div>
-
-  </div>
-
-
-  <div
-    id="top10List"
-    class="top-list"
-  ></div>
-
-</section>
-
-
-<!-- =========================================================
-     ETF
-========================================================= -->
-
-<section class="section">
-
-  <div class="section-header">
-
-    <div>
-
-      <div class="section-title">
-        ETF
-      </div>
-
-      <div class="section-subtitle">
-        ETF 獨立呈現，不與股票推薦混合
-      </div>
-
-    </div>
-
-  </div>
-
-
-  <div
-    id="etfGrid"
-    class="asset-grid"
-  ></div>
-
-</section>
-
-
-<!-- =========================================================
-     債券
-========================================================= -->
-
-<section class="section">
-
-  <div class="section-header">
-
-    <div>
-
-      <div class="section-title">
-        債券
-      </div>
-
-      <div class="section-subtitle">
-        債券獨立呈現，不套用股票選股邏輯
-      </div>
-
-    </div>
-
-  </div>
-
-
-  <div
-    id="bondGrid"
-    class="asset-grid"
-  ></div>
-
-</section>
-
-
-<!-- =========================================================
-     回測摘要
-========================================================= -->
-
-<section class="section">
-
-  <div class="section-header">
-
-    <div>
-
-      <div class="section-title">
-        系統歷史表現
-      </div>
-
-      <div class="section-subtitle">
-        僅顯示摘要，不展示後台計算細節
-      </div>
-
-    </div>
-
-  </div>
-
-
-  <div
-    id="backtest"
-    class="backtest-card"
-  ></div>
-
-</section>
-
-
-<!-- =========================================================
-     系統狀態
-========================================================= -->
-
-<section class="section">
-
-  <div class="section-header">
-
-    <div>
-
-      <div class="section-title">
-        資料狀態
-      </div>
-
-    </div>
-
-  </div>
-
-
-  <div class="status-card">
-
-    <div class="status-grid">
-
-
-      <div class="status-item">
-
-        <div class="status-label">
-          系統版本
         </div>
 
         <div
-          id="version"
-          class="status-value"
-        >
-          -
-        </div>
-
-      </div>
-
-
-      <div class="status-item">
-
-        <div class="status-label">
-          資料日期
-        </div>
-
-        <div
-          id="dataDate"
-          class="status-value"
-        >
-          -
-        </div>
-
-      </div>
-
-
-      <div class="status-item">
-
-        <div class="status-label">
-          更新時間
-        </div>
-
-        <div
-          id="updatedAt"
-          class="status-value"
-        >
-          -
-        </div>
-
-      </div>
-
-
-      <div class="status-item">
-
-        <div class="status-label">
-          資料狀態
-        </div>
-
-        <div
-          id="dataStatus"
-          class="status-value status-ok"
-        >
-          -
-        </div>
-
-      </div>
-
+            class="modal-body"
+            id="modalBody"
+        ></div>
 
     </div>
-
-  </div>
-
-</section>
-
 
 </div>
 
-</main>
 
+<!-- =========================================================
+     TOAST
+========================================================== -->
 
-<footer>
-
-  台股 AI 選股儀表板｜Frontend READ ONLY
-  <br>
-  前台僅負責呈現後台結果，不重新計算選股條件、不修改後台排名。
-
-</footer>
+<div
+    class="toast"
+    id="toast"
+></div>
 
 
 <script>
-
 /* ============================================================
-   DATA
+   台股 AI 選股系統
+   index.html V10.0
+
+   前台資料來源：
+
+       Data/ui_data.json
+       Data/securities.json
+
+   不直接讀取：
+
+       Data/prices.json
+
+   使用者清單：
+
+       localStorage
 ============================================================ */
 
-const DATA_URL = "./Data/prices.json";
+
+/* ============================================================
+   CONFIG
+============================================================ */
+
+const CONFIG = {
+
+    UI_DATA_URL:
+        "./Data/ui_data.json",
+
+    SECURITIES_URL:
+        "./Data/securities.json",
+
+    WATCHLIST_KEY:
+        "tw-stock-ai-watchlist-v10",
+
+    CACHE_BUSTER:
+        "?v=" + Date.now()
+
+};
 
 
 /* ============================================================
-   HTML Escape
+   STATE
+============================================================ */
+
+const state = {
+
+    uiData: null,
+
+    securities: [],
+
+    securityMap: new Map(),
+
+    watchlist: [],
+
+    allRecords: [],
+
+    loaded: false
+
+};
+
+
+/* ============================================================
+   DOM
+============================================================ */
+
+const appContent =
+    document.getElementById(
+        "appContent"
+    );
+
+const systemStatus =
+    document.getElementById(
+        "systemStatus"
+    );
+
+const refreshButton =
+    document.getElementById(
+        "refreshButton"
+    );
+
+const detailModal =
+    document.getElementById(
+        "detailModal"
+    );
+
+const modalClose =
+    document.getElementById(
+        "modalClose"
+    );
+
+const modalCode =
+    document.getElementById(
+        "modalCode"
+    );
+
+const modalName =
+    document.getElementById(
+        "modalName"
+    );
+
+const modalBody =
+    document.getElementById(
+        "modalBody"
+    );
+
+const toast =
+    document.getElementById(
+        "toast"
+    );
+
+
+/* ============================================================
+   UTIL
 ============================================================ */
 
 function escapeHtml(value) {
 
-  if (
-    value === null ||
-    value === undefined
-  ) {
-    return "";
-  }
+    if (
+        value === null ||
+        value === undefined
+    ) {
+        return "";
+    }
 
-  return String(value)
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#039;");
+    return String(value)
+        .replace(
+            /&/g,
+            "&amp;"
+        )
+        .replace(
+            /</g,
+            "&lt;"
+        )
+        .replace(
+            />/g,
+            "&gt;"
+        )
+        .replace(
+            /"/g,
+            "&quot;"
+        )
+        .replace(
+            /'/g,
+            "&#039;"
+        );
 }
 
 
-/* ============================================================
-   Number
-============================================================ */
+function numberValue(value) {
 
-function number(value, digits = 2) {
+    const n =
+        Number(value);
 
-  if (
-    value === null ||
-    value === undefined ||
-    value === ""
-  ) {
-    return "-";
-  }
-
-  const n = Number(value);
-
-  if (!Number.isFinite(n)) {
-    return "-";
-  }
-
-  return n.toFixed(digits);
+    return Number.isFinite(n)
+        ? n
+        : null;
 }
 
 
-/* ============================================================
-   Change
-============================================================ */
+function formatNumber(
+    value,
+    digits = 2
+) {
 
-function change(value) {
+    const n =
+        numberValue(value);
 
-  if (
-    value === null ||
-    value === undefined ||
-    value === ""
-  ) {
-    return `
-      <span class="neutral">-</span>
-    `;
-  }
+    if (n === null) {
+        return "-";
+    }
 
-  const n = Number(value);
+    return n.toLocaleString(
+        "zh-TW",
+        {
+            minimumFractionDigits:
+                digits,
 
-  if (!Number.isFinite(n)) {
-    return `
-      <span class="neutral">-</span>
-    `;
-  }
-
-  if (n > 0) {
-
-    return `
-      <span class="up">
-        +${n.toFixed(2)}%
-      </span>
-    `;
-  }
-
-  if (n < 0) {
-
-    return `
-      <span class="down">
-        ${n.toFixed(2)}%
-      </span>
-    `;
-  }
-
-  return `
-    <span class="neutral">
-      0.00%
-    </span>
-  `;
+            maximumFractionDigits:
+                digits
+        }
+    );
 }
 
 
-/* ============================================================
-   Signal Badge
-============================================================ */
+function formatInteger(value) {
 
-function signalBadge(item) {
+    const n =
+        numberValue(value);
 
-  const signal =
-    item?.signal ||
-    item?.rating ||
-    item?.system_signal ||
-    item?.system_rating ||
-    "觀察";
+    if (n === null) {
+        return "-";
+    }
 
-  const text =
-    String(signal);
-
-
-  let cls = "badge-blue";
-
-
-  const lower =
-    text.toLowerCase();
-
-
-  if (
-    text.includes("推薦") ||
-    text.includes("強") ||
-    text.includes("買進") ||
-    text.includes("多方") ||
-    lower.includes("strong")
-  ) {
-
-    cls = "badge-good";
-
-  } else if (
-    text.includes("觀察") ||
-    text.includes("中性") ||
-    text.includes("留意")
-  ) {
-
-    cls = "badge-mid";
-  }
-
-
-  return `
-    <span class="badge ${cls}">
-      ${escapeHtml(text)}
-    </span>
-  `;
+    return n.toLocaleString(
+        "zh-TW",
+        {
+            maximumFractionDigits: 0
+        }
+    );
 }
 
 
-/* ============================================================
-   Recommendation
-============================================================ */
+function formatPercent(value) {
 
-function recommendationText(item) {
+    const n =
+        numberValue(value);
 
-  if (
-    item?.recommendation !== undefined &&
-    item?.recommendation !== null &&
-    String(item.recommendation).trim() !== ""
-  ) {
+    if (n === null) {
+        return "-";
+    }
 
-    return String(item.recommendation);
-  }
+    const sign =
+        n > 0
+            ? "+"
+            : "";
 
-
-  if (
-    item?.advice !== undefined &&
-    item?.advice !== null &&
-    String(item.advice).trim() !== ""
-  ) {
-
-    return String(item.advice);
-  }
-
-
-  if (
-    item?.suggestion !== undefined &&
-    item?.suggestion !== null &&
-    String(item.suggestion).trim() !== ""
-  ) {
-
-    return String(item.suggestion);
-  }
-
-
-  const signal =
-    item?.signal ||
-    item?.rating ||
-    item?.system_signal ||
-    item?.system_rating;
-
-
-  if (signal) {
-    return String(signal);
-  }
-
-
-  return "持續觀察";
+    return (
+        sign +
+        n.toFixed(2) +
+        "%"
+    );
 }
 
 
-/* ============================================================
-   Stock Card
-============================================================ */
+function positiveClass(value) {
 
-function renderRecommendationCard(item) {
+    const n =
+        numberValue(value);
 
-  const code =
-    item?.code ||
-    item?.symbol ||
-    "-";
+    if (n === null) {
+        return "neutral-text";
+    }
 
+    if (n > 0) {
+        return "positive";
+    }
 
-  const name =
-    item?.name ||
-    item?.stock_name ||
-    "-";
+    if (n < 0) {
+        return "negative";
+    }
 
-
-  const price =
-    item?.price ??
-    item?.close ??
-    item?.current_price;
+    return "neutral-text";
+}
 
 
-  const pct =
-    item?.change_pct ??
-    item?.change_percent ??
-    item?.change;
+function signalClass(signal) {
 
+    const text =
+        String(
+            signal || ""
+        );
 
-  return `
+    if (
+        text.includes(
+            "精選"
+        )
+    ) {
+        return "";
+    }
 
-  <div class="stock-card">
-
-
-    <div class="stock-head">
-
-      <div>
-
-        <div class="stock-code">
-          ${escapeHtml(code)}
-        </div>
-
-        <div class="stock-name">
-          ${escapeHtml(name)}
-        </div>
-
-      </div>
-
-
-      ${signalBadge(item)}
-
-    </div>
-
-
-    <div class="stock-price">
-
-      <div>
-
-        <div class="info-label">
-          現價
-        </div>
-
-        <div class="price">
-          ${number(price)}
-        </div>
-
-      </div>
-
-
-      <div class="change">
-
-        ${change(pct)}
-
-      </div>
-
-    </div>
-
-
-    <div class="signal-area">
-
-
-      <div class="info-box">
-
-        <div class="info-label">
-          系統訊號
-        </div>
-
-        <div class="info-value">
-          ${escapeHtml(
-            item?.signal ||
-            item?.system_signal ||
-            item?.rating ||
-            item?.system_rating ||
+    if (
+        text.includes(
             "觀察"
-          )}
-        </div>
+        )
+    ) {
+        return "observe";
+    }
 
-      </div>
-
-
-      <div class="info-box">
-
-        <div class="info-label">
-          系統評級
-        </div>
-
-        <div class="info-value">
-
-          ${escapeHtml(
-            item?.rating ||
-            item?.system_rating ||
-            item?.signal ||
-            "-"
-          )}
-
-        </div>
-
-      </div>
+    return "neutral";
+}
 
 
-    </div>
+function getTypeLabel(item) {
 
+    const type =
+        String(
+            item?.type || ""
+        ).toLowerCase();
 
-    <div class="recommendation">
+    if (
+        type === "etf" ||
+        type.includes("etf")
+    ) {
+        return "ETF";
+    }
 
-      建議：
-      ${escapeHtml(
-        recommendationText(item)
-      )}
+    if (
+        type === "bond" ||
+        type.includes("bond") ||
+        type.includes("債")
+    ) {
+        return "債券";
+    }
 
-    </div>
-
-
-  </div>
-
-  `;
+    return "股票";
 }
 
 
 /* ============================================================
-   Today Recommendation
+   TOAST
 ============================================================ */
 
-function renderRecommendations(items) {
+let toastTimer = null;
 
-  if (
-    !Array.isArray(items) ||
-    items.length === 0
-  ) {
+function showToast(message) {
 
-    return `
-      <div class="empty">
-        今日暫無推薦標的。
-      </div>
-    `;
-  }
+    toast.textContent =
+        message;
 
-
-  /*
-   * 重要：
-   *
-   * today_selected 可能有很多檔。
-   *
-   * 這裡不把全部後台資料塞進 UI。
-   *
-   * 前台只呈現精選區。
-   *
-   * 不重新計算。
-   * 不重新篩選。
-   * 不重新排序。
-   *
-   * 直接使用後台原始順序，
-   * 最多顯示 10 檔。
-   */
-
-  const display =
-    items.slice(0, 10);
-
-
-  return display
-    .map(renderRecommendationCard)
-    .join("");
-}
-
-
-/* ============================================================
-   Top 10
-============================================================ */
-
-function renderTop10(items) {
-
-  if (
-    !Array.isArray(items) ||
-    items.length === 0
-  ) {
-
-    return `
-      <div class="empty">
-        尚無 AI Top 10 資料。
-      </div>
-    `;
-  }
-
-
-  const display =
-    items.slice(0, 10);
-
-
-  return display
-    .map(
-      (item, index) => {
-
-        const code =
-          item?.code ||
-          item?.symbol ||
-          "-";
-
-
-        const name =
-          item?.name ||
-          item?.stock_name ||
-          "-";
-
-
-        const price =
-          item?.price ??
-          item?.close ??
-          item?.current_price;
-
-
-        const pct =
-          item?.change_pct ??
-          item?.change_percent ??
-          item?.change;
-
-
-        return `
-
-        <div class="top-row">
-
-
-          <div class="top-rank">
-            #${index + 1}
-          </div>
-
-
-          <div>
-
-            <div class="top-stock-code">
-              ${escapeHtml(code)}
-            </div>
-
-            <div class="top-stock-name">
-              ${escapeHtml(name)}
-            </div>
-
-          </div>
-
-
-          <div class="top-price">
-            ${number(price)}
-          </div>
-
-
-          <div class="top-change">
-            ${change(pct)}
-          </div>
-
-
-          <div class="top-signal">
-            ${signalBadge(item)}
-          </div>
-
-
-        </div>
-
-        `;
-
-      }
-    )
-    .join("");
-}
-
-
-/* ============================================================
-   ETF
-============================================================ */
-
-function renderETF(items) {
-
-  if (
-    !Array.isArray(items) ||
-    items.length === 0
-  ) {
-
-    return `
-      <div class="empty">
-        目前沒有 ETF 資料。
-      </div>
-    `;
-  }
-
-
-  const display =
-    items.slice(0, 10);
-
-
-  return display
-    .map(
-      item => {
-
-        const code =
-          item?.code ||
-          item?.symbol ||
-          "-";
-
-
-        const name =
-          item?.name ||
-          item?.stock_name ||
-          "-";
-
-
-        const price =
-          item?.price ??
-          item?.close ??
-          item?.current_price;
-
-
-        const pct =
-          item?.change_pct ??
-          item?.change_percent ??
-          item?.change;
-
-
-        return `
-
-        <div class="asset-card">
-
-
-          <div class="asset-header">
-
-            <div>
-
-              <div class="asset-code">
-                ${escapeHtml(code)}
-              </div>
-
-              <div class="asset-name">
-                ${escapeHtml(name)}
-              </div>
-
-            </div>
-
-            ${signalBadge(item)}
-
-          </div>
-
-
-          <div class="asset-price">
-
-            <div>
-
-              <div class="info-label">
-                現價
-              </div>
-
-              <div class="asset-price-value">
-                ${number(price)}
-              </div>
-
-            </div>
-
-
-            <div>
-
-              ${change(pct)}
-
-            </div>
-
-          </div>
-
-
-        </div>
-
-        `;
-
-      }
-    )
-    .join("");
-}
-
-
-/* ============================================================
-   Bond
-============================================================ */
-
-function renderBond(items) {
-
-  if (
-    !Array.isArray(items) ||
-    items.length === 0
-  ) {
-
-    return `
-      <div class="empty">
-        目前沒有債券資料。
-      </div>
-    `;
-  }
-
-
-  const display =
-    items.slice(0, 10);
-
-
-  return display
-    .map(
-      item => {
-
-        const code =
-          item?.code ||
-          item?.symbol ||
-          "-";
-
-
-        const name =
-          item?.name ||
-          item?.bond_name ||
-          "-";
-
-
-        const price =
-          item?.price ??
-          item?.close ??
-          item?.current_price;
-
-
-        const pct =
-          item?.change_pct ??
-          item?.change_percent ??
-          item?.change;
-
-
-        return `
-
-        <div class="asset-card">
-
-
-          <div class="asset-header">
-
-            <div>
-
-              <div class="asset-code">
-                ${escapeHtml(code)}
-              </div>
-
-              <div class="asset-name">
-                ${escapeHtml(name)}
-              </div>
-
-            </div>
-
-            ${signalBadge(item)}
-
-          </div>
-
-
-          <div class="asset-price">
-
-            <div>
-
-              <div class="info-label">
-                現價
-              </div>
-
-              <div class="asset-price-value">
-                ${number(price)}
-              </div>
-
-            </div>
-
-
-            <div>
-
-              ${change(pct)}
-
-            </div>
-
-          </div>
-
-
-        </div>
-
-        `;
-
-      }
-    )
-    .join("");
-}
-
-
-/* ============================================================
-   Backtest
-============================================================ */
-
-function renderBacktest(data) {
-
-  if (
-    !data ||
-    !data.strategies
-  ) {
-
-    return `
-      <div class="empty">
-        尚無歷史表現摘要。
-      </div>
-    `;
-  }
-
-
-  const A =
-    data.strategies.A_today_cross ||
-    null;
-
-
-  const B =
-    data.strategies.B_current_bullish ||
-    null;
-
-
-  const A10 =
-    A?.["10d"] ||
-    {};
-
-
-  const B10 =
-    B?.["10d"] ||
-    {};
-
-
-  return `
-
-  <div class="backtest-grid">
-
-
-    <div class="backtest-item">
-
-      <div class="backtest-name">
-        A 策略
-      </div>
-
-      <div class="backtest-value">
-        ${number(A10.win_rate)}%
-      </div>
-
-      <div class="backtest-note">
-        歷史 10 個交易日勝率
-      </div>
-
-    </div>
-
-
-    <div class="backtest-item">
-
-      <div class="backtest-name">
-        B 策略
-      </div>
-
-      <div class="backtest-value">
-        ${number(B10.win_rate)}%
-      </div>
-
-      <div class="backtest-note">
-        歷史 10 個交易日勝率
-      </div>
-
-    </div>
-
-
-  </div>
-
-  `;
-
-}
-
-
-/* ============================================================
-   Validate
-============================================================ */
-
-function validateData(data) {
-
-  if (
-    !data ||
-    typeof data !== "object"
-  ) {
-
-    throw new Error(
-      "prices.json 格式錯誤"
-    );
-  }
-
-
-  if (
-    data.status &&
-    data.status !== "success"
-  ) {
-
-    throw new Error(
-      "後台資料狀態不是 success"
-    );
-  }
-
-
-  return true;
-}
-
-
-/* ============================================================
-   Render
-============================================================ */
-
-function render(data) {
-
-  validateData(data);
-
-
-  const stats =
-    data.statistics ||
-    {};
-
-
-  const stocks =
-    Array.isArray(data.stocks)
-      ? data.stocks
-      : [];
-
-
-  const etfs =
-    Array.isArray(data.etfs)
-      ? data.etfs
-      : [];
-
-
-  const today =
-    Array.isArray(data.today_selected)
-      ? data.today_selected
-      : [];
-
-
-  const top =
-    Array.isArray(data.top30)
-      ? data.top30
-      : (
-        Array.isArray(data.top10)
-          ? data.top10
-          : []
-      );
-
-
-  /*
-   * 債券資料容錯：
-   *
-   * 不同版本後台可能使用不同名稱。
-   */
-
-  const bonds =
-    Array.isArray(data.bonds)
-      ? data.bonds
-      : (
-        Array.isArray(data.bond)
-          ? data.bond
-          : (
-            Array.isArray(data.bond_data)
-              ? data.bond_data
-              : []
-          )
-      );
-
-
-  /* ========================================================
-     Overview
-  ======================================================== */
-
-  document.getElementById(
-    "stockCount"
-  ).textContent =
-    stats.stock_count ??
-    stocks.length;
-
-
-  document.getElementById(
-    "etfCount"
-  ).textContent =
-    stats.etf_count ??
-    etfs.length;
-
-
-  document.getElementById(
-    "selectedCount"
-  ).textContent =
-    stats.today_selected_count ??
-    today.length;
-
-
-  document.getElementById(
-    "top10Count"
-  ).textContent =
-    Math.min(
-      10,
-      top.length
+    toast.classList.add(
+        "show"
     );
 
-
-  /* ========================================================
-     Recommendation
-  ======================================================== */
-
-  document.getElementById(
-    "recommendGrid"
-  ).innerHTML =
-    renderRecommendations(today);
-
-
-  /* ========================================================
-     Top 10
-  ======================================================== */
-
-  document.getElementById(
-    "top10List"
-  ).innerHTML =
-    renderTop10(top);
-
-
-  /* ========================================================
-     ETF
-  ======================================================== */
-
-  document.getElementById(
-    "etfGrid"
-  ).innerHTML =
-    renderETF(etfs);
-
-
-  /* ========================================================
-     Bond
-  ======================================================== */
-
-  document.getElementById(
-    "bondGrid"
-  ).innerHTML =
-    renderBond(bonds);
-
-
-  /* ========================================================
-     Backtest
-  ======================================================== */
-
-  document.getElementById(
-    "backtest"
-  ).innerHTML =
-    renderBacktest(
-      data.backtest_summary
+    clearTimeout(
+        toastTimer
     );
 
+    toastTimer =
+        setTimeout(
+            () => {
 
-  /* ========================================================
-     Status
-  ======================================================== */
+                toast.classList.remove(
+                    "show"
+                );
 
-  document.getElementById(
-    "version"
-  ).textContent =
-    data.version ||
-    data.schema_version ||
-    "-";
-
-
-  document.getElementById(
-    "dataDate"
-  ).textContent =
-    data.date ||
-    data.data_date ||
-    "-";
-
-
-  document.getElementById(
-    "updatedAt"
-  ).textContent =
-    data.updated_at_tw ||
-    data.updated_at ||
-    "-";
-
-
-  document.getElementById(
-    "dataStatus"
-  ).textContent =
-    data.status ||
-    "success";
-
-
-  /* ========================================================
-     Show
-  ======================================================== */
-
-  document.getElementById(
-    "loading"
-  ).style.display =
-    "none";
-
-
-  document.getElementById(
-    "app"
-  ).style.display =
-    "block";
-
+            },
+            2200
+        );
 }
 
 
 /* ============================================================
-   Load
+   WATCHLIST
+============================================================ */
+
+function loadWatchlist() {
+
+    try {
+
+        const raw =
+            localStorage.getItem(
+                CONFIG.WATCHLIST_KEY
+            );
+
+        if (!raw) {
+
+            state.watchlist = [];
+
+            return;
+        }
+
+        const parsed =
+            JSON.parse(
+                raw
+            );
+
+        if (
+            Array.isArray(parsed)
+        ) {
+
+            state.watchlist =
+                parsed.map(
+                    x => String(x)
+                );
+
+        } else {
+
+            state.watchlist = [];
+
+        }
+
+    } catch (error) {
+
+        console.warn(
+            "Watchlist 載入失敗",
+            error
+        );
+
+        state.watchlist = [];
+    }
+}
+
+
+function saveWatchlist() {
+
+    localStorage.setItem(
+        CONFIG.WATCHLIST_KEY,
+        JSON.stringify(
+            state.watchlist
+        )
+    );
+}
+
+
+function isInWatchlist(code) {
+
+    return state.watchlist.includes(
+        String(code)
+    );
+}
+
+
+function toggleWatchlist(code) {
+
+    code =
+        String(code);
+
+    if (
+        isInWatchlist(code)
+    ) {
+
+        state.watchlist =
+            state.watchlist.filter(
+                x => x !== code
+            );
+
+        saveWatchlist();
+
+        showToast(
+            `${code} 已從清單移除`
+        );
+
+    } else {
+
+        state.watchlist.push(
+            code
+        );
+
+        saveWatchlist();
+
+        showToast(
+            `${code} 已加入我的清單`
+        );
+    }
+
+    renderWatchlist();
+
+    updateSearchButtons();
+}
+
+
+/* ============================================================
+   FETCH JSON
+============================================================ */
+
+async function fetchJson(url) {
+
+    const response =
+        await fetch(
+            url +
+            CONFIG.CACHE_BUSTER,
+            {
+                cache:
+                    "no-store"
+            }
+        );
+
+    if (
+        !response.ok
+    ) {
+
+        throw new Error(
+            `HTTP ${response.status}：${url}`
+        );
+    }
+
+    return response.json();
+}
+
+
+/* ============================================================
+   NORMALIZE UI DATA
+============================================================ */
+
+/*
+    V10 ui_data.json 可能採用：
+
+    {
+        "today_selected": [],
+        "top10": [],
+        "etfs": [],
+        "bonds": [],
+        "statistics": {},
+        "updated_at": ""
+    }
+
+    也兼容：
+
+    todaySelected
+    top10
+    ETF
+    bond
+    dashboard
+    data
+*/
+
+
+function findArray(
+    object,
+    keys
+) {
+
+    for (
+        const key of keys
+    ) {
+
+        if (
+            Array.isArray(
+                object?.[key]
+            )
+        ) {
+
+            return object[key];
+        }
+    }
+
+    return [];
+}
+
+
+function findObject(
+    object,
+    keys
+) {
+
+    for (
+        const key of keys
+    ) {
+
+        if (
+            object?.[key] &&
+            typeof object[key] === "object" &&
+            !Array.isArray(object[key])
+        ) {
+
+            return object[key];
+        }
+    }
+
+    return {};
+}
+
+
+function normalizeRecord(
+    raw
+) {
+
+    if (
+        !raw ||
+        typeof raw !== "object"
+    ) {
+        return null;
+    }
+
+    const record =
+        {
+            ...raw
+        };
+
+    record.code =
+        String(
+            raw.code ??
+            raw.Code ??
+            raw.stock_code ??
+            raw.symbol_code ??
+            ""
+        ).trim();
+
+    record.name =
+        String(
+            raw.name ??
+            raw.Name ??
+            raw.stock_name ??
+            raw.company_name ??
+            ""
+        ).trim();
+
+    record.price =
+        numberValue(
+            raw.price ??
+            raw.close ??
+            raw.Close
+        );
+
+    record.close =
+        numberValue(
+            raw.close ??
+            raw.price ??
+            raw.Close
+        );
+
+    record.previous_close =
+        numberValue(
+            raw.previous_close ??
+            raw.prev_close ??
+            raw.previousClose
+        );
+
+    record.change_pct =
+        numberValue(
+            raw.change_pct ??
+            raw.changePercent ??
+            raw.change_percent ??
+            raw.pct_change
+        );
+
+    record.volume =
+        numberValue(
+            raw.volume ??
+            raw.Volume
+        );
+
+    record.volume_ratio =
+        numberValue(
+            raw.volume_ratio ??
+            raw.volumeRatio
+        );
+
+    record.rsi =
+        numberValue(
+            raw.rsi ??
+            raw.RSI
+        );
+
+    record.k =
+        numberValue(
+            raw.k ??
+            raw.K
+        );
+
+    record.d =
+        numberValue(
+            raw.d ??
+            raw.D
+        );
+
+    record.macd =
+        numberValue(
+            raw.macd ??
+            raw.MACD
+        );
+
+    record.macd_signal =
+        numberValue(
+            raw.macd_signal ??
+            raw.MACD_SIGNAL ??
+            raw.macdSignal
+        );
+
+    record.macd_hist =
+        numberValue(
+            raw.macd_hist ??
+            raw.MACD_HIST ??
+            raw.macdHist
+        );
+
+    record.ma5 =
+        numberValue(
+            raw.ma5 ??
+            raw.MA5
+        );
+
+    record.ma20 =
+        numberValue(
+            raw.ma20 ??
+            raw.MA20
+        );
+
+    record.ma60 =
+        numberValue(
+            raw.ma60 ??
+            raw.MA60
+        );
+
+    record.core_score =
+        numberValue(
+            raw.core_score ??
+            raw.coreScore
+        );
+
+    record.core_total =
+        numberValue(
+            raw.core_total ??
+            raw.coreTotal
+        );
+
+    record.strength_score =
+        numberValue(
+            raw.strength_score ??
+            raw.strengthScore
+        );
+
+    record.ai_score =
+        numberValue(
+            raw.ai_score ??
+            raw.aiScore ??
+            raw.score
+        );
+
+    record.signal =
+        raw.signal ??
+        raw.status ??
+        "";
+
+    record.type =
+        raw.type ??
+        raw.security_type ??
+        raw.securityType ??
+        "stock";
+
+    record.market =
+        raw.market ??
+        raw.exchange ??
+        "";
+
+    record.macd_golden_cross =
+        Boolean(
+            raw.macd_golden_cross ??
+            raw.macdGoldenCross
+        );
+
+    record.rsi_over_50 =
+        Boolean(
+            raw.rsi_over_50 ??
+            raw.rsiOver50
+        );
+
+    record.kd_golden_cross =
+        Boolean(
+            raw.kd_golden_cross ??
+            raw.kdGoldenCross
+        );
+
+    record.volume_expand =
+        Boolean(
+            raw.volume_expand ??
+            raw.volumeExpand
+        );
+
+    record.price_over_ma20 =
+        Boolean(
+            raw.price_over_ma20 ??
+            raw.priceOverMA20
+        );
+
+    record.ma20_up =
+        Boolean(
+            raw.ma20_up ??
+            raw.ma20Up
+        );
+
+    record.core_pass =
+        Boolean(
+            raw.core_pass ??
+            raw.corePass
+        );
+
+    return record;
+}
+
+
+/* ============================================================
+   NORMALIZE SECURITIES
+============================================================ */
+
+function normalizeSecurities(
+    raw
+) {
+
+    let list = [];
+
+    if (
+        Array.isArray(raw)
+    ) {
+
+        list = raw;
+
+    } else if (
+        Array.isArray(
+            raw?.securities
+        )
+    ) {
+
+        list =
+            raw.securities;
+
+    } else if (
+        Array.isArray(
+            raw?.data
+        )
+    ) {
+
+        list =
+            raw.data;
+
+    } else if (
+        Array.isArray(
+            raw?.items
+        )
+    ) {
+
+        list =
+            raw.items;
+    }
+
+    return list
+        .map(
+            item => {
+
+                const code =
+                    String(
+                        item.code ??
+                        item.Code ??
+                        item.stock_code ??
+                        item.symbol ??
+                        ""
+                    ).trim();
+
+                if (!code) {
+                    return null;
+                }
+
+                return {
+
+                    ...item,
+
+                    code,
+
+                    name:
+                        String(
+                            item.name ??
+                            item.Name ??
+                            item.stock_name ??
+                            item.company_name ??
+                            code
+                        ),
+
+                    type:
+                        item.type ??
+                        item.security_type ??
+                        "stock",
+
+                    market:
+                        item.market ??
+                        item.exchange ??
+                        ""
+
+                };
+
+            }
+        )
+        .filter(Boolean);
+}
+
+
+/* ============================================================
+   BUILD SECURITY MAP
+============================================================ */
+
+function buildSecurityMap() {
+
+    state.securityMap =
+        new Map();
+
+    for (
+        const item of
+        state.securities
+    ) {
+
+        state.securityMap.set(
+            String(item.code),
+            item
+        );
+    }
+}
+
+
+/* ============================================================
+   MERGE SECURITY INFO
+============================================================ */
+
+function enrichRecord(
+    record
+) {
+
+    if (!record) {
+        return null;
+    }
+
+    const security =
+        state.securityMap.get(
+            String(
+                record.code
+            )
+        );
+
+    if (
+        security
+    ) {
+
+        return {
+
+            ...security,
+            ...record,
+
+            name:
+                record.name ||
+                security.name,
+
+            type:
+                record.type ||
+                security.type,
+
+            market:
+                record.market ||
+                security.market
+
+        };
+    }
+
+    return record;
+}
+
+
+/* ============================================================
+   LOAD DATA
 ============================================================ */
 
 async function loadData() {
 
-  const loading =
-    document.getElementById(
-      "loading"
+    setStatus(
+        "資料載入中",
+        false
     );
 
+    try {
 
-  const error =
-    document.getElementById(
-      "error"
-    );
+        const [
+            uiRaw,
+            securitiesRaw
+        ] =
+            await Promise.all([
+                fetchJson(
+                    CONFIG.UI_DATA_URL
+                ),
+                fetchJson(
+                    CONFIG.SECURITIES_URL
+                )
+            ]);
 
+        state.uiData =
+            uiRaw || {};
 
-  const app =
-    document.getElementById(
-      "app"
-    );
+        state.securities =
+            normalizeSecurities(
+                securitiesRaw
+            );
 
+        buildSecurityMap();
 
-  loading.style.display =
-    "block";
+        state.allRecords = [];
 
+        const candidateArrays = [
 
-  app.style.display =
-    "none";
+            findArray(
+                state.uiData,
+                [
+                    "stocks",
+                    "top10",
+                    "top_10",
+                    "top30",
+                    "today_selected",
+                    "todaySelected",
+                    "etfs",
+                    "ETF",
+                    "bonds",
+                    "bond"
+                ]
+            )
 
+        ];
 
-  error.innerHTML =
-    "";
+        for (
+            const list
+            of candidateArrays
+        ) {
 
+            for (
+                const raw
+                of list
+            ) {
 
-  try {
+                const record =
+                    enrichRecord(
+                        normalizeRecord(
+                            raw
+                        )
+                    );
 
-    const response =
-      await fetch(
-        DATA_URL +
-        "?t=" +
-        Date.now(),
-        {
-          cache: "no-store"
+                if (
+                    record &&
+                    record.code
+                ) {
+
+                    const exists =
+                        state.allRecords.some(
+                            x =>
+                                x.code ===
+                                record.code
+                        );
+
+                    if (!exists) {
+
+                        state.allRecords.push(
+                            record
+                        );
+
+                    }
+                }
+            }
         }
-      );
+
+        loadWatchlist();
+
+        state.loaded =
+            true;
+
+        render();
+
+        setStatus(
+            "系統正常",
+            true
+        );
+
+    } catch (error) {
+
+        console.error(
+            error
+        );
+
+        setStatus(
+            "資料載入失敗",
+            false
+        );
+
+        renderError(
+            error
+        );
+    }
+}
 
 
-    if (!response.ok) {
+/* ============================================================
+   STATUS
+============================================================ */
 
-      throw new Error(
-        "HTTP " +
-        response.status
-      );
+function setStatus(
+    text,
+    success
+) {
 
+    systemStatus.innerHTML = `
+
+        <span
+            class="status-dot"
+            style="
+                background:${success ? "var(--green)" : "var(--yellow)"};
+                box-shadow:
+                    0 0 10px
+                    ${success
+                        ? "rgba(49,212,155,.7)"
+                        : "rgba(245,200,91,.6)"
+                    };
+            "
+        ></span>
+
+        <span>
+            ${escapeHtml(text)}
+        </span>
+
+    `;
+}
+
+
+/* ============================================================
+   ERROR
+============================================================ */
+
+function renderError(
+    error
+) {
+
+    appContent.innerHTML = `
+
+        <div class="error-box">
+
+            <strong>
+                無法載入儀表板資料
+            </strong>
+
+            <br><br>
+
+            請確認 GitHub Pages 中存在：
+
+            <br>
+
+            <code>
+                Data/ui_data.json
+            </code>
+
+            <br>
+
+            <code>
+                Data/securities.json
+            </code>
+
+            <br><br>
+
+            錯誤：
+
+            ${escapeHtml(
+                error?.message ||
+                String(error)
+            )}
+
+        </div>
+
+    `;
+}
+
+
+/* ============================================================
+   DATA ACCESS
+============================================================ */
+
+function getTodaySelected() {
+
+    return findArray(
+        state.uiData,
+        [
+            "today_selected",
+            "todaySelected",
+            "today_selection",
+            "selected",
+            "featured",
+            "featured_stocks"
+        ]
+    )
+        .map(
+            normalizeRecord
+        )
+        .map(
+            enrichRecord
+        )
+        .filter(Boolean)
+        .slice(
+            0,
+            6
+        );
+}
+
+
+function getTop10() {
+
+    let list =
+        findArray(
+            state.uiData,
+            [
+                "top10",
+                "top_10",
+                "top10_stocks",
+                "top"
+            ]
+        );
+
+    if (
+        !list.length
+    ) {
+
+        list =
+            findArray(
+                state.uiData,
+                [
+                    "top30"
+                ]
+            );
     }
 
+    return list
+        .map(
+            normalizeRecord
+        )
+        .map(
+            enrichRecord
+        )
+        .filter(Boolean)
+        .sort(
+            (
+                a,
+                b
+            ) =>
+                (
+                    b.ai_score || 0
+                )
+                -
+                (
+                    a.ai_score || 0
+                )
+        )
+        .slice(
+            0,
+            10
+        );
+}
 
-    const data =
-      await response.json();
+
+function getEtfs() {
+
+    const list =
+        findArray(
+            state.uiData,
+            [
+                "etfs",
+                "ETF",
+                "etf"
+            ]
+        );
+
+    return list
+        .map(
+            normalizeRecord
+        )
+        .map(
+            enrichRecord
+        )
+        .filter(Boolean)
+        .slice(
+            0,
+            8
+        );
+}
 
 
-    render(data);
+function getBonds() {
+
+    const list =
+        findArray(
+            state.uiData,
+            [
+                "bonds",
+                "bond",
+                "債券"
+            ]
+        );
+
+    return list
+        .map(
+            normalizeRecord
+        )
+        .map(
+            enrichRecord
+        )
+        .filter(Boolean)
+        .slice(
+            0,
+            8
+        );
+}
 
 
-  } catch (err) {
+function getStatistics() {
 
-    loading.style.display =
-      "none";
+    return findObject(
+        state.uiData,
+        [
+            "statistics",
+            "stats",
+            "summary"
+        ]
+    );
+}
 
 
-    error.innerHTML = `
+/* ============================================================
+   RENDER
+============================================================ */
 
-      <div class="error">
+function render() {
 
-        <strong>
-          無法讀取後台資料
-        </strong>
+    const today =
+        getTodaySelected();
 
-        <br><br>
+    const top10 =
+        getTop10();
 
-        ${escapeHtml(
-          err.message
-        )}
+    const etfs =
+        getEtfs();
 
-        <br><br>
+    const bonds =
+        getBonds();
 
-        請確認 GitHub Actions、
-        Data/prices.json 與資料版本是否正常。
+    const stats =
+        getStatistics();
 
-      </div>
+    appContent.innerHTML = `
+
+        <!-- =============================================
+             SEARCH
+        ============================================== -->
+
+        <section
+            class="search-section section"
+        >
+
+            <div
+                class="section-header"
+            >
+
+                <div
+                    class="section-title-wrap"
+                >
+
+                    <div
+                        class="section-kicker"
+                    >
+                        SEARCH
+                    </div>
+
+                    <h1
+                        class="section-title"
+                    >
+                        查詢個股
+                    </h1>
+
+                    <div
+                        class="section-description"
+                    >
+                        搜尋股票代號或名稱，加入你的個人清單。
+                    </div>
+
+                </div>
+
+            </div>
+
+            <div
+                class="search-box"
+            >
+
+                <div
+                    class="search-input-wrap"
+                >
+
+                    <svg
+                        class="search-icon"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="2"
+                        stroke-linecap="round"
+                    >
+                        <circle
+                            cx="11"
+                            cy="11"
+                            r="7"
+                        />
+                        <path
+                            d="m20 20-4-4"
+                        />
+                    </svg>
+
+                    <input
+                        id="searchInput"
+                        type="search"
+                        autocomplete="off"
+                        placeholder="輸入股票代號或名稱，例如：4905、台聯電"
+                    />
+
+                </div>
+
+                <div
+                    class="search-results"
+                    id="searchResults"
+                ></div>
+
+            </div>
+
+        </section>
+
+
+        <!-- =============================================
+             TODAY SELECTED
+        ============================================== -->
+
+        <section
+            class="section"
+        >
+
+            <div
+                class="hero-card"
+            >
+
+                <div
+                    class="hero-top"
+                >
+
+                    <div>
+
+                        <div
+                            class="hero-label"
+                        >
+                            <span>●</span>
+                            今日精選
+                        </div>
+
+                    </div>
+
+                    <div
+                        class="hero-date"
+                    >
+                        ${escapeHtml(
+                            getUpdatedDate()
+                        )}
+                    </div>
+
+                </div>
+
+                <div
+                    id="todaySelected"
+                    class="selected-grid"
+                >
+
+                    ${renderTodaySelected(
+                        today
+                    )}
+
+                </div>
+
+            </div>
+
+        </section>
+
+
+        <!-- =============================================
+             TOP 10
+        ============================================== -->
+
+        <section
+            class="section"
+        >
+
+            <div
+                class="section-header"
+            >
+
+                <div
+                    class="section-title-wrap"
+                >
+
+                    <div
+                        class="section-kicker"
+                    >
+                        AI RANKING
+                    </div>
+
+                    <h2
+                        class="section-title"
+                    >
+                        Top 10
+                    </h2>
+
+                    <div
+                        class="section-description"
+                    >
+                        依系統 AI Score 排序的當日主要標的。
+                    </div>
+
+                </div>
+
+            </div>
+
+            <div
+                class="top-grid"
+            >
+
+                ${renderTop10(
+                    top10
+                )}
+
+            </div>
+
+        </section>
+
+
+        <!-- =============================================
+             ETF / BOND
+        ============================================== -->
+
+        <section
+            class="section"
+        >
+
+            <div
+                class="section-header"
+            >
+
+                <div
+                    class="section-title-wrap"
+                >
+
+                    <div
+                        class="section-kicker"
+                    >
+                        ASSET CLASSES
+                    </div>
+
+                    <h2
+                        class="section-title"
+                    >
+                        ETF / 債券
+                    </h2>
+
+                    <div
+                        class="section-description"
+                    >
+                        ETF 與債券獨立呈現，不套用股票 6/6 選股條件。
+                    </div>
+
+                </div>
+
+            </div>
+
+            <div
+                class="two-column"
+            >
+
+                <div
+                    class="panel"
+                >
+
+                    <div
+                        class="panel-header"
+                    >
+
+                        <div
+                            class="panel-title"
+                        >
+                            ETF
+                        </div>
+
+                        <div
+                            class="panel-count"
+                        >
+                            ${etfs.length} 檔
+                        </div>
+
+                    </div>
+
+                    <div
+                        class="panel-body"
+                    >
+
+                        ${renderCompactList(
+                            etfs,
+                            "ETF"
+                        )}
+
+                    </div>
+
+                </div>
+
+
+                <div
+                    class="panel"
+                >
+
+                    <div
+                        class="panel-header"
+                    >
+
+                        <div
+                            class="panel-title"
+                        >
+                            債券
+                        </div>
+
+                        <div
+                            class="panel-count"
+                        >
+                            ${bonds.length} 檔
+                        </div>
+
+                    </div>
+
+                    <div
+                        class="panel-body"
+                    >
+
+                        ${renderCompactList(
+                            bonds,
+                            "債券"
+                        )}
+
+                    </div>
+
+                </div>
+
+            </div>
+
+        </section>
+
+
+        <!-- =============================================
+             WATCHLIST / SYSTEM
+        ============================================== -->
+
+        <section
+            class="section"
+        >
+
+            <div
+                class="two-column"
+            >
+
+                <div
+                    class="panel"
+                >
+
+                    <div
+                        class="panel-header"
+                    >
+
+                        <div
+                            class="panel-title"
+                        >
+                            我的清單
+                        </div>
+
+                        <div
+                            class="panel-count"
+                            id="watchlistCount"
+                        >
+                            0 檔
+                        </div>
+
+                    </div>
+
+                    <div
+                        class="panel-body watchlist"
+                        id="watchlist"
+                    ></div>
+
+                </div>
+
+
+                <div
+                    class="panel"
+                >
+
+                    <div
+                        class="panel-header"
+                    >
+
+                        <div
+                            class="panel-title"
+                        >
+                            系統概況
+                        </div>
+
+                    </div>
+
+                    <div
+                        class="panel-body"
+                    >
+
+                        ${renderSystemStats(
+                            stats,
+                            today,
+                            top10
+                        )}
+
+                    </div>
+
+                </div>
+
+            </div>
+
+        </section>
 
     `;
 
-  }
+    setupSearch();
+
+    renderWatchlist();
+
+    bindCards();
 
 }
 
 
 /* ============================================================
-   Start
+   UPDATED DATE
+============================================================ */
+
+function getUpdatedDate() {
+
+    const date =
+        state.uiData?.updated_at_tw ??
+        state.uiData?.updated_at ??
+        state.uiData?.date ??
+        "";
+
+    if (!date) {
+        return "最新資料";
+    }
+
+    return String(
+        date
+    ).replace(
+        "T",
+        " "
+    );
+}
+
+
+/* ============================================================
+   TODAY CARD
+============================================================ */
+
+function renderTodaySelected(
+    items
+) {
+
+    if (
+        !items.length
+    ) {
+
+        return `
+
+            <div
+                class="empty-state"
+                style="grid-column:1/-1;"
+            >
+
+                <div
+                    class="empty-icon"
+                >
+                    —
+                </div>
+
+                <div
+                    class="empty-title"
+                >
+                    今日暫無精選標的
+                </div>
+
+                <div
+                    class="empty-text"
+                >
+                    後台目前沒有輸出今日精選。
+                </div>
+
+            </div>
+
+        `;
+    }
+
+    return items
+        .map(
+            item =>
+                renderStockCard(
+                    item,
+                    true
+                )
+        )
+        .join("");
+}
+
+
+/* ============================================================
+   STOCK CARD
+============================================================ */
+
+function renderStockCard(
+    item,
+    selected = false
+) {
+
+    const change =
+        item.change_pct;
+
+    const signal =
+        item.signal ||
+        (
+            item.core_pass
+                ? "今日精選"
+                : "觀察"
+        );
+
+    return `
+
+        <article
+            class="
+                stock-card
+                ${selected ? "selected" : ""}
+            "
+            data-code="${escapeHtml(
+                item.code
+            )}"
+        >
+
+            <div
+                class="card-head"
+            >
+
+                <div
+                    class="stock-ident"
+                >
+
+                    <div
+                        class="stock-code"
+                    >
+                        ${escapeHtml(
+                            item.code
+                        )}
+                    </div>
+
+                    <div
+                        class="stock-name"
+                    >
+                        ${escapeHtml(
+                            item.name ||
+                            item.code
+                        )}
+                    </div>
+
+                </div>
+
+                <div
+                    class="
+                        signal-badge
+                        ${signalClass(signal)}
+                    "
+                >
+                    ${escapeHtml(
+                        signal
+                    )}
+                </div>
+
+            </div>
+
+
+            <div
+                class="price-row"
+            >
+
+                <div
+                    class="price"
+                >
+                    ${formatNumber(
+                        item.price,
+                        2
+                    )}
+                </div>
+
+                <div
+                    class="
+                        price-change
+                        ${positiveClass(
+                            change
+                        )}
+                    "
+                >
+                    ${formatPercent(
+                        change
+                    )}
+                </div>
+
+            </div>
+
+
+            <div
+                class="metrics"
+            >
+
+                <div
+                    class="metric"
+                >
+
+                    <div
+                        class="metric-label"
+                    >
+                        RSI
+                    </div>
+
+                    <div
+                        class="metric-value"
+                    >
+                        ${formatNumber(
+                            item.rsi,
+                            1
+                        )}
+                    </div>
+
+                </div>
+
+
+                <div
+                    class="metric"
+                >
+
+                    <div
+                        class="metric-label"
+                    >
+                        MACD
+                    </div>
+
+                    <div
+                        class="metric-value"
+                    >
+                        ${item.macd !== null
+                            ? formatNumber(
+                                item.macd,
+                                2
+                            )
+                            : "-"
+                        }
+                    </div>
+
+                </div>
+
+
+                <div
+                    class="metric"
+                >
+
+                    <div
+                        class="metric-label"
+                    >
+                        AI Score
+                    </div>
+
+                    <div
+                        class="metric-value"
+                    >
+                        ${formatNumber(
+                            item.ai_score,
+                            1
+                        )}
+                    </div>
+
+                </div>
+
+            </div>
+
+
+            <div
+                class="core-row"
+            >
+
+                <div
+                    class="core-label"
+                >
+                    核心條件
+                </div>
+
+                <div
+                    class="core-value"
+                >
+                    ${
+                        item.core_score !== null
+                        ?
+                        `${item.core_score}/${item.core_total || 6}`
+                        :
+                        "—"
+                    }
+                </div>
+
+            </div>
+
+        </article>
+
+    `;
+}
+
+
+/* ============================================================
+   TOP 10
+============================================================ */
+
+function renderTop10(
+    items
+) {
+
+    if (
+        !items.length
+    ) {
+
+        return `
+
+            <div
+                class="empty-state"
+                style="grid-column:1/-1;"
+            >
+
+                暫無 Top 10 資料。
+
+            </div>
+
+        `;
+    }
+
+    return items
+        .map(
+            (
+                item,
+                index
+            ) => {
+
+                const change =
+                    item.change_pct;
+
+                return `
+
+                    <article
+                        class="rank-card"
+                        data-code="${escapeHtml(
+                            item.code
+                        )}"
+                    >
+
+                        <div
+                            class="
+                                rank-number
+                                ${index < 3
+                                    ? "top"
+                                    : ""
+                                }
+                            "
+                        >
+                            ${index + 1}
+                        </div>
+
+                        <div
+                            class="rank-info"
+                        >
+
+                            <div
+                                class="rank-code"
+                            >
+                                ${escapeHtml(
+                                    item.code
+                                )}
+                            </div>
+
+                            <div
+                                class="rank-name"
+                            >
+                                ${escapeHtml(
+                                    item.name ||
+                                    ""
+                                )}
+                            </div>
+
+                        </div>
+
+                        <div
+                            class="rank-price"
+                        >
+
+                            <div>
+                                ${formatNumber(
+                                    item.price,
+                                    2
+                                )}
+                            </div>
+
+                            <div
+                                class="
+                                    rank-change
+                                    ${positiveClass(
+                                        change
+                                    )}
+                                "
+                            >
+                                ${formatPercent(
+                                    change
+                                )}
+                            </div>
+
+                        </div>
+
+                    </article>
+
+                `;
+            }
+        )
+        .join("");
+}
+
+
+/* ============================================================
+   COMPACT LIST
+============================================================ */
+
+function renderCompactList(
+    items,
+    type
+) {
+
+    if (
+        !items.length
+    ) {
+
+        return `
+
+            <div
+                class="empty-state"
+            >
+
+                <div
+                    class="empty-icon"
+                >
+                    —
+                </div>
+
+                <div
+                    class="empty-text"
+                >
+                    目前沒有 ${escapeHtml(
+                        type
+                    )} 資料
+                </div>
+
+            </div>
+
+        `;
+    }
+
+    return `
+
+        <div
+            class="compact-list"
+        >
+
+            ${
+                items
+                    .map(
+                        item => {
+
+                            const change =
+                                item.change_pct;
+
+                            return `
+
+                                <div
+                                    class="compact-item"
+                                    data-code="${escapeHtml(
+                                        item.code
+                                    )}"
+                                >
+
+                                    <div
+                                        class="compact-left"
+                                    >
+
+                                        <div
+                                            class="compact-icon"
+                                        >
+                                            ${escapeHtml(
+                                                type === "ETF"
+                                                    ? "ETF"
+                                                    : "債"
+                                            )}
+                                        </div>
+
+                                        <div>
+
+                                            <div
+                                                class="compact-code"
+                                            >
+                                                ${escapeHtml(
+                                                    item.code
+                                                )}
+                                            </div>
+
+                                            <div
+                                                class="compact-name"
+                                            >
+                                                ${escapeHtml(
+                                                    item.name ||
+                                                    ""
+                                                )}
+                                            </div>
+
+                                        </div>
+
+                                    </div>
+
+                                    <div
+                                        class="compact-right"
+                                    >
+
+                                        <div
+                                            class="compact-price"
+                                        >
+                                            ${formatNumber(
+                                                item.price,
+                                                2
+                                            )}
+                                        </div>
+
+                                        <div
+                                            class="
+                                                compact-change
+                                                ${positiveClass(
+                                                    change
+                                                )}
+                                            "
+                                        >
+                                            ${formatPercent(
+                                                change
+                                            )}
+                                        </div>
+
+                                    </div>
+
+                                </div>
+
+                            `;
+
+                        }
+                    )
+                    .join("")
+            }
+
+        </div>
+
+    `;
+}
+
+
+/* ============================================================
+   SYSTEM STATS
+============================================================ */
+
+function renderSystemStats(
+    stats,
+    today,
+    top10
+) {
+
+    const stockCount =
+        stats.stock_count ??
+        stats.stockCount ??
+        stats.stocks ??
+        "-";
+
+    const selectedCount =
+        stats.today_selected_count ??
+        stats.todaySelectedCount ??
+        today.length;
+
+    const universe =
+        stats.total_universe ??
+        stats.totalUniverse ??
+        stats.universe ??
+        "-";
+
+    const backtest =
+        stats.backtest_stock_count ??
+        stats.backtestStockCount ??
+        "-";
+
+    return `
+
+        <div
+            class="system-grid"
+        >
+
+            <div
+                class="system-stat"
+            >
+
+                <div
+                    class="system-stat-label"
+                >
+                    掃描股票
+                </div>
+
+                <div
+                    class="system-stat-value"
+                >
+                    ${escapeHtml(
+                        String(
+                            stockCount
+                        )
+                    )}
+                </div>
+
+                <div
+                    class="system-stat-sub"
+                >
+                    後台成功資料
+                </div>
+
+            </div>
+
+
+            <div
+                class="system-stat"
+            >
+
+                <div
+                    class="system-stat-label"
+                >
+                    今日精選
+                </div>
+
+                <div
+                    class="system-stat-value"
+                >
+                    ${escapeHtml(
+                        String(
+                            selectedCount
+                        )
+                    )}
+                </div>
+
+                <div
+                    class="system-stat-sub"
+                >
+                    6/6 核心條件
+                </div>
+
+            </div>
+
+
+            <div
+                class="system-stat"
+            >
+
+                <div
+                    class="system-stat-label"
+                >
+                    Universe
+                </div>
+
+                <div
+                    class="system-stat-value"
+                >
+                    ${escapeHtml(
+                        String(
+                            universe
+                        )
+                    )}
+                </div>
+
+                <div
+                    class="system-stat-sub"
+                >
+                    後台標的池
+                </div>
+
+            </div>
+
+
+            <div
+                class="system-stat"
+            >
+
+                <div
+                    class="system-stat-label"
+                >
+                    回測樣本
+                </div>
+
+                <div
+                    class="system-stat-value"
+                >
+                    ${escapeHtml(
+                        String(
+                            backtest
+                        )
+                    )}
+                </div>
+
+                <div
+                    class="system-stat-sub"
+                >
+                    歷史資料
+                </div>
+
+            </div>
+
+        </div>
+
+    `;
+}
+
+
+/* ============================================================
+   WATCHLIST RENDER
+============================================================ */
+
+function renderWatchlist() {
+
+    const container =
+        document.getElementById(
+            "watchlist"
+        );
+
+    const count =
+        document.getElementById(
+            "watchlistCount"
+        );
+
+    if (
+        !container
+    ) {
+        return;
+    }
+
+    if (
+        count
+    ) {
+
+        count.textContent =
+            `${state.watchlist.length} 檔`;
+
+    }
+
+    if (
+        !state.watchlist.length
+    ) {
+
+        container.innerHTML = `
+
+            <div
+                class="watchlist-empty"
+            >
+
+                尚未加入任何標的。
+
+                <br><br>
+
+                使用上方「查詢個股」即可加入。
+
+            </div>
+
+        `;
+
+        return;
+    }
+
+    const records =
+        state.watchlist
+            .map(
+                code =>
+                    findRecordByCode(
+                        code
+                    )
+            )
+            .filter(Boolean);
+
+    container.innerHTML = `
+
+        <div
+            class="compact-list"
+        >
+
+            ${
+                records
+                    .map(
+                        item => {
+
+                            const change =
+                                item.change_pct;
+
+                            return `
+
+                                <div
+                                    class="compact-item"
+                                    data-code="${escapeHtml(
+                                        item.code
+                                    )}"
+                                >
+
+                                    <div
+                                        class="compact-left"
+                                    >
+
+                                        <div
+                                            class="compact-icon"
+                                        >
+                                            ${escapeHtml(
+                                                getTypeLabel(
+                                                    item
+                                                )
+                                                    .slice(
+                                                        0,
+                                                        2
+                                                    )
+                                            )}
+                                        </div>
+
+                                        <div>
+
+                                            <div
+                                                class="compact-code"
+                                            >
+                                                ${escapeHtml(
+                                                    item.code
+                                                )}
+                                            </div>
+
+                                            <div
+                                                class="compact-name"
+                                            >
+                                                ${escapeHtml(
+                                                    item.name ||
+                                                    "尚無名稱"
+                                                )}
+                                            </div>
+
+                                        </div>
+
+                                    </div>
+
+                                    <div
+                                        class="compact-right"
+                                    >
+
+                                        <div
+                                            class="compact-price"
+                                        >
+                                            ${formatNumber(
+                                                item.price,
+                                                2
+                                            )}
+                                        </div>
+
+                                        <div
+                                            class="
+                                                compact-change
+                                                ${positiveClass(
+                                                    change
+                                                )}
+                                            "
+                                        >
+                                            ${formatPercent(
+                                                change
+                                            )}
+                                        </div>
+
+                                    </div>
+
+                                </div>
+
+                            `;
+
+                        }
+                    )
+                    .join("")
+            }
+
+        </div>
+
+    `;
+}
+
+
+/* ============================================================
+   FIND RECORD
+============================================================ */
+
+function findRecordByCode(
+    code
+) {
+
+    code =
+        String(code);
+
+    const direct =
+        state.allRecords.find(
+            item =>
+                String(
+                    item.code
+                ) === code
+        );
+
+    if (
+        direct
+    ) {
+        return direct;
+    }
+
+    const security =
+        state.securityMap.get(
+            code
+        );
+
+    if (
+        security
+    ) {
+
+        return normalizeRecord(
+            security
+        );
+    }
+
+    return null;
+}
+
+
+/* ============================================================
+   SEARCH
+============================================================ */
+
+function setupSearch() {
+
+    const input =
+        document.getElementById(
+            "searchInput"
+        );
+
+    const results =
+        document.getElementById(
+            "searchResults"
+        );
+
+    if (
+        !input ||
+        !results
+    ) {
+        return;
+    }
+
+    input.addEventListener(
+        "input",
+        () => {
+
+            const query =
+                input.value
+                    .trim()
+                    .toLowerCase();
+
+            if (
+                !query
+            ) {
+
+                results.innerHTML = "";
+
+                results.classList.remove(
+                    "show"
+                );
+
+                return;
+            }
+
+            const matches =
+                state.securities
+                    .filter(
+                        item => {
+
+                            const code =
+                                String(
+                                    item.code ||
+                                    ""
+                                ).toLowerCase();
+
+                            const name =
+                                String(
+                                    item.name ||
+                                    ""
+                                ).toLowerCase();
+
+                            return (
+                                code.includes(
+                                    query
+                                )
+                                ||
+                                name.includes(
+                                    query
+                                )
+                            );
+
+                        }
+                    )
+                    .slice(
+                        0,
+                        15
+                    );
+
+            if (
+                !matches.length
+            ) {
+
+                results.innerHTML = `
+
+                    <div
+                        class="watchlist-empty"
+                    >
+                        找不到符合的標的
+                    </div>
+
+                `;
+
+                results.classList.add(
+                    "show"
+                );
+
+                return;
+            }
+
+            results.innerHTML =
+                matches
+                    .map(
+                        item =>
+                            renderSearchResult(
+                                item
+                            )
+                    )
+                    .join("");
+
+            results.classList.add(
+                "show"
+            );
+
+            bindSearchButtons();
+
+        }
+    );
+
+
+    document.addEventListener(
+        "click",
+        event => {
+
+            if (
+                !event.target.closest(
+                    ".search-box"
+                )
+            ) {
+
+                results.classList.remove(
+                    "show"
+                );
+
+            }
+
+        }
+    );
+}
+
+
+/* ============================================================
+   SEARCH RESULT
+============================================================ */
+
+function renderSearchResult(
+    item
+) {
+
+    const added =
+        isInWatchlist(
+            item.code
+        );
+
+    return `
+
+        <div
+            class="search-result"
+        >
+
+            <div
+                class="result-main"
+            >
+
+                <div
+                    class="result-code"
+                >
+                    ${escapeHtml(
+                        item.code
+                    )}
+                </div>
+
+                <div
+                    class="result-name"
+                >
+                    ${escapeHtml(
+                        item.name ||
+                        ""
+                    )}
+                </div>
+
+                <div
+                    class="result-type"
+                >
+                    ${escapeHtml(
+                        getTypeLabel(
+                            item
+                        )
+                    )}
+                </div>
+
+            </div>
+
+            <button
+                class="
+                    add-button
+                    ${added ? "added" : ""}
+                "
+                data-add-code="${escapeHtml(
+                    item.code
+                )}"
+            >
+
+                ${added
+                    ? "已加入"
+                    : "+ 加入清單"
+                }
+
+            </button>
+
+        </div>
+
+    `;
+}
+
+
+/* ============================================================
+   SEARCH BUTTONS
+============================================================ */
+
+function bindSearchButtons() {
+
+    document
+        .querySelectorAll(
+            "[data-add-code]"
+        )
+        .forEach(
+            button => {
+
+                button.addEventListener(
+                    "click",
+                    event => {
+
+                        event.stopPropagation();
+
+                        const code =
+                            button.getAttribute(
+                                "data-add-code"
+                            );
+
+                        toggleWatchlist(
+                            code
+                        );
+
+                        updateSearchButtons();
+
+                    }
+                );
+
+            }
+        );
+}
+
+
+function updateSearchButtons() {
+
+    document
+        .querySelectorAll(
+            "[data-add-code]"
+        )
+        .forEach(
+            button => {
+
+                const code =
+                    button.getAttribute(
+                        "data-add-code"
+                    );
+
+                const added =
+                    isInWatchlist(
+                        code
+                    );
+
+                button.classList.toggle(
+                    "added",
+                    added
+                );
+
+                button.textContent =
+                    added
+                        ? "已加入"
+                        : "+ 加入清單";
+
+            }
+        );
+}
+
+
+/* ============================================================
+   CARD EVENTS
+============================================================ */
+
+function bindCards() {
+
+    document
+        .querySelectorAll(
+            "[data-code]"
+        )
+        .forEach(
+            element => {
+
+                if (
+                    element.closest(
+                        ".search-result"
+                    )
+                ) {
+                    return;
+                }
+
+                element.addEventListener(
+                    "click",
+                    () => {
+
+                        const code =
+                            element.getAttribute(
+                                "data-code"
+                            );
+
+                        openDetail(
+                            code
+                        );
+
+                    }
+                );
+
+            }
+        );
+}
+
+
+/* ============================================================
+   DETAIL MODAL
+============================================================ */
+
+function openDetail(
+    code
+) {
+
+    const item =
+        findRecordByCode(
+            code
+        );
+
+    if (
+        !item
+    ) {
+
+        showToast(
+            "目前沒有這檔標的的詳細資料"
+        );
+
+        return;
+    }
+
+    modalCode.textContent =
+        item.code;
+
+    modalName.textContent =
+        item.name ||
+        "";
+
+    const change =
+        item.change_pct;
+
+    modalBody.innerHTML = `
+
+        <div
+            class="detail-price"
+        >
+
+            <div>
+
+                <div
+                    class="detail-price-number"
+                >
+                    ${formatNumber(
+                        item.price,
+                        2
+                    )}
+                </div>
+
+            </div>
+
+            <div
+                class="
+                    price-change
+                    ${positiveClass(
+                        change
+                    )}
+                "
+            >
+                ${formatPercent(
+                    change
+                )}
+            </div>
+
+        </div>
+
+
+        <div
+            class="detail-grid"
+        >
+
+            ${detailItem(
+                "AI Score",
+                formatNumber(
+                    item.ai_score,
+                    1
+                )
+            )}
+
+            ${detailItem(
+                "Strength Score",
+                formatNumber(
+                    item.strength_score,
+                    1
+                )
+            )}
+
+            ${detailItem(
+                "RSI",
+                formatNumber(
+                    item.rsi,
+                    1
+                )
+            )}
+
+            ${detailItem(
+                "K",
+                formatNumber(
+                    item.k,
+                    1
+                )
+            )}
+
+            ${detailItem(
+                "D",
+                formatNumber(
+                    item.d,
+                    1
+                )
+            )}
+
+            ${detailItem(
+                "MACD",
+                formatNumber(
+                    item.macd,
+                    2
+                )
+            )}
+
+            ${detailItem(
+                "MA20",
+                formatNumber(
+                    item.ma20,
+                    2
+                )
+            )}
+
+            ${detailItem(
+                "MA60",
+                formatNumber(
+                    item.ma60,
+                    2
+                )
+            )}
+
+            ${detailItem(
+                "成交量",
+                formatInteger(
+                    item.volume
+                )
+            )}
+
+            ${detailItem(
+                "量比",
+                item.volume_ratio !== null
+                    ? formatNumber(
+                        item.volume_ratio,
+                        2
+                    ) + "x"
+                    : "-"
+            )}
+
+        </div>
+
+
+        ${
+            item.core_total
+            ?
+            `
+
+                <div
+                    class="condition-list"
+                >
+
+                    <div
+                        class="condition-title"
+                    >
+                        六項核心條件
+                    </div>
+
+                    ${renderCondition(
+                        "MACD 多方",
+                        item.macd_golden_cross
+                    )}
+
+                    ${renderCondition(
+                        "RSI > 50",
+                        item.rsi_over_50
+                    )}
+
+                    ${renderCondition(
+                        "KD 多方",
+                        item.kd_golden_cross
+                    )}
+
+                    ${renderCondition(
+                        "成交量 ≥ MA5 × 1.5",
+                        item.volume_expand
+                    )}
+
+                    ${renderCondition(
+                        "股價 > MA20",
+                        item.price_over_ma20
+                    )}
+
+                    ${renderCondition(
+                        "MA20 今日 > 昨日",
+                        item.ma20_up
+                    )}
+
+                </div>
+
+            `
+            :
+            ""
+        }
+
+
+        <div
+            class="modal-footer"
+        >
+
+            <button
+                class="modal-action primary"
+                id="modalWatchButton"
+            >
+                ${
+                    isInWatchlist(
+                        item.code
+                    )
+                    ? "✓ 已加入我的清單"
+                    : "+ 加入我的清單"
+                }
+            </button>
+
+        </div>
+
+    `;
+
+    document
+        .getElementById(
+            "modalWatchButton"
+        )
+        .addEventListener(
+            "click",
+            () => {
+
+                toggleWatchlist(
+                    item.code
+                );
+
+                document
+                    .getElementById(
+                        "modalWatchButton"
+                    )
+                    .textContent =
+                        isInWatchlist(
+                            item.code
+                        )
+                        ? "✓ 已加入我的清單"
+                        : "+ 加入我的清單";
+
+            }
+        );
+
+    detailModal.classList.add(
+        "show"
+    );
+
+    document.body.style.overflow =
+        "hidden";
+}
+
+
+/* ============================================================
+   DETAIL ITEM
+============================================================ */
+
+function detailItem(
+    label,
+    value
+) {
+
+    return `
+
+        <div
+            class="detail-item"
+        >
+
+            <div
+                class="detail-item-label"
+            >
+                ${escapeHtml(
+                    label
+                )}
+            </div>
+
+            <div
+                class="detail-item-value"
+            >
+                ${escapeHtml(
+                    String(
+                        value
+                    )
+                )}
+            </div>
+
+        </div>
+
+    `;
+}
+
+
+/* ============================================================
+   CONDITION
+============================================================ */
+
+function renderCondition(
+    label,
+    passed
+) {
+
+    const ok =
+        passed === true;
+
+    return `
+
+        <div
+            class="condition"
+        >
+
+            <span>
+                ${escapeHtml(
+                    label
+                )}
+            </span>
+
+            <span
+                class="
+                    condition-status
+                    ${
+                        ok
+                            ? "condition-pass"
+                            : "condition-fail"
+                    }
+                "
+            >
+                ${
+                    ok
+                        ? "PASS"
+                        : "未通過"
+                }
+            </span>
+
+        </div>
+
+    `;
+}
+
+
+/* ============================================================
+   MODAL CLOSE
+============================================================ */
+
+function closeModal() {
+
+    detailModal.classList.remove(
+        "show"
+    );
+
+    document.body.style.overflow =
+        "";
+}
+
+
+modalClose.addEventListener(
+    "click",
+    closeModal
+);
+
+
+detailModal.addEventListener(
+    "click",
+    event => {
+
+        if (
+            event.target ===
+            detailModal
+        ) {
+
+            closeModal();
+
+        }
+
+    }
+);
+
+
+document.addEventListener(
+    "keydown",
+    event => {
+
+        if (
+            event.key === "Escape"
+        ) {
+
+            closeModal();
+
+        }
+
+    }
+);
+
+
+/* ============================================================
+   REFRESH
+============================================================ */
+
+refreshButton.addEventListener(
+    "click",
+    async () => {
+
+        refreshButton.style.transform =
+            "rotate(180deg)";
+
+        setTimeout(
+            () => {
+
+                refreshButton.style.transform =
+                    "";
+
+            },
+            350
+        );
+
+        await loadData();
+
+    }
+);
+
+
+/* ============================================================
+   INITIALIZE
 ============================================================ */
 
 loadData();
