@@ -4,29 +4,29 @@
   "status": "success",
   "date": "2026-08-14",
   "latest_market_date": "2026-08-14",
-  "updated_at": "2026-08-16T19:38:29.492221+08:00",
-  "updated_at_tw": "2026-08-16 19:38:29",
+  "updated_at": "2026-08-16T23:39:29.026233+08:00",
+  "updated_at_tw": "2026-08-16 23:39:29",
   "source": "fetch_data.py V10.2",
   "data_quality": {
     "today_is_market_date": false,
     "latest_market_date_valid": true,
     "non_trading_day_protected": true,
-    "analyzed_count": 2289,
-    "successful_history_count": 2289,
-    "failed_history_count": 4,
+    "analyzed_count": 144,
+    "successful_history_count": 144,
+    "failed_history_count": 0,
     "min_history_rows": 80,
     "backtest_horizon": 10
   },
   "summary": {
-    "stock_count": 1967,
+    "stock_count": 124,
     "etf_count": 10,
     "bond_count": 10,
     "today_selected_count": 124,
     "top10_count": 10,
     "market_breadth": {
-      "rising": 640,
-      "falling": 1443,
-      "unchanged": 206
+      "rising": 117,
+      "falling": 23,
+      "unchanged": 4
     },
     "core_condition_count": 6
   },
@@ -6211,16 +6211,16 @@
   ],
   "backtest_summary": {
     "comparison_horizon": 10,
-    "better_by_win_rate": "A_latest_cross",
-    "A_10d_win_rate": 45.83,
-    "B_10d_win_rate": 38.89,
-    "A_sample_count": 24,
-    "B_sample_count": 18
+    "better_by_win_rate": "B_previous_cross",
+    "A_10d_win_rate": 75.0,
+    "B_10d_win_rate": 100.0,
+    "A_sample_count": 4,
+    "B_sample_count": 1
   },
   "universe": {
-    "stock_count": 1970,
-    "etf_count": 268,
-    "bond_count": 55,
-    "total_count": 2293
+    "stock_count": 124,
+    "etf_count": 10,
+    "bond_count": 10,
+    "total_count": 144
   }
 }
