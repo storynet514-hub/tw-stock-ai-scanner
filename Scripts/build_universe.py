@@ -3,7 +3,7 @@
 
 """
 台股 AI 選股系統
-build_universe.py V5.2.4
+build_universe.py V5.2.5
 
 ============================================================
 用途
@@ -19,32 +19,35 @@ build_universe.py V5.2.4
     Data/universe.json
 
 ============================================================
-核心規格
+V5.2.5 修正重點
 ============================================================
 
-1. TWSE / TPEx 分開取得
-2. TWSE / TPEx 分開驗證
-3. HTTP 自動 retry
-4. HTTP 200 不代表 API 正常
-5. HTML / 安全頁 / 錯誤頁不得視為成功
-6. Redirect 自動處理
-7. 主 API 失敗時使用備援 API
-8. TWSE 增加官方 ISIN 公開頁備援
-9. TPEx 增加多種解析方式
-10. 所有資料通過驗證後才覆蓋 universe.json
-11. 任一階段失敗都保留舊 universe.json
-12. 不允許產生空 Universe
-13. 不允許 total < MIN_TOTAL_STOCKS
-14. TWSE / TPEx 均有最低股票數安全門檻
-15. Yahoo ticker：
-        TWSE -> .TW
-        TPEx -> .TWO
-16. 使用原子寫入，避免半成品 JSON
-17. 支援 UTF-8 / Big5 / CP950
-18. 支援 JSON / CSV / HTML 多種資料格式
-19. main() 明確執行
-20. 任何未預期錯誤都以 exit code 1 結束
-21. 不會因為程式檔案只有函式定義而靜默成功
+1. TWSE 主 API 保留
+2. TPEx 主 API 保留
+3. 強化 TPEx JSON 欄位辨識
+4. 支援 TPEx 不同 API 欄位命名
+5. TPEx 主 API 解析失敗時：
+       -> tpex_mainboard_quotes
+       -> 舊版網頁 fallback
+6. HTTP 200 不代表 API 正常
+7. HTML error page 不視為有效資料
+8. Redirect 到 /errors 不視為有效資料
+9. TWSE / TPEx 分開取得
+10. TWSE / TPEx 分開驗證
+11. TWSE / TPEx 均有最低股票數安全門檻
+12. Total 有最低安全門檻
+13. 不允許空 Universe
+14. 不允許產生半成品 JSON
+15. 任一階段失敗都保留舊 universe.json
+16. Atomic Write
+17. UTF-8 / Big5 / CP950
+18. JSON / CSV
+19. 多組股票代號欄位
+20. 多組股票名稱欄位
+21. 明確 main()
+22. 未預期錯誤 exit code 1
+23. 成功 exit code 0
+24. KeyboardInterrupt exit code 130
 
 ============================================================
 安全門檻
@@ -70,13 +73,12 @@ TPEx 最低：
 import csv
 import io
 import json
-import re
 import sys
 import tempfile
 import time
 from datetime import datetime, timezone
-from html.parser import HTMLParser
 from pathlib import Path
+from urllib.parse import urlparse
 
 import requests
 
@@ -85,9 +87,10 @@ import requests
 # 基本設定
 # ============================================================
 
-VERSION = "V5.2.4"
+VERSION = "V5.2.5"
 
 BASE_DIR = Path(__file__).resolve().parent.parent
+
 DATA_DIR = BASE_DIR / "Data"
 
 UNIVERSE_FILE = DATA_DIR / "universe.json"
@@ -98,7 +101,9 @@ UNIVERSE_FILE = DATA_DIR / "universe.json"
 # ============================================================
 
 MIN_TWSE_STOCKS = 700
+
 MIN_TPEX_STOCKS = 300
+
 MIN_TOTAL_STOCKS = 1200
 
 
@@ -107,6 +112,7 @@ MIN_TOTAL_STOCKS = 1200
 # ============================================================
 
 CONNECT_TIMEOUT = 15
+
 READ_TIMEOUT = 45
 
 MAX_RETRIES = 5
@@ -115,7 +121,12 @@ RETRY_DELAY = 2.0
 
 REQUEST_DELAY = 0.5
 
-MIN_RESPONSE_BYTES = 1000
+
+# ============================================================
+# API 回應安全檢查
+# ============================================================
+
+MIN_RESPONSE_BYTES = 10_000
 
 MIN_FALLBACK_RESPONSE_BYTES = 100
 
@@ -134,7 +145,7 @@ USER_AGENT = (
 
 
 # ============================================================
-# API
+# TWSE API
 # ============================================================
 
 TWSE_API = (
@@ -142,9 +153,27 @@ TWSE_API = (
     "v1/opendata/t187ap03_L"
 )
 
+
+# ============================================================
+# TPEx 主 API
+# ============================================================
+
 TPEX_API = (
     "https://www.tpex.org.tw/"
     "openapi/v1/mopsfin_t187ap03_O"
+)
+
+
+# ============================================================
+# TPEx 行情型備援 API
+#
+# 此 endpoint 可提供上櫃股票代號與公司名稱，
+# 因此適合作為 Universe 建立的備援資料源。
+# ============================================================
+
+TPEX_QUOTES_API = (
+    "https://www.tpex.org.tw/"
+    "openapi/v1/tpex_mainboard_quotes"
 )
 
 
@@ -160,23 +189,14 @@ TWSE_FALLBACK_API = (
 
 
 # ============================================================
-# TWSE 官方 ISIN 公開清單
+# TPEx 舊版備援
 #
-# 這個頁面不是即時交易資料，
-# 但可作為 Universe 股票主檔的備援來源。
+# 注意：
+# 這個 endpoint 如果被導向 /errors，
+# 必須判定為失敗。
 # ============================================================
 
-TWSE_ISIN_API = (
-    "https://isin.twse.com.tw/"
-    "isin/e_C_public.jsp?strMode=2"
-)
-
-
-# ============================================================
-# TPEx 備援
-# ============================================================
-
-TPEX_FALLBACK_API = (
+TPEX_LEGACY_FALLBACK_API = (
     "https://www.tpex.org.tw/"
     "web/stock/aftertrading/"
     "daily_close_quotes/"
@@ -196,7 +216,6 @@ SESSION.headers.update(
         "Accept": (
             "application/json,"
             "text/plain,"
-            "text/html,"
             "text/csv,"
             "*/*"
         ),
@@ -219,6 +238,7 @@ def log(message=""):
 
 
 def section(title):
+
     log("")
     log("=" * 64)
     log(title)
@@ -236,8 +256,15 @@ def clean_text(value):
 
     text = str(value)
 
-    text = text.replace("\ufeff", "")
-    text = text.replace("\xa0", " ")
+    text = text.replace(
+        "\ufeff",
+        "",
+    )
+
+    text = text.replace(
+        "\xa0",
+        " ",
+    )
 
     return text.strip()
 
@@ -266,12 +293,20 @@ def normalize_code(value):
 
     text = text.strip()
 
-    text = text.replace(" ", "")
-    text = text.replace('"', "")
-    text = text.replace("'", "")
+    text = text.replace(
+        " ",
+        "",
+    )
 
-    # 某些來源可能使用全形空白
-    text = text.replace("　", "")
+    text = text.replace(
+        '"',
+        "",
+    )
+
+    text = text.replace(
+        "'",
+        "",
+    )
 
     if not text.isdigit():
         return None
@@ -288,14 +323,22 @@ def normalize_code(value):
 
 def normalize_name(value):
 
-    return clean_text(value)
+    text = clean_text(value)
+
+    if not text:
+        return ""
+
+    return text
 
 
 # ============================================================
 # Yahoo Symbol
 # ============================================================
 
-def make_symbol(code, market):
+def make_symbol(
+    code,
+    market,
+):
 
     if market == "TPEx":
         return code + ".TWO"
@@ -307,52 +350,106 @@ def make_symbol(code, market):
 # 判斷是否為 HTML
 # ============================================================
 
-def looks_like_html(content):
+def looks_like_html(
+    response,
+):
+
+    content = response.content or b""
 
     if not content:
         return False
 
-    sample = content[:2000]
-
-    try:
-        text = sample.decode(
+    preview = (
+        content[:1000]
+        .decode(
             "utf-8",
             errors="ignore",
-        ).lower()
-    except Exception:
-        return False
+        )
+        .lstrip()
+        .lower()
+    )
 
-    html_markers = [
-        "<html",
-        "<!doctype",
-        "<head",
-        "<body",
-        "<script",
+    if preview.startswith(
+        "<!doctype"
+    ):
+        return True
+
+    if preview.startswith(
+        "<html"
+    ):
+        return True
+
+    if "<html" in preview:
+        return True
+
+    if "<body" in preview:
+        return True
+
+    if "page cannot be accessed" in preview:
+        return True
+
+    if "for security reasons" in preview:
+        return True
+
+    return False
+
+
+# ============================================================
+# 判斷是否為 TPEx error page
+# ============================================================
+
+def looks_like_error_page(
+    response,
+):
+
+    final_url = clean_text(
+        getattr(
+            response,
+            "url",
+            "",
+        )
+    )
+
+    parsed = urlparse(
+        final_url
+    )
+
+    path = (
+        parsed.path or ""
+    ).lower()
+
+    if path.rstrip("/") == "/errors":
+        return True
+
+    text = (
+        response.text[:3000]
+        .lower()
+    )
+
+    error_keywords = [
+        "page cannot be accessed",
         "for security reasons",
-        "安全性考量",
-        "cannot be accessed",
-        "can not be accessed",
+        "error",
+        "access denied",
+        "403",
+        "404",
     ]
 
-    return any(
-        marker in text
-        for marker in html_markers
-    )
+    for keyword in error_keywords:
+
+        if keyword in text:
+            return True
+
+    return False
 
 
 # ============================================================
 # HTTP GET
-#
-# 重點：
-# allow_redirects=True
-#
-# 避免 TWSE 307 redirect 被誤判為最終失敗。
 # ============================================================
 
 def http_get(
     url,
     label,
-    min_bytes=MIN_RESPONSE_BYTES,
 ):
 
     last_error = None
@@ -378,7 +475,9 @@ def http_get(
                 allow_redirects=True,
             )
 
-            status = response.status_code
+            status = (
+                response.status_code
+            )
 
             content = (
                 response.content or b""
@@ -386,13 +485,8 @@ def http_get(
 
             size = len(content)
 
-            final_url = (
-                response.url
-            )
-
             log(
-                f"  HTTP Status: "
-                f"{status}"
+                f"  HTTP Status: {status}"
             )
 
             log(
@@ -400,10 +494,17 @@ def http_get(
                 f"{size} bytes"
             )
 
-            if final_url != url:
+            final_url = clean_text(
+                getattr(
+                    response,
+                    "url",
+                    "",
+                )
+            )
 
+            if final_url:
                 log(
-                    f"  Redirected URL: "
+                    "  Final URL："
                     f"{final_url}"
                 )
 
@@ -413,7 +514,9 @@ def http_get(
                     f"HTTP {status}"
                 )
 
-            if size < min_bytes:
+            if looks_like_html(
+                response
+            ):
 
                 preview = (
                     content[:500]
@@ -432,32 +535,41 @@ def http_get(
                 )
 
                 raise RuntimeError(
-                    "API 回應過短："
+                    "API 回傳 HTML "
+                    "而非有效資料："
+                    f"{preview}"
+                )
+
+            if looks_like_error_page(
+                response
+            ):
+
+                raise RuntimeError(
+                    "API 被導向錯誤頁面："
+                    f"{final_url}"
+                )
+
+            if size < MIN_RESPONSE_BYTES:
+
+                preview = (
+                    content[:300]
+                    .decode(
+                        "utf-8",
+                        errors="replace",
+                    )
+                    .replace(
+                        "\r",
+                        " ",
+                    )
+                    .replace(
+                        "\n",
+                        " ",
+                    )
+                )
+
+                raise RuntimeError(
+                    "API 回應異常過短："
                     f"{size} bytes；"
-                    f"內容：{preview}"
-                )
-
-            if looks_like_html(content):
-
-                preview = (
-                    content[:500]
-                    .decode(
-                        "utf-8",
-                        errors="replace",
-                    )
-                    .replace(
-                        "\r",
-                        " ",
-                    )
-                    .replace(
-                        "\n",
-                        " ",
-                    )
-                )
-
-                raise RuntimeError(
-                    "API 回傳 HTML / "
-                    "安全頁，而非預期資料；"
                     f"內容：{preview}"
                 )
 
@@ -469,7 +581,8 @@ def http_get(
 
             log(
                 f"  ⚠️ attempt "
-                f"{attempt} 失敗：{exc}"
+                f"{attempt} 失敗："
+                f"{exc}"
             )
 
             if attempt < MAX_RETRIES:
@@ -485,8 +598,7 @@ def http_get(
 
 
 # ============================================================
-# HTTP GET
-# 備援專用
+# HTTP GET - 備援
 # ============================================================
 
 def http_get_fallback(
@@ -518,17 +630,15 @@ def http_get_fallback(
                 allow_redirects=True,
             )
 
-            status = response.status_code
+            status = (
+                response.status_code
+            )
 
             content = (
                 response.content or b""
             )
 
             size = len(content)
-
-            final_url = (
-                response.url
-            )
 
             log(
                 f"  HTTP Status: "
@@ -540,10 +650,18 @@ def http_get_fallback(
                 f"{size} bytes"
             )
 
-            if final_url != url:
+            final_url = clean_text(
+                getattr(
+                    response,
+                    "url",
+                    "",
+                )
+            )
+
+            if final_url:
 
                 log(
-                    f"  Redirected URL: "
+                    "  Redirected URL："
                     f"{final_url}"
                 )
 
@@ -551,6 +669,23 @@ def http_get_fallback(
 
                 raise RuntimeError(
                     f"HTTP {status}"
+                )
+
+            if looks_like_html(
+                response
+            ):
+
+                raise RuntimeError(
+                    "Fallback 回傳 HTML"
+                )
+
+            if looks_like_error_page(
+                response
+            ):
+
+                raise RuntimeError(
+                    "Fallback 被導向錯誤頁面："
+                    f"{final_url}"
                 )
 
             if size < MIN_FALLBACK_RESPONSE_BYTES:
@@ -568,7 +703,8 @@ def http_get_fallback(
 
             log(
                 f"  ⚠️ fallback attempt "
-                f"{attempt} 失敗：{exc}"
+                f"{attempt} 失敗："
+                f"{exc}"
             )
 
             if attempt < MAX_RETRIES:
@@ -587,7 +723,9 @@ def http_get_fallback(
 # JSON 解析
 # ============================================================
 
-def parse_json_response(response):
+def parse_json_response(
+    response,
+):
 
     try:
 
@@ -600,7 +738,9 @@ def parse_json_response(response):
 
     try:
 
-        return json.loads(text)
+        return json.loads(
+            text
+        )
 
     except Exception as exc:
 
@@ -622,6 +762,7 @@ def get_value(
         record,
         dict,
     ):
+
         return None
 
     # --------------------------------------------------------
@@ -673,10 +814,12 @@ def get_value(
 
 
 # ============================================================
-# 遞迴尋找 JSON List
+# 遞迴找 JSON 所有 List
 # ============================================================
 
-def find_lists(value):
+def find_lists(
+    value,
+):
 
     result = []
 
@@ -685,13 +828,18 @@ def find_lists(value):
         list,
     ):
 
-        result.append(value)
+        result.append(
+            value
+        )
 
         for item in value:
 
             if isinstance(
                 item,
-                (list, dict),
+                (
+                    list,
+                    dict,
+                ),
             ):
 
                 result.extend(
@@ -707,7 +855,10 @@ def find_lists(value):
 
             if isinstance(
                 child,
-                (list, dict),
+                (
+                    list,
+                    dict,
+                ),
             ):
 
                 result.extend(
@@ -715,6 +866,98 @@ def find_lists(value):
                 )
 
     return result
+
+
+# ============================================================
+# 股票代號欄位
+# ============================================================
+
+CODE_KEYS = [
+
+    "Code",
+
+    "code",
+
+    "StockCode",
+
+    "stockCode",
+
+    "StockNo",
+
+    "stockNo",
+
+    "StockID",
+
+    "stockID",
+
+    "SecurityCode",
+
+    "securityCode",
+
+    "SecuritiesCompanyCode",
+
+    "CompanyCode",
+
+    "companyCode",
+
+    "CompanyID",
+
+    "companyID",
+
+    "證券代號",
+
+    "股票代號",
+
+    "有價證券代號",
+
+    "代號",
+
+    "公司代號",
+
+]
+
+
+# ============================================================
+# 股票名稱欄位
+# ============================================================
+
+NAME_KEYS = [
+
+    "Name",
+
+    "name",
+
+    "StockName",
+
+    "stockName",
+
+    "SecurityName",
+
+    "securityName",
+
+    "CompanyName",
+
+    "companyName",
+
+    "CompanyShortName",
+
+    "companyShortName",
+
+    "SecuritiesCompanyName",
+
+    "證券名稱",
+
+    "股票名稱",
+
+    "有價證券名稱",
+
+    "名稱",
+
+    "公司名稱",
+
+    "公司簡稱",
+
+]
 
 
 # ============================================================
@@ -731,36 +974,24 @@ def parse_json_records(
     )
 
     best_records = []
+
     best_score = -1
 
-    code_keys = [
-        "Code",
-        "code",
-        "股票代號",
-        "證券代號",
-        "有價證券代號",
-        "代號",
-        "SecuritiesCompanyCode",
-        "公司代號",
-        "公司碼",
-    ]
+    best_code_count = 0
 
-    name_keys = [
-        "Name",
-        "name",
-        "股票名稱",
-        "證券名稱",
-        "公司名稱",
-        "名稱",
-        "SecuritiesCompanyName",
-        "有價證券名稱",
-    ]
+    # --------------------------------------------------------
+    # 搜尋最像股票清單的 List
+    # --------------------------------------------------------
 
     for records in candidates:
 
         score = 0
 
-        sample = records[:100]
+        code_count = 0
+
+        name_count = 0
+
+        sample = records[:200]
 
         for item in sample:
 
@@ -772,28 +1003,82 @@ def parse_json_records(
 
             code = get_value(
                 item,
-                code_keys,
+                CODE_KEYS,
             )
 
             name = get_value(
                 item,
-                name_keys,
+                NAME_KEYS,
             )
 
-            if normalize_code(code):
+            normalized_code = (
+                normalize_code(code)
+            )
 
-                score += 2
+            normalized_name = (
+                normalize_name(name)
+            )
 
-            if normalize_name(name):
+            if normalized_code:
+
+                score += 3
+
+                code_count += 1
+
+            if normalized_name:
 
                 score += 1
+
+                name_count += 1
+
+        # ----------------------------------------------------
+        # 股票資料應同時有 code / name
+        # ----------------------------------------------------
+
+        if code_count > 0:
+
+            score += min(
+                code_count,
+                50,
+            )
+
+        if name_count > 0:
+
+            score += min(
+                name_count,
+                25,
+            )
 
         if score > best_score:
 
             best_score = score
+
             best_records = records
 
+            best_code_count = (
+                code_count
+            )
+
+    log(
+        "JSON candidate："
+        f"{len(candidates)} 組"
+    )
+
+    log(
+        "Best JSON candidate："
+        f"{len(best_records)} 筆"
+    )
+
+    log(
+        "Best candidate code count："
+        f"{best_code_count}"
+    )
+
     output = {}
+
+    # --------------------------------------------------------
+    # 解析最佳 List
+    # --------------------------------------------------------
 
     for item in best_records:
 
@@ -801,16 +1086,17 @@ def parse_json_records(
             item,
             dict,
         ):
+
             continue
 
         code = get_value(
             item,
-            code_keys,
+            CODE_KEYS,
         )
 
         name = get_value(
             item,
-            name_keys,
+            NAME_KEYS,
         )
 
         code = normalize_code(
@@ -818,19 +1104,29 @@ def parse_json_records(
         )
 
         if not code:
+
             continue
 
         name = normalize_name(
             name
         )
 
+        # ----------------------------------------------------
+        # 沒有名稱的資料先不加入
+        # ----------------------------------------------------
+
         if not name:
+
             continue
 
         output[code] = {
+
             "code": code,
+
             "name": name,
+
             "market": market,
+
             "symbol": make_symbol(
                 code,
                 market,
@@ -841,6 +1137,137 @@ def parse_json_records(
 
 
 # ============================================================
+# TPEx 專用 JSON 解析
+#
+# 目的：
+# 不完全依賴通用欄位搜尋。
+# ============================================================
+
+def parse_tpex_json_records(
+    payload,
+):
+
+    section(
+        "TPEx 專用 JSON 解析"
+    )
+
+    # --------------------------------------------------------
+    # 第一階段：通用解析
+    # --------------------------------------------------------
+
+    records = parse_json_records(
+        payload,
+        "TPEx",
+    )
+
+    if len(records) >= MIN_TPEX_STOCKS:
+
+        log(
+            "✓ TPEx 通用 JSON 解析成功："
+            f"{len(records)} 筆"
+        )
+
+        return records
+
+    log(
+        "⚠️ TPEx 通用解析不足："
+        f"{len(records)} 筆"
+    )
+
+    # --------------------------------------------------------
+    # 第二階段：直接掃描所有 dict
+    #
+    # 某些 API 的資料巢狀結構可能讓候選 List 判斷
+    # 選錯，因此再次全樹搜尋。
+    # --------------------------------------------------------
+
+    output = {}
+
+    def walk(value):
+
+        if isinstance(
+            value,
+            dict,
+        ):
+
+            code = get_value(
+                value,
+                CODE_KEYS,
+            )
+
+            name = get_value(
+                value,
+                NAME_KEYS,
+            )
+
+            code = normalize_code(
+                code
+            )
+
+            name = normalize_name(
+                name
+            )
+
+            if code and name:
+
+                output[code] = {
+
+                    "code": code,
+
+                    "name": name,
+
+                    "market": "TPEx",
+
+                    "symbol": make_symbol(
+                        code,
+                        "TPEx",
+                    ),
+                }
+
+            for child in value.values():
+
+                if isinstance(
+                    child,
+                    (
+                        dict,
+                        list,
+                    ),
+                ):
+
+                    walk(child)
+
+        elif isinstance(
+            value,
+            list,
+        ):
+
+            for item in value:
+
+                if isinstance(
+                    item,
+                    (
+                        dict,
+                        list,
+                    ),
+                ):
+
+                    walk(item)
+
+    walk(payload)
+
+    log(
+        "TPEx recursive JSON 解析："
+        f"{len(output)} 筆"
+    )
+
+    if len(output) >= MIN_TPEX_STOCKS:
+
+        return output
+
+    return {}
+
+
+# ============================================================
 # Response Decode
 # ============================================================
 
@@ -848,13 +1275,20 @@ def decode_response(
     response,
 ):
 
-    content = response.content
+    content = (
+        response.content
+    )
 
     encodings = [
+
         "utf-8-sig",
+
         "utf-8",
+
         "cp950",
+
         "big5",
+
     ]
 
     for encoding in encodings:
@@ -866,6 +1300,7 @@ def decode_response(
             )
 
         except Exception:
+
             continue
 
     return content.decode(
@@ -887,10 +1322,23 @@ def normalize_header(
     )
 
     text = (
-        text.replace(" ", "")
-        .replace("\t", "")
-        .replace("\r", "")
-        .replace("\n", "")
+        text
+        .replace(
+            " ",
+            "",
+        )
+        .replace(
+            "\t",
+            "",
+        )
+        .replace(
+            "\r",
+            "",
+        )
+        .replace(
+            "\n",
+            "",
+        )
     )
 
     return text.lower()
@@ -921,7 +1369,9 @@ def find_csv_column(
 
         if key in normalized:
 
-            return normalized[key]
+            return normalized[
+                key
+            ]
 
     return None
 
@@ -936,6 +1386,7 @@ def parse_csv_records(
 ):
 
     if not text:
+
         return {}
 
     text = text.replace(
@@ -946,6 +1397,7 @@ def parse_csv_records(
     lines = text.splitlines()
 
     if not lines:
+
         return {}
 
     useful_lines = []
@@ -955,16 +1407,21 @@ def parse_csv_records(
         stripped = line.strip()
 
         if not stripped:
+
             continue
 
-        if stripped.lower().startswith(
+        lower = stripped.lower()
+
+        if lower.startswith(
             "<!doctype"
         ):
+
             continue
 
-        if stripped.lower().startswith(
+        if lower.startswith(
             "<html"
         ):
+
             continue
 
         useful_lines.append(
@@ -972,6 +1429,7 @@ def parse_csv_records(
         )
 
     if not useful_lines:
+
         return {}
 
     try:
@@ -995,17 +1453,25 @@ def parse_csv_records(
         ) from exc
 
     if not rows:
+
         return {}
 
     header_index = None
+
     code_index = None
+
     name_index = None
+
+    # --------------------------------------------------------
+    # 搜尋 Header
+    # --------------------------------------------------------
 
     for index, row in enumerate(
         rows[:50]
     ):
 
         if not row:
+
             continue
 
         headers = [
@@ -1018,10 +1484,14 @@ def parse_csv_records(
             [
                 "證券代號",
                 "股票代號",
+                "有價證券代號",
                 "代號",
                 "Code",
+                "code",
+                "StockCode",
+                "SecurityCode",
                 "SecuritiesCompanyCode",
-                "有價證券代號",
+                "CompanyCode",
                 "公司代號",
             ],
         )
@@ -1031,11 +1501,16 @@ def parse_csv_records(
             [
                 "證券名稱",
                 "股票名稱",
+                "有價證券名稱",
                 "名稱",
                 "公司名稱",
+                "公司簡稱",
                 "Name",
+                "name",
+                "StockName",
+                "SecurityName",
+                "CompanyName",
                 "SecuritiesCompanyName",
-                "有價證券名稱",
             ],
         )
 
@@ -1060,7 +1535,8 @@ def parse_csv_records(
             break
 
     # --------------------------------------------------------
-    # 沒有 Header 時
+    # Header 找不到：
+    # 嘗試第一個可辨識股票代號
     # --------------------------------------------------------
 
     if header_index is None:
@@ -1070,6 +1546,7 @@ def parse_csv_records(
         ):
 
             if len(row) < 2:
+
                 continue
 
             code = normalize_code(
@@ -1079,7 +1556,9 @@ def parse_csv_records(
             if code:
 
                 header_index = index
+
                 code_index = 0
+
                 name_index = 1
 
                 break
@@ -1090,14 +1569,20 @@ def parse_csv_records(
 
     output = {}
 
+    # --------------------------------------------------------
+    # 解析資料
+    # --------------------------------------------------------
+
     for row in rows[
         header_index + 1:
     ]:
 
         if code_index is None:
+
             continue
 
         if len(row) <= code_index:
+
             continue
 
         code = normalize_code(
@@ -1105,6 +1590,7 @@ def parse_csv_records(
         )
 
         if not code:
+
             continue
 
         name = ""
@@ -1119,248 +1605,20 @@ def parse_csv_records(
             )
 
         if not name:
+
             continue
 
         output[code] = {
+
             "code": code,
+
             "name": name,
+
             "market": market,
+
             "symbol": make_symbol(
                 code,
                 market,
-            ),
-        }
-
-    return output
-
-
-# ============================================================
-# HTML Parser
-#
-# 用於 TWSE ISIN 官方公開頁。
-# ============================================================
-
-class TableParser(
-    HTMLParser
-):
-
-    def __init__(self):
-
-        super().__init__(
-            convert_charrefs=True
-        )
-
-        self.in_td = False
-        self.current_cell = []
-
-        self.current_row = []
-
-        self.rows = []
-
-    def handle_starttag(
-        self,
-        tag,
-        attrs,
-    ):
-
-        tag = tag.lower()
-
-        if tag == "tr":
-
-            self.current_row = []
-
-        elif tag in (
-            "td",
-            "th",
-        ):
-
-            self.in_td = True
-            self.current_cell = []
-
-    def handle_endtag(
-        self,
-        tag,
-    ):
-
-        tag = tag.lower()
-
-        if tag in (
-            "td",
-            "th",
-        ):
-
-            value = clean_text(
-                "".join(
-                    self.current_cell
-                )
-            )
-
-            self.current_row.append(
-                value
-            )
-
-            self.current_cell = []
-            self.in_td = False
-
-        elif tag == "tr":
-
-            if self.current_row:
-
-                self.rows.append(
-                    self.current_row
-                )
-
-            self.current_row = []
-
-    def handle_data(
-        self,
-        data,
-    ):
-
-        if self.in_td:
-
-            self.current_cell.append(
-                data
-            )
-
-
-# ============================================================
-# 從文字中擷取股票代號
-# ============================================================
-
-def extract_code_from_text(
-    text,
-):
-
-    if not text:
-        return None
-
-    text = clean_text(
-        text
-    )
-
-    # 常見：
-    # 1101　台泥
-    # 1101 台泥
-    # 1101 TCC
-    match = re.match(
-        r"^\s*(\d{4,6})\s*",
-        text,
-    )
-
-    if match:
-
-        return normalize_code(
-            match.group(1)
-        )
-
-    return None
-
-
-# ============================================================
-# TWSE ISIN HTML 解析
-# ============================================================
-
-def parse_twse_isin_html(
-    text,
-):
-
-    if not text:
-        return {}
-
-    parser = TableParser()
-
-    try:
-
-        parser.feed(
-            text
-        )
-
-    except Exception as exc:
-
-        raise RuntimeError(
-            f"TWSE ISIN HTML "
-            f"解析失敗：{exc}"
-        ) from exc
-
-    output = {}
-
-    for row in parser.rows:
-
-        if not row:
-            continue
-
-        row_text = " ".join(
-            row
-        )
-
-        # 必須明確是 TWSE LISTED
-        if (
-            "TWSE LISTED"
-            not in row_text.upper()
-        ):
-            continue
-
-        code = None
-        name = None
-
-        # ----------------------------------------------------
-        # 優先從第一欄尋找
-        # ----------------------------------------------------
-
-        for cell in row:
-
-            code = extract_code_from_text(
-                cell
-            )
-
-            if code:
-
-                # 第一欄通常：
-                # Security Code & Security Name
-                remainder = re.sub(
-                    r"^\s*\d{4,6}\s*",
-                    "",
-                    clean_text(cell),
-                )
-
-                name = clean_text(
-                    remainder
-                )
-
-                break
-
-        if not code:
-            continue
-
-        # ----------------------------------------------------
-        # 如果第一欄沒有名稱，
-        # 嘗試第二欄
-        # ----------------------------------------------------
-
-        if not name:
-
-            for cell in row[1:]:
-
-                candidate = clean_text(
-                    cell
-                )
-
-                if candidate:
-
-                    name = candidate
-                    break
-
-        if not name:
-            continue
-
-        output[code] = {
-            "code": code,
-            "name": name,
-            "market": "TWSE",
-            "symbol": make_symbol(
-                code,
-                "TWSE",
             ),
         }
 
@@ -1386,9 +1644,7 @@ def validate_records(
             f"{market} 資料格式錯誤"
         )
 
-    count = len(
-        records
-    )
+    count = len(records)
 
     if count < minimum:
 
@@ -1412,7 +1668,9 @@ def validate_records(
 
             continue
 
-        if item.get("code") != code:
+        if item.get(
+            "code"
+        ) != code:
 
             invalid.append(
                 code
@@ -1440,7 +1698,9 @@ def validate_records(
 
             continue
 
-        if item.get("market") != market:
+        if item.get(
+            "market"
+        ) != market:
 
             invalid.append(
                 code
@@ -1453,10 +1713,9 @@ def validate_records(
             market,
         )
 
-        if (
-            item.get("symbol")
-            != expected_symbol
-        ):
+        if item.get(
+            "symbol"
+        ) != expected_symbol:
 
             invalid.append(
                 code
@@ -1472,8 +1731,8 @@ def validate_records(
 
         raise RuntimeError(
             f"{market} 有 "
-            f"{len(invalid)} 筆資料驗證失敗；"
-            f"範例：{preview}"
+            f"{len(invalid)} 筆資料驗證失敗"
+            f"；範例：{preview}"
         )
 
     log(
@@ -1485,209 +1744,7 @@ def validate_records(
 
 
 # ============================================================
-# TWSE 主 API
-# ============================================================
-
-def fetch_twse_primary():
-
-    response = http_get(
-        TWSE_API,
-        "TWSE API",
-    )
-
-    payload = parse_json_response(
-        response
-    )
-
-    records = parse_json_records(
-        payload,
-        "TWSE",
-    )
-
-    log(
-        "TWSE JSON 原始解析："
-        f"{len(records)} 筆"
-    )
-
-    if len(records) < MIN_TWSE_STOCKS:
-
-        raise RuntimeError(
-            "TWSE 主 API 資料數量不足："
-            f"{len(records)}"
-        )
-
-    validate_records(
-        records,
-        "TWSE",
-        MIN_TWSE_STOCKS,
-    )
-
-    return records
-
-
-# ============================================================
-# TWSE 備援 API
-# ============================================================
-
-def fetch_twse_fallback_api():
-
-    log(
-        f"TWSE 備援 API："
-        f"{TWSE_FALLBACK_API}"
-    )
-
-    response = http_get_fallback(
-        TWSE_FALLBACK_API,
-        "TWSE fallback",
-    )
-
-    records = {}
-
-    content_type = (
-        response.headers.get(
-            "Content-Type",
-            "",
-        )
-        .lower()
-    )
-
-    log(
-        f"Fallback Content-Type："
-        f"{content_type}"
-    )
-
-    text = decode_response(
-        response
-    )
-
-    stripped = text.lstrip()
-
-    # --------------------------------------------------------
-    # JSON
-    # --------------------------------------------------------
-
-    if (
-        "json" in content_type
-        or stripped.startswith("{")
-        or stripped.startswith("[")
-    ):
-
-        try:
-
-            payload = parse_json_response(
-                response
-            )
-
-            records = parse_json_records(
-                payload,
-                "TWSE",
-            )
-
-        except Exception as exc:
-
-            log(
-                f"⚠️ TWSE fallback JSON "
-                f"解析失敗：{exc}"
-            )
-
-    # --------------------------------------------------------
-    # CSV
-    # --------------------------------------------------------
-
-    if len(records) < MIN_TWSE_STOCKS:
-
-        try:
-
-            csv_records = parse_csv_records(
-                text,
-                "TWSE",
-            )
-
-            if len(csv_records) > len(
-                records
-            ):
-
-                records = csv_records
-
-        except Exception as exc:
-
-            log(
-                f"⚠️ TWSE fallback CSV "
-                f"解析失敗：{exc}"
-            )
-
-    log(
-        "TWSE fallback API 解析："
-        f"{len(records)} 筆"
-    )
-
-    if len(records) < MIN_TWSE_STOCKS:
-
-        raise RuntimeError(
-            "TWSE fallback API "
-            "股票數量不足："
-            f"{len(records)}"
-        )
-
-    validate_records(
-        records,
-        "TWSE",
-        MIN_TWSE_STOCKS,
-    )
-
-    return records
-
-
-# ============================================================
-# TWSE 官方 ISIN 備援
-# ============================================================
-
-def fetch_twse_isin():
-
-    section(
-        "TWSE 官方 ISIN 備援"
-    )
-
-    log(
-        f"URL：{TWSE_ISIN_API}"
-    )
-
-    response = http_get_fallback(
-        TWSE_ISIN_API,
-        "TWSE ISIN",
-    )
-
-    text = decode_response(
-        response
-    )
-
-    records = parse_twse_isin_html(
-        text
-    )
-
-    log(
-        "TWSE ISIN 解析："
-        f"{len(records)} 筆"
-    )
-
-    if len(records) < MIN_TWSE_STOCKS:
-
-        raise RuntimeError(
-            "TWSE ISIN 備援股票數量不足："
-            f"{len(records)}"
-        )
-
-    validate_records(
-        records,
-        "TWSE",
-        MIN_TWSE_STOCKS,
-    )
-
-    return records
-
-
-# ============================================================
-# TWSE 完整取得流程
+# TWSE 取得
 # ============================================================
 
 def fetch_twse():
@@ -1701,57 +1758,156 @@ def fetch_twse():
     )
 
     # --------------------------------------------------------
-    # 第一層：主 API
+    # 主 API
     # --------------------------------------------------------
 
     try:
 
-        records = fetch_twse_primary()
-
-        log(
-            "✓ TWSE 主 API 成功"
+        response = http_get(
+            TWSE_API,
+            "TWSE API",
         )
 
-        return records
+        payload = parse_json_response(
+            response
+        )
+
+        records = parse_json_records(
+            payload,
+            "TWSE",
+        )
+
+        log(
+            "TWSE JSON 原始解析："
+            f"{len(records)} 筆"
+        )
+
+        if (
+            len(records)
+            >= MIN_TWSE_STOCKS
+        ):
+
+            validate_records(
+                records,
+                "TWSE",
+                MIN_TWSE_STOCKS,
+            )
+
+            log(
+                "✓ TWSE 主 API 成功"
+            )
+
+            return records
+
+        log(
+            "⚠️ TWSE 主 API 數量不足，"
+            "進入備援"
+        )
 
     except Exception as exc:
 
         log(
-            f"⚠️ TWSE 主 API 失敗："
+            "⚠️ TWSE 主 API 失敗："
             f"{exc}"
         )
 
     # --------------------------------------------------------
-    # 第二層：TWSE SecuritiesListing
+    # 備援 API
     # --------------------------------------------------------
+
+    log(
+        "TWSE 備援 API："
+        f"{TWSE_FALLBACK_API}"
+    )
 
     try:
 
-        records = fetch_twse_fallback_api()
-
-        log(
-            "✓ TWSE 第一備援成功"
+        response = http_get_fallback(
+            TWSE_FALLBACK_API,
+            "TWSE fallback",
         )
 
-        return records
-
-    except Exception as exc:
-
-        log(
-            f"⚠️ TWSE 第一備援失敗："
-            f"{exc}"
+        content_type = (
+            response.headers.get(
+                "Content-Type",
+                "",
+            )
+            .lower()
         )
 
-    # --------------------------------------------------------
-    # 第三層：TWSE ISIN
-    # --------------------------------------------------------
+        log(
+            "Fallback Content-Type："
+            f"{content_type}"
+        )
 
-    try:
+        records = {}
 
-        records = fetch_twse_isin()
+        text = decode_response(
+            response
+        )
+
+        # ----------------------------------------------------
+        # JSON
+        # ----------------------------------------------------
+
+        if (
+            "json" in content_type
+            or text.lstrip().startswith(
+                "{"
+            )
+            or text.lstrip().startswith(
+                "["
+            )
+        ):
+
+            try:
+
+                payload = (
+                    parse_json_response(
+                        response
+                    )
+                )
+
+                records = (
+                    parse_json_records(
+                        payload,
+                        "TWSE",
+                    )
+                )
+
+            except Exception as exc:
+
+                log(
+                    "⚠️ TWSE fallback "
+                    "JSON 解析失敗："
+                    f"{exc}"
+                )
+
+        # ----------------------------------------------------
+        # CSV
+        # ----------------------------------------------------
+
+        if (
+            len(records)
+            < MIN_TWSE_STOCKS
+        ):
+
+            records = (
+                parse_csv_records(
+                    text,
+                    "TWSE",
+                )
+            )
 
         log(
-            "✓ TWSE 第二備援成功"
+            "TWSE fallback 解析："
+            f"{len(records)} 筆"
+        )
+
+        validate_records(
+            records,
+            "TWSE",
+            MIN_TWSE_STOCKS,
         )
 
         return records
@@ -1759,10 +1915,8 @@ def fetch_twse():
     except Exception as exc:
 
         raise RuntimeError(
-            "TWSE 主 API、"
-            "第一備援、"
-            "第二備援均失敗："
-            f"{exc}"
+            "TWSE 主 API 與備援 API "
+            f"均失敗：{exc}"
         ) from exc
 
 
@@ -1771,6 +1925,10 @@ def fetch_twse():
 # ============================================================
 
 def fetch_tpex_primary():
+
+    log(
+        f"主 API：{TPEX_API}"
+    )
 
     response = http_get(
         TPEX_API,
@@ -1781,9 +1939,8 @@ def fetch_tpex_primary():
         response
     )
 
-    records = parse_json_records(
-        payload,
-        "TPEx",
+    records = parse_tpex_json_records(
+        payload
     )
 
     log(
@@ -1791,11 +1948,69 @@ def fetch_tpex_primary():
         f"{len(records)} 筆"
     )
 
-    if len(records) < MIN_TPEX_STOCKS:
+    validate_records(
+        records,
+        "TPEx",
+        MIN_TPEX_STOCKS,
+    )
 
-        raise RuntimeError(
-            "TPEx 主 API 資料數量不足："
-            f"{len(records)}"
+    return records
+
+
+# ============================================================
+# TPEx Quotes API
+#
+# 作為主要備援。
+# ============================================================
+
+def fetch_tpex_quotes():
+
+    section(
+        "TPEx 備援 A：主板股票行情 API"
+    )
+
+    log(
+        f"API：{TPEX_QUOTES_API}"
+    )
+
+    response = http_get_fallback(
+        TPEX_QUOTES_API,
+        "TPEx quotes fallback",
+    )
+
+    payload = parse_json_response(
+        response
+    )
+
+    # --------------------------------------------------------
+    # 這個 endpoint 常見欄位：
+    #
+    # SecuritiesCompanyCode
+    # CompanyName
+    #
+    # 但仍使用通用 parser，
+    # 同時 CODE_KEYS / NAME_KEYS 已包含。
+    # --------------------------------------------------------
+
+    records = parse_json_records(
+        payload,
+        "TPEx",
+    )
+
+    log(
+        "TPEx quotes JSON 解析："
+        f"{len(records)} 筆"
+    )
+
+    if (
+        len(records)
+        < MIN_TPEX_STOCKS
+    ):
+
+        records = (
+            parse_tpex_json_records(
+                payload
+            )
         )
 
     validate_records(
@@ -1808,32 +2023,23 @@ def fetch_tpex_primary():
 
 
 # ============================================================
-# TPEx 備援 API
+# TPEx Legacy Fallback
 # ============================================================
 
-def fetch_tpex_fallback():
+def fetch_tpex_legacy():
+
+    section(
+        "TPEx 備援 B：Legacy API"
+    )
 
     log(
-        f"TPEx 備援 API："
-        f"{TPEX_FALLBACK_API}"
+        "API："
+        f"{TPEX_LEGACY_FALLBACK_API}"
     )
 
     response = http_get_fallback(
-        TPEX_FALLBACK_API,
-        "TPEx fallback",
-    )
-
-    content_type = (
-        response.headers.get(
-            "Content-Type",
-            "",
-        )
-        .lower()
-    )
-
-    log(
-        f"Fallback Content-Type："
-        f"{content_type}"
+        TPEX_LEGACY_FALLBACK_API,
+        "TPEx legacy fallback",
     )
 
     text = decode_response(
@@ -1842,74 +2048,64 @@ def fetch_tpex_fallback():
 
     records = {}
 
+    # --------------------------------------------------------
+    # 嘗試 JSON
+    # --------------------------------------------------------
+
     stripped = text.lstrip()
 
-    # --------------------------------------------------------
-    # JSON
-    # --------------------------------------------------------
-
     if (
-        "json" in content_type
-        or stripped.startswith("{")
-        or stripped.startswith("[")
+        stripped.startswith(
+            "{"
+        )
+        or stripped.startswith(
+            "["
+        )
     ):
 
         try:
 
-            payload = parse_json_response(
-                response
+            payload = (
+                parse_json_response(
+                    response
+                )
             )
 
-            records = parse_json_records(
-                payload,
-                "TPEx",
+            records = (
+                parse_json_records(
+                    payload,
+                    "TPEx",
+                )
             )
 
         except Exception as exc:
 
             log(
-                f"⚠️ TPEx fallback JSON "
-                f"解析失敗：{exc}"
+                "⚠️ TPEx legacy "
+                "JSON 解析失敗："
+                f"{exc}"
             )
 
     # --------------------------------------------------------
     # CSV
     # --------------------------------------------------------
 
-    if len(records) < MIN_TPEX_STOCKS:
+    if (
+        len(records)
+        < MIN_TPEX_STOCKS
+    ):
 
-        try:
-
-            csv_records = parse_csv_records(
+        records = (
+            parse_csv_records(
                 text,
                 "TPEx",
             )
-
-            if len(csv_records) > len(
-                records
-            ):
-
-                records = csv_records
-
-        except Exception as exc:
-
-            log(
-                f"⚠️ TPEx fallback CSV "
-                f"解析失敗：{exc}"
-            )
+        )
 
     log(
-        "TPEx fallback 解析："
+        "TPEx legacy 解析："
         f"{len(records)} 筆"
     )
-
-    if len(records) < MIN_TPEX_STOCKS:
-
-        raise RuntimeError(
-            "TPEx fallback "
-            "股票數量不足："
-            f"{len(records)}"
-        )
 
     validate_records(
         records,
@@ -1921,7 +2117,7 @@ def fetch_tpex_fallback():
 
 
 # ============================================================
-# TPEx 完整取得流程
+# TPEx 取得總流程
 # ============================================================
 
 def fetch_tpex():
@@ -1930,12 +2126,8 @@ def fetch_tpex():
         "取得 TPEx 上櫃股票"
     )
 
-    log(
-        f"主 API：{TPEX_API}"
-    )
-
     # --------------------------------------------------------
-    # 主 API
+    # 1. TPEx 官方基本資料 API
     # --------------------------------------------------------
 
     try:
@@ -1951,31 +2143,65 @@ def fetch_tpex():
     except Exception as exc:
 
         log(
-            f"⚠️ TPEx 主 API 失敗："
+            "⚠️ TPEx 主 API 失敗："
             f"{exc}"
         )
 
+    time.sleep(
+        REQUEST_DELAY
+    )
+
     # --------------------------------------------------------
-    # 備援
+    # 2. TPEx mainboard quotes
     # --------------------------------------------------------
 
     try:
 
-        records = fetch_tpex_fallback()
+        records = fetch_tpex_quotes()
 
         log(
-            "✓ TPEx 備援成功"
+            "✓ TPEx 備援 A 成功"
         )
 
         return records
 
     except Exception as exc:
 
-        raise RuntimeError(
-            "TPEx 主 API 與備援 API "
-            "均失敗："
+        log(
+            "⚠️ TPEx 備援 A 失敗："
             f"{exc}"
-        ) from exc
+        )
+
+    time.sleep(
+        REQUEST_DELAY
+    )
+
+    # --------------------------------------------------------
+    # 3. Legacy fallback
+    # --------------------------------------------------------
+
+    try:
+
+        records = fetch_tpex_legacy()
+
+        log(
+            "✓ TPEx 備援 B 成功"
+        )
+
+        return records
+
+    except Exception as exc:
+
+        log(
+            "⚠️ TPEx 備援 B 失敗："
+            f"{exc}"
+        )
+
+    raise RuntimeError(
+        "TPEx 主 API、"
+        "備援 A、"
+        "備援 B 均失敗"
+    )
 
 
 # ============================================================
@@ -2085,34 +2311,33 @@ def validate_universe(
     )
 
     # --------------------------------------------------------
-    # TWSE 安全門
+    # 數量安全門
     # --------------------------------------------------------
 
-    if listed_count < MIN_TWSE_STOCKS:
+    if (
+        listed_count
+        < MIN_TWSE_STOCKS
+    ):
 
         raise RuntimeError(
             "TWSE 最終數量不足："
-            f"{listed_count} < "
-            f"{MIN_TWSE_STOCKS}"
+            f"{listed_count}"
         )
 
-    # --------------------------------------------------------
-    # TPEx 安全門
-    # --------------------------------------------------------
-
-    if otc_count < MIN_TPEX_STOCKS:
+    if (
+        otc_count
+        < MIN_TPEX_STOCKS
+    ):
 
         raise RuntimeError(
             "TPEx 最終數量不足："
-            f"{otc_count} < "
-            f"{MIN_TPEX_STOCKS}"
+            f"{otc_count}"
         )
 
-    # --------------------------------------------------------
-    # Total 安全門
-    # --------------------------------------------------------
-
-    if total < MIN_TOTAL_STOCKS:
+    if (
+        total
+        < MIN_TOTAL_STOCKS
+    ):
 
         raise RuntimeError(
             "全市場股票數量不足："
@@ -2121,7 +2346,7 @@ def validate_universe(
         )
 
     # --------------------------------------------------------
-    # 數量一致性
+    # 一致性
     # --------------------------------------------------------
 
     if total != (
@@ -2130,21 +2355,12 @@ def validate_universe(
     ):
 
         raise RuntimeError(
-            "total 與 "
-            "上市/上櫃數量不一致"
-        )
-
-    if total != len(
-        combined
-    ):
-
-        raise RuntimeError(
-            "total 與 combined "
+            "total 與上市/上櫃"
             "數量不一致"
         )
 
     # --------------------------------------------------------
-    # 每筆資料再次驗證
+    # 每筆再次驗證
     # --------------------------------------------------------
 
     for code, item in (
@@ -2157,8 +2373,9 @@ def validate_universe(
         ):
 
             raise RuntimeError(
-                f"Universe item "
-                f"格式錯誤：{code}"
+                "Universe item "
+                "格式錯誤："
+                f"{code}"
             )
 
         if item.get(
@@ -2166,7 +2383,7 @@ def validate_universe(
         ) != code:
 
             raise RuntimeError(
-                f"code 不一致："
+                "code 不一致："
                 f"{code}"
             )
 
@@ -2175,7 +2392,7 @@ def validate_universe(
         ):
 
             raise RuntimeError(
-                f"股票代號無效："
+                "股票代號無效："
                 f"{code}"
             )
 
@@ -2184,7 +2401,7 @@ def validate_universe(
         ):
 
             raise RuntimeError(
-                f"股票名稱為空："
+                "股票名稱為空："
                 f"{code}"
             )
 
@@ -2198,14 +2415,16 @@ def validate_universe(
         ):
 
             raise RuntimeError(
-                f"market 錯誤："
+                "market 錯誤："
                 f"{code} -> "
                 f"{market}"
             )
 
-        expected_symbol = make_symbol(
-            code,
-            market,
+        expected_symbol = (
+            make_symbol(
+                code,
+                market,
+            )
         )
 
         if item.get(
@@ -2213,22 +2432,21 @@ def validate_universe(
         ) != expected_symbol:
 
             raise RuntimeError(
-                f"symbol 錯誤："
+                "symbol 錯誤："
                 f"{code}"
             )
 
     log(
-        f"✓ total = "
-        f"{total}"
+        f"✓ total = {total}"
     )
 
     log(
-        f"✓ listed_stocks = "
+        "✓ listed_stocks = "
         f"{listed_count}"
     )
 
     log(
-        f"✓ otc_stocks = "
+        "✓ otc_stocks = "
         f"{otc_count}"
     )
 
@@ -2238,7 +2456,8 @@ def validate_universe(
     )
 
     log(
-        "✓ Universe validation passed"
+        "✓ Universe validation "
+        "passed"
     )
 
     return True
@@ -2287,16 +2506,23 @@ def build_output(
     )
 
     data = {
+
         "version": VERSION,
-        "generated_at": generated_at,
-        "total": len(items),
-        "listed_stocks": len(
-            twse_records
-        ),
-        "otc_stocks": len(
-            tpex_records
-        ),
-        "items": items,
+
+        "generated_at":
+            generated_at,
+
+        "total":
+            len(items),
+
+        "listed_stocks":
+            len(twse_records),
+
+        "otc_stocks":
+            len(tpex_records),
+
+        "items":
+            items,
     }
 
     return data
@@ -2316,8 +2542,7 @@ def validate_output(
     ):
 
         raise RuntimeError(
-            "輸出資料不是 "
-            "JSON object"
+            "輸出資料不是 JSON object"
         )
 
     items = data.get(
@@ -2349,16 +2574,16 @@ def validate_output(
             "items 不是 list"
         )
 
-    if total <= 0:
-
-        raise RuntimeError(
-            "禁止產生 total = 0"
-        )
-
     if not items:
 
         raise RuntimeError(
             "禁止產生空 items"
+        )
+
+    if total <= 0:
+
+        raise RuntimeError(
+            "禁止產生 total = 0"
         )
 
     if total != len(
@@ -2370,25 +2595,33 @@ def validate_output(
             "數量不一致"
         )
 
-    if listed < MIN_TWSE_STOCKS:
+    if (
+        listed
+        < MIN_TWSE_STOCKS
+    ):
 
         raise RuntimeError(
             "listed_stocks "
             "安全門檻失敗"
         )
 
-    if otc < MIN_TPEX_STOCKS:
+    if (
+        otc
+        < MIN_TPEX_STOCKS
+    ):
 
         raise RuntimeError(
             "otc_stocks "
             "安全門檻失敗"
         )
 
-    if total < MIN_TOTAL_STOCKS:
+    if (
+        total
+        < MIN_TOTAL_STOCKS
+    ):
 
         raise RuntimeError(
-            "total "
-            "安全門檻失敗"
+            "total 安全門檻失敗"
         )
 
     if total != (
@@ -2401,11 +2634,18 @@ def validate_output(
             "otc_stocks"
         )
 
+    seen_codes = set()
+
+    seen_symbols = set()
+
+    market_counts = {
+        "TWSE": 0,
+        "TPEx": 0,
+    }
+
     # --------------------------------------------------------
     # 每筆輸出資料驗證
     # --------------------------------------------------------
-
-    seen_codes = set()
 
     for item in items:
 
@@ -2458,9 +2698,11 @@ def validate_output(
                 "market 無效"
             )
 
-        expected_symbol = make_symbol(
-            code,
-            market,
+        expected_symbol = (
+            make_symbol(
+                code,
+                market,
+            )
         )
 
         if symbol != expected_symbol:
@@ -2473,12 +2715,51 @@ def validate_output(
         if code in seen_codes:
 
             raise RuntimeError(
-                f"股票代號重複："
+                "股票代號重複："
                 f"{code}"
+            )
+
+        if symbol in seen_symbols:
+
+            raise RuntimeError(
+                "Yahoo symbol 重複："
+                f"{symbol}"
             )
 
         seen_codes.add(
             code
+        )
+
+        seen_symbols.add(
+            symbol
+        )
+
+        market_counts[
+            market
+        ] += 1
+
+    # --------------------------------------------------------
+    # 市場數量再次驗證
+    # --------------------------------------------------------
+
+    if (
+        market_counts["TWSE"]
+        != listed
+    ):
+
+        raise RuntimeError(
+            "TWSE item 數量與 "
+            "listed_stocks 不一致"
+        )
+
+    if (
+        market_counts["TPEx"]
+        != otc
+    ):
+
+        raise RuntimeError(
+            "TPEx item 數量與 "
+            "otc_stocks 不一致"
         )
 
     return True
@@ -2493,9 +2774,7 @@ def atomic_write_json(
     path,
 ):
 
-    path = Path(
-        path
-    )
+    path = Path(path)
 
     path.parent.mkdir(
         parents=True,
@@ -2534,7 +2813,7 @@ def atomic_write_json(
             temp_file.flush()
 
         # ----------------------------------------------------
-        # 原子替換
+        # Atomic replace
         # ----------------------------------------------------
 
         temp_path.replace(
@@ -2553,9 +2832,81 @@ def atomic_write_json(
                 temp_path.unlink()
 
             except Exception:
+
                 pass
 
         raise
+
+
+# ============================================================
+# 既有 Universe 資訊
+# ============================================================
+
+def log_existing_universe():
+
+    if not UNIVERSE_FILE.exists():
+
+        log(
+            "ℹ️ 尚無既有 "
+            "universe.json"
+        )
+
+        return
+
+    try:
+
+        size = (
+            UNIVERSE_FILE.stat()
+            .st_size
+        )
+
+        log(
+            "✓ 保留既有 "
+            "universe.json"
+        )
+
+        log(
+            "  Existing file size："
+            f"{size} bytes"
+        )
+
+        # ----------------------------------------------------
+        # 如果可以讀，顯示目前 total
+        # ----------------------------------------------------
+
+        try:
+
+            with open(
+                UNIVERSE_FILE,
+                "r",
+                encoding="utf-8",
+            ) as file:
+
+                old_data = json.load(
+                    file
+                )
+
+            old_total = old_data.get(
+                "total"
+            )
+
+            if old_total is not None:
+
+                log(
+                    "  Existing total："
+                    f"{old_total}"
+                )
+
+        except Exception:
+
+            pass
+
+    except Exception:
+
+        log(
+            "✓ 保留既有 "
+            "universe.json"
+        )
 
 
 # ============================================================
@@ -2617,33 +2968,35 @@ def main():
         # 1. TWSE
         # ====================================================
 
-        twse_records = fetch_twse()
-
-        # ====================================================
-        # 2. REQUEST DELAY
-        # ====================================================
+        twse_records = (
+            fetch_twse()
+        )
 
         time.sleep(
             REQUEST_DELAY
         )
 
         # ====================================================
-        # 3. TPEx
+        # 2. TPEx
         # ====================================================
 
-        tpex_records = fetch_tpex()
-
-        # ====================================================
-        # 4. 合併
-        # ====================================================
-
-        combined = merge_universe(
-            twse_records,
-            tpex_records,
+        tpex_records = (
+            fetch_tpex()
         )
 
         # ====================================================
-        # 5. Universe 最終驗證
+        # 3. 合併
+        # ====================================================
+
+        combined = (
+            merge_universe(
+                twse_records,
+                tpex_records,
+            )
+        )
+
+        # ====================================================
+        # 4. Universe 最終驗證
         # ====================================================
 
         validate_universe(
@@ -2653,7 +3006,7 @@ def main():
         )
 
         # ====================================================
-        # 6. 建立輸出
+        # 5. 建立輸出
         # ====================================================
 
         data = build_output(
@@ -2663,7 +3016,7 @@ def main():
         )
 
         # ====================================================
-        # 7. 輸出前再次驗證
+        # 6. 輸出前再次驗證
         # ====================================================
 
         validate_output(
@@ -2671,7 +3024,7 @@ def main():
         )
 
         # ====================================================
-        # 8. Atomic Write
+        # 7. Atomic Write
         # ====================================================
 
         section(
@@ -2688,32 +3041,32 @@ def main():
         )
 
         log(
-            f"✓ Output："
+            "✓ Output："
             f"{UNIVERSE_FILE}"
         )
 
         log(
-            f"✓ Version："
+            "✓ Version："
             f"{data['version']}"
         )
 
         log(
-            f"✓ Generated at："
+            "✓ Generated at："
             f"{data['generated_at']}"
         )
 
         log(
-            f"✓ TWSE："
+            "✓ TWSE："
             f"{data['listed_stocks']}"
         )
 
         log(
-            f"✓ TPEx："
+            "✓ TPEx："
             f"{data['otc_stocks']}"
         )
 
         log(
-            f"✓ Total："
+            "✓ Total："
             f"{data['total']}"
         )
 
@@ -2726,6 +3079,7 @@ def main():
     except KeyboardInterrupt:
 
         log("")
+
         log(
             "⚠️ 使用者中止執行"
         )
@@ -2735,14 +3089,12 @@ def main():
     except Exception as exc:
 
         # ----------------------------------------------------
-        # 最重要安全機制
+        # 安全機制
         #
         # 任何錯誤：
-        #
         # 不刪除
         # 不清空
         # 不覆蓋
-        #
         # 原有 universe.json
         # ----------------------------------------------------
 
@@ -2755,39 +3107,7 @@ def main():
             f"{exc}"
         )
 
-        if UNIVERSE_FILE.exists():
-
-            try:
-
-                size = (
-                    UNIVERSE_FILE.stat()
-                    .st_size
-                )
-
-                log(
-                    "✓ 保留既有 "
-                    "universe.json"
-                )
-
-                log(
-                    f"  Existing "
-                    f"file size："
-                    f"{size} bytes"
-                )
-
-            except Exception:
-
-                log(
-                    "✓ 保留既有 "
-                    "universe.json"
-                )
-
-        else:
-
-            log(
-                "ℹ️ 尚無既有 "
-                "universe.json"
-            )
+        log_existing_universe()
 
         return 1
 
