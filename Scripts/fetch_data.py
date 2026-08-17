@@ -4,60 +4,78 @@
 """
 台股 AI 選股系統 fetch_data.py V10.4
 
-V10.4 全市場 Universe 正式版
+============================================================
+V10.4 核心架構
 ============================================================
 
-【Universe 核心架構】
+【A. Universe】
+1. 第一順位使用 Data/stocks.json
+2. stocks.json 不存在 / 空檔 / 格式錯誤時，不直接 exit
+3. 第二順位從既有 prices.json["universe"]["items"] 完整恢復
+4. 第三順位使用固定 FALLBACK_UNIVERSE
+5. 不從 today_selected / top10 / etfs / bonds 反推 Universe
+6. prices.json 永遠保存完整 universe.items
+7. 避免 Universe 因行情失敗而永久縮小
 
-1. 不再使用固定 11 檔 FALLBACK_UNIVERSE
-2. 優先從官方市場資料建立 Universe
-3. TWSE：
-   - 上市股票
-   - 上市 ETF
-4. TPEx：
-   - 上櫃股票
-   - 上櫃 ETF（若官方來源可取得）
-5. 保留債券 ETF，例如：
-   00720B
-6. 排除：
-   - 權證
-   - ETN
-   - 一般債券
-   - 其他非股票 / 非 ETF 證券
-7. stocks.json 僅作快取，不再限制市場 Universe
-8. prices.json universe 僅作快取，不再作為主要 Universe
-9. 官方 Universe 取得數量異常時直接失敗
-10. 禁止回退至舊 11 檔清單
+【B. 行情】
+8. Yahoo Finance chart API
+9. 使用日線資料
+10. 不使用今天日期假造收盤
+11. latest_market_date 使用實際行情資料日期
+12. 不把非交易日當成交易日
+13. 歷史不足 MIN_HISTORY_ROWS 時不判定
 
-【行情】
+【C. 技術指標】
+14. MA5
+15. MA20
+16. MACD 12/26/9
+17. RSI 14
+18. KD 9/3/3
+19. Volume MA5
 
-11. Yahoo Finance Chart API
-12. 歷史資料 260 日
-13. 最少 80 個交易日
-14. 不使用今天日期假造行情
-15. latest_market_date 使用實際行情日期
-16. date 與 latest_market_date 完全一致
+【D. 六項核心條件】
+20. MACD > MACD Signal
+21. RSI > 50
+22. K > D
+23. Volume >= Volume MA5 × 1.5
+24. Close > MA20
+25. MA20[t] > MA20[t-1]
 
-【六項核心條件】
+【E. 核心選股】
+26. 六項條件必須在同一有效交易日成立
+27. today_selected = 6/6 股票
+28. Top10 只從 today_selected 排序
+29. ETF / Bond / Stock 分類保留
 
-17. MACD > Signal
-18. RSI > 50
-19. K > D
-20. Volume >= MA5 Volume × 1.5
-21. Close > MA20
-22. MA20[today] > MA20[yesterday]
+【F. 資料品質】
+30. change_pct 無法計算時保持 null
+31. 不灌 0
+32. 指標資料不足時保持 null
+33. 不允許 NaN / Infinity 寫入 JSON
+34. JSON 原子寫入
+35. 寫入前清理 numpy / pandas 型別
+36. data_quality 記錄本次資料狀態
 
-23. 六項條件必須同一交易日成立
-24. today_selected = 股票 6/6
+【G. Backtest】
+37. 使用交易日
+38. 不使用日曆日
+39. 使用完整 history_cache
+40. 不使用 latest_market_date 過濾後的資料做回測
 
-【資料品質】
+【H. Dashboard 相容】
+41. 保留 date
+42. 保留 latest_market_date
+43. 保留 today_selected
+44. 保留 top10
+45. 保留 etfs
+46. 保留 bonds
+47. 保留 universe
+48. 保留 summary
+49. 保留 market_breadth
+50. 保留 backtest_summary
+51. schema_version = ui.v10
+52. status = success
 
-25. 非交易日保護
-26. 歷史資料不足保護
-27. change_pct 無資料保持 null
-28. Universe source 寫入 JSON
-29. Universe count 寫入 JSON
-30. 原子寫入 prices.json
 ============================================================
 """
 
@@ -67,14 +85,11 @@ import json
 import math
 import time
 import warnings
-import re
-
 from datetime import datetime, timedelta, timezone
 
 import pandas as pd
 import numpy as np
 import requests
-
 
 warnings.filterwarnings("ignore")
 
@@ -107,43 +122,9 @@ STOCKS_FILE = os.path.join(
     "stocks.json"
 )
 
-
-# ============================================================
-# 官方 Universe API
-# ============================================================
-
-TWSE_BASE_URL = (
-    "https://openapi.twse.com.tw/v1"
-)
-
-TWSE_LISTED_COMPANY_API = (
-    TWSE_BASE_URL
-    + "/opendata/t187ap03_L"
-)
-
-TWSE_FUND_API = (
-    TWSE_BASE_URL
-    + "/opendata/t187ap47_L"
-)
-
-
-# TPEx 官方公開查詢頁 / API 若可取得則使用。
-# 保留多組候選 URL，避免單一路徑變動造成整個 Universe 失敗。
-TPEX_API_CANDIDATES = [
-
-    "https://www.tpex.org.tw/openapi/v1/tpex_mainboard_peratio_analysis",
-
-    "https://www.tpex.org.tw/openapi/v1/tpex_esb_latest_statistics",
-
-    "https://www.tpex.org.tw/openapi/v1/tpex_listed_company",
-
-]
-
-
 YAHOO_CHART_URL = (
     "https://query1.finance.yahoo.com/v8/finance/chart/{symbol}"
 )
-
 
 TIMEZONE_TW = timezone(
     timedelta(hours=8)
@@ -157,7 +138,7 @@ BACKTEST_HORIZON = 10
 
 REQUEST_SLEEP = 0.15
 
-UNIVERSE_MIN_EXPECTED = 500
+REQUEST_TIMEOUT = 20
 
 
 # ============================================================
@@ -165,24 +146,102 @@ UNIVERSE_MIN_EXPECTED = 500
 # ============================================================
 
 CORE_CONDITION_NAMES = [
-
     "MACD 多方",
-
     "RSI > 50",
-
     "KD 多方",
-
     "成交量 ≥ MA5 × 1.5",
-
     "股價 > MA20",
-
     "MA20 今日 > 昨日",
-
 ]
 
 CORE_TOTAL = len(
     CORE_CONDITION_NAMES
 )
+
+
+# ============================================================
+# 固定恢復 Universe
+# ============================================================
+
+FALLBACK_UNIVERSE = [
+    {
+        "code": "0050",
+        "symbol": "0050.TW",
+        "name": "元大台灣50",
+        "market": "TW",
+        "type": "etf",
+    },
+    {
+        "code": "0056",
+        "symbol": "0056.TW",
+        "name": "元大高股息",
+        "market": "TW",
+        "type": "etf",
+    },
+    {
+        "code": "00713",
+        "symbol": "00713.TW",
+        "name": "元大台灣高息低波",
+        "market": "TW",
+        "type": "etf",
+    },
+    {
+        "code": "2884",
+        "symbol": "2884.TW",
+        "name": "玉山金",
+        "market": "TW",
+        "type": "stock",
+    },
+    {
+        "code": "2891",
+        "symbol": "2891.TW",
+        "name": "中信金",
+        "market": "TW",
+        "type": "stock",
+    },
+    {
+        "code": "2330",
+        "symbol": "2330.TW",
+        "name": "台積電",
+        "market": "TW",
+        "type": "stock",
+    },
+    {
+        "code": "3081",
+        "symbol": "3081.TWO",
+        "name": "聯亞",
+        "market": "TWO",
+        "type": "stock",
+    },
+    {
+        "code": "2368",
+        "symbol": "2368.TW",
+        "name": "金像電",
+        "market": "TW",
+        "type": "stock",
+    },
+    {
+        "code": "6669",
+        "symbol": "6669.TW",
+        "name": "緯穎",
+        "market": "TW",
+        "type": "stock",
+    },
+    {
+        "code": "1303",
+        "symbol": "1303.TW",
+        "name": "南亞",
+        "market": "TW",
+        "type": "stock",
+    },
+    {
+        "code": "3017",
+        "symbol": "3017.TW",
+        "name": "奇鋐",
+        "market": "TW",
+        "type": "stock",
+    },
+]
 
 
 # ============================================================
@@ -193,21 +252,19 @@ SESSION = requests.Session()
 
 SESSION.headers.update(
     {
-        "User-Agent":
-            (
-                "Mozilla/5.0 "
-                "(Windows NT 10.0; Win64; x64) "
-                "AppleWebKit/537.36 "
-                "(KHTML, like Gecko) "
-                "Chrome/126.0 Safari/537.36"
-            ),
-
-        "Accept":
-            "application/json,text/plain,*/*",
-
-        "Accept-Language":
-            "zh-TW,zh;q=0.9,en;q=0.8",
-
+        "User-Agent": (
+            "Mozilla/5.0 "
+            "(Windows NT 10.0; Win64; x64) "
+            "AppleWebKit/537.36 "
+            "(KHTML, like Gecko) "
+            "Chrome/126.0 Safari/537.36"
+        ),
+        "Accept": (
+            "application/json,text/plain,*/*"
+        ),
+        "Accept-Language": (
+            "zh-TW,zh;q=0.9,en;q=0.8"
+        ),
     }
 )
 
@@ -217,14 +274,12 @@ SESSION.headers.update(
 # ============================================================
 
 def now_tw():
-
     return datetime.now(
         TIMEZONE_TW
     )
 
 
 def today_tw_date():
-
     return now_tw().date()
 
 
@@ -236,10 +291,16 @@ def safe_float(
     value,
     default=None
 ):
-
     try:
 
         if value is None:
+            return default
+
+        if isinstance(
+            value,
+            str
+        ) and not value.strip():
+
             return default
 
         x = float(value)
@@ -258,25 +319,16 @@ def safe_float(
 # JSON 清理
 # ============================================================
 
-def clean_json_value(
-    value
-):
+def clean_json_value(value):
 
-    if isinstance(
-        value,
-        dict
-    ):
+    if isinstance(value, dict):
 
         return {
-            str(k):
-                clean_json_value(v)
+            str(k): clean_json_value(v)
             for k, v in value.items()
         }
 
-    if isinstance(
-        value,
-        list
-    ):
+    if isinstance(value, list):
 
         return [
             clean_json_value(v)
@@ -316,7 +368,6 @@ def clean_json_value(
             return None
 
     except Exception:
-
         pass
 
     return value
@@ -326,25 +377,22 @@ def clean_json_value(
 # Symbol
 # ============================================================
 
-def normalize_symbol(
-    symbol
-):
+def normalize_symbol(symbol):
 
     if symbol is None:
         return None
 
-    s = str(
-        symbol
-    ).strip()
+    s = str(symbol).strip()
 
     if not s:
         return None
+
+    s = s.upper()
 
     if (
         s.endswith(".TW")
         or s.endswith(".TWO")
     ):
-
         return s
 
     if "." in s:
@@ -361,44 +409,31 @@ def normalize_symbol(
 
     if len(s) >= 4:
 
-        return (
-            s
-            + ".TW"
-        )
+        return s + ".TW"
 
     return s
 
 
-def extract_code(
-    symbol
-):
+def extract_code(symbol):
 
     if symbol is None:
         return ""
 
-    s = str(
-        symbol
-    ).strip()
+    s = str(symbol).strip()
 
     if "." in s:
 
-        s = s.split(
-            "."
-        )[0]
+        s = s.split(".")[0]
 
     return s
 
 
-def infer_market(
-    symbol
-):
+def infer_market(symbol):
 
     if symbol is None:
         return "TW"
 
-    s = str(
-        symbol
-    ).upper()
+    s = str(symbol).upper()
 
     if s.endswith(".TWO"):
         return "TWO"
@@ -406,23 +441,14 @@ def infer_market(
     if s.endswith(".TW"):
         return "TW"
 
+    if s.endswith(".HK"):
+        return "HK"
+
     return "OTHER"
 
 
 # ============================================================
-# Asset classification
-#
-# 重要：
-# 「債券 ETF」不是 bond。
-#
-# 00720B：
-# type = etf
-#
-# 一般債券：
-# type = bond
-#
-# 本系統後續會保留 ETF，
-# 但 today_selected 只使用 stock。
+# 分類
 # ============================================================
 
 def infer_type(
@@ -431,119 +457,54 @@ def infer_type(
     existing_type=None
 ):
 
+    if existing_type:
+
+        t = str(
+            existing_type
+        ).lower().strip()
+
+        if t in (
+            "stock",
+            "stocks",
+            "equity"
+        ):
+
+            return "stock"
+
+        if t in (
+            "etf",
+            "fund",
+            "index_fund"
+        ):
+
+            return "etf"
+
+        if t in (
+            "bond",
+            "bond_etf",
+            "bond-fund"
+        ):
+
+            return "bond"
+
     c = str(
-        code or ""
+        code
     ).upper()
 
     n = str(
-        name or ""
-    ).strip()
-
-    t = str(
-        existing_type or ""
-    ).lower()
-
-    if t in (
-        "stock",
-        "stocks",
-        "equity"
-    ):
-
-        return "stock"
-
-    if t in (
-        "etf",
-        "fund",
-        "index_fund"
-    ):
-
-        return "etf"
-
-    if t in (
-        "bond",
-        "bond_etf",
-        "bond-fund"
-    ):
-
-        # 如果來源明確說是 ETF，
-        # 絕不能因名稱有債而改成 bond。
-        if "etf" in t:
-            return "etf"
-
-        return "bond"
-
-    # --------------------------------------------------------
-    # 明確 ETF 關鍵字
-    # --------------------------------------------------------
-
-    etf_keywords = [
-
-        "ETF",
-
-        "基金",
-
-        "指數股票型基金",
-
-        "債券ETF",
-
-        "債券型ETF",
-
-        "國債ETF",
-
-        "公司債ETF",
-
-        "投資級債ETF",
-
-        "高收益債ETF",
-
-    ]
-
-    upper_name = n.upper()
-
-    if any(
-        str(k).upper() in upper_name
-        for k in etf_keywords
-    ):
-
-        return "etf"
-
-    # --------------------------------------------------------
-    # TWSE ETF 常見 00 開頭代號
-    #
-    # 注意：
-    # 這只是輔助判斷。
-    # 官方基金 API 判定為 ETF 時優先。
-    # --------------------------------------------------------
-
-    if (
-        c.isdigit()
-        and c.startswith("00")
-    ):
-
-        return "etf"
-
-    # --------------------------------------------------------
-    # 一般債券
-    # --------------------------------------------------------
+        name
+    )
 
     bond_keywords = [
-
-        "債券",
-
+        "美債",
         "公債",
-
-        "國債",
-
         "公司債",
-
-        "金融債",
-
         "投等債",
-
+        "金融債",
         "高收益債",
-
+        "債券",
         "新興公債",
-
+        "債",
     ]
 
     if any(
@@ -553,72 +514,41 @@ def infer_type(
 
         return "bond"
 
+    if c.startswith("00"):
+
+        return "etf"
+
+    etf_keywords = [
+        "ETF",
+        "高股息",
+        "台灣50",
+        "永續",
+        "正2",
+        "反1",
+        "科技",
+        "AI",
+        "航運",
+        "資安",
+        "收息",
+        "優選",
+        "成長",
+        "ESG",
+    ]
+
+    upper_name = n.upper()
+
+    if any(
+        k.upper() in upper_name
+        for k in etf_keywords
+    ):
+
+        return "etf"
+
     return "stock"
 
 
 # ============================================================
-# Generic field finder
-# ============================================================
-
-def find_field(
-    item,
-    candidates
-):
-
-    if not isinstance(
-        item,
-        dict
-    ):
-
-        return None
-
-    # exact
-    for key in candidates:
-
-        if key in item:
-
-            value = item.get(
-                key
-            )
-
-            if value is not None:
-
-                return value
-
-    # normalized matching
-    normalized = {}
-
-    for key in item.keys():
-
-        normalized[
-            re.sub(
-                r"[\s_\-（）()]+",
-                "",
-                str(key).lower()
-            )
-        ] = key
-
-    for candidate in candidates:
-
-        normalized_candidate = re.sub(
-            r"[\s_\-（）()]+",
-            "",
-            str(candidate).lower()
-        )
-
-        if normalized_candidate in normalized:
-
-            return item.get(
-                normalized[
-                    normalized_candidate
-                ]
-            )
-
-    return None
-
-
-# ============================================================
-# Normalize Universe
+# Universe normalize
 # ============================================================
 
 def normalize_universe_items(
@@ -636,6 +566,10 @@ def normalize_universe_items(
 
     for item in raw_items:
 
+        # ----------------------------------------------------
+        # 字串
+        # ----------------------------------------------------
+
         if isinstance(
             item,
             str
@@ -645,37 +579,33 @@ def normalize_universe_items(
                 item
             )
 
-            if not symbol:
-                continue
+            if symbol:
 
-            code = extract_code(
-                symbol
-            )
+                code = extract_code(
+                    symbol
+                )
 
-            result.append(
-                {
-                    "code":
-                        code,
-
-                    "symbol":
-                        symbol,
-
-                    "name":
-                        code,
-
-                    "market":
-                        infer_market(
-                            symbol
-                        ),
-
-                    "type":
-                        infer_type(
-                            code
-                        ),
-                }
-            )
+                result.append(
+                    {
+                        "code": code,
+                        "symbol": symbol,
+                        "name": code,
+                        "market":
+                            infer_market(
+                                symbol
+                            ),
+                        "type":
+                            infer_type(
+                                code
+                            ),
+                    }
+                )
 
             continue
+
+        # ----------------------------------------------------
+        # Dict
+        # ----------------------------------------------------
 
         if not isinstance(
             item,
@@ -684,68 +614,18 @@ def normalize_universe_items(
 
             continue
 
-        code = find_field(
-            item,
-            [
-                "公司代號",
-                "股票代號",
-                "證券代號",
-                "代號",
-                "Code",
-                "code",
-                "stock_id",
-                "stock_code",
-            ]
+        symbol = (
+            item.get("symbol")
+            or item.get("ticker")
+            or item.get("yahoo_symbol")
+            or item.get("yf_symbol")
         )
 
-        symbol = find_field(
-            item,
-            [
-                "symbol",
-                "ticker",
-                "yahoo_symbol",
-                "yf_symbol",
-                "YahooSymbol",
-            ]
+        code = (
+            item.get("code")
+            or item.get("stock_code")
+            or item.get("id")
         )
-
-        name = find_field(
-            item,
-            [
-                "公司簡稱",
-                "證券名稱",
-                "股票名稱",
-                "名稱",
-                "Name",
-                "name",
-                "stock_name",
-            ]
-        )
-
-        market = find_field(
-            item,
-            [
-                "market",
-                "市場",
-                "Market",
-            ]
-        )
-
-        existing_type = find_field(
-            item,
-            [
-                "type",
-                "類型",
-                "category",
-                "asset_type",
-            ]
-        )
-
-        if not code and symbol:
-
-            code = extract_code(
-                symbol
-            )
 
         if not symbol and code:
 
@@ -753,8 +633,13 @@ def normalize_universe_items(
                 code
             )
 
-        if not symbol:
+        else:
 
+            symbol = normalize_symbol(
+                symbol
+            )
+
+        if not symbol:
             continue
 
         code = str(
@@ -762,24 +647,23 @@ def normalize_universe_items(
             or extract_code(symbol)
         ).strip()
 
-        name = str(
-            name
+        name = (
+            item.get("name")
+            or item.get("stock_name")
+            or item.get("title")
             or code
-        ).strip()
-
-        symbol = normalize_symbol(
-            symbol
         )
 
-        if not symbol:
+        existing_type = (
+            item.get("type")
+            or item.get("category")
+            or item.get("asset_type")
+        )
 
-            continue
-
-        if not market:
-
-            market = infer_market(
-                symbol
-            )
+        market = (
+            item.get("market")
+            or infer_market(symbol)
+        )
 
         asset_type = infer_type(
             code,
@@ -789,576 +673,29 @@ def normalize_universe_items(
 
         result.append(
             {
-                "code":
-                    code,
-
-                "symbol":
-                    symbol,
-
-                "name":
-                    name,
-
-                "market":
-                    str(market),
-
-                "type":
-                    asset_type,
+                "code": code,
+                "symbol": symbol,
+                "name": str(name),
+                "market": str(market),
+                "type": asset_type,
             }
         )
 
     # --------------------------------------------------------
-    # 去重
+    # 去除重複 symbol
     # --------------------------------------------------------
 
     unique = {}
 
     for item in result:
 
-        symbol = item[
-            "symbol"
-        ]
-
         unique[
-            symbol
+            item["symbol"]
         ] = item
 
     return list(
         unique.values()
     )
-
-
-# ============================================================
-# 官方 API JSON
-# ============================================================
-
-def get_json(
-    url,
-    timeout=30
-):
-
-    try:
-
-        response = SESSION.get(
-            url,
-            timeout=timeout
-        )
-
-        if response.status_code != 200:
-
-            print(
-                f"⚠️ API HTTP "
-                f"{response.status_code}: "
-                f"{url}"
-            )
-
-            return None
-
-        text = (
-            response.text
-            .lstrip("\ufeff")
-            .strip()
-        )
-
-        if not text:
-
-            return None
-
-        return json.loads(
-            text
-        )
-
-    except Exception as e:
-
-        print(
-            f"⚠️ API 讀取失敗："
-            f"{url}"
-        )
-
-        print(
-            f"   {e}"
-        )
-
-        return None
-
-
-# ============================================================
-# TWSE 上市股票
-# ============================================================
-
-def fetch_twse_listed_stocks():
-
-    print(
-        "📡 TWSE：取得上市公司基本資料..."
-    )
-
-    data = get_json(
-        TWSE_LISTED_COMPANY_API
-    )
-
-    if not isinstance(
-        data,
-        list
-    ):
-
-        return []
-
-    result = []
-
-    for row in data:
-
-        if not isinstance(
-            row,
-            dict
-        ):
-
-            continue
-
-        code = find_field(
-            row,
-            [
-                "公司代號",
-                "股票代號",
-                "證券代號",
-                "Code",
-            ]
-        )
-
-        name = find_field(
-            row,
-            [
-                "公司簡稱",
-                "證券名稱",
-                "股票名稱",
-                "名稱",
-                "Name",
-            ]
-        )
-
-        if code is None:
-            continue
-
-        code = str(
-            code
-        ).strip()
-
-        # ----------------------------------------------------
-        # 上市股票基本代號通常為 4 碼
-        # 排除權證等長代號
-        # ----------------------------------------------------
-
-        if not re.fullmatch(
-            r"\d{4}",
-            code
-        ):
-
-            continue
-
-        symbol = (
-            code
-            + ".TW"
-        )
-
-        result.append(
-            {
-                "code":
-                    code,
-
-                "symbol":
-                    symbol,
-
-                "name":
-                    str(
-                        name or code
-                    ),
-
-                "market":
-                    "TW",
-
-                "type":
-                    "stock",
-            }
-        )
-
-    print(
-        f"   TWSE 上市股票："
-        f"{len(result)}"
-    )
-
-    return result
-
-
-# ============================================================
-# TWSE ETF
-# ============================================================
-
-def fetch_twse_etfs():
-
-    print(
-        "📡 TWSE：取得基金 / ETF 基本資料..."
-    )
-
-    data = get_json(
-        TWSE_FUND_API
-    )
-
-    if not isinstance(
-        data,
-        list
-    ):
-
-        print(
-            "⚠️ TWSE ETF API 無有效資料"
-        )
-
-        return []
-
-    result = []
-
-    for row in data:
-
-        if not isinstance(
-            row,
-            dict
-        ):
-
-            continue
-
-        code = find_field(
-            row,
-            [
-                "基金代號",
-                "證券代號",
-                "股票代號",
-                "代號",
-                "Code",
-                "code",
-            ]
-        )
-
-        name = find_field(
-            row,
-            [
-                "基金名稱",
-                "證券名稱",
-                "基金簡稱",
-                "名稱",
-                "Name",
-                "name",
-            ]
-        )
-
-        if code is None:
-            continue
-
-        code = str(
-            code
-        ).strip()
-
-        # ----------------------------------------------------
-        # ETF 代號通常 4~6 碼。
-        # 不使用「00 開頭」作唯一判斷。
-        # ----------------------------------------------------
-
-        if not re.fullmatch(
-            r"\d{4,6}[A-Za-z]?",
-            code
-        ):
-
-            continue
-
-        name = str(
-            name or code
-        ).strip()
-
-        result.append(
-            {
-                "code":
-                    code,
-
-                "symbol":
-                    code + ".TW",
-
-                "name":
-                    name,
-
-                "market":
-                    "TW",
-
-                # 關鍵：
-                # 即使名稱包含「債」，
-                # 官方基金資料仍然分類 ETF。
-                "type":
-                    "etf",
-            }
-        )
-
-    print(
-        f"   TWSE ETF："
-        f"{len(result)}"
-    )
-
-    return result
-
-
-# ============================================================
-# TPEx Universe
-#
-# TPEx 官方公開 API 介面可能因版本調整，
-# 因此採多來源容錯。
-# ============================================================
-
-def parse_tpex_items(
-    data
-):
-
-    if not isinstance(
-        data,
-        list
-    ):
-
-        return []
-
-    result = []
-
-    for row in data:
-
-        if not isinstance(
-            row,
-            dict
-        ):
-
-            continue
-
-        code = find_field(
-            row,
-            [
-                "證券代號",
-                "股票代號",
-                "公司代號",
-                "代號",
-                "SecuritiesCompanyCode",
-                "Code",
-                "code",
-            ]
-        )
-
-        name = find_field(
-            row,
-            [
-                "證券名稱",
-                "股票名稱",
-                "公司簡稱",
-                "名稱",
-                "SecuritiesCompanyName",
-                "Name",
-                "name",
-            ]
-        )
-
-        if code is None:
-            continue
-
-        code = str(
-            code
-        ).strip()
-
-        if not re.fullmatch(
-            r"\d{4,6}[A-Za-z]?",
-            code
-        ):
-
-            continue
-
-        # ----------------------------------------------------
-        # 排除明顯權證
-        # ----------------------------------------------------
-
-        upper_code = code.upper()
-
-        if len(code) > 4:
-
-            # 多數權證不是單純四碼股票代號
-            # 但不因為 ETF 長代號而全部排除。
-            if not (
-                code.isdigit()
-                or (
-                    code[:4].isdigit()
-                    and code[4:].isalpha()
-                )
-            ):
-
-                continue
-
-        result.append(
-            {
-                "code":
-                    code,
-
-                "symbol":
-                    code + ".TWO",
-
-                "name":
-                    str(
-                        name or code
-                    ),
-
-                "market":
-                    "TWO",
-
-                "type":
-                    infer_type(
-                        code,
-                        name
-                    ),
-            }
-        )
-
-    return result
-
-
-def fetch_tpex_universe():
-
-    print(
-        "📡 TPEx：取得上櫃市場 Universe..."
-    )
-
-    for url in TPEX_API_CANDIDATES:
-
-        data = get_json(
-            url,
-            timeout=20
-        )
-
-        result = parse_tpex_items(
-            data
-        )
-
-        if result:
-
-            print(
-                f"   TPEx API："
-                f"{len(result)}"
-            )
-
-            return result
-
-    # --------------------------------------------------------
-    # 如果 TPEx API 介面變動，
-    # 不可以假裝成功。
-    # --------------------------------------------------------
-
-    print(
-        "⚠️ TPEx 公開 Universe API "
-        "目前未取得有效資料"
-    )
-
-    return []
-
-
-# ============================================================
-# 官方全市場 Universe
-# ============================================================
-
-def build_market_universe():
-
-    print()
-    print(
-        "=" * 64
-    )
-
-    print(
-        "🌐 建立全台股市場 Universe"
-    )
-
-    print(
-        "=" * 64
-    )
-
-    twse_stocks = (
-        fetch_twse_listed_stocks()
-    )
-
-    twse_etfs = (
-        fetch_twse_etfs()
-    )
-
-    tpex_items = (
-        fetch_tpex_universe()
-    )
-
-    combined = (
-        twse_stocks
-        + twse_etfs
-        + tpex_items
-    )
-
-    universe = normalize_universe_items(
-        combined
-    )
-
-    # --------------------------------------------------------
-    # 嚴格驗證
-    # --------------------------------------------------------
-
-    if not universe:
-
-        raise RuntimeError(
-            "官方市場 API 未取得任何 Universe"
-        )
-
-    if len(universe) < UNIVERSE_MIN_EXPECTED:
-
-        raise RuntimeError(
-            "Universe 數量異常："
-            f"{len(universe)} 檔。"
-            "拒絕使用縮小後的 Universe。"
-        )
-
-    # --------------------------------------------------------
-    # 統計
-    # --------------------------------------------------------
-
-    stock_count = sum(
-        1
-        for x in universe
-        if x["type"] == "stock"
-    )
-
-    etf_count = sum(
-        1
-        for x in universe
-        if x["type"] == "etf"
-    )
-
-    bond_count = sum(
-        1
-        for x in universe
-        if x["type"] == "bond"
-    )
-
-    print()
-
-    print(
-        "🌐 官方 Universe 完成"
-    )
-
-    print(
-        f"   總數：{len(universe)}"
-    )
-
-    print(
-        f"   股票：{stock_count}"
-    )
-
-    print(
-        f"   ETF：{etf_count}"
-    )
-
-    print(
-        f"   一般債券：{bond_count}"
-    )
-
-    return universe
 
 
 # ============================================================
@@ -1371,6 +708,10 @@ def load_stocks_json():
         STOCKS_FILE
     ):
 
+        print(
+            "⚠️ 找不到 Data/stocks.json"
+        )
+
         return []
 
     try:
@@ -1379,11 +720,15 @@ def load_stocks_json():
             STOCKS_FILE
         ) == 0:
 
+            print(
+                "⚠️ Data/stocks.json 是空檔案"
+            )
+
             return []
 
     except Exception:
 
-        return []
+        pass
 
     try:
 
@@ -1393,11 +738,13 @@ def load_stocks_json():
             encoding="utf-8"
         ) as f:
 
-            data = json.load(
-                f
-            )
+            data = json.load(f)
 
-    except Exception:
+    except Exception as e:
+
+        print(
+            f"⚠️ stocks.json 讀取失敗：{e}"
+        )
 
         return []
 
@@ -1423,12 +770,16 @@ def load_stocks_json():
             "symbols"
         ):
 
+            candidate = data.get(
+                key
+            )
+
             if isinstance(
-                data.get(key),
+                candidate,
                 list
             ):
 
-                raw_items = data[key]
+                raw_items = candidate
 
                 break
 
@@ -1436,13 +787,20 @@ def load_stocks_json():
 
         raw_items = []
 
-    return normalize_universe_items(
+    result = normalize_universe_items(
         raw_items
     )
 
+    print(
+        f"📚 stocks.json universe："
+        f"{len(result)}"
+    )
+
+    return result
+
 
 # ============================================================
-# prices.json Universe cache
+# 從 prices.json 恢復 Universe
 # ============================================================
 
 def load_universe_from_prices():
@@ -1451,7 +809,27 @@ def load_universe_from_prices():
         PRICES_FILE
     ):
 
+        print(
+            "ℹ️ 找不到既有 prices.json"
+        )
+
         return []
+
+    try:
+
+        if os.path.getsize(
+            PRICES_FILE
+        ) == 0:
+
+            print(
+                "⚠️ 既有 prices.json 是空檔"
+            )
+
+            return []
+
+    except Exception:
+
+        pass
 
     try:
 
@@ -1461,11 +839,13 @@ def load_universe_from_prices():
             encoding="utf-8"
         ) as f:
 
-            data = json.load(
-                f
-            )
+            data = json.load(f)
 
-    except Exception:
+    except Exception as e:
+
+        print(
+            f"⚠️ prices.json 讀取失敗：{e}"
+        )
 
         return []
 
@@ -1485,6 +865,11 @@ def load_universe_from_prices():
         dict
     ):
 
+        print(
+            "⚠️ prices.json "
+            "沒有完整 universe 結構"
+        )
+
         return []
 
     items = universe.get(
@@ -1496,131 +881,104 @@ def load_universe_from_prices():
         list
     ):
 
+        print(
+            "⚠️ prices.json "
+            "universe.items 不存在或格式錯誤"
+        )
+
         return []
 
-    return normalize_universe_items(
+    result = normalize_universe_items(
         items
     )
 
+    if result:
+
+        print(
+            "♻️ 已從既有 prices.json "
+            f"恢復完整 universe：{len(result)} 檔"
+        )
+
+    return result
+
 
 # ============================================================
-# Universe Loader
-#
-# 優先順序：
-#
-# 1. 官方市場 API
-# 2. prices.json 完整 Universe
-# 3. stocks.json
-#
-# 注意：
-# 絕不使用 11 檔 fallback。
+# Universe
 # ============================================================
 
 def load_existing_universe():
 
     # --------------------------------------------------------
-    # 第一順位：官方全市場
+    # 第一順位：stocks.json
     # --------------------------------------------------------
 
-    try:
+    result = load_stocks_json()
 
-        universe = (
-            build_market_universe()
-        )
-
-        if universe:
-
-            print()
-            print(
-                "✅ Universe source："
-                "official_market_api"
-            )
-
-            return (
-                universe,
-                "official_market_api",
-                False
-            )
-
-    except Exception as e:
-
-        print()
-        print(
-            "⚠️ 官方市場 Universe 建立失敗："
-        )
+    if result:
 
         print(
-            f"   {e}"
+            "✅ Universe source：stocks.json"
+        )
+
+        return (
+            result,
+            "stocks.json",
+            False
         )
 
     # --------------------------------------------------------
     # 第二順位：prices.json
-    #
-    # 但必須是大 Universe。
     # --------------------------------------------------------
 
-    cached = (
-        load_universe_from_prices()
-    )
+    result = load_universe_from_prices()
 
-    if len(cached) >= UNIVERSE_MIN_EXPECTED:
+    if result:
 
-        print()
         print(
-            "⚠️ 官方 API 暫時不可用"
+            "⚠️ stocks.json 無法使用"
         )
 
         print(
-            "♻️ 使用 prices.json "
-            "完整 Universe 快取"
+            "✅ Universe source：prices.json"
         )
 
         return (
-            cached,
-            "prices.json_cache",
+            result,
+            "prices.json",
             True
         )
 
     # --------------------------------------------------------
-    # 第三順位：stocks.json
-    #
-    # 同樣要求不能是 11 檔。
+    # 第三順位：fallback
     # --------------------------------------------------------
 
-    stocks = (
-        load_stocks_json()
+    print(
+        "⚠️ 無法從 stocks.json / prices.json "
+        "取得完整 universe"
     )
 
-    if len(stocks) >= UNIVERSE_MIN_EXPECTED:
+    print(
+        "♻️ Universe source：fallback"
+    )
 
-        print()
-        print(
-            "⚠️ 官方 API 暫時不可用"
-        )
+    result = normalize_universe_items(
+        FALLBACK_UNIVERSE
+    )
 
-        print(
-            "♻️ 使用 stocks.json "
-            "完整 Universe 快取"
-        )
+    print(
+        f"✅ 固定恢復 universe："
+        f"{len(result)} 檔"
+    )
 
-        return (
-            stocks,
-            "stocks.json_cache",
-            True
-        )
-
-    # --------------------------------------------------------
-    # 最終失敗
-    # --------------------------------------------------------
-
-    raise RuntimeError(
-        "無法建立全市場 Universe。"
-        "已禁止使用舊 11 檔 fallback。"
+    return (
+        result,
+        "fallback",
+        True
     )
 
 
 # ============================================================
-# Yahoo History
+# Yahoo Finance
 # ============================================================
 
 def fetch_yahoo_history(
@@ -1633,8 +991,7 @@ def fetch_yahoo_history(
 
     period1 = (
         period2
-        - HISTORY_PERIOD_DAYS
-        * 86400
+        - HISTORY_PERIOD_DAYS * 86400
     )
 
     url = YAHOO_CHART_URL.format(
@@ -1642,20 +999,11 @@ def fetch_yahoo_history(
     )
 
     params = {
-        "period1":
-            period1,
-
-        "period2":
-            period2,
-
-        "interval":
-            "1d",
-
-        "events":
-            "history",
-
-        "includeAdjustedClose":
-            "true",
+        "period1": period1,
+        "period2": period2,
+        "interval": "1d",
+        "events": "history",
+        "includeAdjustedClose": "true",
     }
 
     try:
@@ -1663,10 +1011,15 @@ def fetch_yahoo_history(
         response = SESSION.get(
             url,
             params=params,
-            timeout=20
+            timeout=REQUEST_TIMEOUT
         )
 
         if response.status_code != 200:
+
+            print(
+                f"⚠️ {symbol} HTTP "
+                f"{response.status_code}"
+            )
 
             return None
 
@@ -1677,9 +1030,7 @@ def fetch_yahoo_history(
             {}
         )
 
-        if chart.get(
-            "error"
-        ):
+        if chart.get("error"):
 
             return None
 
@@ -1716,11 +1067,9 @@ def fetch_yahoo_history(
 
         quote = quote_list[0]
 
-        adjclose_list = (
-            indicators.get(
-                "adjclose",
-                []
-            )
+        adjclose_list = indicators.get(
+            "adjclose",
+            []
         )
 
         adjclose = None
@@ -1729,9 +1078,7 @@ def fetch_yahoo_history(
 
             adjclose = (
                 adjclose_list[0]
-                .get(
-                    "adjclose"
-                )
+                .get("adjclose")
             )
 
         rows = []
@@ -1767,20 +1114,15 @@ def fetch_yahoo_history(
 
             try:
 
-                dt = (
-                    datetime.fromtimestamp(
-                        ts,
-                        tz=timezone.utc
-                    )
-                    .astimezone(
-                        TIMEZONE_TW
-                    )
+                dt = datetime.fromtimestamp(
+                    ts,
+                    tz=timezone.utc
+                ).astimezone(
+                    TIMEZONE_TW
                 )
 
-                date_str = (
-                    dt.strftime(
-                        "%Y-%m-%d"
-                    )
+                date_str = dt.strftime(
+                    "%Y-%m-%d"
                 )
 
             except Exception:
@@ -1831,13 +1173,11 @@ def fetch_yahoo_history(
             )
 
             if close is None:
-
                 continue
 
             rows.append(
                 {
-                    "date":
-                        date_str,
+                    "date": date_str,
 
                     "open":
                         safe_float(
@@ -1872,7 +1212,6 @@ def fetch_yahoo_history(
             )
 
         if not rows:
-
             return None
 
         df = pd.DataFrame(
@@ -1896,25 +1235,42 @@ def fetch_yahoo_history(
         )
 
         df = df.drop_duplicates(
-            subset=[
-                "date"
-            ],
+            subset=["date"],
             keep="last"
         )
+
+        # ----------------------------------------------------
+        # 不允許未來日期
+        # ----------------------------------------------------
+
+        today = pd.Timestamp(
+            today_tw_date()
+        )
+
+        df = df[
+            df["date"] <= today
+        ]
 
         df = df.reset_index(
             drop=True
         )
 
+        if df.empty:
+            return None
+
         return df
 
-    except Exception:
+    except Exception as e:
+
+        print(
+            f"⚠️ {symbol} Yahoo 讀取失敗：{e}"
+        )
 
         return None
 
 
 # ============================================================
-# Technical Indicators
+# 技術指標
 # ============================================================
 
 def calculate_indicators(
@@ -1943,19 +1299,28 @@ def calculate_indicators(
         errors="coerce"
     ).fillna(0)
 
+    # --------------------------------------------------------
     # MA5
+    # --------------------------------------------------------
+
     df["ma5"] = close.rolling(
         5,
         min_periods=5
     ).mean()
 
+    # --------------------------------------------------------
     # MA20
+    # --------------------------------------------------------
+
     df["ma20"] = close.rolling(
         20,
         min_periods=20
     ).mean()
 
-    # MACD
+    # --------------------------------------------------------
+    # MACD 12 / 26 / 9
+    # --------------------------------------------------------
+
     ema12 = close.ewm(
         span=12,
         adjust=False,
@@ -1969,8 +1334,7 @@ def calculate_indicators(
     ).mean()
 
     df["macd"] = (
-        ema12
-        - ema26
+        ema12 - ema26
     )
 
     df["macd_signal"] = (
@@ -1986,7 +1350,10 @@ def calculate_indicators(
         - df["macd_signal"]
     )
 
-    # RSI
+    # --------------------------------------------------------
+    # RSI 14
+    # --------------------------------------------------------
+
     delta = close.diff()
 
     gain = delta.clip(
@@ -2011,8 +1378,7 @@ def calculate_indicators(
 
     rs = (
         avg_gain
-        /
-        avg_loss.replace(
+        / avg_loss.replace(
             0,
             np.nan
         )
@@ -2020,11 +1386,9 @@ def calculate_indicators(
 
     df["rsi"] = (
         100
-        -
-        (
+        - (
             100
-            /
-            (1 + rs)
+            / (1 + rs)
         )
     )
 
@@ -2032,14 +1396,16 @@ def calculate_indicators(
         (
             avg_loss == 0
         )
-        &
-        (
+        & (
             avg_gain > 0
         ),
         "rsi"
     ] = 100.0
 
-    # KD
+    # --------------------------------------------------------
+    # KD 9 / 3 / 3
+    # --------------------------------------------------------
+
     lowest_low = low.rolling(
         9,
         min_periods=9
@@ -2060,19 +1426,16 @@ def calculate_indicators(
             close
             - lowest_low
         )
-        /
-        denominator.replace(
+        / denominator.replace(
             0,
             np.nan
         )
     ) * 100
 
     k_values = []
-
     d_values = []
 
     previous_k = 50.0
-
     previous_d = 50.0
 
     for value in rsv:
@@ -2091,14 +1454,12 @@ def calculate_indicators(
 
         current_k = (
             previous_k * 2 / 3
-            +
-            float(value) / 3
+            + float(value) / 3
         )
 
         current_d = (
             previous_d * 2 / 3
-            +
-            current_k / 3
+            + current_k / 3
         )
 
         k_values.append(
@@ -2110,14 +1471,16 @@ def calculate_indicators(
         )
 
         previous_k = current_k
-
         previous_d = current_d
 
     df["k"] = k_values
 
     df["d"] = d_values
 
+    # --------------------------------------------------------
     # Volume MA5
+    # --------------------------------------------------------
+
     df["volume_ma5"] = volume.rolling(
         5,
         min_periods=5
@@ -2127,7 +1490,7 @@ def calculate_indicators(
 
 
 # ============================================================
-# Core conditions
+# 六項核心條件
 # ============================================================
 
 def evaluate_core_conditions(
@@ -2140,17 +1503,10 @@ def evaluate_core_conditions(
     ):
 
         return {
-            "core_score":
-                0,
-
-            "core_total":
-                CORE_TOTAL,
-
-            "core_pass":
-                False,
-
-            "conditions":
-                {},
+            "core_score": 0,
+            "core_total": CORE_TOTAL,
+            "core_pass": False,
+            "conditions": {},
         }
 
     latest = df.iloc[-1]
@@ -2159,21 +1515,26 @@ def evaluate_core_conditions(
 
     conditions = {}
 
+    # --------------------------------------------------------
+    # 1. MACD
+    # --------------------------------------------------------
+
     conditions[
         "MACD 多方"
     ] = (
         pd.notna(
             latest["macd"]
         )
-        and
-        pd.notna(
+        and pd.notna(
             latest["macd_signal"]
         )
-        and
-        latest["macd"]
-        >
-        latest["macd_signal"]
+        and latest["macd"]
+        > latest["macd_signal"]
     )
+
+    # --------------------------------------------------------
+    # 2. RSI
+    # --------------------------------------------------------
 
     conditions[
         "RSI > 50"
@@ -2181,9 +1542,12 @@ def evaluate_core_conditions(
         pd.notna(
             latest["rsi"]
         )
-        and
-        latest["rsi"] > 50
+        and latest["rsi"] > 50
     )
+
+    # --------------------------------------------------------
+    # 3. KD
+    # --------------------------------------------------------
 
     conditions[
         "KD 多方"
@@ -2191,15 +1555,16 @@ def evaluate_core_conditions(
         pd.notna(
             latest["k"]
         )
-        and
-        pd.notna(
+        and pd.notna(
             latest["d"]
         )
-        and
-        latest["k"]
-        >
-        latest["d"]
+        and latest["k"]
+        > latest["d"]
     )
+
+    # --------------------------------------------------------
+    # 4. Volume
+    # --------------------------------------------------------
 
     conditions[
         "成交量 ≥ MA5 × 1.5"
@@ -2207,18 +1572,19 @@ def evaluate_core_conditions(
         pd.notna(
             latest["volume"]
         )
-        and
-        pd.notna(
+        and pd.notna(
             latest["volume_ma5"]
         )
-        and
-        latest["volume"]
-        >=
-        (
+        and latest["volume"]
+        >= (
             latest["volume_ma5"]
             * 1.5
         )
     )
+
+    # --------------------------------------------------------
+    # 5. Close > MA20
+    # --------------------------------------------------------
 
     conditions[
         "股價 > MA20"
@@ -2226,15 +1592,16 @@ def evaluate_core_conditions(
         pd.notna(
             latest["close"]
         )
-        and
-        pd.notna(
+        and pd.notna(
             latest["ma20"]
         )
-        and
-        latest["close"]
-        >
-        latest["ma20"]
+        and latest["close"]
+        > latest["ma20"]
     )
+
+    # --------------------------------------------------------
+    # 6. MA20 rising
+    # --------------------------------------------------------
 
     conditions[
         "MA20 今日 > 昨日"
@@ -2242,40 +1609,31 @@ def evaluate_core_conditions(
         pd.notna(
             latest["ma20"]
         )
-        and
-        pd.notna(
+        and pd.notna(
             previous["ma20"]
         )
-        and
-        latest["ma20"]
-        >
-        previous["ma20"]
+        and latest["ma20"]
+        > previous["ma20"]
     )
 
     score = sum(
         1
-        for value
-        in conditions.values()
+        for value in conditions.values()
         if bool(value)
     )
 
     return {
-        "core_score":
-            score,
-
-        "core_total":
-            CORE_TOTAL,
-
+        "core_score": score,
+        "core_total": CORE_TOTAL,
         "core_pass":
             score == CORE_TOTAL,
-
         "conditions":
             conditions,
     }
 
 
 # ============================================================
-# Score
+# AI Score
 # ============================================================
 
 def calculate_score(
@@ -2297,14 +1655,11 @@ def calculate_score(
 
     score = (
         core["core_score"]
-        /
-        CORE_TOTAL
+        / CORE_TOTAL
     ) * 70.0
 
     rsi = safe_float(
-        latest.get(
-            "rsi"
-        )
+        latest.get("rsi")
     )
 
     if rsi is not None:
@@ -2329,30 +1684,23 @@ def calculate_score(
 
     if (
         macd_hist is not None
-        and
-        macd_hist > 0
+        and macd_hist > 0
     ):
 
         score += 5.0
 
     close = safe_float(
-        latest.get(
-            "close"
-        )
+        latest.get("close")
     )
 
     ma20 = safe_float(
-        latest.get(
-            "ma20"
-        )
+        latest.get("ma20")
     )
 
     if (
         close is not None
-        and
-        ma20 is not None
-        and
-        ma20 != 0
+        and ma20 is not None
+        and ma20 != 0
     ):
 
         bias = (
@@ -2370,9 +1718,7 @@ def calculate_score(
             )
 
     volume = safe_float(
-        latest.get(
-            "volume"
-        )
+        latest.get("volume")
     )
 
     volume_ma5 = safe_float(
@@ -2383,16 +1729,13 @@ def calculate_score(
 
     if (
         volume is not None
-        and
-        volume_ma5 is not None
-        and
-        volume_ma5 > 0
+        and volume_ma5 is not None
+        and volume_ma5 > 0
     ):
 
         ratio = (
             volume
-            /
-            volume_ma5
+            / volume_ma5
         )
 
         if ratio >= 1.5:
@@ -2413,22 +1756,19 @@ def calculate_score(
 
     strength = (
         core["core_score"]
-        /
-        CORE_TOTAL
+        / CORE_TOTAL
     ) * 100
 
     if (
         macd_hist is not None
-        and
-        macd_hist > 0
+        and macd_hist > 0
     ):
 
         strength += 3
 
     if (
         rsi is not None
-        and
-        rsi > 50
+        and rsi > 50
     ):
 
         strength += 3
@@ -2558,8 +1898,11 @@ def analyze_symbol(
         previous["date"]
     ).date()
 
-    if latest_date > today_tw_date():
+    # --------------------------------------------------------
+    # 防止未來日期
+    # --------------------------------------------------------
 
+    if latest_date > today_tw_date():
         return None
 
     close = safe_float(
@@ -2572,10 +1915,8 @@ def analyze_symbol(
 
     if (
         close is None
-        or
-        previous_close is None
-        or
-        previous_close == 0
+        or previous_close is None
+        or previous_close == 0
     ):
 
         change_pct = None
@@ -2585,11 +1926,9 @@ def analyze_symbol(
         change_pct = (
             (
                 close
-                -
-                previous_close
+                - previous_close
             )
-            /
-            previous_close
+            / previous_close
         ) * 100
 
     core = evaluate_core_conditions(
@@ -2621,20 +1960,24 @@ def analyze_symbol(
             item["type"],
 
         "price":
-            round(
-                close,
-                4
-            )
-            if close is not None
-            else None,
+            (
+                round(
+                    close,
+                    4
+                )
+                if close is not None
+                else None
+            ),
 
         "change_pct":
-            round(
-                change_pct,
-                4
-            )
-            if change_pct is not None
-            else None,
+            (
+                round(
+                    change_pct,
+                    4
+                )
+                if change_pct is not None
+                else None
+            ),
 
         "ai_score":
             ai_score,
@@ -2728,24 +2071,22 @@ def analyze_symbol(
                 safe_float(
                     latest["volume_ma5"]
                 ),
-
         },
 
-        "core_conditions":
-            {
-                key:
-                    bool(value)
-                for
-                key, value
-                in
-                core["conditions"].items()
-            },
+        "core_conditions": {
 
+            key: bool(value)
+
+            for key, value
+            in core[
+                "conditions"
+            ].items()
+        },
     }
 
 
 # ============================================================
-# Latest market date
+# 最新交易日
 # ============================================================
 
 def determine_latest_market_date(
@@ -2780,16 +2121,13 @@ def determine_latest_market_date(
             continue
 
     if not dates:
-
         return None
 
-    return max(
-        dates
-    )
+    return max(dates)
 
 
 # ============================================================
-# Filter same market date
+# 最新交易日過濾
 # ============================================================
 
 def filter_to_latest_market_date(
@@ -2798,7 +2136,6 @@ def filter_to_latest_market_date(
 ):
 
     if latest_market_date is None:
-
         return []
 
     target = (
@@ -2824,9 +2161,7 @@ def calculate_market_breadth(
 ):
 
     rising = 0
-
     falling = 0
-
     unchanged = 0
 
     for item in results:
@@ -2838,9 +2173,1166 @@ def calculate_market_breadth(
         )
 
         if change is None:
-
             continue
 
         if change > 0:
 
             rising += 1
+
+        elif change < 0:
+
+            falling += 1
+
+        else:
+
+            unchanged += 1
+
+    total = (
+        rising
+        + falling
+        + unchanged
+    )
+
+    return {
+
+        "rising":
+            rising,
+
+        "falling":
+            falling,
+
+        "unchanged":
+            unchanged,
+
+        "total_with_change":
+            total,
+    }
+
+
+# ============================================================
+# Backtest
+# ============================================================
+
+def calculate_backtest(
+    universe,
+    history_cache
+):
+
+    a_results = []
+    b_results = []
+
+    eligible_symbols = 0
+
+    for item in universe:
+
+        symbol = item[
+            "symbol"
+        ]
+
+        df = history_cache.get(
+            symbol
+        )
+
+        if df is None:
+            continue
+
+        if len(df) < (
+            MIN_HISTORY_ROWS
+            + BACKTEST_HORIZON
+        ):
+
+            continue
+
+        eligible_symbols += 1
+
+        df = calculate_indicators(
+            df
+        )
+
+        idx_a = (
+            len(df)
+            - 1
+            - BACKTEST_HORIZON
+        )
+
+        idx_b = idx_a - 1
+
+        if idx_b < 1:
+            continue
+
+        for idx, bucket in (
+            (idx_a, a_results),
+            (idx_b, b_results),
+        ):
+
+            row = df.iloc[
+                idx
+            ]
+
+            prev = df.iloc[
+                idx - 1
+            ]
+
+            conditions = [
+
+                (
+                    pd.notna(
+                        row["macd"]
+                    )
+                    and pd.notna(
+                        row["macd_signal"]
+                    )
+                    and row["macd"]
+                    > row["macd_signal"]
+                ),
+
+                (
+                    pd.notna(
+                        row["rsi"]
+                    )
+                    and row["rsi"] > 50
+                ),
+
+                (
+                    pd.notna(
+                        row["k"]
+                    )
+                    and pd.notna(
+                        row["d"]
+                    )
+                    and row["k"]
+                    > row["d"]
+                ),
+
+                (
+                    pd.notna(
+                        row["volume"]
+                    )
+                    and pd.notna(
+                        row["volume_ma5"]
+                    )
+                    and row["volume"]
+                    >= (
+                        row["volume_ma5"]
+                        * 1.5
+                    )
+                ),
+
+                (
+                    pd.notna(
+                        row["close"]
+                    )
+                    and pd.notna(
+                        row["ma20"]
+                    )
+                    and row["close"]
+                    > row["ma20"]
+                ),
+
+                (
+                    pd.notna(
+                        row["ma20"]
+                    )
+                    and pd.notna(
+                        prev["ma20"]
+                    )
+                    and row["ma20"]
+                    > prev["ma20"]
+                ),
+            ]
+
+            if not all(
+                conditions
+            ):
+                continue
+
+            future_idx = (
+                idx
+                + BACKTEST_HORIZON
+            )
+
+            if future_idx >= len(df):
+                continue
+
+            entry = safe_float(
+                row["close"]
+            )
+
+            future = safe_float(
+                df.iloc[
+                    future_idx
+                ]["close"]
+            )
+
+            if (
+                entry is None
+                or future is None
+            ):
+
+                continue
+
+            bucket.append(
+                future > entry
+            )
+
+    def win_rate(values):
+
+        if not values:
+            return None
+
+        return round(
+            (
+                sum(values)
+                / len(values)
+            ) * 100,
+            2
+        )
+
+    a_rate = win_rate(
+        a_results
+    )
+
+    b_rate = win_rate(
+        b_results
+    )
+
+    if (
+        a_rate is None
+        and b_rate is None
+    ):
+
+        better = None
+
+    elif b_rate is None:
+
+        better = "A_latest_cross"
+
+    elif a_rate is None:
+
+        better = "B_previous_cross"
+
+    elif a_rate > b_rate:
+
+        better = "A_latest_cross"
+
+    elif b_rate > a_rate:
+
+        better = "B_previous_cross"
+
+    else:
+
+        better = "tie"
+
+    return {
+
+        "comparison_horizon":
+            BACKTEST_HORIZON,
+
+        "method":
+            "trading_days",
+
+        "better_by_win_rate":
+            better,
+
+        "A_10d_win_rate":
+            a_rate,
+
+        "B_10d_win_rate":
+            b_rate,
+
+        "A_sample_count":
+            len(a_results),
+
+        "B_sample_count":
+            len(b_results),
+
+        "eligible_history_count":
+            eligible_symbols,
+    }
+
+
+# ============================================================
+# Universe Summary
+# ============================================================
+
+def build_universe_summary(
+    universe
+):
+
+    stock_count = sum(
+        1
+        for x in universe
+        if x["type"] == "stock"
+    )
+
+    etf_count = sum(
+        1
+        for x in universe
+        if x["type"] == "etf"
+    )
+
+    bond_count = sum(
+        1
+        for x in universe
+        if x["type"] == "bond"
+    )
+
+    return {
+
+        "stock_count":
+            stock_count,
+
+        "etf_count":
+            etf_count,
+
+        "bond_count":
+            bond_count,
+
+        "total_count":
+            len(universe),
+
+        "items":
+            universe,
+    }
+
+
+# ============================================================
+# Save JSON
+# ============================================================
+
+def save_json(
+    data
+):
+
+    os.makedirs(
+        DATA_DIR,
+        exist_ok=True
+    )
+
+    data = clean_json_value(
+        data
+    )
+
+    temp_file = (
+        PRICES_FILE
+        + ".tmp"
+    )
+
+    with open(
+        temp_file,
+        "w",
+        encoding="utf-8"
+    ) as f:
+
+        json.dump(
+            data,
+            f,
+            ensure_ascii=False,
+            indent=2,
+            allow_nan=False
+        )
+
+        f.write("\n")
+
+    os.replace(
+        temp_file,
+        PRICES_FILE
+    )
+
+
+# ============================================================
+# Main
+# ============================================================
+
+def main():
+
+    print("=" * 64)
+
+    print(
+        "台股 AI 選股系統 "
+        f"fetch_data.py {VERSION}"
+    )
+
+    print("=" * 64)
+
+    start_time = now_tw()
+
+    print(
+        "開始時間：",
+        start_time.strftime(
+            "%Y-%m-%d %H:%M:%S"
+        )
+    )
+
+    print()
+
+    # ========================================================
+    # 1. Universe
+    # ========================================================
+
+    (
+        universe,
+        universe_source,
+        universe_recovered
+    ) = load_existing_universe()
+
+    if not universe:
+
+        print(
+            "❌ 無法建立股票 Universe"
+        )
+
+        sys.exit(1)
+
+    print(
+        f"📊 本次掃描 Universe："
+        f"{len(universe)} 檔"
+    )
+
+    print(
+        f"📌 Universe source："
+        f"{universe_source}"
+    )
+
+    print(
+        f"📌 Universe recovered："
+        f"{universe_recovered}"
+    )
+
+    print()
+
+    # ========================================================
+    # 2. Fetch
+    # ========================================================
+
+    analyzed = []
+
+    history_cache = {}
+
+    total = len(
+        universe
+    )
+
+    success_count = 0
+    fail_count = 0
+
+    for idx, item in enumerate(
+        universe,
+        start=1
+    ):
+
+        symbol = item[
+            "symbol"
+        ]
+
+        print(
+            f"[{idx}/{total}] "
+            f"{symbol} "
+            f"{item['name']}"
+        )
+
+        df = fetch_yahoo_history(
+            symbol
+        )
+
+        if df is None:
+
+            print(
+                "   ❌ 無有效行情"
+            )
+
+            fail_count += 1
+
+            time.sleep(
+                REQUEST_SLEEP
+            )
+
+            continue
+
+        if len(df) < MIN_HISTORY_ROWS:
+
+            print(
+                f"   ❌ 歷史資料不足："
+                f"{len(df)} rows"
+            )
+
+            fail_count += 1
+
+            time.sleep(
+                REQUEST_SLEEP
+            )
+
+            continue
+
+        history_cache[
+            symbol
+        ] = df
+
+        result = analyze_symbol(
+            item,
+            df
+        )
+
+        if result is None:
+
+            print(
+                "   ❌ 無法完成技術分析"
+            )
+
+            fail_count += 1
+
+            time.sleep(
+                REQUEST_SLEEP
+            )
+
+            continue
+
+        analyzed.append(
+            result
+        )
+
+        success_count += 1
+
+        print(
+            f"   ✅ "
+            f"{result['market_date']} "
+            f"| "
+            f"{result['core_score']}/"
+            f"{CORE_TOTAL}"
+        )
+
+        time.sleep(
+            REQUEST_SLEEP
+        )
+
+    print()
+
+    print(
+        f"行情成功：{success_count}"
+    )
+
+    print(
+        f"行情失敗：{fail_count}"
+    )
+
+    if not analyzed:
+
+        print(
+            "❌ 沒有任何有效行情資料"
+        )
+
+        sys.exit(1)
+
+    # ========================================================
+    # 3. 最新有效交易日
+    # ========================================================
+
+    latest_market_date = (
+        determine_latest_market_date(
+            analyzed
+        )
+    )
+
+    if latest_market_date is None:
+
+        print(
+            "❌ 找不到有效交易日"
+        )
+
+        sys.exit(1)
+
+    print()
+
+    print(
+        "最新有效交易日：",
+        latest_market_date.isoformat()
+    )
+
+    print(
+        "今天台灣日期：",
+        today_tw_date().isoformat()
+    )
+
+    if (
+        latest_market_date
+        < today_tw_date()
+    ):
+
+        print(
+            "ℹ️ 今天沒有新的有效行情，"
+            "使用最近一個有效交易日。"
+        )
+
+    # ========================================================
+    # 4. 僅使用同一交易日
+    # ========================================================
+
+    analyzed = (
+        filter_to_latest_market_date(
+            analyzed,
+            latest_market_date
+        )
+    )
+
+    if not analyzed:
+
+        print(
+            "❌ 最新交易日沒有有效資料"
+        )
+
+        sys.exit(1)
+
+    # ========================================================
+    # 5. 分類
+    # ========================================================
+
+    stocks = [
+        x
+        for x in analyzed
+        if x["type"] == "stock"
+    ]
+
+    etfs = [
+        x
+        for x in analyzed
+        if x["type"] == "etf"
+    ]
+
+    bonds = [
+        x
+        for x in analyzed
+        if x["type"] == "bond"
+    ]
+
+    # ========================================================
+    # 6. 六項核心條件
+    # ========================================================
+
+    today_selected = [
+        x
+        for x in stocks
+        if x["core_pass"] is True
+    ]
+
+    # ========================================================
+    # 7. Top10
+    # ========================================================
+
+    top10 = sorted(
+        today_selected,
+        key=lambda x: (
+            x.get(
+                "ai_score"
+            ) or 0,
+
+            x.get(
+                "strength_score"
+            ) or 0,
+        ),
+        reverse=True
+    )[:10]
+
+    # ========================================================
+    # 8. ETF
+    # ========================================================
+
+    etfs = sorted(
+        etfs,
+        key=lambda x: (
+            x.get(
+                "ai_score"
+            ) or 0,
+
+            x.get(
+                "strength_score"
+            ) or 0,
+        ),
+        reverse=True
+    )
+
+    # ========================================================
+    # 9. Bond
+    # ========================================================
+
+    bonds = sorted(
+        bonds,
+        key=lambda x: (
+            x.get(
+                "ai_score"
+            ) or 0,
+
+            x.get(
+                "strength_score"
+            ) or 0,
+        ),
+        reverse=True
+    )
+
+    # ========================================================
+    # 10. Market Breadth
+    # ========================================================
+
+    market_breadth = (
+        calculate_market_breadth(
+            analyzed
+        )
+    )
+
+    # ========================================================
+    # 11. Backtest
+    #
+    # 注意：
+    # 一定使用完整 history_cache
+    # ========================================================
+
+    backtest = (
+        calculate_backtest(
+            universe,
+            history_cache
+        )
+    )
+
+    # ========================================================
+    # 12. Universe summary
+    # ========================================================
+
+    universe_summary = (
+        build_universe_summary(
+            universe
+        )
+    )
+
+    # ========================================================
+    # 13. Data quality
+    # ========================================================
+
+    same_date_count = sum(
+        1
+        for x in analyzed
+        if x.get(
+            "market_date"
+        )
+        == latest_market_date.isoformat()
+    )
+
+    data_quality = {
+
+        "today_is_market_date":
+            (
+                latest_market_date
+                == today_tw_date()
+            ),
+
+        "latest_market_date_valid":
+            True,
+
+        "non_trading_day_protected":
+            (
+                latest_market_date
+                != today_tw_date()
+            ),
+
+        "analyzed_count":
+            len(analyzed),
+
+        "successful_history_count":
+            success_count,
+
+        "failed_history_count":
+            fail_count,
+
+        "universe_count":
+            len(universe),
+
+        "universe_source":
+            universe_source,
+
+        "universe_recovered":
+            universe_recovered,
+
+        "same_market_date_count":
+            same_date_count,
+
+        "min_history_rows":
+            MIN_HISTORY_ROWS,
+
+        "backtest_horizon":
+            BACKTEST_HORIZON,
+
+        "backtest_uses_trading_days":
+            True,
+
+        "six_of_six_same_market_date":
+            (
+                same_date_count
+                == len(analyzed)
+            ),
+
+        "nan_protected":
+            True,
+
+        "future_date_protected":
+            True,
+
+        "atomic_write":
+            True,
+    }
+
+    # ========================================================
+    # 14. Output
+    # ========================================================
+
+    output = {
+
+        # ----------------------------------------------------
+        # Version
+        # ----------------------------------------------------
+
+        "version":
+            VERSION,
+
+        "schema_version":
+            SCHEMA_VERSION,
+
+        "status":
+            "success",
+
+        # ----------------------------------------------------
+        # Market date
+        # ----------------------------------------------------
+
+        "date":
+            latest_market_date.isoformat(),
+
+        "latest_market_date":
+            latest_market_date.isoformat(),
+
+        # ----------------------------------------------------
+        # Update time
+        # ----------------------------------------------------
+
+        "updated_at":
+            start_time.isoformat(),
+
+        "updated_at_tw":
+            start_time.strftime(
+                "%Y-%m-%d %H:%M:%S"
+            ),
+
+        "source":
+            f"fetch_data.py {VERSION}",
+
+        # ----------------------------------------------------
+        # Data quality
+        # ----------------------------------------------------
+
+        "data_quality":
+            data_quality,
+
+        # ----------------------------------------------------
+        # Summary
+        # ----------------------------------------------------
+
+        "summary": {
+
+            "stock_count":
+                len(stocks),
+
+            "etf_count":
+                len(etfs),
+
+            "bond_count":
+                len(bonds),
+
+            "today_selected_count":
+                len(today_selected),
+
+            "top10_count":
+                len(top10),
+
+            "market_breadth":
+                market_breadth,
+
+            "core_condition_count":
+                CORE_TOTAL,
+
+            "latest_market_date":
+                latest_market_date.isoformat(),
+
+            "universe_count":
+                len(universe),
+
+            "analyzed_count":
+                len(analyzed),
+        },
+
+        # ----------------------------------------------------
+        # Core conditions
+        # ----------------------------------------------------
+
+        "core_conditions": {
+
+            "total":
+                CORE_TOTAL,
+
+            "names":
+                CORE_CONDITION_NAMES,
+
+            "logic": {
+
+                "macd":
+                    "MACD > MACD Signal",
+
+                "rsi":
+                    "RSI > 50",
+
+                "kd":
+                    "K > D",
+
+                "volume":
+                    "Volume >= MA5 Volume × 1.5",
+
+                "price_ma20":
+                    "Close > MA20",
+
+                "ma20_rising":
+                    "MA20[today] > MA20[yesterday]",
+            },
+        },
+
+        # ----------------------------------------------------
+        # 六項全符合
+        # ----------------------------------------------------
+
+        "today_selected":
+            today_selected,
+
+        # ----------------------------------------------------
+        # Top10
+        # ----------------------------------------------------
+
+        "top10":
+            top10,
+
+        # ----------------------------------------------------
+        # ETF
+        # ----------------------------------------------------
+
+        "etfs":
+            etfs,
+
+        # ----------------------------------------------------
+        # Bond
+        # ----------------------------------------------------
+
+        "bonds":
+            bonds,
+
+        # ----------------------------------------------------
+        # Backtest
+        # ----------------------------------------------------
+
+        "backtest_summary":
+            backtest,
+
+        # ----------------------------------------------------
+        # 完整 Universe
+        #
+        # 這個區塊不能刪。
+        # 它是 stocks.json 故障時的第二層恢復來源。
+        # ----------------------------------------------------
+
+        "universe":
+            universe_summary,
+
+        # ----------------------------------------------------
+        # Dashboard data
+        #
+        # 額外提供簡單入口，
+        # 方便 index.html 讀取。
+        # ----------------------------------------------------
+
+        "dashboard": {
+
+            "market_date":
+                latest_market_date.isoformat(),
+
+            "stock_count":
+                len(stocks),
+
+            "etf_count":
+                len(etfs),
+
+            "bond_count":
+                len(bonds),
+
+            "today_selected_count":
+                len(today_selected),
+
+            "top10_count":
+                len(top10),
+
+            "market_breadth":
+                market_breadth,
+
+            "data_status":
+                "OK",
+        },
+    }
+
+    # ========================================================
+    # 15. Save
+    # ========================================================
+
+    save_json(
+        output
+    )
+
+    # ========================================================
+    # 16. Final
+    # ========================================================
+
+    print()
+
+    print("=" * 64)
+
+    print(
+        f"{VERSION} 完成"
+    )
+
+    print("=" * 64)
+
+    print(
+        "date：",
+        output["date"]
+    )
+
+    print(
+        "latest_market_date：",
+        output[
+            "latest_market_date"
+        ]
+    )
+
+    print(
+        "Universe source：",
+        universe_source
+    )
+
+    print(
+        "Universe recovered：",
+        universe_recovered
+    )
+
+    print(
+        "Universe：",
+        len(universe)
+    )
+
+    print(
+        "有效分析：",
+        len(analyzed)
+    )
+
+    print(
+        "股票：",
+        len(stocks)
+    )
+
+    print(
+        "ETF：",
+        len(etfs)
+    )
+
+    print(
+        "債券：",
+        len(bonds)
+    )
+
+    print(
+        "6/6 核心選股：",
+        len(today_selected)
+    )
+
+    print(
+        "Top 10：",
+        len(top10)
+    )
+
+    print(
+        "市場上漲：",
+        market_breadth[
+            "rising"
+        ]
+    )
+
+    print(
+        "市場下跌：",
+        market_breadth[
+            "falling"
+        ]
+    )
+
+    print(
+        "市場平盤：",
+        market_breadth[
+            "unchanged"
+        ]
+    )
+
+    print()
+
+    print(
+        "輸出：",
+        PRICES_FILE
+    )
+
+    print(
+        "完成時間：",
+        now_tw().strftime(
+            "%Y-%m-%d %H:%M:%S"
+        )
+    )
+
+    print("=" * 64)
+
+
+# ============================================================
+# Entry
+# ============================================================
+
+if __name__ == "__main__":
+
+    try:
+
+        main()
+
+    except KeyboardInterrupt:
+
+        print()
+        print(
+            "⚠️ 使用者中止執行"
+        )
+
+        sys.exit(130)
+
+    except Exception as e:
+
+        print()
+        print(
+            "=" * 64
+        )
+
+        print(
+            "❌ fetch_data.py 執行發生未預期錯誤"
+        )
+
+        print(
+            f"錯誤：{e}"
+        )
+
+        print(
+            "=" * 64
+        )
+
+        sys.exit(1)
