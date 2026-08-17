@@ -1,1 +1,272 @@
+name: Update Stock Data
 
+on:
+  workflow_dispatch:
+
+  schedule:
+    # ======================================================
+    # 台灣時間（UTC+8）
+    #
+    # 09:15
+    # 10:30
+    # 12:00
+    # 14:30
+    # 16:30
+    # 17:30
+    #
+    # GitHub Actions 使用 UTC
+    # ======================================================
+
+    - cron: "15 1 * * 1-5"
+    - cron: "30 2 * * 1-5"
+    - cron: "0 4 * * 1-5"
+    - cron: "30 6 * * 1-5"
+    - cron: "30 8 * * 1-5"
+    - cron: "30 9 * * 1-5"
+
+
+permissions:
+  contents: write
+
+
+jobs:
+
+  update-stock-data:
+
+    runs-on: ubuntu-latest
+
+    steps:
+
+      # ======================================================
+      # 1. Checkout
+      # ======================================================
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+
+      # ======================================================
+      # 2. Python
+      # ======================================================
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+
+      # ======================================================
+      # 3. 安裝套件
+      # ======================================================
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pandas requests
+
+
+      # ======================================================
+      # 4. 檢查專案結構
+      # ======================================================
+
+      - name: Check project structure
+        run: |
+          echo "========================================"
+          echo "Project structure"
+          echo "========================================"
+
+          echo ""
+          echo "Root:"
+          ls -la
+
+          echo ""
+          echo "Scripts:"
+          ls -la Scripts || true
+
+          echo ""
+          echo "Data:"
+          ls -la Data || true
+
+          echo ""
+          echo "========================================"
+
+
+      # ======================================================
+      # 5. 檢查必要檔案
+      # ======================================================
+
+      - name: Verify required files
+        run: |
+          test -f Scripts/fetch_prices.py
+          test -f Scripts/fetch_chip.py
+          test -f Data/universe.json
+
+          echo "✓ fetch_prices.py"
+          echo "✓ fetch_chip.py"
+          echo "✓ universe.json"
+
+
+      # ======================================================
+      # 6. 取得價格資料
+      # ======================================================
+
+      - name: Fetch price data
+        run: |
+          echo "========================================"
+          echo "Running fetch_prices.py"
+          echo "========================================"
+
+          python Scripts/fetch_prices.py
+
+
+      # ======================================================
+      # 7. 驗證 prices.json
+      # ======================================================
+
+      - name: Verify prices.json
+        run: |
+          echo "========================================"
+          echo "Verify prices.json"
+          echo "========================================"
+
+          test -f Data/prices.json
+
+          ls -lh Data/prices.json
+
+          python - <<'PY'
+          import json
+
+          path = "Data/prices.json"
+
+          with open(path, "r", encoding="utf-8") as f:
+              data = json.load(f)
+
+          print("prices.json JSON OK")
+          print("version:", data.get("version"))
+          print("count:", data.get("count"))
+          print("generated_at:", data.get("generated_at"))
+          PY
+
+
+      # ======================================================
+      # 8. 取得籌碼資料
+      # ======================================================
+
+      - name: Fetch chip data
+        run: |
+          echo "========================================"
+          echo "Running fetch_chip.py"
+          echo "========================================"
+
+          python Scripts/fetch_chip.py
+
+
+      # ======================================================
+      # 9. 驗證 chip.json
+      # ======================================================
+
+      - name: Verify chip.json
+        run: |
+          echo "========================================"
+          echo "Verify chip.json"
+          echo "========================================"
+
+          test -f Data/chip.json
+
+          ls -lh Data/chip.json
+
+          python - <<'PY'
+          import json
+
+          path = "Data/chip.json"
+
+          with open(path, "r", encoding="utf-8") as f:
+              data = json.load(f)
+
+          print("chip.json JSON OK")
+          print("schema_version:", data.get("schema_version"))
+          print("data_date:", data.get("data_date"))
+          print("universe_count:", data.get("universe_count"))
+
+          statistics = data.get("statistics", {})
+
+          print("complete:", statistics.get("complete"))
+          print("partial:", statistics.get("partial"))
+          print("insufficient:", statistics.get("insufficient"))
+
+          stocks = data.get("stocks", {})
+
+          print("stocks:", len(stocks))
+
+          found_5d = 0
+          found_10d = 0
+
+          for stock in stocks.values():
+
+              if not isinstance(stock, dict):
+                  continue
+
+              if stock.get("main_force_5d") is not None:
+                  found_5d += 1
+
+              if stock.get("main_force_10d") is not None:
+                  found_10d += 1
+
+          print(
+              "main_force_5d available:",
+              found_5d
+          )
+
+          print(
+              "main_force_10d available:",
+              found_10d
+          )
+
+          if not stocks:
+              raise SystemExit(
+                  "ERROR: chip.json 沒有股票資料"
+              )
+          PY
+
+
+      # ======================================================
+      # 10. 顯示資料檔案
+      # ======================================================
+
+      - name: Show generated files
+        run: |
+          echo "========================================"
+          echo "Generated data files"
+          echo "========================================"
+
+          ls -lh Data/
+
+          echo ""
+          echo "Git status:"
+
+          git status --short
+
+
+      # ======================================================
+      # 11. Commit / Push
+      # ======================================================
+
+      - name: Commit updated data
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git add Data/prices.json
+          git add Data/chip.json
+
+          if git diff --cached --quiet; then
+
+            echo "No data changes to commit."
+
+          else
+
+            git commit -m "Update stock price and chip data"
+
+            git push
+
+          fi
