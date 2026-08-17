@@ -2,34 +2,66 @@
 # -*- coding: utf-8 -*-
 
 """
-============================================================
 台股 AI 選股系統
-fetch_prices.py V2.0
+fetch_prices.py V3.0
+
+============================================================
+本程式責任
 ============================================================
 
-用途：
-    1. 讀取 Data/universe.json
-    2. 嚴格解析台股股票代號
-    3. 取得 Yahoo Finance 歷史價格
-    4. 建立 Data/prices.json
+1. 讀取 Data/universe.json
+2. 取得台股全市場歷史價格
+3. 保留技術指標所需資料：
+   - high
+   - low
+   - close
+   - volume
+4. 寫入 Data/prices.json
 
-重要：
-    - 不接受 1.0.0 / PENDING / TW 等錯誤代號
-    - 不把 Universe metadata 當成股票
-    - 純 4 碼股票代號預設為 .TW
-    - 已有 .TW / .TWO 直接使用
-    - API 失敗不轉成 0
-    - 成功率低於 50% 不覆蓋舊 prices.json
 ============================================================
+資料用途
+============================================================
+
+KD
+    → high / low / close
+
+MACD
+    → close
+
+RSI
+    → close
+
+MA5 / MA20 / 60日高低點
+    → close
+
+成交量條件
+    → volume
+
+============================================================
+刻意移除
+============================================================
+
+❌ open
+❌ adj_close
+
+以降低 prices.json 大小。
+
+============================================================
+資料流程
+============================================================
+
+Data/universe.json
+        ↓
+fetch_prices.py
+        ↓
+Data/prices.json
 """
 
 import json
 import sys
 import time
-import re
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
-from zoneinfo import ZoneInfo
 
 import requests
 
@@ -38,7 +70,7 @@ import requests
 # 基本設定
 # ============================================================
 
-VERSION = "V2.0"
+VERSION = "V3.0"
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -53,10 +85,24 @@ YAHOO_URL = (
     "https://query1.finance.yahoo.com/v8/finance/chart/{symbol}"
 )
 
-TIMEOUT = 30
-REQUEST_DELAY = 0.15
+REQUEST_TIMEOUT = 30
 
-HEADERS = {
+REQUEST_DELAY = 0.08
+
+MAX_FILE_SIZE_MB = 99.0
+
+MAX_FILE_SIZE_BYTES = int(
+    MAX_FILE_SIZE_MB * 1024 * 1024
+)
+
+
+# ============================================================
+# HTTP Session
+# ============================================================
+
+SESSION = requests.Session()
+
+SESSION.headers.update({
     "User-Agent": (
         "Mozilla/5.0 "
         "(Windows NT 10.0; Win64; x64) "
@@ -65,17 +111,8 @@ HEADERS = {
         "Chrome/131.0 Safari/537.36"
     ),
     "Accept": "application/json,text/plain,*/*",
-}
-
-
-# ============================================================
-# 時間
-# ============================================================
-
-def now_tw():
-    return datetime.now(
-        ZoneInfo("Asia/Taipei")
-    ).strftime("%Y-%m-%d %H:%M:%S")
+    "Accept-Language": "zh-TW,zh;q=0.9,en;q=0.8",
+})
 
 
 # ============================================================
@@ -87,6 +124,7 @@ def log(message=""):
 
 
 def section(title):
+
     log("")
     log("=" * 64)
     log(title)
@@ -94,72 +132,25 @@ def section(title):
 
 
 # ============================================================
-# 股票代號驗證
+# 日期
 # ============================================================
 
-def normalize_symbol(value):
-    """
-    嚴格將資料轉成 Yahoo Finance symbol。
+def date_to_timestamp(date_string):
 
-    合法：
+    dt = datetime.strptime(
+        date_string,
+        "%Y-%m-%d"
+    )
 
-        2330
-        2330.TW
-        00878
-        006208.TW
-        3481.TW
-        1234.TWO
+    dt = dt.replace(
+        tzinfo=timezone.utc
+    )
 
-    非法：
-
-        1.0.0
-        PENDING
-        TW
-        version
-        status
-        market
-    """
-
-    if value is None:
-        return None
-
-    text = str(value).strip().upper()
-
-    if not text:
-        return None
-
-    # --------------------------------------------------------
-    # 已經是 Yahoo symbol
-    # --------------------------------------------------------
-
-    if text.endswith(".TW"):
-        code = text[:-3]
-
-        if re.fullmatch(r"\d{4,6}", code):
-            return text
-
-        return None
-
-    if text.endswith(".TWO"):
-        code = text[:-4]
-
-        if re.fullmatch(r"\d{4,6}", code):
-            return text
-
-        return None
-
-    # --------------------------------------------------------
-    # 純數字股票代號
-    # --------------------------------------------------------
-
-    if re.fullmatch(r"\d{4,6}", text):
-        return text + ".TW"
-
-    return None
+    return int(dt.timestamp())
 
 
 # ============================================================
-# Universe 讀取
+# 讀取 Universe
 # ============================================================
 
 def load_universe():
@@ -167,16 +158,16 @@ def load_universe():
     section("讀取 Data/universe.json")
 
     if not UNIVERSE_FILE.exists():
+
         raise RuntimeError(
             f"找不到：{UNIVERSE_FILE}"
         )
 
     try:
 
-        with open(
-            UNIVERSE_FILE,
+        with UNIVERSE_FILE.open(
             "r",
-            encoding="utf-8"
+            encoding="utf-8-sig"
         ) as f:
 
             data = json.load(f)
@@ -184,7 +175,13 @@ def load_universe():
     except Exception as exc:
 
         raise RuntimeError(
-            f"universe.json 無法讀取：{exc}"
+            f"universe.json 讀取失敗：{exc}"
+        ) from exc
+
+    if not isinstance(data, dict):
+
+        raise RuntimeError(
+            "universe.json 格式錯誤"
         )
 
     log(
@@ -195,250 +192,226 @@ def load_universe():
 
 
 # ============================================================
-# Universe 解析
+# 股票代號正規化
 # ============================================================
 
-def extract_universe(data):
+def normalize_symbol(value):
 
-    section("嚴格解析 Universe")
+    if value is None:
+        return None
+
+    value = str(value).strip().upper()
+
+    if not value:
+        return None
+
+    # 已經是 Yahoo 格式
+    if value.endswith(".TW"):
+        code = value[:-3]
+
+        if code.isdigit():
+            return value
+
+        return None
+
+    if value.endswith(".TWO"):
+        code = value[:-4]
+
+        if code.isdigit():
+            return value
+
+        return None
+
+    # 純數字台股代號
+    if value.isdigit():
+
+        if 4 <= len(value) <= 6:
+
+            return value + ".TW"
+
+    return None
+
+
+# ============================================================
+# 從 Universe 找股票
+# ============================================================
+
+def extract_symbols(universe):
+
+    section("解析 Universe")
 
     records = {}
 
-    rejected = []
+    def add_record(item, fallback_symbol=None):
 
-    def add_symbol(
-        candidate,
-        metadata=None
-    ):
+        symbol = None
+        name = ""
 
-        yahoo_symbol = normalize_symbol(
-            candidate
-        )
+        if isinstance(item, str):
+
+            symbol = item
+
+        elif isinstance(item, dict):
+
+            possible_keys = [
+                "symbol",
+                "ticker",
+                "code",
+                "stock_id",
+                "stock_code",
+                "證券代號",
+                "有價證券代號"
+            ]
+
+            for key in possible_keys:
+
+                value = item.get(key)
+
+                if value is not None:
+
+                    symbol = str(value).strip()
+
+                    if symbol:
+                        break
+
+            name_keys = [
+                "name",
+                "stock_name",
+                "名稱",
+                "證券名稱"
+            ]
+
+            for key in name_keys:
+
+                value = item.get(key)
+
+                if value:
+
+                    name = str(value).strip()
+
+                    break
+
+        if symbol is None:
+            symbol = fallback_symbol
+
+        yahoo_symbol = normalize_symbol(symbol)
 
         if yahoo_symbol is None:
+            return
 
-            if candidate is not None:
+        if yahoo_symbol not in records:
 
-                rejected.append(
-                    str(candidate)
-                )
+            records[yahoo_symbol] = {
+                "symbol": yahoo_symbol,
+                "code": yahoo_symbol.split(".")[0],
+                "name": name
+            }
+
+    # --------------------------------------------------------
+    # 遞迴解析 Universe
+    # --------------------------------------------------------
+
+    def walk(value, fallback=None):
+
+        if isinstance(value, list):
+
+            for item in value:
+
+                walk(item)
 
             return
 
-        metadata = (
-            metadata
-            if isinstance(metadata, dict)
-            else {}
-        )
+        if isinstance(value, dict):
 
-        record = dict(metadata)
+            # 如果本身就是股票資料
+            add_record(
+                value,
+                fallback
+            )
 
-        record["symbol"] = yahoo_symbol
+            for key, child in value.items():
 
-        records[yahoo_symbol] = record
+                # key 本身可能就是股票代號
+                possible = normalize_symbol(key)
 
-    # ========================================================
-    # LIST
-    # ========================================================
+                if possible:
 
-    def parse_list(items):
+                    if isinstance(child, dict):
 
-        if not isinstance(items, list):
-            return
+                        add_record(
+                            child,
+                            key
+                        )
 
-        for item in items:
+                    elif isinstance(child, str):
 
-            # ----------------------------------------------
-            # "2330"
-            # ----------------------------------------------
+                        add_record(
+                            {
+                                "symbol": key,
+                                "name": child
+                            }
+                        )
 
-            if isinstance(item, str):
+                    else:
 
-                add_symbol(item)
-                continue
+                        add_record(
+                            {
+                                "symbol": key
+                            }
+                        )
 
-            # ----------------------------------------------
-            # {"symbol":"2330.TW"}
-            # ----------------------------------------------
+                # 繼續往下找
+                if isinstance(child, (dict, list)):
 
-            if isinstance(item, dict):
-
-                candidate = None
-
-                for key in (
-                    "symbol",
-                    "ticker",
-                    "stock_code",
-                    "stock_id",
-                    "code"
-                ):
-
-                    if key in item:
-
-                        candidate = item.get(key)
-
-                        if candidate is not None:
-                            break
-
-                if candidate is not None:
-
-                    add_symbol(
-                        candidate,
-                        item
+                    walk(
+                        child,
+                        None
                     )
 
-    # ========================================================
-    # 直接 LIST
-    # ========================================================
+    walk(universe)
 
-    if isinstance(data, list):
+    # --------------------------------------------------------
+    # 排序
+    # --------------------------------------------------------
 
-        parse_list(data)
-
-    # ========================================================
-    # DICT
-    # ========================================================
-
-    elif isinstance(data, dict):
-
-        # ----------------------------------------------------
-        # 明確股票清單欄位
-        # ----------------------------------------------------
-
-        list_keys = [
-            "stocks",
-            "listed",
-            "otc",
-            "tpex",
-            "twse",
-            "securities",
-            "universe",
-            "items",
-            "data"
-        ]
-
-        for key in list_keys:
-
-            value = data.get(key)
-
-            if isinstance(value, list):
-
-                parse_list(value)
-
-            elif isinstance(value, dict):
-
-                # 例如：
-                #
-                # "stocks": {
-                #   "2330": {...},
-                #   "1303": {...}
-                # }
-
-                for code, item in value.items():
-
-                    if isinstance(item, dict):
-
-                        add_symbol(
-                            code,
-                            item
-                        )
-
-                    else:
-
-                        add_symbol(code)
-
-        # ----------------------------------------------------
-        # 如果完全沒找到，才檢查頂層 key
-        # ----------------------------------------------------
-
-        if not records:
-
-            for key, value in data.items():
-
-                candidate = normalize_symbol(key)
-
-                if candidate:
-
-                    if isinstance(value, dict):
-
-                        add_symbol(
-                            key,
-                            value
-                        )
-
-                    else:
-
-                        add_symbol(key)
-
-    # ========================================================
-    # 結果
-    # ========================================================
+    records = dict(
+        sorted(
+            records.items(),
+            key=lambda x: x[0]
+        )
+    )
 
     log(
         f"合法股票代號：{len(records)}"
     )
 
-    if rejected:
-
-        # 去重
-        rejected_unique = list(
-            dict.fromkeys(rejected)
-        )
+    if records:
 
         log("")
-        log(
-            f"忽略非股票欄位："
-            f"{len(rejected_unique)}"
-        )
+        log("前 20 個合法標的：")
 
-        for item in rejected_unique[:20]:
+        for index, (
+            symbol,
+            record
+        ) in enumerate(
+            records.items(),
+            start=1
+        ):
 
-            log(
-                f"  ✗ 忽略：{item}"
-            )
-
-    if not records:
-
-        raise RuntimeError(
-            "Universe 沒有解析出任何合法台股代號。"
-        )
-
-    # --------------------------------------------------------
-    # 顯示
-    # --------------------------------------------------------
-
-    log("")
-    log("前 20 個合法標的：")
-
-    for i, (symbol, record) in enumerate(
-        records.items(),
-        start=1
-    ):
-
-        if i > 20:
-            break
-
-        name = record.get("name", "")
-
-        if name:
+            if index > 20:
+                break
 
             log(
-                f"  {i:>2}. "
-                f"{symbol} | {name}"
-            )
-
-        else:
-
-            log(
-                f"  {i:>2}. "
-                f"{symbol}"
+                f"{index:4d}. "
+                f"{symbol} | "
+                f"{record.get('name', '')}"
             )
 
     return records
 
 
 # ============================================================
-# Yahoo API
+# 取得 Yahoo 歷史資料
 # ============================================================
 
 def fetch_history(symbol):
@@ -447,43 +420,53 @@ def fetch_history(symbol):
         symbol=symbol
     )
 
-    start_timestamp = int(
-        datetime.strptime(
-            START_DATE,
-            "%Y-%m-%d"
-        ).replace(
-            tzinfo=ZoneInfo("Asia/Taipei")
-        ).timestamp()
-    )
-
     params = {
-        "period1": start_timestamp,
-        "period2": int(time.time()),
+        "period1": date_to_timestamp(
+            START_DATE
+        ),
+        "period2": int(time.time()) + 86400,
         "interval": "1d",
         "events": "history",
-        "includeAdjustedClose": "true"
+        "includeAdjustedClose": "false",
     }
 
-    response = requests.get(
+    response = SESSION.get(
         url,
         params=params,
-        headers=HEADERS,
-        timeout=TIMEOUT
+        timeout=REQUEST_TIMEOUT
     )
 
     response.raise_for_status()
 
-    payload = response.json()
+    try:
+
+        payload = response.json()
+
+    except Exception as exc:
+
+        raise RuntimeError(
+            f"Yahoo JSON 解析失敗：{exc}"
+        ) from exc
 
     chart = payload.get(
         "chart",
         {}
     )
 
-    if chart.get("error"):
+    error = chart.get(
+        "error"
+    )
+
+    if error:
+
+        description = (
+            error.get("description")
+            if isinstance(error, dict)
+            else str(error)
+        )
 
         raise RuntimeError(
-            str(chart["error"])
+            description or "Yahoo API error"
         )
 
     results = chart.get(
@@ -512,33 +495,42 @@ def fetch_history(symbol):
         []
     )
 
-    if not timestamps or not quote_list:
-
+    if not timestamps:
         raise RuntimeError(
-            "Yahoo 沒有價格資料"
+            "沒有 timestamp"
+        )
+
+    if not quote_list:
+        raise RuntimeError(
+            "沒有 quote"
         )
 
     quote = quote_list[0]
 
-    opens = quote.get("open", [])
-    highs = quote.get("high", [])
-    lows = quote.get("low", [])
-    closes = quote.get("close", [])
-    volumes = quote.get("volume", [])
-
-    adj_list = indicators.get(
-        "adjclose",
+    opens = quote.get(
+        "open",
         []
     )
 
-    adjusted = []
+    highs = quote.get(
+        "high",
+        []
+    )
 
-    if adj_list:
+    lows = quote.get(
+        "low",
+        []
+    )
 
-        adjusted = adj_list[0].get(
-            "adjclose",
-            []
-        )
+    closes = quote.get(
+        "close",
+        []
+    )
+
+    volumes = quote.get(
+        "volume",
+        []
+    )
 
     rows = []
 
@@ -552,148 +544,86 @@ def fetch_history(symbol):
             else None
         )
 
+        high = (
+            highs[i]
+            if i < len(highs)
+            else None
+        )
+
+        low = (
+            lows[i]
+            if i < len(lows)
+            else None
+        )
+
+        volume = (
+            volumes[i]
+            if i < len(volumes)
+            else None
+        )
+
         if close is None:
+            continue
+
+        if high is None:
+            continue
+
+        if low is None:
             continue
 
         date = datetime.fromtimestamp(
             timestamp,
-            ZoneInfo("Asia/Taipei")
-        ).strftime("%Y-%m-%d")
+            tz=timezone.utc
+        ).strftime(
+            "%Y-%m-%d"
+        )
 
-        rows.append({
+        # ----------------------------------------------------
+        # 只保留技術分析真正需要的資料
+        # ----------------------------------------------------
+
+        row = {
             "date": date,
-
-            "open": (
-                opens[i]
-                if i < len(opens)
-                else None
-            ),
-
-            "high": (
-                highs[i]
-                if i < len(highs)
-                else None
-            ),
-
-            "low": (
-                lows[i]
-                if i < len(lows)
-                else None
-            ),
-
-            "close": close,
-
-            "adj_close": (
-                adjusted[i]
-                if i < len(adjusted)
-                and adjusted[i] is not None
-                else close
-            ),
-
+            "high": round(float(high), 4),
+            "low": round(float(low), 4),
+            "close": round(float(close), 4),
             "volume": (
-                volumes[i]
-                if i < len(volumes)
-                else None
+                int(volume)
+                if volume is not None
+                else 0
             )
-        })
+        }
+
+        rows.append(row)
 
     if not rows:
 
         raise RuntimeError(
-            "沒有有效交易日"
+            "沒有有效交易資料"
         )
 
     return rows
 
 
 # ============================================================
-# 數值清理
+# 取得全市場價格
 # ============================================================
 
-def clean_value(value):
+def fetch_all(records):
 
-    if value is None:
-        return None
+    section("開始取得歷史價格")
 
-    try:
-
-        value = float(value)
-
-        if value != value:
-            return None
-
-        return round(value, 6)
-
-    except Exception:
-
-        return None
-
-
-def clean_rows(rows):
-
-    result = []
-
-    for row in rows:
-
-        volume = row.get(
-            "volume"
-        )
-
-        if volume is not None:
-
-            try:
-                volume = int(volume)
-
-            except Exception:
-                volume = None
-
-        result.append({
-
-            "date": row["date"],
-
-            "open": clean_value(
-                row.get("open")
-            ),
-
-            "high": clean_value(
-                row.get("high")
-            ),
-
-            "low": clean_value(
-                row.get("low")
-            ),
-
-            "close": clean_value(
-                row.get("close")
-            ),
-
-            "adj_close": clean_value(
-                row.get("adj_close")
-            ),
-
-            "volume": volume
-        })
-
-    return result
-
-
-# ============================================================
-# 建立價格
-# ============================================================
-
-def build_prices(universe):
-
-    section("開始取得全市場歷史價格")
-
-    total = len(universe)
+    total = len(records)
 
     log(
         f"待處理標的：{total}"
     )
 
     log(
-        f"歷史起始日：{START_DATE}"
+        f"歷史資料起始日：{START_DATE}"
     )
+
+    log("")
 
     prices = {}
 
@@ -705,13 +635,14 @@ def build_prices(universe):
         symbol,
         meta
     ) in enumerate(
-        universe.items(),
+        records.items(),
         start=1
     ):
 
         log(
             f"[{index}/{total}] "
-            f"{symbol}"
+            f"{symbol} "
+            f"{meta.get('name', '')}"
         )
 
         try:
@@ -720,58 +651,41 @@ def build_prices(universe):
                 symbol
             )
 
-            rows = clean_rows(
-                rows
-            )
-
             latest = rows[-1]
 
             prices[symbol] = {
-
                 "symbol": symbol,
-
+                "code": meta.get(
+                    "code",
+                    symbol.split(".")[0]
+                ),
                 "name": meta.get(
                     "name",
                     ""
                 ),
-
-                "market": meta.get(
-                    "market",
-                    ""
-                ),
-
-                "latest_date":
-                    latest["date"],
-
-                "latest_close":
-                    latest["close"],
-
-                "latest_volume":
-                    latest["volume"],
-
+                "latest_date": latest["date"],
+                "latest_close": latest["close"],
+                "latest_volume": latest["volume"],
                 "data": rows
             }
 
             success += 1
 
             log(
-                f"    ✓ {len(rows)} 筆"
-                f" | {latest['date']}"
-                f" | 收盤 {latest['close']}"
+                f"   ✓ {len(rows)} 筆"
+                f" | 最新：{latest['date']}"
+                f" | 收盤：{latest['close']}"
             )
 
         except Exception as exc:
 
             failed.append({
-
                 "symbol": symbol,
-
                 "error": str(exc)
-
             })
 
             log(
-                f"    ✗ {exc}"
+                f"   ✗ {exc}"
             )
 
         time.sleep(
@@ -790,15 +704,18 @@ def build_prices(universe):
 # ============================================================
 
 def validate(
-    universe,
+    records,
     prices,
-    success,
     failed
 ):
 
     section("價格資料驗證")
 
-    total = len(universe)
+    total = len(records)
+
+    success = len(prices)
+
+    failure = len(failed)
 
     log(
         f"Universe：{total}"
@@ -809,23 +726,19 @@ def validate(
     )
 
     log(
-        f"失敗：{len(failed)}"
-    )
-
-    log(
-        f"輸出：{len(prices)}"
+        f"失敗：{failure}"
     )
 
     if total == 0:
 
         raise RuntimeError(
-            "Universe 為空"
+            "Universe 沒有股票"
         )
 
     if success == 0:
 
         raise RuntimeError(
-            "全部股票取得失敗"
+            "完全沒有取得價格資料"
         )
 
     ratio = success / total
@@ -834,94 +747,100 @@ def validate(
         f"成功率：{ratio * 100:.2f}%"
     )
 
-    # 全市場資料量大時，
-    # 允許少量個股 API 失敗。
-    if ratio < 0.50:
+    # 全市場資料不能大規模失敗
+    if ratio < 0.80:
 
         raise RuntimeError(
-            "成功率低於 50%，"
-            "停止覆蓋 prices.json"
+            f"價格成功率只有 "
+            f"{ratio * 100:.2f}%，"
+            f"低於 80%，停止更新。"
         )
+
+    # 每支資料至少要有 100 筆
+    invalid = []
 
     for symbol, record in prices.items():
 
-        if not record.get(
-            "latest_date"
-        ):
+        data = record.get(
+            "data",
+            []
+        )
 
-            raise RuntimeError(
-                f"{symbol} 缺少 latest_date"
+        if len(data) < 100:
+
+            invalid.append(
+                symbol
             )
 
-        if record.get(
-            "latest_close"
-        ) is None:
+    if invalid:
 
-            raise RuntimeError(
-                f"{symbol} 缺少 latest_close"
+        raise RuntimeError(
+            "以下股票歷史資料不足："
+            + ", ".join(
+                invalid[:20]
             )
-
-        if not record.get(
-            "data"
-        ):
-
-            raise RuntimeError(
-                f"{symbol} 沒有歷史價格"
-            )
+        )
 
     log(
-        "✓ 價格資料結構驗證通過"
+        "✓ 價格資料完整性驗證通過"
     )
+
+
+# ============================================================
+# 建立輸出資料
+# ============================================================
+
+def build_output(
+    prices,
+    failed
+):
+
+    return {
+        "version": VERSION,
+        "generated_at": datetime.now(
+            timezone.utc
+        ).strftime(
+            "%Y-%m-%dT%H:%M:%SZ"
+        ),
+        "source": "Yahoo Finance",
+        "market": "TW",
+        "history_start": START_DATE,
+        "count": len(prices),
+        "failed_count": len(failed),
+        "failed_symbols": failed,
+        "fields": [
+            "date",
+            "high",
+            "low",
+            "close",
+            "volume"
+        ],
+        "prices": prices
+    }
 
 
 # ============================================================
 # 寫入
 # ============================================================
 
-def save_prices(
-    prices,
-    failed
-):
+def save_prices(output):
 
-    section("寫入 Data/prices.json")
+    section("建立 Data/prices.json")
 
     DATA_DIR.mkdir(
         parents=True,
         exist_ok=True
     )
 
-    output = {
-
-        "version": VERSION,
-
-        "generated_at": now_tw(),
-
-        "source": (
-            "Yahoo Finance"
-        ),
-
-        "history_start":
-            START_DATE,
-
-        "count":
-            len(prices),
-
-        "failed_count":
-            len(failed),
-
-        "failed_symbols":
-            failed,
-
-        "prices":
-            prices
-    }
-
-    temp_file = PRICES_FILE.with_suffix(
-        ".json.tmp"
+    temp_file = DATA_DIR / (
+        "prices.json.tmp"
     )
 
-    with open(
-        temp_file,
+    # --------------------------------------------------------
+    # 先使用最緊湊 JSON 格式
+    # --------------------------------------------------------
+
+    with temp_file.open(
         "w",
         encoding="utf-8"
     ) as f:
@@ -930,44 +849,69 @@ def save_prices(
             output,
             f,
             ensure_ascii=False,
-            separators=(",", ":"),
+            separators=(
+                ",",
+                ":"
+            ),
             allow_nan=False
         )
+
+    size = temp_file.stat().st_size
+
+    size_mb = (
+        size /
+        1024 /
+        1024
+    )
+
+    log(
+        f"暫存檔大小："
+        f"{size_mb:.2f} MB"
+    )
+
+    # --------------------------------------------------------
+    # GitHub 100MB 限制
+    # --------------------------------------------------------
+
+    if size >= MAX_FILE_SIZE_BYTES:
+
+        temp_file.unlink(
+            missing_ok=True
+        )
+
+        raise RuntimeError(
+            f"prices.json 預估大小 "
+            f"{size_mb:.2f} MB，"
+            f"已接近/超過 GitHub 100MB 限制。"
+        )
+
+    # --------------------------------------------------------
+    # 正式替換
+    # --------------------------------------------------------
 
     temp_file.replace(
         PRICES_FILE
     )
 
-    size = (
-        PRICES_FILE.stat().st_size
-        / 1024
-        / 1024
+    final_size = PRICES_FILE.stat().st_size
+
+    log(
+        f"✓ prices.json 建立成功"
     )
 
     log(
-        "✓ prices.json 建立成功"
-    )
-
-    log(
-        f"股票數：{len(prices)}"
-    )
-
-    log(
-        f"檔案大小：{size:.2f} MB"
-    )
-
-    log(
-        f"位置：{PRICES_FILE}"
+        f"檔案大小："
+        f"{final_size / 1024 / 1024:.2f} MB"
     )
 
 
 # ============================================================
-# Main
+# 主程式
 # ============================================================
 
 def main():
 
-    start = time.time()
+    started = time.time()
 
     log("")
     log("=" * 64)
@@ -978,7 +922,10 @@ def main():
     log("=" * 64)
 
     log(
-        f"開始時間：{now_tw()}"
+        "開始時間："
+        + datetime.now().strftime(
+            "%Y-%m-%d %H:%M:%S"
+        )
     )
 
     try:
@@ -987,26 +934,32 @@ def main():
         # 1. Universe
         # ----------------------------------------------------
 
-        universe_data = load_universe()
+        universe = load_universe()
 
         # ----------------------------------------------------
-        # 2. 嚴格解析
+        # 2. 股票解析
         # ----------------------------------------------------
 
-        universe = extract_universe(
-            universe_data
+        records = extract_symbols(
+            universe
         )
 
+        if not records:
+
+            raise RuntimeError(
+                "Universe 沒有解析出任何合法台股代號。"
+            )
+
         # ----------------------------------------------------
-        # 3. 抓取
+        # 3. 抓價格
         # ----------------------------------------------------
 
         (
             prices,
             success,
             failed
-        ) = build_prices(
-            universe
+        ) = fetch_all(
+            records
         )
 
         # ----------------------------------------------------
@@ -1014,31 +967,47 @@ def main():
         # ----------------------------------------------------
 
         validate(
-            universe,
+            records,
             prices,
-            success,
             failed
         )
 
         # ----------------------------------------------------
-        # 5. 寫檔
+        # 5. 建立輸出
+        # ----------------------------------------------------
+
+        output = build_output(
+            prices,
+            failed
+        )
+
+        # ----------------------------------------------------
+        # 6. 寫檔
         # ----------------------------------------------------
 
         save_prices(
-            prices,
-            failed
+            output
         )
 
         elapsed = (
-            time.time() - start
+            time.time() -
+            started
         )
+
+        # ----------------------------------------------------
+        # 完成
+        # ----------------------------------------------------
 
         log("")
         log("=" * 64)
         log(
-            "✓ fetch_prices.py 完成"
+            "✓ fetch_prices.py 執行完成"
         )
         log("=" * 64)
+
+        log(
+            f"Universe：{len(records)}"
+        )
 
         log(
             f"成功：{success}"
@@ -1049,29 +1018,32 @@ def main():
         )
 
         log(
-            f"耗時：{elapsed:.1f} 秒"
+            f"總耗時：{elapsed / 60:.1f} 分鐘"
+        )
+
+        log(
+            f"輸出：{PRICES_FILE}"
         )
 
         if failed:
 
             log("")
             log(
-                "⚠ 本次取得失敗標的："
+                "⚠️ 部分股票取得失敗："
             )
 
             for item in failed[:30]:
 
                 log(
-                    f"  {item['symbol']}"
-                    f" → "
-                    f"{item['error']}"
+                    f"   {item['symbol']}"
+                    f" → {item['error']}"
                 )
 
             if len(failed) > 30:
 
                 log(
-                    f"  ... "
-                    f"其餘 {len(failed)-30} 檔"
+                    f"   ... "
+                    f"另外 {len(failed) - 30} 檔"
                 )
 
         return 0
@@ -1089,14 +1061,19 @@ def main():
             f"原因：{exc}"
         )
 
-        if PRICES_FILE.exists():
-
-            log(
-                "⚠ 保留原有 prices.json"
-            )
+        log(
+            "⚠️ 保留既有 prices.json"
+        )
 
         return 1
 
 
+# ============================================================
+# Entry
+# ============================================================
+
 if __name__ == "__main__":
-    sys.exit(main())
+
+    sys.exit(
+        main()
+    )
