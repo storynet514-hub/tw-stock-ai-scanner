@@ -159,7 +159,8 @@ jobs:
               "latest_market_date",
               "today_selected",
               "top10",
-              "summary"
+              "summary",
+              "universe"
           ]
 
           missing = [
@@ -197,6 +198,10 @@ jobs:
                   "❌ top10 不是陣列"
               )
 
+          # -------------------------------------------------
+          # summary
+          # -------------------------------------------------
+
           if not isinstance(
               data.get("summary"),
               dict
@@ -204,6 +209,40 @@ jobs:
 
               raise SystemExit(
                   "❌ summary 不是 object"
+              )
+
+          # -------------------------------------------------
+          # universe
+          # -------------------------------------------------
+
+          universe = data.get("universe")
+
+          if not isinstance(
+              universe,
+              dict
+          ):
+
+              raise SystemExit(
+                  "❌ universe 不是 object"
+              )
+
+          universe_items = universe.get(
+              "items"
+          )
+
+          if not isinstance(
+              universe_items,
+              list
+          ):
+
+              raise SystemExit(
+                  "❌ universe.items 不是陣列"
+              )
+
+          if len(universe_items) == 0:
+
+              raise SystemExit(
+                  "❌ universe.items 是空陣列"
               )
 
           # -------------------------------------------------
@@ -279,149 +318,38 @@ jobs:
               )
           )
 
+          print(
+              "Universe 數量：",
+              len(universe_items)
+          )
+
+          print(
+              "Universe source：",
+              data.get(
+                  "data_quality",
+                  {}
+              ).get(
+                  "universe_source"
+              )
+          )
+
+          print(
+              "Universe recovered：",
+              data.get(
+                  "data_quality",
+                  {}
+              ).get(
+                  "universe_recovered"
+              )
+          )
+
           print("----------------------------------------------")
           print("✅ Data/prices.json 驗證完成")
           PY
 
 
       # =====================================================
-      # 6. Debug 1319 RSI 後台資料
-      # =====================================================
-
-      - name: Debug 1319 RSI backend data
-        run: |
-          python - <<'PY'
-          import json
-
-          path = "Data/prices.json"
-
-          with open(
-              path,
-              "r",
-              encoding="utf-8"
-          ) as f:
-
-              data = json.load(f)
-
-          found = []
-
-          # -------------------------------------------------
-          # 搜尋主要資料區
-          # -------------------------------------------------
-
-          search_keys = [
-              "today_selected",
-              "top10",
-              "stocks",
-              "stock",
-              "etfs",
-              "bonds"
-          ]
-
-          for key in search_keys:
-
-              items = data.get(
-                  key,
-                  []
-              )
-
-              if not isinstance(
-                  items,
-                  list
-              ):
-                  continue
-
-              for item in items:
-
-                  if str(
-                      item.get("code")
-                  ) == "1319":
-
-                      found.append(
-                          item
-                      )
-
-          # -------------------------------------------------
-          # 顯示 1319
-          # -------------------------------------------------
-
-          if not found:
-
-              print(
-                  "ℹ️ 找不到 1319 東陽於目前主要資料區"
-              )
-
-          else:
-
-              item = found[0]
-
-              print("")
-              print(
-                  "=============================================="
-              )
-
-              print(
-                  "1319 東陽後台資料"
-              )
-
-              print(
-                  "=============================================="
-              )
-
-              print(
-                  "code:",
-                  item.get("code")
-              )
-
-              print(
-                  "name:",
-                  item.get("name")
-              )
-
-              print(
-                  "price:",
-                  item.get("price")
-              )
-
-              print(
-                  "change_pct:",
-                  item.get("change_pct")
-              )
-
-              print(
-                  "ai_score:",
-                  item.get("ai_score")
-              )
-
-              print(
-                  "strength_score:",
-                  item.get("strength_score")
-              )
-
-              print(
-                  "core_score:",
-                  item.get("core_score")
-              )
-
-              print(
-                  "rsi:",
-                  item.get("rsi")
-              )
-
-              print(
-                  "indicators:",
-                  item.get("indicators")
-              )
-
-              print(
-                  "=============================================="
-              )
-
-          PY
-
-
-      # =====================================================
-      # 7. 顯示 Git 差異
+      # 6. 顯示 Git 差異
       # =====================================================
 
       - name: Check Updated Files
@@ -441,7 +369,7 @@ jobs:
 
 
       # =====================================================
-      # 8. 提交更新
+      # 7. 提交更新
       # =====================================================
 
       - name: Commit Updated Data
