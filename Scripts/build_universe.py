@@ -3,36 +3,53 @@
 
 """
 台股 AI 選股系統
-build_universe.py V2.0
+build_universe.py V3.0
 
 ============================================================
-責任
+目的
 ============================================================
 
-建立台股全市場 Universe：
+建立「台股全市場」Universe。
+
+包含：
 
 1. TWSE 上市普通股票
 2. TPEx 上櫃普通股票
-3. 排除 ETF
-4. 排除權證
-5. 排除特別股及非普通股票
-6. 正規化股票代號
-7. 輸出 Data/universe.json
+3. 不預設固定股票清單
+4. 不使用使用者追蹤清單
+5. 不包含 ETF
+6. 不包含權證
+7. 不包含特別股
+8. 不包含牛熊證等非普通股票
+
+輸出：
+
+Data/universe.json
 
 ============================================================
-資料來源
+重要設計
 ============================================================
 
-TWSE:
-https://openapi.twse.com.tw/v1/opendata/t187ap03_L
+任何單一 API 失敗：
 
-TPEx:
-https://www.tpex.org.tw/openapi/v1/mopsfin_t187ap03_O
+❌ 不可以直接清空 Universe
+❌ 不可以覆蓋正常 universe.json
+❌ 不可以產生空 Universe
+
+只有在：
+
+TWSE + TPEx 都取得有效資料
+且總股票數達到合理數量
+
+才正式覆蓋 universe.json。
+
+============================================================
 """
 
 import json
 import re
 import sys
+import time
 from datetime import datetime
 from pathlib import Path
 
@@ -43,23 +60,57 @@ import requests
 # 基本設定
 # ============================================================
 
-VERSION = "V2.0"
+VERSION = "V3.0"
 
 BASE_DIR = Path(__file__).resolve().parent.parent
-DATA_DIR = BASE_DIR / "Data"
-OUTPUT_FILE = DATA_DIR / "universe.json"
 
-TWSE_URL = (
-    "https://openapi.twse.com.tw/v1/opendata/"
-    "t187ap03_L"
+DATA_DIR = BASE_DIR / "Data"
+
+UNIVERSE_FILE = DATA_DIR / "universe.json"
+
+REQUEST_TIMEOUT = 30
+
+MIN_TWSE_STOCKS = 500
+MIN_TPEX_STOCKS = 300
+MIN_TOTAL_STOCKS = 1000
+
+REQUEST_DELAY = 1.0
+
+
+# ============================================================
+# API
+# ============================================================
+
+TWSE_API = (
+    "https://openapi.twse.com.tw/v1/opendata/t187ap03_L"
 )
 
-TPEX_URL = (
+TPEX_API = (
     "https://www.tpex.org.tw/openapi/v1/"
     "mopsfin_t187ap03_O"
 )
 
-TIMEOUT = 30
+
+# ============================================================
+# User-Agent
+# ============================================================
+
+HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 "
+        "(Windows NT 10.0; Win64; x64) "
+        "AppleWebKit/537.36 "
+        "(KHTML, like Gecko) "
+        "Chrome/124.0 Safari/537.36"
+    ),
+    "Accept": (
+        "application/json,"
+        "text/plain,"
+        "*/*"
+    ),
+    "Accept-Language": "zh-TW,zh;q=0.9,en;q=0.8",
+    "Connection": "keep-alive",
+}
 
 
 # ============================================================
@@ -78,477 +129,489 @@ def section(title):
 
 
 # ============================================================
-# HTTP
+# HTTP GET
 # ============================================================
 
-def get_json(url):
-    headers = {
-        "User-Agent": (
-            "Mozilla/5.0 "
-            "(Windows NT 10.0; Win64; x64) "
-            "AppleWebKit/537.36 "
-            "(KHTML, like Gecko) "
-            "Chrome/120.0 Safari/537.36"
-        ),
-        "Accept": "application/json,text/plain,*/*",
-    }
+def http_get(url, retries=3):
 
-    response = requests.get(
-        url,
-        headers=headers,
-        timeout=TIMEOUT
+    last_error = None
+
+    for attempt in range(1, retries + 1):
+
+        try:
+
+            log(
+                f"  HTTP GET attempt "
+                f"{attempt}/{retries}"
+            )
+
+            response = requests.get(
+                url,
+                headers=HEADERS,
+                timeout=REQUEST_TIMEOUT
+            )
+
+            log(
+                f"  HTTP Status: "
+                f"{response.status_code}"
+            )
+
+            response.raise_for_status()
+
+            if not response.content:
+                raise RuntimeError(
+                    "API 回傳空內容"
+                )
+
+            return response
+
+        except Exception as exc:
+
+            last_error = exc
+
+            log(
+                f"  ⚠ API 取得失敗：{exc}"
+            )
+
+            if attempt < retries:
+                time.sleep(
+                    attempt * 2
+                )
+
+    raise RuntimeError(
+        f"API 連續 {retries} 次失敗："
+        f"{last_error}"
     )
 
-    response.raise_for_status()
-
-    return response.json()
-
 
 # ============================================================
-# 找欄位
+# 安全解析 JSON
 # ============================================================
 
-def find_value(row, keys):
-    """
-    不依賴單一固定欄位名稱。
-    """
+def parse_json_response(response, source):
 
-    if not isinstance(row, dict):
-        return None
+    text = response.text.strip()
 
-    # 完全匹配
-    for key in keys:
-        if key in row:
-            value = row.get(key)
-
-            if value is not None:
-                value = str(value).strip()
-
-                if value:
-                    return value
-
-    # 忽略大小寫、底線、空白
-    normalized = {}
-
-    for key, value in row.items():
-
-        normalized_key = re.sub(
-            r"[\s_\-]",
-            "",
-            str(key).lower()
+    if not text:
+        raise RuntimeError(
+            f"{source} API 回傳空內容"
         )
 
-        normalized[normalized_key] = value
+    # --------------------------------------------------------
+    # 正常 JSON
+    # --------------------------------------------------------
 
-    for key in keys:
+    try:
+        data = response.json()
 
-        normalized_key = re.sub(
-            r"[\s_\-]",
-            "",
-            str(key).lower()
+        return data
+
+    except Exception:
+        pass
+
+    # --------------------------------------------------------
+    # 嘗試去除 BOM
+    # --------------------------------------------------------
+
+    try:
+
+        clean_text = (
+            text
+            .lstrip("\ufeff")
+            .strip()
         )
 
-        if normalized_key in normalized:
+        data = json.loads(
+            clean_text
+        )
 
-            value = normalized[normalized_key]
+        return data
 
-            if value is not None:
+    except Exception as exc:
 
-                value = str(value).strip()
+        # 不把整個 API response 印出來
+        preview = text[:300]
 
-                if value:
-                    return value
-
-    return None
+        raise RuntimeError(
+            f"{source} API 回傳內容不是合法 JSON。"
+            f"前300字：{preview}"
+        ) from exc
 
 
 # ============================================================
-# 股票代號判斷
+# 股票代號正規化
 # ============================================================
 
 def normalize_code(value):
+
     if value is None:
         return None
 
-    value = str(value).strip()
+    code = str(value).strip()
 
-    # 去除可能的小數點
-    if value.endswith(".0"):
-        value = value[:-2]
+    if not code:
+        return None
 
-    # 台股普通股票代號主要為 4 碼
-    if re.fullmatch(r"\d{4}", value):
-        return value
+    # 去除 BOM
+    code = code.replace(
+        "\ufeff",
+        ""
+    )
 
-    return None
+    # 去除空白
+    code = code.strip()
+
+    # --------------------------------------------------------
+    # 台股普通股票代號通常 4 碼
+    # --------------------------------------------------------
+
+    if not re.fullmatch(
+        r"\d{4}",
+        code
+    ):
+        return None
+
+    return code
 
 
 # ============================================================
-# 排除非普通股票
+# 判斷是否為普通股票
 # ============================================================
 
-def is_normal_stock(row):
-    """
-    盡量保守。
+def is_common_stock(
+    code,
+    name="",
+    raw=None
+):
 
-    Universe 目標：
-    普通上市 / 上櫃股票。
+    code = normalize_code(code)
 
-    排除：
-    ETF
-    ETN
-    權證
-    特別股
-    受益證券
-    債券
-    存託憑證以外的特殊商品
-    """
-
-    if not isinstance(row, dict):
+    if not code:
         return False
 
-    text_parts = []
-
-    for key, value in row.items():
-
-        if value is None:
-            continue
-
-        text_parts.append(
-            str(value).strip().upper()
-        )
-
-    text = " ".join(text_parts)
+    name = str(name or "").strip()
 
     # --------------------------------------------------------
-    # 商品名稱排除
+    # 排除明確非普通股票
     # --------------------------------------------------------
 
-    exclude_words = [
+    exclude_keywords = [
         "ETF",
-        "ETN",
-        "權證",
+        "指數股票型基金",
+        "受益證券",
         "認購權證",
         "認售權證",
-        "受益證券",
-        "特別股",
+        "權證",
+        "牛證",
+        "熊證",
+        "可轉債",
         "公司債",
-        "債券",
-        "轉換公司債",
-        "可轉換公司債",
+        "特別股",
         "存託憑證",
+        "DR",
+        "ETN",
+        "槓桿",
+        "反向",
+        "期貨",
+        "選擇權",
     ]
 
-    for word in exclude_words:
+    upper_name = name.upper()
 
-        if word.upper() in text:
+    for keyword in exclude_keywords:
+
+        if keyword.upper() in upper_name:
             return False
+
+    # --------------------------------------------------------
+    # 代號型態排除
+    #
+    # 一般台股普通股票主要為 4 碼。
+    # --------------------------------------------------------
 
     return True
 
 
 # ============================================================
-# 建立股票資料
+# 從 API Record 找股票代號
 # ============================================================
 
-def make_record(
-    row,
-    market
-):
+def find_value(record, keys):
 
-    code = find_value(
-        row,
-        [
-            "公司代號",
-            "有價證券代號",
-            "證券代號",
-            "股票代號",
-            "代號",
-            "SecuritiesCompanyCode",
-            "CompanyCode",
-            "Code",
-            "code",
-        ]
-    )
-
-    code = normalize_code(code)
-
-    if not code:
+    if not isinstance(record, dict):
         return None
 
-    if not is_normal_stock(row):
-        return None
+    # 精確 key
+    for key in keys:
 
-    name = find_value(
-        row,
-        [
-            "公司名稱",
-            "有價證券名稱",
-            "證券名稱",
-            "股票名稱",
-            "名稱",
-            "CompanyName",
-            "SecuritiesCompanyName",
-            "Name",
-            "name",
-        ]
-    )
+        if key in record:
 
-    industry = find_value(
-        row,
-        [
-            "產業別",
-            "產業",
-            "industry",
-            "Industry",
-            "industryName",
-        ]
-    )
+            value = record.get(key)
 
-    yahoo_symbol = code + (
-        ".TW"
-        if market == "TWSE"
-        else ".TWO"
-    )
+            if value not in (
+                None,
+                ""
+            ):
+                return value
 
-    return {
-        "symbol": code,
-        "yahoo_symbol": yahoo_symbol,
-        "name": name or "",
-        "market": (
-            "上市"
-            if market == "TWSE"
-            else "上櫃"
-        ),
-        "market_code": market,
-        "industry": industry or "",
+    # 忽略大小寫 / 空白
+    normalized_keys = {
+        str(k).strip().lower()
+        for k in keys
     }
 
+    for key, value in record.items():
+
+        key_normalized = (
+            str(key)
+            .strip()
+            .lower()
+        )
+
+        if key_normalized in normalized_keys:
+
+            if value not in (
+                None,
+                ""
+            ):
+                return value
+
+    return None
+
 
 # ============================================================
-# TWSE
+# 找股票名稱
+# ============================================================
+
+def find_name(record):
+
+    keys = [
+        "公司名稱",
+        "公司名稱 ",
+        "公司簡稱",
+        "名稱",
+        "name",
+        "Name",
+        "SecuritiesCompanyName",
+        "公司代號名稱",
+        "中文簡稱",
+    ]
+
+    value = find_value(
+        record,
+        keys
+    )
+
+    if value is None:
+        return ""
+
+    return str(value).strip()
+
+
+# ============================================================
+# 找股票代號
+# ============================================================
+
+def find_stock_code(record):
+
+    keys = [
+        "公司代號",
+        "股票代號",
+        "證券代號",
+        "代號",
+        "code",
+        "Code",
+        "symbol",
+        "Symbol",
+        "SecuritiesCompanyCode",
+    ]
+
+    value = find_value(
+        record,
+        keys
+    )
+
+    return normalize_code(
+        value
+    )
+
+
+# ============================================================
+# 解析 TWSE
 # ============================================================
 
 def fetch_twse():
 
     section("取得 TWSE 上市股票")
 
-    log(f"API：{TWSE_URL}")
+    log(
+        f"API：{TWSE_API}"
+    )
 
-    data = get_json(TWSE_URL)
+    response = http_get(
+        TWSE_API
+    )
 
-    if not isinstance(data, list):
+    data = parse_json_response(
+        response,
+        "TWSE"
+    )
+
+    if not isinstance(
+        data,
+        list
+    ):
         raise RuntimeError(
             "TWSE API 回傳格式不是 list"
         )
 
     log(
-        f"TWSE API 原始資料：{len(data)} 筆"
+        f"TWSE API 原始資料："
+        f"{len(data)} 筆"
     )
 
-    records = {}
+    stocks = {}
 
-    for row in data:
+    for record in data:
 
-        record = make_record(
-            row,
-            "TWSE"
+        if not isinstance(
+            record,
+            dict
+        ):
+            continue
+
+        code = find_stock_code(
+            record
         )
 
-        if record:
-            records[
-                record["symbol"]
-            ] = record
+        name = find_name(
+            record
+        )
+
+        if not code:
+            continue
+
+        if not is_common_stock(
+            code,
+            name,
+            record
+        ):
+            continue
+
+        stocks[code] = {
+            "symbol": code,
+            "yahoo_symbol": (
+                f"{code}.TW"
+            ),
+            "name": name,
+            "market": "TWSE",
+            "type": "stock",
+        }
 
     log(
-        f"TWSE 合法普通股票：{len(records)}"
+        f"TWSE 合法普通股票："
+        f"{len(stocks)}"
     )
 
-    if not records:
+    if len(stocks) < MIN_TWSE_STOCKS:
+
         raise RuntimeError(
-            "TWSE 沒有解析出任何合法股票"
+            "TWSE 合法股票數量異常："
+            f"{len(stocks)}，"
+            f"低於最低門檻 "
+            f"{MIN_TWSE_STOCKS}"
         )
 
-    return records
+    return stocks
 
 
 # ============================================================
-# TPEx
+# 解析 TPEx
 # ============================================================
 
 def fetch_tpex():
 
     section("取得 TPEx 上櫃股票")
 
-    log(f"API：{TPEX_URL}")
+    log(
+        f"API：{TPEX_API}"
+    )
 
-    data = get_json(TPEX_URL)
+    response = http_get(
+        TPEX_API
+    )
 
-    if not isinstance(data, list):
+    data = parse_json_response(
+        response,
+        "TPEx"
+    )
+
+    if not isinstance(
+        data,
+        list
+    ):
         raise RuntimeError(
             "TPEx API 回傳格式不是 list"
         )
 
     log(
-        f"TPEx API 原始資料：{len(data)} 筆"
+        f"TPEx API 原始資料："
+        f"{len(data)} 筆"
     )
 
-    records = {}
+    stocks = {}
 
-    # --------------------------------------------------------
-    # 第一階段：正常解析
-    # --------------------------------------------------------
+    for record in data:
 
-    for row in data:
+        if not isinstance(
+            record,
+            dict
+        ):
+            continue
 
-        record = make_record(
-            row,
-            "TPEX"
+        code = find_stock_code(
+            record
         )
 
-        if record:
-            records[
-                record["symbol"]
-            ] = record
+        name = find_name(
+            record
+        )
+
+        if not code:
+            continue
+
+        if not is_common_stock(
+            code,
+            name,
+            record
+        ):
+            continue
+
+        stocks[code] = {
+            "symbol": code,
+            "yahoo_symbol": (
+                f"{code}.TWO"
+            ),
+            "name": name,
+            "market": "TPEx",
+            "type": "stock",
+        }
 
     log(
-        f"TPEx 第一階段解析：{len(records)}"
+        f"TPEx 合法普通股票："
+        f"{len(stocks)}"
     )
 
-    # --------------------------------------------------------
-    # 第二階段：如果 API 欄位格式特殊
-    # 使用更寬鬆的代號搜尋。
-    # --------------------------------------------------------
-
-    if not records:
-
-        log("")
-        log(
-            "⚠️ TPEx 固定欄位解析為 0"
-        )
-
-        log(
-            "啟用 TPEx 寬鬆解析模式"
-        )
-
-        for row in data:
-
-            if not isinstance(row, dict):
-                continue
-
-            code = None
-
-            # 搜尋所有欄位
-            for key, value in row.items():
-
-                if value is None:
-                    continue
-
-                candidate = str(
-                    value
-                ).strip()
-
-                # 找 4 碼股票代號
-                if re.fullmatch(
-                    r"\d{4}",
-                    candidate
-                ):
-
-                    # 優先選擇欄位名稱含代號
-                    key_text = str(
-                        key
-                    ).lower()
-
-                    if any(
-                        word in key_text
-                        for word in [
-                            "代號",
-                            "code",
-                            "symbol",
-                            "securities"
-                        ]
-                    ):
-                        code = candidate
-                        break
-
-            if not code:
-                continue
-
-            if not is_normal_stock(row):
-                continue
-
-            name = ""
-
-            for key, value in row.items():
-
-                if value is None:
-                    continue
-
-                key_text = str(
-                    key
-                ).lower()
-
-                if any(
-                    word in key_text
-                    for word in [
-                        "名稱",
-                        "name"
-                    ]
-                ):
-
-                    name = str(
-                        value
-                    ).strip()
-
-                    if name:
-                        break
-
-            record = {
-                "symbol": code,
-                "yahoo_symbol": (
-                    code + ".TWO"
-                ),
-                "name": name,
-                "market": "上櫃",
-                "market_code": "TPEX",
-                "industry": "",
-            }
-
-            records[code] = record
-
-    # --------------------------------------------------------
-    # 結果
-    # --------------------------------------------------------
-
-    log(
-        f"TPEx 合法普通股票：{len(records)}"
-    )
-
-    if not records:
-
-        # 額外印出第一筆資料方便排錯
-        if data:
-
-            log("")
-            log(
-                "TPEx 第一筆 API 資料欄位："
-            )
-
-            first = data[0]
-
-            if isinstance(first, dict):
-
-                for key, value in first.items():
-
-                    log(
-                        f"  {key}: {value}"
-                    )
+    if len(stocks) < MIN_TPEX_STOCKS:
 
         raise RuntimeError(
-            "TPEx 沒有解析出任何合法股票"
+            "TPEx 合法股票數量異常："
+            f"{len(stocks)}，"
+            f"低於最低門檻 "
+            f"{MIN_TPEX_STOCKS}"
         )
 
-    return records
+    return stocks
 
 
 # ============================================================
@@ -561,50 +624,91 @@ def build_universe():
 
     twse = fetch_twse()
 
+    time.sleep(
+        REQUEST_DELAY
+    )
+
     tpex = fetch_tpex()
 
     # --------------------------------------------------------
     # 合併
     # --------------------------------------------------------
 
-    all_stocks = {}
+    stocks = {}
 
     for code, record in twse.items():
-        all_stocks[code] = record
+        stocks[code] = record
 
     for code, record in tpex.items():
 
-        if code not in all_stocks:
-            all_stocks[code] = record
+        # 如果代號重複，優先保留 TWSE
+        if code not in stocks:
+            stocks[code] = record
 
     # --------------------------------------------------------
     # 排序
     # --------------------------------------------------------
 
-    all_stocks = dict(
-        sorted(
-            all_stocks.items(),
-            key=lambda item: item[0]
-        )
+    sorted_items = sorted(
+        stocks.values(),
+        key=lambda x: x["symbol"]
     )
 
-    listed_count = len(twse)
-    otc_count = len(tpex)
-    total = len(all_stocks)
-
     # --------------------------------------------------------
-    # 基本安全檢查
+    # 統計
     # --------------------------------------------------------
 
-    if total < 1000:
+    listed_count = sum(
+        1
+        for x in sorted_items
+        if x.get("market") == "TWSE"
+    )
 
+    otc_count = sum(
+        1
+        for x in sorted_items
+        if x.get("market") == "TPEx"
+    )
+
+    section("Universe 統計")
+
+    log(
+        f"上市股票：{listed_count}"
+    )
+
+    log(
+        f"上櫃股票：{otc_count}"
+    )
+
+    log(
+        f"全市場普通股票："
+        f"{len(sorted_items)}"
+    )
+
+    # --------------------------------------------------------
+    # 最低總量保護
+    # --------------------------------------------------------
+
+    if listed_count < MIN_TWSE_STOCKS:
         raise RuntimeError(
-            "Universe 股票數量異常偏低："
-            f"{total}"
+            "上市股票數量不足，"
+            "拒絕覆蓋 universe.json"
+        )
+
+    if otc_count < MIN_TPEX_STOCKS:
+        raise RuntimeError(
+            "上櫃股票數量不足，"
+            "拒絕覆蓋 universe.json"
+        )
+
+    if len(sorted_items) < MIN_TOTAL_STOCKS:
+        raise RuntimeError(
+            "全市場股票總數不足，"
+            "拒絕覆蓋 universe.json"
         )
 
     # --------------------------------------------------------
-    # 輸出
+    # 建立輸出
     # --------------------------------------------------------
 
     output = {
@@ -613,36 +717,38 @@ def build_universe():
             "%Y-%m-%d %H:%M:%S"
         ),
         "source": [
-            TWSE_URL,
-            TPEX_URL
+            "TWSE OpenAPI",
+            "TPEx OpenAPI"
         ],
         "market": "TW",
-        "total": total,
+        "total": len(sorted_items),
         "listed_stocks": listed_count,
         "otc_stocks": otc_count,
         "listed_etf": 0,
         "otc_etf": 0,
-        "items": list(
-            all_stocks.values()
-        )
+        "items": sorted_items,
     }
 
     return output
 
 
 # ============================================================
-# 儲存
+# 寫入 Universe
 # ============================================================
 
 def save_universe(data):
+
+    section("寫入 Data/universe.json")
 
     DATA_DIR.mkdir(
         parents=True,
         exist_ok=True
     )
 
-    temp_file = OUTPUT_FILE.with_suffix(
-        ".json.tmp"
+    temp_file = (
+        UNIVERSE_FILE.with_suffix(
+            ".json.tmp"
+        )
     )
 
     with temp_file.open(
@@ -657,19 +763,151 @@ def save_universe(data):
             indent=2
         )
 
+        f.write("\n")
+
     temp_file.replace(
-        OUTPUT_FILE
+        UNIVERSE_FILE
     )
 
-    log("")
-    log(
-        f"✓ Universe 寫入成功："
-        f"{OUTPUT_FILE}"
+    size = (
+        UNIVERSE_FILE.stat().st_size
     )
 
     log(
-        f"檔案大小："
-        f"{OUTPUT_FILE.stat().st_size / 1024:.1f} KB"
+        "✓ universe.json 更新成功"
+    )
+
+    log(
+        f"檔案：{UNIVERSE_FILE}"
+    )
+
+    log(
+        f"大小：{size / 1024:.1f} KB"
+    )
+
+
+# ============================================================
+# 驗證輸出
+# ============================================================
+
+def validate_universe(data):
+
+    section("驗證 Universe")
+
+    items = data.get(
+        "items",
+        []
+    )
+
+    if not isinstance(
+        items,
+        list
+    ):
+        raise RuntimeError(
+            "items 不是 list"
+        )
+
+    if len(items) < MIN_TOTAL_STOCKS:
+        raise RuntimeError(
+            f"Universe 只有 {len(items)} 筆"
+        )
+
+    symbols = set()
+
+    invalid = []
+
+    for item in items:
+
+        if not isinstance(
+            item,
+            dict
+        ):
+            invalid.append(
+                "非 dictionary"
+            )
+            continue
+
+        symbol = item.get(
+            "symbol"
+        )
+
+        if not re.fullmatch(
+            r"\d{4}",
+            str(symbol or "")
+        ):
+            invalid.append(
+                str(symbol)
+            )
+            continue
+
+        if symbol in symbols:
+            invalid.append(
+                f"duplicate:{symbol}"
+            )
+            continue
+
+        symbols.add(symbol)
+
+        yahoo_symbol = item.get(
+            "yahoo_symbol"
+        )
+
+        market = item.get(
+            "market"
+        )
+
+        if market == "TWSE":
+
+            if yahoo_symbol != (
+                f"{symbol}.TW"
+            ):
+                invalid.append(
+                    f"{symbol}:Yahoo"
+                )
+
+        elif market == "TPEx":
+
+            if yahoo_symbol != (
+                f"{symbol}.TWO"
+            ):
+                invalid.append(
+                    f"{symbol}:Yahoo"
+                )
+
+        else:
+
+            invalid.append(
+                f"{symbol}:market"
+            )
+
+    if invalid:
+
+        raise RuntimeError(
+            "Universe 驗證失敗："
+            + ", ".join(
+                invalid[:20]
+            )
+        )
+
+    log(
+        f"✓ 合法股票："
+        f"{len(symbols)}"
+    )
+
+    log(
+        "✓ 股票代號格式驗證通過"
+    )
+
+    log(
+        "✓ Yahoo symbol 驗證通過"
+    )
+
+    log(
+        "✓ 市場分類驗證通過"
+    )
+
+    log(
+        "✓ Universe 驗證完成"
     )
 
 
@@ -678,6 +916,8 @@ def save_universe(data):
 # ============================================================
 
 def main():
+
+    start_time = time.time()
 
     log("")
     log("=" * 64)
@@ -696,37 +936,36 @@ def main():
 
     try:
 
+        # ----------------------------------------------------
+        # 1. 建立
+        # ----------------------------------------------------
+
         data = build_universe()
 
-        save_universe(data)
+        # ----------------------------------------------------
+        # 2. 驗證
+        # ----------------------------------------------------
 
-        section("Universe 建立完成")
-
-        log(
-            f"上市普通股票："
-            f"{data['listed_stocks']}"
+        validate_universe(
+            data
         )
 
-        log(
-            f"上櫃普通股票："
-            f"{data['otc_stocks']}"
+        # ----------------------------------------------------
+        # 3. 寫入
+        # ----------------------------------------------------
+
+        save_universe(
+            data
         )
 
-        log(
-            f"台股全市場股票："
-            f"{data['total']}"
+        # ----------------------------------------------------
+        # 完成
+        # ----------------------------------------------------
+
+        elapsed = (
+            time.time()
+            - start_time
         )
-
-        log("")
-        log("前 10 檔：")
-
-        for item in data["items"][:10]:
-
-            log(
-                f"  {item['symbol']} "
-                f"{item['name']} "
-                f"[{item['market']}]"
-            )
 
         log("")
         log("=" * 64)
@@ -734,6 +973,31 @@ def main():
             "✓ build_universe.py 執行完成"
         )
         log("=" * 64)
+
+        log(
+            f"全市場股票："
+            f"{data['total']}"
+        )
+
+        log(
+            f"上市："
+            f"{data['listed_stocks']}"
+        )
+
+        log(
+            f"上櫃："
+            f"{data['otc_stocks']}"
+        )
+
+        log(
+            f"總耗時："
+            f"{elapsed:.1f} 秒"
+        )
+
+        log(
+            f"輸出："
+            f"{UNIVERSE_FILE}"
+        )
 
         return 0
 
@@ -750,12 +1014,20 @@ def main():
             f"原因：{exc}"
         )
 
-        log(
-            "⚠️ 保留原有 universe.json"
-        )
+        if UNIVERSE_FILE.exists():
+
+            log(
+                "⚠️ 保留原有 universe.json"
+            )
 
         return 1
 
 
+# ============================================================
+# Entry
+# ============================================================
+
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(
+        main()
+    )
