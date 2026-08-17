@@ -8,16 +8,14 @@ fetch_prices.py V4.0
 功能：
 1. 讀取 Data/universe.json
 2. 取得全市場股票 2 年歷史日線
-3. 使用 Yahoo Finance
+3. 使用 Yahoo Finance Chart API
 4. 輸出至 Data/prices/
 5. 每 100 檔股票一個 JSON
-6. 產生 Data/prices/manifest.json
-7. 驗證成功率
-8. 驗證所有輸出 JSON
-9. 驗證通過後才替換既有價格資料
-
-不再產生：
-Data/prices.json
+6. 產生 manifest.json
+7. 驗證價格資料成功率
+8. 驗證每個分檔
+9. 驗證全部通過後才正式替換舊資料
+10. 不再產生 Data/prices.json
 
 輸出：
 
@@ -27,6 +25,21 @@ Data/
     ├── prices_002.json
     ├── ...
     └── manifest.json
+
+重要：
+本程式不負責：
+- 籌碼資料
+- 技術指標
+- 回測
+- UI
+- 下單
+
+只負責：
+universe.json
+    ↓
+Yahoo Finance
+    ↓
+Data/prices/
 """
 
 import json
@@ -46,6 +59,7 @@ import requests
 # ============================================================
 
 VERSION = "V4.0"
+SCHEMA_VERSION = "prices-v4.0"
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 DATA_DIR = BASE_DIR / "Data"
@@ -143,7 +157,7 @@ def save_json(path, data):
 
 
 # ============================================================
-# 數值
+# Numeric
 # ============================================================
 
 def to_float(value):
@@ -226,7 +240,6 @@ def normalize_market(value):
 
     if text in {
         "TPEX",
-        "TPEX",
         "OTC",
         "TWO",
         "上櫃",
@@ -256,41 +269,37 @@ def yahoo_symbol(code, market):
 
 
 # ============================================================
-# Universe 結構
+# Universe items
 # ============================================================
 
 def get_items(data):
-
     if isinstance(data, list):
         return data
 
     if not isinstance(data, dict):
         return []
 
-    keys = (
+    keys = [
         "items",
         "stocks",
         "data",
         "universe",
         "symbols",
         "records",
-    )
+    ]
 
     for key in keys:
-
         value = data.get(key)
 
         if isinstance(value, list):
             return value
 
         if isinstance(value, dict):
-
             result = []
 
             for code, item in value.items():
 
                 if isinstance(item, dict):
-
                     copied = dict(item)
 
                     if "code" not in copied:
@@ -299,7 +308,6 @@ def get_items(data):
                     result.append(copied)
 
                 else:
-
                     result.append(
                         {
                             "code": code,
@@ -314,18 +322,17 @@ def get_items(data):
 
 
 # ============================================================
-# Universe 欄位
+# Universe fields
 # ============================================================
 
 def get_code(item):
-
     if isinstance(item, str):
         return normalize_code(item)
 
     if not isinstance(item, dict):
         return None
 
-    keys = (
+    keys = [
         "code",
         "stock_code",
         "stockCode",
@@ -334,16 +341,13 @@ def get_code(item):
         "證券代號",
         "股票代號",
         "代號",
-    )
+    ]
 
     for key in keys:
-
         if key not in item:
             continue
 
-        code = normalize_code(
-            item.get(key)
-        )
+        code = normalize_code(item.get(key))
 
         if code:
             return code
@@ -352,14 +356,13 @@ def get_code(item):
 
 
 def get_name(item):
-
     if isinstance(item, str):
         return ""
 
     if not isinstance(item, dict):
         return ""
 
-    keys = (
+    keys = [
         "name",
         "stock_name",
         "stockName",
@@ -367,10 +370,9 @@ def get_name(item):
         "名稱",
         "證券名稱",
         "股票名稱",
-    )
+    ]
 
     for key in keys:
-
         if key not in item:
             continue
 
@@ -388,14 +390,10 @@ def get_name(item):
 
 
 def get_market(item):
-
-    if isinstance(item, str):
-        return ""
-
     if not isinstance(item, dict):
         return ""
 
-    keys = (
+    keys = [
         "market",
         "market_type",
         "marketType",
@@ -403,10 +401,9 @@ def get_market(item):
         "市場",
         "市場別",
         "交易所",
-    )
+    ]
 
     for key in keys:
-
         if key not in item:
             continue
 
@@ -425,7 +422,6 @@ def get_market(item):
 # ============================================================
 
 def load_universe():
-
     section("讀取 Data/universe.json")
 
     if not UNIVERSE_FILE.exists():
@@ -445,7 +441,6 @@ def load_universe():
         )
 
     stocks = {}
-
     invalid = 0
 
     for item in items:
@@ -457,7 +452,6 @@ def load_universe():
             continue
 
         name = get_name(item)
-
         market = get_market(item)
 
         if not market:
@@ -479,20 +473,23 @@ def load_universe():
         }
 
     log(
-        f"Universe 原始項目：{len(items)}"
+        "Universe 原始項目："
+        + str(len(items))
     )
 
     log(
-        f"合法股票代號：{len(stocks)}"
+        "合法股票代號："
+        + str(len(stocks))
     )
 
     log(
-        f"無效項目：{invalid}"
+        "無效項目："
+        + str(invalid)
     )
 
     if not stocks:
         raise RuntimeError(
-            "Universe 沒有解析出任何合法台股代號"
+            "Universe 沒有解析出任何合法股票代號"
         )
 
     log("")
@@ -502,7 +499,6 @@ def load_universe():
         list(stocks.values())[:20],
         start=1,
     ):
-
         log(
             f"{index:3d}. "
             f"{stock['symbol']} | "
@@ -517,7 +513,6 @@ def load_universe():
 # ============================================================
 
 def fetch_stock(symbol):
-
     url = YAHOO_URL.format(
         symbol=symbol
     )
@@ -548,9 +543,12 @@ def fetch_stock(symbol):
             )
 
             log(
-                f"      HTTP "
-                f"{attempt}/{MAX_RETRIES}："
-                f"{response.status_code}"
+                "      HTTP "
+                + str(attempt)
+                + "/"
+                + str(MAX_RETRIES)
+                + "："
+                + str(response.status_code)
             )
 
             response.raise_for_status()
@@ -558,17 +556,20 @@ def fetch_stock(symbol):
             payload = response.json()
 
             chart = payload.get(
-                "chart",
-                {}
+                "chart"
             )
 
-            chart_error = chart.get(
-                "error"
-            )
-
-            if chart_error:
+            if not isinstance(chart, dict):
                 raise RuntimeError(
-                    str(chart_error)
+                    "Yahoo chart 格式錯誤"
+                )
+
+            error = chart.get("error")
+
+            if error:
+                raise RuntimeError(
+                    "Yahoo API error: "
+                    + str(error)
                 )
 
             results = chart.get(
@@ -588,12 +589,12 @@ def fetch_stock(symbol):
 
             indicators = result.get(
                 "indicators",
-                {}
+                {},
             )
 
             quotes = indicators.get(
                 "quote",
-                []
+                [],
             )
 
             if not timestamps:
@@ -610,40 +611,40 @@ def fetch_stock(symbol):
 
             opens = quote.get(
                 "open",
-                []
+                [],
             )
 
             highs = quote.get(
                 "high",
-                []
+                [],
             )
 
             lows = quote.get(
                 "low",
-                []
+                [],
             )
 
             closes = quote.get(
                 "close",
-                []
+                [],
             )
 
             volumes = quote.get(
                 "volume",
-                []
+                [],
             )
 
             adjusted = []
 
             adj_group = indicators.get(
                 "adjclose",
-                []
+                [],
             )
 
             if adj_group:
                 adjusted = adj_group[0].get(
                     "adjclose",
-                    []
+                    [],
                 )
 
             rows = []
@@ -658,22 +659,18 @@ def fetch_stock(symbol):
                 if i >= len(closes):
                     continue
 
-                close = to_float(
-                    closes[i]
-                )
+                close = closes[i]
 
                 if close is None:
                     continue
 
                 try:
-
                     date_text = datetime.fromtimestamp(
                         int(timestamp),
                         timezone.utc,
                     ).strftime(
                         "%Y-%m-%d"
                     )
-
                 except Exception:
                     continue
 
@@ -707,29 +704,29 @@ def fetch_stock(symbol):
                     else None
                 )
 
-                rows.append(
-                    {
-                        "date": date_text,
-                        "open": safe_round(
-                            open_value
-                        ),
-                        "high": safe_round(
-                            high_value
-                        ),
-                        "low": safe_round(
-                            low_value
-                        ),
-                        "close": safe_round(
-                            close
-                        ),
-                        "volume": to_int(
-                            volume_value
-                        ),
-                        "adj_close": safe_round(
-                            adjusted_value
-                        ),
-                    }
-                )
+                row = {
+                    "date": date_text,
+                    "open": safe_round(
+                        open_value
+                    ),
+                    "high": safe_round(
+                        high_value
+                    ),
+                    "low": safe_round(
+                        low_value
+                    ),
+                    "close": safe_round(
+                        close
+                    ),
+                    "volume": to_int(
+                        volume_value
+                    ),
+                    "adj_close": safe_round(
+                        adjusted_value
+                    ),
+                }
+
+                rows.append(row)
 
             if not rows:
                 raise RuntimeError(
@@ -746,7 +743,7 @@ def fetch_stock(symbol):
             )
 
             rows.sort(
-                key=lambda x: x["date"]
+                key=lambda item: item["date"]
             )
 
             return rows
@@ -756,7 +753,8 @@ def fetch_stock(symbol):
             last_error = error
 
             log(
-                f"      ⚠ 失敗：{error}"
+                "      ⚠ 失敗："
+                + str(error)
             )
 
             if attempt < MAX_RETRIES:
@@ -765,7 +763,8 @@ def fetch_stock(symbol):
                 )
 
     raise RuntimeError(
-        f"Yahoo 取得失敗：{last_error}"
+        "Yahoo 取得失敗："
+        + str(last_error)
     )
 
 
@@ -774,7 +773,6 @@ def fetch_stock(symbol):
 # ============================================================
 
 def fetch_all(stocks):
-
     section("開始取得歷史價格")
 
     total = len(stocks)
@@ -797,8 +795,8 @@ def fetch_all(stocks):
 
         log(
             f"[{index}/{total}] "
-            f"{code} {name} | "
-            f"{market} | {symbol}"
+            f"{code} {name} "
+            f"| {market} | {symbol}"
         )
 
         try:
@@ -809,10 +807,12 @@ def fetch_all(stocks):
 
             if len(rows) < MIN_HISTORY_ROWS:
                 raise RuntimeError(
-                    f"歷史資料不足：{len(rows)} 筆"
+                    "歷史資料不足："
+                    + str(len(rows))
+                    + " 筆"
                 )
 
-            success[code] = {
+            record = {
                 "code": code,
                 "symbol": symbol,
                 "name": name,
@@ -823,15 +823,20 @@ def fetch_all(stocks):
                 "data": rows,
             }
 
+            success[code] = record
+
             market_success[market] = (
                 market_success.get(
                     market,
-                    0
-                ) + 1
+                    0,
+                )
+                + 1
             )
 
             log(
-                f"      ✓ {len(rows)} 筆"
+                "      ✓ "
+                + str(len(rows))
+                + " 筆"
             )
 
         except Exception as error:
@@ -847,12 +852,14 @@ def fetch_all(stocks):
             market_failed[market] = (
                 market_failed.get(
                     market,
-                    0
-                ) + 1
+                    0,
+                )
+                + 1
             )
 
             log(
-                f"      ✗ {error}"
+                "      ✗ "
+                + str(error)
             )
 
         time.sleep(
@@ -896,19 +903,23 @@ def validate_success(
     )
 
     log(
-        f"Universe：{total}"
+        "Universe："
+        + str(total)
     )
 
     log(
-        f"成功：{success_count}"
+        "成功："
+        + str(success_count)
     )
 
     log(
-        f"失敗：{failed_count}"
+        "失敗："
+        + str(failed_count)
     )
 
     log(
-        f"成功率：{success_rate:.2f}%"
+        "成功率："
+        + f"{success_rate:.2f}%"
     )
 
     log("")
@@ -928,12 +939,12 @@ def validate_success(
 
         ok = market_success.get(
             market,
-            0
+            0,
         )
 
         bad = market_failed.get(
             market,
-            0
+            0,
         )
 
         market_total = ok + bad
@@ -953,17 +964,18 @@ def validate_success(
             f"({market_rate:.2f}%)"
         )
 
-    if success_rate < MIN_SUCCESS_RATE:
-        raise RuntimeError(
-            f"價格成功率只有 "
-            f"{success_rate:.2f}%，"
-            f"低於 {MIN_SUCCESS_RATE:.0f}%，"
-            f"停止更新。"
-        )
-
     if success_count == 0:
         raise RuntimeError(
             "完全沒有取得有效價格資料"
+        )
+
+    if success_rate < MIN_SUCCESS_RATE:
+        raise RuntimeError(
+            "價格成功率只有 "
+            f"{success_rate:.2f}%"
+            "，低於 "
+            f"{MIN_SUCCESS_RATE:.0f}%"
+            "，停止更新。"
         )
 
     log("")
@@ -973,11 +985,10 @@ def validate_success(
 
 
 # ============================================================
-# 分割股票
+# 分割資料
 # ============================================================
 
 def make_chunks(records):
-
     items = list(
         records.items()
     )
@@ -989,7 +1000,6 @@ def make_chunks(records):
         len(items),
         STOCKS_PER_FILE,
     ):
-
         chunks.append(
             dict(
                 items[
@@ -1003,14 +1013,13 @@ def make_chunks(records):
 
 
 # ============================================================
-# 建立價格分檔
+# 寫入分檔
 # ============================================================
 
-def write_price_files(
+def write_price_shards(
     records,
     output_dir,
 ):
-
     section("建立 Data/prices/ 分檔")
 
     if output_dir.exists():
@@ -1030,7 +1039,6 @@ def write_price_files(
     shard_count = len(chunks)
 
     files = []
-
     total_bytes = 0
 
     for number, chunk in enumerate(
@@ -1042,30 +1050,9 @@ def write_price_files(
             f"prices_{number:03d}.json"
         )
 
-        path = (
-            output_dir
-            / filename
-        )
+        path = output_dir / filename
 
-        data = {
-            "schema_version": "prices-v4.0",
+        payload = {
+            "schema_version": SCHEMA_VERSION,
             "version": VERSION,
-            "generated_at": datetime.now(
-                timezone.utc
-            ).isoformat(),
-            "market": "TW",
-            "shard": number,
-            "shards": shard_count,
-            "count": len(chunk),
-            "stocks": chunk,
-        }
-
-        save_json(
-            path,
-            data,
-        )
-
-        size_bytes = path.stat().st_size
-
-        size_mb = (
-            si
+            "generated_at": datet
