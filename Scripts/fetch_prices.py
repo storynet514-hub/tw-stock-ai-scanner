@@ -2,55 +2,49 @@
 # -*- coding: utf-8 -*-
 
 """
+台股 AI 選股系統
+fetch_prices.py V1.0
+
 ============================================================
-台股 AI 短期選股系統
-fetch_chip.py V1.0
+本程式責任
 ============================================================
 
-用途：
-    建立短期選股所需的籌碼資料。
+只負責：
 
-資料項目：
-    1. 三大法人買賣超
-    2. 外資買賣超
-    3. 投信買賣超
-    4. 自營商買賣超
-    5. 融資餘額
-    6. 融券餘額
-    7. 當沖成交量
-    8. 當沖率
+1. 讀取 Data/universe.json
+2. 依 Universe 中的股票代號取得歷史價格
+3. 取得最新可用交易日價格
+4. 將價格資料寫入 Data/prices.json
 
-重要：
-    本程式不負責：
-    - Universe
-    - 歷史價格
-    - MACD
-    - KD
-    - RSI
-    - UI
-
-輸入：
-    Data/universe.json
-
-輸出：
-    Data/chip.json
-
-設計原則：
-    - API 失敗不得產生假的 0
-    - 單一股票失敗不應讓整批資料消失
-    - 明確標示資料來源與日期
-    - 台股 TWSE / TPEx 分開處理
-    - 不把「法人買賣超」錯稱為真正的「主力」
 ============================================================
+本程式不負責
+============================================================
+
+❌ 不建立 Universe
+❌ 不計算 MACD
+❌ 不計算 KD
+❌ 不計算 RSI
+❌ 不計算 MA
+❌ 不判斷買進條件
+❌ 不建立 UI
+❌ 不建立 ui_data.json
+
+資料流程：
+
+Data/universe.json
+        ↓
+fetch_prices.py
+        ↓
+Data/prices.json
 """
 
 import json
-import os
 import sys
 import time
-from datetime import datetime, timedelta
+from datetime import datetime
 from pathlib import Path
 
+import pandas as pd
 import requests
 
 
@@ -58,1088 +52,904 @@ import requests
 # 基本設定
 # ============================================================
 
-ROOT = Path(__file__).resolve().parent.parent
+VERSION = "V1.0"
 
-DATA_DIR = ROOT / "Data"
+BASE_DIR = Path(__file__).resolve().parent.parent
+
+DATA_DIR = BASE_DIR / "Data"
 
 UNIVERSE_FILE = DATA_DIR / "universe.json"
-OUTPUT_FILE = DATA_DIR / "chip.json"
+PRICES_FILE = DATA_DIR / "prices.json"
 
-TIMEOUT = 20
+# 歷史資料至少抓 3 年
+# 後續 MACD / KD / RSI / MA 都會使用這些資料
+START_DATE = "2023-01-01"
 
-HEADERS = {
-    "User-Agent": (
-        "Mozilla/5.0 "
-        "(Windows NT 10.0; Win64; x64) "
-        "AppleWebKit/537.36 "
-        "(KHTML, like Gecko) "
-        "Chrome/131.0 Safari/537.36"
-    ),
-    "Accept": "application/json,text/plain,*/*",
-}
+# Yahoo Finance chart API
+YAHOO_CHART_URL = (
+    "https://query1.finance.yahoo.com/v8/finance/chart/{symbol}"
+)
 
+REQUEST_TIMEOUT = 30
 
-# ============================================================
-# 工具
-# ============================================================
-
-def now_tw():
-    """
-    回傳目前台灣時間。
-    """
-    try:
-        from zoneinfo import ZoneInfo
-
-        return datetime.now(
-            ZoneInfo("Asia/Taipei")
-        ).strftime("%Y-%m-%d %H:%M:%S")
-
-    except Exception:
-        return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-
-
-def today_tw():
-    return now_tw()[:10]
-
-
-def ensure_data_dir():
-    DATA_DIR.mkdir(parents=True, exist_ok=True)
-
-
-def request_json(url, params=None):
-    """
-    安全 GET JSON。
-
-    失敗直接回傳 None。
-    不把失敗資料轉成 0。
-    """
-
-    try:
-        response = requests.get(
-            url,
-            params=params,
-            headers=HEADERS,
-            timeout=TIMEOUT,
-        )
-
-        response.raise_for_status()
-
-        return response.json()
-
-    except Exception as exc:
-        print(f"   ⚠ API 取得失敗：{exc}")
-        return None
-
-
-def to_number(value):
-    """
-    將 API 回傳值轉成數字。
-
-    空值、--、None：
-        回傳 None
-
-    絕不把未知值當成 0。
-    """
-
-    if value is None:
-        return None
-
-    if isinstance(value, (int, float)):
-        return value
-
-    text = str(value).strip()
-
-    if text in ("", "-", "--", "N/A", "null", "None"):
-        return None
-
-    text = text.replace(",", "")
-
-    try:
-        return float(text)
-
-    except Exception:
-        return None
-
-
-def normalize_stock_code(value):
-    """
-    統一股票代號。
-
-    例如：
-        2330
-        2330.TW
-        2330.TWO
-
-    最後只保留純代號。
-    """
-
-    if value is None:
-        return None
-
-    code = str(value).strip()
-
-    if "." in code:
-        code = code.split(".")[0]
-
-    return code
+# 每支股票之間稍微停頓
+REQUEST_DELAY = 0.15
 
 
 # ============================================================
-# Universe
+# 輸出工具
+# ============================================================
+
+def log(message=""):
+    print(message, flush=True)
+
+
+def section(title):
+    log("")
+    log("=" * 64)
+    log(title)
+    log("=" * 64)
+
+
+# ============================================================
+# 讀取 Universe
 # ============================================================
 
 def load_universe():
-    """
-    讀取 Data/universe.json。
-    """
+    section("讀取 Data/universe.json")
 
     if not UNIVERSE_FILE.exists():
-        print(f"❌ 找不到 Universe：{UNIVERSE_FILE}")
-        return []
+        raise FileNotFoundError(
+            f"找不到 Universe 檔案：{UNIVERSE_FILE}"
+        )
 
     try:
-        with open(
-            UNIVERSE_FILE,
+        with UNIVERSE_FILE.open(
             "r",
-            encoding="utf-8",
+            encoding="utf-8"
         ) as f:
             data = json.load(f)
+    except json.JSONDecodeError as exc:
+        raise RuntimeError(
+            f"universe.json JSON 格式錯誤：{exc}"
+        ) from exc
 
-    except Exception as exc:
-        print(f"❌ Universe JSON 無法讀取：{exc}")
-        return []
-
-    stocks = []
-
-    # --------------------------------------------------------
-    # 格式 A
-    # {
-    #   "stocks": [...]
-    # }
-    # --------------------------------------------------------
-
-    if isinstance(data, dict):
-
-        if isinstance(data.get("stocks"), list):
-            stocks = data["stocks"]
-
-        elif isinstance(data.get("universe"), list):
-            stocks = data["universe"]
-
-        elif isinstance(data.get("data"), list):
-            stocks = data["data"]
-
-    # --------------------------------------------------------
-    # 格式 B
-    # [...]
-    # --------------------------------------------------------
-
-    elif isinstance(data, list):
-        stocks = data
-
-    result = []
-
-    for item in stocks:
-
-        if isinstance(item, str):
-
-            code = normalize_stock_code(item)
-
-            if code:
-                result.append(
-                    {
-                        "code": code,
-                        "name": "",
-                        "market": "TW",
-                    }
-                )
-
-            continue
-
-        if not isinstance(item, dict):
-            continue
-
-        code = (
-            item.get("code")
-            or item.get("symbol")
-            or item.get("stock_id")
-            or item.get("ticker")
+    if not isinstance(data, dict):
+        raise RuntimeError(
+            "universe.json 頂層格式不是 object"
         )
 
-        code = normalize_stock_code(code)
+    log(
+        f"Universe JSON 載入成功："
+        f"{UNIVERSE_FILE}"
+    )
 
-        if not code:
-            continue
-
-        name = (
-            item.get("name")
-            or item.get("stock_name")
-            or ""
-        )
-
-        market = (
-            item.get("market")
-            or item.get("exchange")
-            or "TW"
-        )
-
-        result.append(
-            {
-                "code": code,
-                "name": name,
-                "market": market,
-            }
-        )
-
-    # 去除重複
-    unique = {}
-
-    for item in result:
-        unique[item["code"]] = item
-
-    result = list(unique.values())
-
-    print(f"   Universe 股票數：{len(result)}")
-
-    return result
+    return data
 
 
 # ============================================================
-# TWSE 三大法人
+# 從 Universe 萃取股票
 # ============================================================
 
-def fetch_twse_institutional(date_text):
+def extract_symbols(universe):
     """
-    TWSE 三大法人買賣超。
+    支援目前重建架構可能使用的幾種 Universe 結構。
 
-    回傳：
+    例如：
 
     {
-        code: {
-            foreign_net,
-            investment_trust_net,
-            dealer_net,
-            institutional_net
-        }
+        "stocks": [
+            {
+                "symbol": "2330.TW",
+                "name": "台積電"
+            }
+        ]
     }
 
-    單位：
-        張
+    或：
+
+    {
+        "listed": [...],
+        "otc": [...]
+    }
+
+    或直接：
+
+    {
+        "2330.TW": {...},
+        "1303.TW": {...}
+    }
     """
 
-    url = (
-        "https://www.twse.com.tw/"
-        "rwd/zh/fund/BFI82U"
-    )
+    symbols = {}
 
-    params = {
-        "dayDate": date_text.replace("-", ""),
-        "type": "day",
-    }
+    def add_item(item):
+        if isinstance(item, str):
+            symbol = item.strip()
 
-    print(
-        f"🔎 TWSE 三大法人：{date_text}"
-    )
+            if symbol:
+                symbols[symbol] = {
+                    "symbol": symbol
+                }
 
-    data = request_json(
-        url,
-        params=params,
-    )
+            return
 
-    if not data:
-        return {}
+        if not isinstance(item, dict):
+            return
 
-    fields = data.get("fields", [])
-    rows = data.get("data", [])
-
-    if not rows:
-        print("   ⚠ TWSE 沒有法人資料")
-        return {}
-
-    result = {}
-
-    # 嘗試找欄位位置
-    field_map = {}
-
-    for idx, field in enumerate(fields):
-        field_map[str(field)] = idx
-
-    for row in rows:
-
-        if not row:
-            continue
-
-        code = normalize_stock_code(row[0])
-
-        if not code:
-            continue
-
-        def get_value(index):
-            if index is None:
-                return None
-
-            if index >= len(row):
-                return None
-
-            return to_number(row[index])
-
-        # ----------------------------------------------------
-        # TWSE BFI82U 欄位會隨版本有所差異
-        # 因此使用關鍵字尋找
-        # ----------------------------------------------------
-
-        foreign_idx = None
-        trust_idx = None
-        dealer_idx = None
-
-        for name, idx in field_map.items():
-
-            if (
-                "外陸資" in name
-                or "外資" in name
-            ):
-                foreign_idx = idx
-
-            if "投信" in name:
-                trust_idx = idx
-
-            if "自營商" in name:
-                dealer_idx = idx
-
-        foreign_net = get_value(
-            foreign_idx
-        )
-
-        trust_net = get_value(
-            trust_idx
-        )
-
-        dealer_net = get_value(
-            dealer_idx
-        )
-
-        institutional_net = None
-
-        values = [
-            v
-            for v in (
-                foreign_net,
-                trust_net,
-                dealer_net,
-            )
-            if v is not None
+        possible_symbol_keys = [
+            "symbol",
+            "ticker",
+            "code",
+            "stock_id",
+            "stock_code"
         ]
 
-        if values:
-            institutional_net = sum(values)
+        symbol = None
 
-        result[code] = {
-            "foreign_net": foreign_net,
-            "investment_trust_net": trust_net,
-            "dealer_net": dealer_net,
-            "institutional_net": institutional_net,
-        }
-
-    print(
-        f"   TWSE 法人資料：{len(result)} 檔"
-    )
-
-    return result
-
-
-# ============================================================
-# TWSE 融資融券
-# ============================================================
-
-def fetch_twse_margin(date_text):
-    """
-    TWSE 融資融券資料。
-    """
-
-    url = (
-        "https://www.twse.com.tw/"
-        "rwd/zh/marginTrading/MI_MARGN"
-    )
-
-    params = {
-        "date": date_text.replace("-", ""),
-        "selectType": "ALL",
-    }
-
-    print(
-        f"🔎 TWSE 融資融券：{date_text}"
-    )
-
-    data = request_json(
-        url,
-        params=params,
-    )
-
-    if not data:
-        return {}
-
-    tables = data.get("tables", [])
-
-    result = {}
-
-    for table in tables:
-
-        fields = table.get("fields", [])
-        rows = table.get("data", [])
-
-        if not rows:
-            continue
-
-        # 找股票代號欄
-        for row in rows:
-
-            if not row:
-                continue
-
-            code = normalize_stock_code(row[0])
-
-            if not code or len(code) != 4:
-                continue
-
-            # ------------------------------------------------
-            # 因官方欄位結構可能變動，
-            # 這裡只在能確認欄位名稱時寫入。
-            # ------------------------------------------------
-
-            margin_balance = None
-            short_balance = None
-
-            margin_idx = None
-            short_idx = None
-
-            for idx, field in enumerate(fields):
-
-                field_text = str(field)
-
-                if (
-                    "融資餘額" in field_text
-                    or "融資餘額(張)" in field_text
-                ):
-                    margin_idx = idx
-
-                if (
-                    "融券餘額" in field_text
-                    or "融券餘額(張)" in field_text
-                ):
-                    short_idx = idx
-
-            if (
-                margin_idx is not None
-                and margin_idx < len(row)
-            ):
-                margin_balance = to_number(
-                    row[margin_idx]
-                )
-
-            if (
-                short_idx is not None
-                and short_idx < len(row)
-            ):
-                short_balance = to_number(
-                    row[short_idx]
-                )
-
-            result[code] = {
-                "margin_balance": margin_balance,
-                "short_balance": short_balance,
-            }
-
-    print(
-        f"   TWSE 融資融券：{len(result)} 檔"
-    )
-
-    return result
-
-
-# ============================================================
-# TPEx
-# ============================================================
-
-def fetch_tpex_institutional(date_text):
-    """
-    TPEx 法人資料。
-
-    TPEx 官方 API 結構與 TWSE 不同。
-    如果官方端點無法取得，不建立虛假的 0。
-    """
-
-    url = (
-        "https://www.tpex.org.tw/"
-        "web/stock/3insti/"
-        "3insti_summary.php"
-    )
-
-    params = {
-        "l": "zh-tw",
-        "d": date_text.replace("-", ""),
-        "s": "0,asc",
-    }
-
-    print(
-        f"🔎 TPEx 三大法人：{date_text}"
-    )
-
-    data = request_json(
-        url,
-        params=params,
-    )
-
-    if not data:
-        print("   ⚠ TPEx 法人資料無法取得")
-        return {}
-
-    result = {}
-
-    tables = data.get("tables", [])
-
-    for table in tables:
-
-        rows = table.get("data", [])
-
-        for row in rows:
-
-            if not row:
-                continue
-
-            code = normalize_stock_code(row[0])
-
-            if not code or len(code) != 4:
-                continue
-
-            # TPEx 不同版本欄位可能變動，
-            # 先保留原始資料，不猜欄位。
-            result[code] = {
-                "raw": row,
-            }
-
-    print(
-        f"   TPEx 法人資料：{len(result)} 檔"
-    )
-
-    return result
-
-
-# ============================================================
-# 當沖
-# ============================================================
-
-def fetch_twse_daytrade(date_text):
-    """
-    TWSE 當沖資料。
-
-    不存在資料時回傳空 dict。
-    不把空資料變成當沖率 0。
-    """
-
-    url = (
-        "https://www.twse.com.tw/"
-        "rwd/zh/afterTrading/"
-        "TWTB4U"
-    )
-
-    params = {
-        "date": date_text.replace("-", ""),
-        "selectType": "ALL",
-    }
-
-    print(
-        f"🔎 TWSE 當沖資料：{date_text}"
-    )
-
-    data = request_json(
-        url,
-        params=params,
-    )
-
-    if not data:
-        return {}
-
-    rows = data.get("data", [])
-    fields = data.get("fields", [])
-
-    if not rows:
-        print("   ⚠ 無當沖資料")
-        return {}
-
-    result = {}
-
-    field_map = {}
-
-    for idx, field in enumerate(fields):
-        field_map[str(field)] = idx
-
-    volume_idx = None
-    daytrade_idx = None
-
-    for name, idx in field_map.items():
-
-        if (
-            "成交量" in name
-            and "當沖" not in name
-        ):
-            volume_idx = idx
-
-        if (
-            "當沖" in name
-            or "沖銷" in name
-        ):
-            daytrade_idx = idx
-
-    for row in rows:
-
-        if not row:
-            continue
-
-        code = normalize_stock_code(row[0])
-
-        if not code:
-            continue
-
-        total_volume = None
-        daytrade_volume = None
-
-        if (
-            volume_idx is not None
-            and volume_idx < len(row)
-        ):
-            total_volume = to_number(
-                row[volume_idx]
-            )
-
-        if (
-            daytrade_idx is not None
-            and daytrade_idx < len(row)
-        ):
-            daytrade_volume = to_number(
-                row[daytrade_idx]
-            )
-
-        daytrade_rate = None
-
-        if (
-            total_volume is not None
-            and daytrade_volume is not None
-            and total_volume > 0
-        ):
-            daytrade_rate = (
-                daytrade_volume
-                / total_volume
-                * 100
-            )
-
-        result[code] = {
-            "total_volume": total_volume,
-            "daytrade_volume": daytrade_volume,
-            "daytrade_rate": daytrade_rate,
-        }
-
-    print(
-        f"   TWSE 當沖資料：{len(result)} 檔"
-    )
-
-    return result
-
-
-# ============================================================
-# 建立單日籌碼資料
-# ============================================================
-
-def build_daily_chip(date_text, universe):
-    """
-    建立指定交易日的籌碼資料。
-    """
-
-    print("")
-    print("=" * 60)
-    print(f"建立籌碼資料：{date_text}")
-    print("=" * 60)
-
-    twse_inst = fetch_twse_institutional(
-        date_text
-    )
-
-    twse_margin = fetch_twse_margin(
-        date_text
-    )
-
-    tpex_inst = fetch_tpex_institutional(
-        date_text
-    )
-
-    twse_daytrade = fetch_twse_daytrade(
-        date_text
-    )
-
-    result = {}
-
-    for stock in universe:
-
-        code = stock["code"]
-
-        market = str(
-            stock.get("market", "")
-        ).upper()
-
-        item = {
-            "code": code,
-            "name": stock.get("name", ""),
-            "market": market,
-            "date": date_text,
-
-            # -----------------------------
-            # 法人
-            # -----------------------------
-
-            "foreign_net": None,
-            "investment_trust_net": None,
-            "dealer_net": None,
-            "institutional_net": None,
-
-            # -----------------------------
-            # 資券
-            # -----------------------------
-
-            "margin_balance": None,
-            "short_balance": None,
-
-            # -----------------------------
-            # 當沖
-            # -----------------------------
-
-            "total_volume": None,
-            "daytrade_volume": None,
-            "daytrade_rate": None,
-
-            # -----------------------------
-            # 資料狀態
-            # -----------------------------
-
-            "data_status": "partial",
-        }
-
-        # ====================================================
-        # TWSE
-        # ====================================================
-
-        if code in twse_inst:
-
-            inst = twse_inst[code]
-
-            item["foreign_net"] = (
-                inst.get("foreign_net")
-            )
-
-            item["investment_trust_net"] = (
-                inst.get(
-                    "investment_trust_net"
-                )
-            )
-
-            item["dealer_net"] = (
-                inst.get("dealer_net")
-            )
-
-            item["institutional_net"] = (
-                inst.get(
-                    "institutional_net"
-                )
-            )
-
-        # ====================================================
-        # TPEx
-        # ====================================================
-
-        if code in tpex_inst:
-
-            item["tpex_institutional"] = (
-                tpex_inst[code]
-            )
-
-        # ====================================================
-        # 融資融券
-        # ====================================================
-
-        if code in twse_margin:
-
-            margin = twse_margin[code]
-
-            item["margin_balance"] = (
-                margin.get(
-                    "margin_balance"
-                )
-            )
-
-            item["short_balance"] = (
-                margin.get(
-                    "short_balance"
-                )
-            )
-
-        # ====================================================
-        # 當沖
-        # ====================================================
-
-        if code in twse_daytrade:
-
-            daytrade = twse_daytrade[code]
-
-            item["total_volume"] = (
-                daytrade.get(
-                    "total_volume"
-                )
-            )
-
-            item["daytrade_volume"] = (
-                daytrade.get(
-                    "daytrade_volume"
-                )
-            )
-
-            item["daytrade_rate"] = (
-                daytrade.get(
-                    "daytrade_rate"
-                )
-            )
-
-        # ====================================================
-        # 判斷資料完整度
-        # ====================================================
-
-        available = 0
-
-        fields_to_check = [
-            item["foreign_net"],
-            item["investment_trust_net"],
-            item["dealer_net"],
-            item["institutional_net"],
-            item["margin_balance"],
-            item["short_balance"],
-            item["daytrade_rate"],
-        ]
-
-        for value in fields_to_check:
+        for key in possible_symbol_keys:
+            value = item.get(key)
 
             if value is not None:
-                available += 1
+                value = str(value).strip()
 
-        if available >= 6:
-            item["data_status"] = "complete"
+                if value:
+                    symbol = value
+                    break
 
-        elif available >= 3:
-            item["data_status"] = "partial"
+        if not symbol:
+            return
+
+        record = dict(item)
+
+        record["symbol"] = symbol
+
+        symbols[symbol] = record
+
+    # --------------------------------------------------------
+    # 常見 list 欄位
+    # --------------------------------------------------------
+
+    list_keys = [
+        "stocks",
+        "listed",
+        "otc",
+        "tpex",
+        "twse",
+        "securities",
+        "universe",
+        "items"
+    ]
+
+    for key in list_keys:
+        value = universe.get(key)
+
+        if isinstance(value, list):
+            for item in value:
+                add_item(item)
+
+        elif isinstance(value, dict):
+            for key2, value2 in value.items():
+
+                if isinstance(value2, list):
+                    for item in value2:
+                        add_item(item)
+
+                elif isinstance(value2, dict):
+                    record = dict(value2)
+
+                    if not any(
+                        record.get(k)
+                        for k in [
+                            "symbol",
+                            "ticker",
+                            "code",
+                            "stock_id",
+                            "stock_code"
+                        ]
+                    ):
+                        record["symbol"] = key2
+
+                    add_item(record)
+
+    # --------------------------------------------------------
+    # 如果上面沒有抓到，嘗試頂層 dictionary
+    # --------------------------------------------------------
+
+    if not symbols:
+        for key, value in universe.items():
+
+            if isinstance(value, dict):
+                record = dict(value)
+
+                if not any(
+                    record.get(k)
+                    for k in [
+                        "symbol",
+                        "ticker",
+                        "code",
+                        "stock_id",
+                        "stock_code"
+                    ]
+                ):
+                    record["symbol"] = key
+
+                add_item(record)
+
+            elif isinstance(value, str):
+                # 只有看起來像股票代號才加入
+                candidate = value.strip()
+
+                if candidate:
+                    add_item(candidate)
+
+    # --------------------------------------------------------
+    # 正規化 Yahoo symbol
+    # --------------------------------------------------------
+
+    normalized = {}
+
+    for symbol, record in symbols.items():
+
+        symbol = str(symbol).strip().upper()
+
+        if not symbol:
+            continue
+
+        # 如果 Universe 已經帶 Yahoo suffix，直接使用
+        if symbol.endswith(".TW"):
+            yahoo_symbol = symbol
+
+        elif symbol.endswith(".TWO"):
+            yahoo_symbol = symbol
 
         else:
-            item["data_status"] = "insufficient"
+            # 純數字股票代號
+            if symbol.isdigit():
+                yahoo_symbol = symbol + ".TW"
+            else:
+                # 不擅自改造非台股代號
+                yahoo_symbol = symbol
 
-        result[code] = item
+        record = dict(record)
+        record["symbol"] = symbol
+        record["yahoo_symbol"] = yahoo_symbol
 
-    return result
+        normalized[yahoo_symbol] = record
+
+    return normalized
 
 
 # ============================================================
-# 儲存
+# Yahoo Finance 取得單一股票歷史價格
 # ============================================================
 
-def save_output(daily_data, universe_count):
-    """
-    儲存 Data/chip.json
-    """
+def fetch_history(symbol):
+    url = YAHOO_CHART_URL.format(symbol=symbol)
 
-    ensure_data_dir()
-
-    complete = 0
-    partial = 0
-    insufficient = 0
-
-    for item in daily_data.values():
-
-        status = item.get(
-            "data_status"
-        )
-
-        if status == "complete":
-            complete += 1
-
-        elif status == "partial":
-            partial += 1
-
-        else:
-            insufficient += 1
-
-    output = {
-        "schema_version": "1.0",
-        "generated_at": now_tw(),
-        "data_date": today_tw(),
-
-        "description": (
-            "台股短期選股籌碼資料"
+    params = {
+        "period1": int(
+            datetime.strptime(
+                START_DATE,
+                "%Y-%m-%d"
+            ).timestamp()
         ),
-
-        "universe_count": universe_count,
-
-        "statistics": {
-            "complete": complete,
-            "partial": partial,
-            "insufficient": insufficient,
-        },
-
-        "stocks": daily_data,
+        "period2": int(time.time()),
+        "interval": "1d",
+        "events": "history",
+        "includeAdjustedClose": "true"
     }
 
-    temp_file = OUTPUT_FILE.with_suffix(
+    headers = {
+        "User-Agent": (
+            "Mozilla/5.0 "
+            "(Windows NT 10.0; Win64; x64) "
+            "AppleWebKit/537.36 "
+            "(KHTML, like Gecko) "
+            "Chrome/120.0 Safari/537.36"
+        )
+    }
+
+    response = requests.get(
+        url,
+        params=params,
+        headers=headers,
+        timeout=REQUEST_TIMEOUT
+    )
+
+    response.raise_for_status()
+
+    payload = response.json()
+
+    chart = payload.get("chart", {})
+
+    error = chart.get("error")
+
+    if error:
+        raise RuntimeError(
+            str(error)
+        )
+
+    results = chart.get("result")
+
+    if not results:
+        raise RuntimeError(
+            "Yahoo Finance 沒有回傳 result"
+        )
+
+    result = results[0]
+
+    timestamps = result.get("timestamp")
+
+    indicators = result.get("indicators", {})
+
+    quote_list = indicators.get("quote", [])
+
+    if not timestamps or not quote_list:
+        raise RuntimeError(
+            "Yahoo Finance 沒有價格資料"
+        )
+
+    quote = quote_list[0]
+
+    opens = quote.get("open", [])
+    highs = quote.get("high", [])
+    lows = quote.get("low", [])
+    closes = quote.get("close", [])
+    volumes = quote.get("volume", [])
+
+    adjclose_list = indicators.get(
+        "adjclose",
+        []
+    )
+
+    adjusted_closes = []
+
+    if adjclose_list:
+        adjusted_closes = adjclose_list[0].get(
+            "adjclose",
+            []
+        )
+
+    rows = []
+
+    length = len(timestamps)
+
+    for i in range(length):
+
+        timestamp = timestamps[i]
+
+        close = (
+            closes[i]
+            if i < len(closes)
+            else None
+        )
+
+        if close is None:
+            continue
+
+        open_price = (
+            opens[i]
+            if i < len(opens)
+            else None
+        )
+
+        high = (
+            highs[i]
+            if i < len(highs)
+            else None
+        )
+
+        low = (
+            lows[i]
+            if i < len(lows)
+            else None
+        )
+
+        volume = (
+            volumes[i]
+            if i < len(volumes)
+            else None
+        )
+
+        adjusted_close = (
+            adjusted_closes[i]
+            if i < len(adjusted_closes)
+            else None
+        )
+
+        date = datetime.fromtimestamp(
+            timestamp
+        ).strftime("%Y-%m-%d")
+
+        rows.append({
+            "date": date,
+            "open": open_price,
+            "high": high,
+            "low": low,
+            "close": close,
+            "adj_close": (
+                adjusted_close
+                if adjusted_close is not None
+                else close
+            ),
+            "volume": volume
+        })
+
+    if not rows:
+        raise RuntimeError(
+            "沒有有效交易日資料"
+        )
+
+    return rows
+
+
+# ============================================================
+# 清理數值
+# ============================================================
+
+def clean_number(value):
+    if value is None:
+        return None
+
+    try:
+        value = float(value)
+
+        if pd.isna(value):
+            return None
+
+        return round(value, 6)
+
+    except Exception:
+        return None
+
+
+def clean_rows(rows):
+    cleaned = []
+
+    for row in rows:
+
+        cleaned.append({
+            "date": row["date"],
+            "open": clean_number(row.get("open")),
+            "high": clean_number(row.get("high")),
+            "low": clean_number(row.get("low")),
+            "close": clean_number(row.get("close")),
+            "adj_close": clean_number(
+                row.get("adj_close")
+            ),
+            "volume": (
+                int(row["volume"])
+                if row.get("volume") is not None
+                else None
+            )
+        })
+
+    return cleaned
+
+
+# ============================================================
+# 建立 prices.json
+# ============================================================
+
+def build_prices(universe_records):
+
+    section("開始取得歷史價格")
+
+    total = len(universe_records)
+
+    log(f"待處理標的：{total}")
+    log(f"歷史資料起始日：{START_DATE}")
+    log("")
+
+    prices = {}
+
+    success = 0
+    failed = 0
+
+    failed_symbols = []
+
+    for index, (yahoo_symbol, meta) in enumerate(
+        universe_records.items(),
+        start=1
+    ):
+
+        log(
+            f"[{index}/{total}] "
+            f"取得 {yahoo_symbol}"
+        )
+
+        try:
+
+            rows = fetch_history(
+                yahoo_symbol
+            )
+
+            rows = clean_rows(rows)
+
+            if not rows:
+                raise RuntimeError(
+                    "沒有有效價格資料"
+                )
+
+            latest = rows[-1]
+
+            prices[yahoo_symbol] = {
+                "symbol": meta.get(
+                    "symbol",
+                    yahoo_symbol
+                ),
+                "name": meta.get(
+                    "name",
+                    ""
+                ),
+                "market": meta.get(
+                    "market",
+                    meta.get(
+                        "type",
+                        ""
+                    )
+                ),
+                "latest_date": latest["date"],
+                "latest_close": latest["close"],
+                "latest_volume": latest["volume"],
+                "data": rows
+            }
+
+            success += 1
+
+            log(
+                f"    ✓ {len(rows)} 筆"
+                f" | 最新日期：{latest['date']}"
+                f" | 收盤：{latest['close']}"
+            )
+
+        except Exception as exc:
+
+            failed += 1
+
+            failed_symbols.append({
+                "symbol": yahoo_symbol,
+                "error": str(exc)
+            })
+
+            log(
+                f"    ✗ 取得失敗：{exc}"
+            )
+
+        time.sleep(REQUEST_DELAY)
+
+    return prices, success, failed, failed_symbols
+
+
+# ============================================================
+# 驗證價格資料
+# ============================================================
+
+def validate_prices(
+    prices,
+    total_symbols,
+    success,
+    failed
+):
+    section("價格資料驗證")
+
+    log(f"Universe 標的數量：{total_symbols}")
+    log(f"成功取得：{success}")
+    log(f"取得失敗：{failed}")
+    log(f"prices.json 標的數量：{len(prices)}")
+
+    if total_symbols == 0:
+        raise RuntimeError(
+            "Universe 沒有任何標的，停止建立 prices.json"
+        )
+
+    if success == 0:
+        raise RuntimeError(
+            "所有標的都無法取得價格，"
+            "停止建立 prices.json"
+        )
+
+    # 至少需要取得一部分資料
+    success_ratio = success / total_symbols
+
+    log(
+        f"成功率：{success_ratio * 100:.2f}%"
+    )
+
+    # 防止 API 大規模失敗後覆蓋正常資料
+    if success_ratio < 0.50:
+        raise RuntimeError(
+            "價格資料成功率低於 50%，"
+            "為避免產生錯誤 prices.json，"
+            "本次執行停止。"
+        )
+
+    # 檢查每支股票至少有一筆
+    invalid = []
+
+    for symbol, record in prices.items():
+
+        data = record.get("data", [])
+
+        if not data:
+            invalid.append(symbol)
+            continue
+
+        latest_date = record.get(
+            "latest_date"
+        )
+
+        latest_close = record.get(
+            "latest_close"
+        )
+
+        if not latest_date:
+            invalid.append(symbol)
+
+        if latest_close is None:
+            invalid.append(symbol)
+
+    if invalid:
+        raise RuntimeError(
+            "發現價格資料結構異常："
+            + ", ".join(invalid[:20])
+        )
+
+    log("✓ 價格資料結構驗證通過")
+
+
+# ============================================================
+# 寫入 JSON
+# ============================================================
+
+def save_prices(
+    prices,
+    failed_symbols
+):
+
+    section("寫入 Data/prices.json")
+
+    DATA_DIR.mkdir(
+        parents=True,
+        exist_ok=True
+    )
+
+    output = {
+        "version": VERSION,
+        "generated_at": datetime.now().strftime(
+            "%Y-%m-%d %H:%M:%S"
+        ),
+        "source": "Yahoo Finance",
+        "history_start": START_DATE,
+        "count": len(prices),
+        "failed_count": len(failed_symbols),
+        "failed_symbols": failed_symbols,
+        "prices": prices
+    }
+
+    temp_file = PRICES_FILE.with_suffix(
         ".json.tmp"
     )
 
-    with open(
-        temp_file,
+    # 先寫暫存檔
+    with temp_file.open(
         "w",
-        encoding="utf-8",
+        encoding="utf-8"
     ) as f:
 
         json.dump(
             output,
             f,
             ensure_ascii=False,
-            indent=2,
+            separators=(",", ":"),
+            allow_nan=False
         )
 
-    os.replace(
-        temp_file,
-        OUTPUT_FILE,
+    # 寫入成功後才正式替換
+    temp_file.replace(
+        PRICES_FILE
     )
 
-    print("")
-    print("=" * 60)
-    print("籌碼資料建立完成")
-    print("=" * 60)
+    file_size = PRICES_FILE.stat().st_size
 
-    print(
-        f"輸出檔案：{OUTPUT_FILE}"
+    log(
+        f"✓ prices.json 建立成功"
     )
 
-    print(
-        f"Universe：{universe_count}"
+    log(
+        f"檔案：{PRICES_FILE}"
     )
 
-    print(
-        f"完整資料：{complete}"
-    )
-
-    print(
-        f"部分資料：{partial}"
-    )
-
-    print(
-        f"不足資料：{insufficient}"
+    log(
+        f"大小：{file_size / 1024 / 1024:.2f} MB"
     )
 
 
 # ============================================================
-# Main
+# 主程式
 # ============================================================
 
 def main():
 
-    print("")
-    print("=" * 64)
-    print("台股 AI 短期選股系統 fetch_chip.py V1.0")
-    print("=" * 64)
+    start_time = time.time()
 
-    print(
-        f"開始時間：{now_tw()}"
+    log("")
+    log("=" * 64)
+    log(
+        f"台股 AI 選股系統 "
+        f"fetch_prices.py {VERSION}"
+    )
+    log("=" * 64)
+
+    log(
+        "開始時間："
+        + datetime.now().strftime(
+            "%Y-%m-%d %H:%M:%S"
+        )
     )
 
-    ensure_data_dir()
+    try:
 
-    # --------------------------------------------------------
-    # 1. Universe
-    # --------------------------------------------------------
+        # ----------------------------------------------------
+        # 1. 讀取 Universe
+        # ----------------------------------------------------
 
-    universe = load_universe()
+        universe = load_universe()
 
-    if not universe:
+        # ----------------------------------------------------
+        # 2. 萃取股票
+        # ----------------------------------------------------
 
-        print("")
-        print(
-            "❌ Universe 為空，停止執行。"
+        section("解析 Universe")
+
+        universe_records = extract_symbols(
+            universe
         )
 
-        sys.exit(1)
-
-    # --------------------------------------------------------
-    # 2. 建立最近交易日資料
-    #
-    # 往前尋找最多 7 天。
-    # 因為週末及國定假日可能沒有資料。
-    # --------------------------------------------------------
-
-    target_date = datetime.now()
-
-    daily_data = {}
-
-    for _ in range(7):
-
-        date_text = target_date.strftime(
-            "%Y-%m-%d"
+        log(
+            f"解析完成："
+            f"{len(universe_records)} 個標的"
         )
 
-        daily_data = build_daily_chip(
-            date_text,
-            universe,
-        )
-
-        # 至少有資料才接受
-        usable = sum(
-            1
-            for item in daily_data.values()
-            if item.get("data_status")
-            != "insufficient"
-        )
-
-        if usable > 0:
-
-            print("")
-            print(
-                f"✅ 找到可用交易日：{date_text}"
+        if not universe_records:
+            raise RuntimeError(
+                "無法從 universe.json 解析出任何股票代號"
             )
 
-            break
+        # 顯示前 10 個
+        log("")
+        log("前 10 個標的：")
 
-        target_date -= timedelta(days=1)
+        for symbol, record in list(
+            universe_records.items()
+        )[:10]:
 
-    if not daily_data:
+            name = record.get(
+                "name",
+                ""
+            )
 
-        print("")
-        print(
-            "❌ 最近 7 天皆無法取得籌碼資料。"
+            log(
+                f"  {symbol}"
+                + (
+                    f" | {name}"
+                    if name
+                    else ""
+                )
+            )
+
+        # ----------------------------------------------------
+        # 3. 抓價格
+        # ----------------------------------------------------
+
+        (
+            prices,
+            success,
+            failed,
+            failed_symbols
+        ) = build_prices(
+            universe_records
         )
 
-        sys.exit(1)
+        # ----------------------------------------------------
+        # 4. 驗證
+        # ----------------------------------------------------
 
-    # --------------------------------------------------------
-    # 3. 儲存
-    # --------------------------------------------------------
+        validate_prices(
+            prices=prices,
+            total_symbols=len(
+                universe_records
+            ),
+            success=success,
+            failed=failed
+        )
 
-    save_output(
-        daily_data,
-        len(universe),
-    )
+        # ----------------------------------------------------
+        # 5. 寫檔
+        # ----------------------------------------------------
 
-    print("")
-    print("=" * 64)
-    print(
-        f"完成時間：{now_tw()}"
-    )
-    print(
-        "fetch_chip.py V1.0 完成"
-    )
-    print("=" * 64)
+        save_prices(
+            prices,
+            failed_symbols
+        )
+
+        # ----------------------------------------------------
+        # 完成
+        # ----------------------------------------------------
+
+        elapsed = time.time() - start_time
+
+        log("")
+        log("=" * 64)
+        log(
+            "✓ fetch_prices.py 執行完成"
+        )
+        log("=" * 64)
+
+        log(
+            f"成功：{success}"
+        )
+
+        log(
+            f"失敗：{failed}"
+        )
+
+        log(
+            f"總耗時：{elapsed:.1f} 秒"
+        )
+
+        log(
+            f"輸出：{PRICES_FILE}"
+        )
+
+        if failed_symbols:
+
+            log("")
+            log(
+                "⚠️ 以下標的本次取得失敗："
+            )
+
+            for item in failed_symbols[:30]:
+
+                log(
+                    f"  "
+                    f"{item['symbol']} "
+                    f"→ "
+                    f"{item['error']}"
+                )
+
+            if len(failed_symbols) > 30:
+
+                log(
+                    f"  ... "
+                    f"另外 {len(failed_symbols) - 30} 個"
+                )
+
+        return 0
+
+    except Exception as exc:
+
+        log("")
+        log("=" * 64)
+        log(
+            "❌ fetch_prices.py 執行失敗"
+        )
+        log("=" * 64)
+
+        log(
+            f"❌ 原因：{exc}"
+        )
+
+        # 不產生半成品
+        if PRICES_FILE.exists():
+            log(
+                "⚠️ 保留原有 prices.json，"
+                "不以不完整資料覆蓋。"
+            )
+
+        return 1
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())
