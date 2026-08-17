@@ -1,12 +1,12 @@
 {
-  "version": "V10.3",
+  "version": "V10.4",
   "schema_version": "ui.v10",
   "status": "success",
   "date": "2026-08-17",
   "latest_market_date": "2026-08-17",
-  "updated_at": "2026-08-17T18:56:59.604833+08:00",
-  "updated_at_tw": "2026-08-17 18:56:59",
-  "source": "fetch_data.py V10.3",
+  "updated_at": "2026-08-17T23:00:23.565129+08:00",
+  "updated_at_tw": "2026-08-17 23:00:23",
+  "source": "fetch_data.py V10.4",
   "data_quality": {
     "today_is_market_date": true,
     "latest_market_date_valid": true,
@@ -17,10 +17,14 @@
     "universe_count": 11,
     "universe_source": "prices.json",
     "universe_recovered": true,
+    "same_market_date_count": 11,
     "min_history_rows": 80,
     "backtest_horizon": 10,
     "backtest_uses_trading_days": true,
-    "six_of_six_same_market_date": true
+    "six_of_six_same_market_date": true,
+    "nan_protected": true,
+    "future_date_protected": true,
+    "atomic_write": true
   },
   "summary": {
     "stock_count": 8,
@@ -35,7 +39,9 @@
       "total_with_change": 11
     },
     "core_condition_count": 6,
-    "latest_market_date": "2026-08-17"
+    "latest_market_date": "2026-08-17",
+    "universe_count": 11,
+    "analyzed_count": 11
   },
   "core_conditions": {
     "total": 6,
@@ -275,5 +281,20 @@
         "type": "stock"
       }
     ]
+  },
+  "dashboard": {
+    "market_date": "2026-08-17",
+    "stock_count": 8,
+    "etf_count": 3,
+    "bond_count": 0,
+    "today_selected_count": 0,
+    "top10_count": 0,
+    "market_breadth": {
+      "rising": 5,
+      "falling": 6,
+      "unchanged": 0,
+      "total_with_change": 11
+    },
+    "data_status": "OK"
   }
 }
