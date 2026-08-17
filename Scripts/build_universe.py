@@ -3,7 +3,7 @@
 
 """
 台股 AI 選股系統
-build_universe.py V5.2
+build_universe.py V5.2.1
 
 ============================================================
 用途
@@ -19,84 +19,40 @@ build_universe.py V5.2
     Data/universe.json
 
 ============================================================
-V5.2 核心修正
+核心規格
 ============================================================
 
-1. 修正 V5.1 與 Workflow JSON 欄位不一致問題
-
-固定輸出：
-
-{
-    "version": "V5.2",
-    "generated_at": "...",
-    "total": 1977,
-    "listed_stocks": 1087,
-    "otc_stocks": 890,
-    "items": [
-        {
-            "code": "1101",
-            "name": "台泥",
-            "market": "TWSE",
-            "symbol": "1101.TW"
-        },
-        {
-            "code": "6488",
-            "name": "...",
-            "market": "TPEx",
-            "symbol": "6488.TWO"
-        }
-    ]
-}
-
-2. HTTP 200 不代表 API 正常
-
-如果：
-
-    HTTP 200
-    Content-Length 只有幾百 bytes
-
-直接判定失敗。
-
-3. TWSE / TPEx 分開取得
-
-4. TWSE / TPEx 分開驗證
-
-5. API 自動 retry
-
-6. 主 API 失敗後使用備援 API
-
-7. 所有資料通過驗證後才覆蓋 universe.json
-
-8. 任何失敗都保留舊 universe.json
-
-9. 不允許產生：
-
-    total = 0
-    items = []
-
-10. Yahoo ticker：
-
-    TWSE -> .TW
-    TPEx -> .TWO
+1. TWSE / TPEx 分開取得
+2. TWSE / TPEx 分開驗證
+3. HTTP 自動 retry
+4. HTTP 200 不代表 API 正常
+5. 主 API 回應異常時使用備援 API
+6. 所有資料通過驗證後才覆蓋 universe.json
+7. 任一階段失敗都保留舊 universe.json
+8. 不允許產生空 Universe
+9. 不允許 total < MIN_TOTAL_STOCKS
+10. TWSE / TPEx 均有最低股票數安全門檻
+11. Yahoo ticker：
+        TWSE -> .TW
+        TPEx -> .TWO
+12. 使用原子寫入，避免半成品 JSON
+13. 支援 UTF-8 / Big5 / CP950
+14. 支援 JSON / CSV 多種欄位名稱
 
 ============================================================
 安全門檻
 ============================================================
 
 TWSE 最低：
-
     700
 
 TPEx 最低：
-
     300
 
 全市場最低：
-
     1200
 
 理論正常值約：
-
     TWSE 1087
     TPEx 890
     Total 1977
@@ -121,7 +77,7 @@ import requests
 # 基本設定
 # ============================================================
 
-VERSION = "V5.2"
+VERSION = "V5.2.1"
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 DATA_DIR = BASE_DIR / "Data"
@@ -286,18 +242,19 @@ def normalize_code(value):
 
     text = text.upper()
 
-    # Yahoo TWSE
     if text.endswith(".TW"):
         text = text[:-3]
 
-    # Yahoo TPEx
     elif text.endswith(".TWO"):
         text = text[:-4]
 
     text = text.strip()
 
-    # 去掉常見 CSV 雜訊
     text = text.replace(" ", "")
+
+    # 移除 CSV / API 常見前後符號
+    text = text.replace('"', "")
+    text = text.replace("'", "")
 
     if not text.isdigit():
         return None
@@ -412,10 +369,7 @@ def http_get(url, label):
 
 
 # ============================================================
-# HTTP GET - 不使用大小門檻
-#
-# 備援 CSV 有些格式可能比較小。
-# 但仍然不能接受完全空白。
+# HTTP GET - 備援
 # ============================================================
 
 def http_get_fallback(url, label):
@@ -494,6 +448,7 @@ def http_get_fallback(url, label):
 def parse_json_response(response):
     try:
         return response.json()
+
     except Exception:
         pass
 
@@ -501,6 +456,7 @@ def parse_json_response(response):
 
     try:
         return json.loads(text)
+
     except Exception as exc:
         raise RuntimeError(
             f"JSON 解析失敗：{exc}"
@@ -512,26 +468,37 @@ def parse_json_response(response):
 # ============================================================
 
 def get_value(record, keys):
+
     if not isinstance(record, dict):
         return None
 
+    # --------------------------------------------------------
     # 直接查找
+    # --------------------------------------------------------
+
     for key in keys:
+
         if key in record:
+
             value = record.get(key)
 
             if value is not None:
                 return value
 
+    # --------------------------------------------------------
     # 忽略大小寫
+    # --------------------------------------------------------
+
     normalized = {}
 
     for key in record.keys():
+
         normalized[
             clean_text(key).lower()
         ] = key
 
     for key in keys:
+
         actual = normalized.get(
             clean_text(key).lower()
         )
@@ -552,16 +519,20 @@ def get_value(record, keys):
 # ============================================================
 
 def find_lists(value):
+
     result = []
 
     if isinstance(value, list):
+
         result.append(value)
 
         for item in value:
+
             if isinstance(
                 item,
                 (list, dict),
             ):
+
                 result.extend(
                     find_lists(item)
                 )
@@ -574,6 +545,7 @@ def find_lists(value):
                 child,
                 (list, dict),
             ):
+
                 result.extend(
                     find_lists(child)
                 )
@@ -589,6 +561,7 @@ def parse_json_records(
     payload,
     market,
 ):
+
     candidates = find_lists(payload)
 
     best_records = []
@@ -618,6 +591,7 @@ def parse_json_records(
                     "有價證券代號",
                     "代號",
                     "SecuritiesCompanyCode",
+                    "公司代號",
                 ],
             )
 
@@ -641,6 +615,7 @@ def parse_json_records(
                 score += 1
 
         if score > best_score:
+
             best_score = score
             best_records = records
 
@@ -664,6 +639,7 @@ def parse_json_records(
                 "有價證券代號",
                 "代號",
                 "SecuritiesCompanyCode",
+                "公司代號",
             ],
         )
 
@@ -707,6 +683,7 @@ def parse_json_records(
 # ============================================================
 
 def decode_response(response):
+
     content = response.content
 
     encodings = [
@@ -719,9 +696,11 @@ def decode_response(response):
     for encoding in encodings:
 
         try:
+
             return content.decode(
                 encoding
             )
+
         except Exception:
             continue
 
@@ -736,6 +715,7 @@ def decode_response(response):
 # ============================================================
 
 def normalize_header(value):
+
     text = clean_text(value)
 
     text = (
@@ -756,9 +736,11 @@ def find_csv_column(
     headers,
     candidates,
 ):
+
     normalized = {}
 
     for header in headers:
+
         normalized[
             normalize_header(header)
         ] = header
@@ -770,6 +752,7 @@ def find_csv_column(
         )
 
         if key in normalized:
+
             return normalized[key]
 
     return None
@@ -783,14 +766,23 @@ def parse_csv_records(
     text,
     market,
 ):
+
+    if not text:
+        return {}
+
+    # --------------------------------------------------------
+    # 清理內容
+    # --------------------------------------------------------
+
+    text = text.replace(
+        "\ufeff",
+        "",
+    )
+
     lines = text.splitlines()
 
     if not lines:
         return {}
-
-    # --------------------------------------------------------
-    # 移除可能的 JSON callback / HTML
-    # --------------------------------------------------------
 
     useful_lines = []
 
@@ -801,12 +793,13 @@ def parse_csv_records(
         if not stripped:
             continue
 
-        if stripped.startswith(
-            "<!DOCTYPE"
+        # HTML
+        if stripped.lower().startswith(
+            "<!doctype"
         ):
             continue
 
-        if stripped.startswith(
+        if stripped.lower().startswith(
             "<html"
         ):
             continue
@@ -817,26 +810,32 @@ def parse_csv_records(
         return {}
 
     # --------------------------------------------------------
-    # 嘗試 CSV
+    # CSV Reader
     # --------------------------------------------------------
 
-    output = {}
+    try:
 
-    reader = csv.reader(
-        io.StringIO(
-            "\n".join(
-                useful_lines
+        reader = csv.reader(
+            io.StringIO(
+                "\n".join(
+                    useful_lines
+                )
             )
         )
-    )
 
-    rows = list(reader)
+        rows = list(reader)
+
+    except Exception as exc:
+
+        raise RuntimeError(
+            f"CSV 解析失敗：{exc}"
+        ) from exc
 
     if not rows:
         return {}
 
     # --------------------------------------------------------
-    # 找 header
+    # 找 Header
     # --------------------------------------------------------
 
     header_index = None
@@ -844,7 +843,9 @@ def parse_csv_records(
     code_index = None
     name_index = None
 
-    for index, row in enumerate(rows[:20]):
+    for index, row in enumerate(
+        rows[:30]
+    ):
 
         if not row:
             continue
@@ -862,6 +863,7 @@ def parse_csv_records(
                 "代號",
                 "Code",
                 "SecuritiesCompanyCode",
+                "有價證券代號",
             ],
         )
 
@@ -874,6 +876,7 @@ def parse_csv_records(
                 "公司名稱",
                 "Name",
                 "SecuritiesCompanyName",
+                "有價證券名稱",
             ],
         )
 
@@ -886,6 +889,7 @@ def parse_csv_records(
             )
 
             if name_header is not None:
+
                 name_index = headers.index(
                     name_header
                 )
@@ -893,8 +897,7 @@ def parse_csv_records(
             break
 
     # --------------------------------------------------------
-    # 如果找不到 header
-    # 嘗試固定欄位
+    # Header 找不到時，嘗試固定欄位
     # --------------------------------------------------------
 
     if header_index is None:
@@ -915,14 +918,17 @@ def parse_csv_records(
                 header_index = index
                 code_index = 0
                 name_index = 1
+
                 break
 
     if header_index is None:
         return {}
 
     # --------------------------------------------------------
-    # 解析
+    # 解析股票
     # --------------------------------------------------------
+
+    output = {}
 
     for row in rows[
         header_index + 1:
@@ -947,6 +953,7 @@ def parse_csv_records(
             name_index is not None
             and len(row) > name_index
         ):
+
             name = normalize_name(
                 row[name_index]
             )
@@ -965,53 +972,41 @@ def parse_csv_records(
 
 
 # ============================================================
-# 取得 TWSE
+# 股票資料基本驗證
 # ============================================================
 
-def fetch_twse():
-    section("取得 TWSE 上市股票")
+def validate_records(
+    records,
+    market,
+    minimum,
+):
 
-    log(
-        f"API：{TWSE_API}"
-    )
-
-    # --------------------------------------------------------
-    # 主 API
-    # --------------------------------------------------------
-
-    try:
-
-        response = http_get(
-            TWSE_API,
-            "TWSE API",
+    if not isinstance(
+        records,
+        dict,
+    ):
+        raise RuntimeError(
+            f"{market} 資料格式錯誤"
         )
 
-        payload = parse_json_response(
-            response
+    if len(records) < minimum:
+
+        raise RuntimeError(
+            f"{market} 股票數量不足："
+            f"{len(records)} < {minimum}"
         )
 
-        records = parse_json_records(
-            payload,
-            "TWSE",
-        )
+    invalid = 0
 
-        log(
-            f"TWSE JSON 原始解析："
-            f"{len(records)} 筆"
-        )
+    for code, item in records.items():
 
-        if len(records) >= MIN_TWSE_STOCKS:
+        if not isinstance(
+            item,
+            dict,
+        ):
+            invalid += 1
+            continue
 
-            log(
-                f"✓ TWSE 主 API 成功："
-                f"{len(records)}"
-            )
-
-            return records
-
-        log(
-            "⚠️ TWSE JSON 數量不足，"
-            "嘗試 CSV 備援"
-        )
-
-    except Except
+        if item.get("code") != code:
+            invalid += 1
+            continue
