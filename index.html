@@ -3,6 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#07111f">
 
   <title>AI MARKET INTELLIGENCE｜台股市場</title>
 
@@ -10,26 +11,18 @@
     :root {
       --bg: #07111f;
       --bg2: #0b1728;
-      --panel: rgba(16, 31, 50, 0.88);
-      --panel2: rgba(20, 38, 61, 0.92);
-      --border: rgba(255,255,255,0.08);
-      --text: #f3f7fb;
-      --muted: #91a2b7;
-      --muted2: #64758b;
-      --accent: #54a8ff;
-      --accent2: #7dd3fc;
-
-      /* 台股：紅漲綠跌 */
-      --up: #ff5c68;
-      --up-bg: rgba(255,92,104,0.12);
-
-      --down: #36d399;
-      --down-bg: rgba(54,211,153,0.12);
-
-      --warning: #f4c95d;
-      --warning-bg: rgba(244,201,93,0.12);
-
-      --shadow: 0 18px 50px rgba(0,0,0,0.28);
+      --panel: rgba(16, 30, 49, 0.88);
+      --panel2: rgba(20, 38, 61, 0.9);
+      --border: rgba(148, 163, 184, 0.16);
+      --text: #f5f7fb;
+      --muted: #91a0b5;
+      --muted2: #66758b;
+      --red: #ff5c67;
+      --green: #32d583;
+      --yellow: #f5c451;
+      --blue: #5ea7ff;
+      --purple: #9b7cff;
+      --shadow: 0 18px 45px rgba(0, 0, 0, 0.28);
       --radius: 18px;
     }
 
@@ -38,36 +31,23 @@
     }
 
     html {
-      background: var(--bg);
-      color-scheme: dark;
+      scroll-behavior: smooth;
     }
 
     body {
       margin: 0;
       min-height: 100vh;
+      color: var(--text);
       background:
-        radial-gradient(
-          circle at 15% 0%,
-          rgba(52, 120, 246, 0.16),
-          transparent 34%
-        ),
-        radial-gradient(
-          circle at 85% 8%,
-          rgba(31, 180, 190, 0.10),
-          transparent 30%
-        ),
-        linear-gradient(
-          180deg,
-          #06101d 0%,
-          #081321 45%,
-          #07101c 100%
-        );
+        radial-gradient(circle at 10% 0%, rgba(62, 121, 255, 0.12), transparent 28%),
+        radial-gradient(circle at 90% 15%, rgba(155, 124, 255, 0.10), transparent 28%),
+        linear-gradient(145deg, #050c16 0%, #07111f 48%, #091523 100%);
       font-family:
         -apple-system,
         BlinkMacSystemFont,
         "SF Pro Display",
-        "Segoe UI",
         "Noto Sans TC",
+        "Microsoft JhengHei",
         Arial,
         sans-serif;
     }
@@ -84,24 +64,25 @@
     .app {
       width: min(1180px, calc(100% - 28px));
       margin: 0 auto;
-      padding: 24px 0 60px;
+      padding: 28px 0 60px;
     }
 
-    /* ======================================================
+    /* =====================================================
        Header
-       ====================================================== */
+       ===================================================== */
 
     .hero {
       position: relative;
       overflow: hidden;
+      padding: 30px 28px;
+      margin-bottom: 18px;
       border: 1px solid var(--border);
       border-radius: 24px;
-      padding: 28px 28px 24px;
       background:
         linear-gradient(
-          145deg,
-          rgba(19, 42, 70, 0.94),
-          rgba(10, 23, 39, 0.94)
+          135deg,
+          rgba(18, 35, 58, 0.95),
+          rgba(8, 20, 34, 0.96)
         );
       box-shadow: var(--shadow);
     }
@@ -111,660 +92,664 @@
       position: absolute;
       width: 260px;
       height: 260px;
-      right: -90px;
+      right: -80px;
       top: -110px;
       border-radius: 50%;
-      background: rgba(84,168,255,0.10);
+      background: rgba(94, 167, 255, 0.08);
       filter: blur(8px);
       pointer-events: none;
     }
 
-    .eyebrow {
-      color: var(--accent2);
-      font-size: 12px;
-      font-weight: 800;
-      letter-spacing: 2.4px;
-      margin-bottom: 8px;
+    .brand {
+      position: relative;
+      z-index: 1;
     }
 
-    .hero-title {
+    .brand-title {
       margin: 0;
-      font-size: clamp(28px, 5vw, 42px);
-      font-weight: 850;
-      letter-spacing: -1px;
+      font-size: clamp(25px, 5vw, 42px);
+      font-weight: 800;
+      letter-spacing: 0.05em;
+      line-height: 1.1;
     }
 
-    .hero-subtitle {
-      margin-top: 6px;
+    .brand-subtitle {
+      margin-top: 9px;
+      color: #d2d9e5;
+      font-size: 17px;
+      font-weight: 600;
+    }
+
+    .brand-caption {
+      margin-top: 4px;
       color: var(--muted);
-      font-size: 15px;
+      font-size: 14px;
     }
 
-    .market-state {
+    .market-status-row {
+      position: relative;
+      z-index: 1;
       display: flex;
       align-items: center;
+      flex-wrap: wrap;
+      gap: 12px;
+      margin-top: 24px;
+    }
+
+    .market-status {
+      display: inline-flex;
+      align-items: center;
       gap: 8px;
-      margin-top: 22px;
+      padding: 9px 14px;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid var(--border);
       font-size: 14px;
       font-weight: 700;
     }
 
-    .state-dot {
+    .status-dot {
       width: 9px;
       height: 9px;
       border-radius: 50%;
-      display: inline-block;
+      flex: 0 0 auto;
     }
 
-    .state-open {
-      background: #42e6a4;
-      box-shadow: 0 0 12px rgba(66,230,164,0.7);
+    .status-dot.open {
+      background: var(--green);
+      box-shadow: 0 0 12px rgba(50, 213, 131, 0.65);
     }
 
-    .state-closed {
-      background: #ff5c68;
-      box-shadow: 0 0 12px rgba(255,92,104,0.55);
+    .status-dot.closed {
+      background: var(--red);
+      box-shadow: 0 0 12px rgba(255, 92, 103, 0.55);
     }
 
     .market-date {
-      margin-top: 8px;
       color: var(--muted);
-      font-size: 13px;
+      font-size: 14px;
     }
 
     .market-date strong {
       color: var(--text);
-      font-size: 14px;
+      margin-left: 5px;
     }
 
-    /* ======================================================
-       Summary Grid
-       ====================================================== */
+    /* =====================================================
+       Four info panels
+       ===================================================== */
 
-    .summary-grid {
+    .dashboard-grid {
       display: grid;
       grid-template-columns: repeat(2, minmax(0, 1fr));
-      gap: 12px;
-      margin-top: 14px;
+      gap: 14px;
+      margin-bottom: 18px;
     }
 
-    .summary-card {
-      min-height: 132px;
-      padding: 20px;
-      border: 1px solid var(--border);
-      border-radius: var(--radius);
-      background: var(--panel);
-      box-shadow: var(--shadow);
-    }
-
-    .summary-label {
-      color: var(--muted);
-      font-size: 13px;
-      font-weight: 700;
-    }
-
-    .summary-value {
-      margin-top: 12px;
-      color: var(--text);
-      font-size: 28px;
-      line-height: 1;
-      font-weight: 850;
-      letter-spacing: -0.6px;
-    }
-
-    .summary-note {
-      margin-top: 9px;
-      color: var(--muted2);
-      font-size: 12px;
-    }
-
-    .summary-value.up {
-      color: var(--up);
-    }
-
-    .summary-value.down {
-      color: var(--down);
-    }
-
-    .summary-value.warning {
-      color: var(--warning);
-    }
-
-    /* ======================================================
-       Search
-       ====================================================== */
-
-    .search-section {
-      margin-top: 20px;
-    }
-
-    .section-title {
-      margin-bottom: 10px;
-      color: var(--text);
-      font-size: 15px;
-      font-weight: 800;
-    }
-
-    .search-box {
-      display: flex;
-      gap: 10px;
-    }
-
-    .search-input {
-      flex: 1;
-      min-width: 0;
-      height: 50px;
-      padding: 0 16px;
-      border: 1px solid var(--border);
-      border-radius: 14px;
-      outline: none;
-      color: var(--text);
-      background: rgba(13,27,44,0.94);
-    }
-
-    .search-input::placeholder {
-      color: var(--muted2);
-    }
-
-    .search-input:focus {
-      border-color: rgba(84,168,255,0.55);
-      box-shadow: 0 0 0 3px rgba(84,168,255,0.10);
-    }
-
-    .search-button {
-      flex: 0 0 auto;
-      height: 50px;
-      padding: 0 22px;
-      border: 0;
-      border-radius: 14px;
-      color: #06101d;
-      background: linear-gradient(
-        135deg,
-        #7dd3fc,
-        #54a8ff
-      );
-      font-weight: 850;
-    }
-
-    .search-result {
-      margin-top: 12px;
-    }
-
-    /* ======================================================
-       Tabs
-       ====================================================== */
-
-    .tabs-wrap {
-      position: sticky;
-      top: 0;
-      z-index: 20;
-      margin-top: 22px;
-      padding: 8px 0;
-      background: rgba(7,17,31,0.88);
-      backdrop-filter: blur(18px);
-    }
-
-    .tabs {
-      display: grid;
-      grid-template-columns: repeat(5, minmax(0, 1fr));
-      gap: 7px;
-      padding: 6px;
-      border: 1px solid var(--border);
-      border-radius: 16px;
-      background: rgba(12,25,42,0.92);
-    }
-
-    .tab {
-      min-height: 42px;
-      border: 0;
-      border-radius: 11px;
-      color: var(--muted);
-      background: transparent;
-      font-size: 13px;
-      font-weight: 800;
-      transition: 0.2s ease;
-    }
-
-    .tab:hover {
-      color: var(--text);
-      background: rgba(255,255,255,0.04);
-    }
-
-    .tab.active {
-      color: #eaf6ff;
-      background: linear-gradient(
-        135deg,
-        rgba(84,168,255,0.26),
-        rgba(125,211,252,0.12)
-      );
-      box-shadow:
-        inset 0 0 0 1px rgba(125,211,252,0.13);
-    }
-
-    /* ======================================================
-       Content
-       ====================================================== */
-
-    .content {
-      margin-top: 18px;
-    }
-
-    .content-header {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      gap: 10px;
-      margin-bottom: 12px;
-    }
-
-    .content-title {
-      margin: 0;
-      font-size: 19px;
-      font-weight: 850;
-    }
-
-    .content-count {
-      color: var(--muted);
-      font-size: 12px;
-    }
-
-    .cards {
-      display: grid;
-      grid-template-columns: repeat(
-        auto-fill,
-        minmax(260px, 1fr)
-      );
-      gap: 12px;
-    }
-
-    /* ======================================================
-       Stock Card
-       ====================================================== */
-
-    .stock-card {
-      position: relative;
-      overflow: hidden;
-      padding: 18px;
+    .info-card {
+      min-height: 138px;
+      padding: 22px;
       border: 1px solid var(--border);
       border-radius: var(--radius);
       background:
         linear-gradient(
           145deg,
-          rgba(17,35,56,0.96),
-          rgba(11,24,40,0.96)
+          rgba(18, 34, 55, 0.94),
+          rgba(11, 24, 40, 0.92)
         );
-      box-shadow:
-        0 14px 35px rgba(0,0,0,0.20);
+      box-shadow: 0 12px 30px rgba(0, 0, 0, 0.18);
     }
 
-    .stock-card::before {
-      content: "";
-      position: absolute;
-      left: 0;
-      top: 0;
-      bottom: 0;
-      width: 3px;
-      background: rgba(84,168,255,0.55);
+    .info-label {
+      color: var(--muted);
+      font-size: 14px;
+      font-weight: 700;
+    }
+
+    .info-value {
+      margin-top: 11px;
+      font-size: clamp(26px, 5vw, 34px);
+      font-weight: 800;
+      letter-spacing: 0.01em;
+    }
+
+    .info-sub {
+      margin-top: 5px;
+      color: var(--muted2);
+      font-size: 13px;
+    }
+
+    .index-main {
+      display: flex;
+      align-items: baseline;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .index-change {
+      font-size: 14px;
+      font-weight: 700;
+    }
+
+    .market-direction {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .direction-icon {
+      font-size: 25px;
+    }
+
+    .direction-text {
+      font-size: 28px;
+      font-weight: 800;
+    }
+
+    /* =====================================================
+       Search
+       ===================================================== */
+
+    .search-panel {
+      padding: 20px;
+      margin-bottom: 18px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      background: rgba(13, 27, 45, 0.86);
+      box-shadow: var(--shadow);
+    }
+
+    .search-title {
+      margin-bottom: 12px;
+      font-size: 15px;
+      font-weight: 800;
+    }
+
+    .search-row {
+      display: flex;
+      gap: 10px;
+    }
+
+    .search-input {
+      min-width: 0;
+      flex: 1;
+      height: 46px;
+      padding: 0 15px;
+      color: var(--text);
+      background: rgba(3, 11, 20, 0.62);
+      border: 1px solid rgba(148, 163, 184, 0.22);
+      border-radius: 12px;
+      outline: none;
+    }
+
+    .search-input:focus {
+      border-color: rgba(94, 167, 255, 0.65);
+      box-shadow: 0 0 0 3px rgba(94, 167, 255, 0.08);
+    }
+
+    .search-input::placeholder {
+      color: #65758b;
+    }
+
+    .search-button {
+      height: 46px;
+      padding: 0 20px;
+      color: white;
+      background: linear-gradient(135deg, #337fdc, #5d66e8);
+      border: 0;
+      border-radius: 12px;
+      font-weight: 800;
+      white-space: nowrap;
+    }
+
+    .search-button:hover {
+      filter: brightness(1.08);
+    }
+
+    .search-result {
+      margin-top: 14px;
+    }
+
+    .search-result:empty {
+      display: none;
+    }
+
+    /* =====================================================
+       Tabs
+       ===================================================== */
+
+    .tabs {
+      display: flex;
+      gap: 8px;
+      overflow-x: auto;
+      padding: 4px 2px 10px;
+      margin-bottom: 8px;
+      scrollbar-width: none;
+    }
+
+    .tabs::-webkit-scrollbar {
+      display: none;
+    }
+
+    .tab-button {
+      flex: 0 0 auto;
+      padding: 11px 17px;
+      color: var(--muted);
+      background: rgba(16, 30, 49, 0.78);
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      font-size: 14px;
+      font-weight: 800;
+      transition: 0.2s ease;
+    }
+
+    .tab-button.active {
+      color: white;
+      background: linear-gradient(
+        135deg,
+        rgba(57, 121, 220, 0.95),
+        rgba(96, 88, 220, 0.95)
+      );
+      border-color: transparent;
+      box-shadow: 0 8px 22px rgba(67, 105, 220, 0.25);
+    }
+
+    /* =====================================================
+       Section
+       ===================================================== */
+
+    .section-header {
+      display: flex;
+      align-items: flex-end;
+      justify-content: space-between;
+      gap: 12px;
+      margin: 18px 2px 12px;
+    }
+
+    .section-title {
+      margin: 0;
+      font-size: 21px;
+      font-weight: 800;
+    }
+
+    .section-count {
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    /* =====================================================
+       Stock cards
+       ===================================================== */
+
+    .cards {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 14px;
+    }
+
+    .stock-card {
+      position: relative;
+      padding: 20px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      background:
+        linear-gradient(
+          145deg,
+          rgba(17, 32, 52, 0.96),
+          rgba(9, 21, 36, 0.96)
+        );
+      box-shadow: 0 12px 30px rgba(0, 0, 0, 0.17);
+      transition:
+        transform 0.18s ease,
+        border-color 0.18s ease;
+    }
+
+    .stock-card:hover {
+      transform: translateY(-2px);
+      border-color: rgba(148, 163, 184, 0.28);
     }
 
     .stock-head {
       display: flex;
-      align-items: flex-start;
       justify-content: space-between;
-      gap: 12px;
+      gap: 15px;
+      align-items: flex-start;
     }
 
     .stock-name {
-      color: var(--text);
       font-size: 22px;
-      line-height: 1.1;
-      font-weight: 900;
-      letter-spacing: -0.4px;
+      line-height: 1.15;
+      font-weight: 850;
     }
 
     .stock-code {
       margin-top: 5px;
       color: var(--muted);
-      font-size: 12px;
-      font-weight: 700;
+      font-size: 13px;
+      letter-spacing: 0.05em;
     }
 
     .asset-badge {
-      flex: 0 0 auto;
-      padding: 5px 8px;
-      border: 1px solid var(--border);
-      border-radius: 8px;
-      color: var(--muted);
-      font-size: 10px;
+      padding: 5px 9px;
+      color: #a9c8ef;
+      background: rgba(94, 167, 255, 0.09);
+      border: 1px solid rgba(94, 167, 255, 0.15);
+      border-radius: 999px;
+      font-size: 11px;
       font-weight: 800;
     }
 
-    .price-row {
+    .stock-price-row {
       display: flex;
       align-items: baseline;
-      gap: 10px;
+      gap: 12px;
       margin-top: 20px;
     }
 
-    .price {
-      color: var(--text);
-      font-size: 25px;
-      font-weight: 900;
-    }
-
-    .change {
-      font-size: 14px;
+    .stock-price {
+      font-size: 30px;
       font-weight: 850;
+      letter-spacing: -0.02em;
     }
 
-    .change.up {
-      color: var(--up);
+    .stock-change {
+      font-size: 15px;
+      font-weight: 800;
     }
 
-    .change.down {
-      color: var(--down);
+    /*
+      台股：
+      上漲 = 紅
+      下跌 = 綠
+    */
+
+    .up {
+      color: var(--red);
     }
 
-    .change.flat {
+    .down {
+      color: var(--green);
+    }
+
+    .flat {
       color: var(--muted);
     }
 
-    .card-divider {
+    .stock-divider {
       height: 1px;
       margin: 17px 0;
-      background: var(--border);
+      background: rgba(148, 163, 184, 0.10);
     }
 
-    .strength-row {
+    .card-bottom {
       display: flex;
-      justify-content: space-between;
       align-items: center;
+      justify-content: space-between;
       gap: 12px;
     }
 
-    .label {
-      color: var(--muted);
-      font-size: 12px;
-    }
-
     .strength {
-      font-size: 13px;
-      font-weight: 850;
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      font-size: 14px;
+      font-weight: 800;
     }
 
-    .strength.strong {
-      color: var(--up);
+    .strength-dot {
+      width: 9px;
+      height: 9px;
+      border-radius: 50%;
     }
 
-    .strength.neutral {
-      color: var(--warning);
+    .strength-strong {
+      color: #57df9b;
     }
 
-    .strength.weak {
-      color: var(--down);
+    .strength-strong .strength-dot {
+      background: #32d583;
+      box-shadow: 0 0 10px rgba(50, 213, 131, 0.45);
+    }
+
+    .strength-neutral {
+      color: #f5c451;
+    }
+
+    .strength-neutral .strength-dot {
+      background: #f5c451;
+    }
+
+    .strength-weak {
+      color: #ff6872;
+    }
+
+    .strength-weak .strength-dot {
+      background: #ff5c67;
     }
 
     .recommendation {
       margin-top: 15px;
       padding: 11px 12px;
-      border: 1px solid rgba(255,255,255,0.06);
+      color: #dce4ef;
+      background: rgba(255, 255, 255, 0.035);
       border-radius: 11px;
-      background: rgba(255,255,255,0.025);
+      font-size: 13px;
+      line-height: 1.55;
     }
 
-    .recommendation-title {
+    .recommendation-label {
+      display: block;
+      margin-bottom: 3px;
+      color: var(--muted2);
+      font-size: 11px;
+      font-weight: 800;
+    }
+
+    .add-watchlist {
+      width: 100%;
+      margin-top: 13px;
+      padding: 10px 12px;
+      color: #cfe3ff;
+      background: rgba(94, 167, 255, 0.08);
+      border: 1px solid rgba(94, 167, 255, 0.16);
+      border-radius: 10px;
+      font-size: 13px;
+      font-weight: 800;
+    }
+
+    .add-watchlist:hover {
+      background: rgba(94, 167, 255, 0.14);
+    }
+
+    /* =====================================================
+       My list
+       ===================================================== */
+
+    .holding-box {
+      margin-top: 16px;
+      padding: 15px;
+      background: rgba(3, 10, 18, 0.30);
+      border: 1px solid rgba(148, 163, 184, 0.10);
+      border-radius: 13px;
+    }
+
+    .holding-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+    }
+
+    .holding-field label {
+      display: block;
+      margin-bottom: 6px;
       color: var(--muted);
       font-size: 11px;
       font-weight: 700;
     }
 
-    .recommendation-text {
-      margin-top: 5px;
+    .holding-field input {
+      width: 100%;
+      height: 38px;
+      padding: 0 10px;
       color: var(--text);
-      font-size: 13px;
-      line-height: 1.45;
-      font-weight: 800;
+      background: rgba(5, 14, 24, 0.72);
+      border: 1px solid rgba(148, 163, 184, 0.16);
+      border-radius: 9px;
+      outline: none;
     }
 
-    .card-actions {
-      display: flex;
-      gap: 8px;
-      margin-top: 14px;
+    .holding-field input:focus {
+      border-color: rgba(94, 167, 255, 0.55);
     }
 
-    .small-button {
-      flex: 1;
-      min-height: 38px;
-      border: 1px solid var(--border);
-      border-radius: 10px;
-      color: var(--muted);
-      background: rgba(255,255,255,0.025);
-      font-size: 12px;
-      font-weight: 800;
-    }
-
-    .small-button:hover {
-      color: var(--text);
-      background: rgba(255,255,255,0.06);
-    }
-
-    .small-button.primary {
-      color: #dff4ff;
-      border-color: rgba(84,168,255,0.22);
-      background: rgba(84,168,255,0.10);
-    }
-
-    /* ======================================================
-       Holding section
-       ====================================================== */
-
-    .holding-grid {
+    .holding-stats {
       display: grid;
-      grid-template-columns: repeat(2, minmax(0,1fr));
+      grid-template-columns: repeat(3, minmax(0, 1fr));
       gap: 8px;
-      margin-top: 16px;
+      margin-top: 12px;
     }
 
-    .holding-item {
-      padding: 11px;
-      border: 1px solid var(--border);
-      border-radius: 10px;
-      background: rgba(255,255,255,0.025);
+    .holding-stat {
+      padding: 9px;
+      background: rgba(255, 255, 255, 0.025);
+      border-radius: 9px;
     }
 
-    .holding-item-label {
+    .holding-stat-label {
       color: var(--muted2);
       font-size: 10px;
     }
 
-    .holding-item-value {
+    .holding-stat-value {
       margin-top: 4px;
-      color: var(--text);
       font-size: 13px;
-      font-weight: 850;
-    }
-
-    .holding-item-value.up {
-      color: var(--up);
-    }
-
-    .holding-item-value.down {
-      color: var(--down);
-    }
-
-    .holding-edit {
-      margin-top: 12px;
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 8px;
-    }
-
-    .holding-edit input {
-      width: 100%;
-      height: 38px;
-      padding: 0 10px;
-      border: 1px solid var(--border);
-      border-radius: 9px;
-      outline: none;
-      color: var(--text);
-      background: rgba(5,15,27,0.75);
-      font-size: 12px;
-    }
-
-    /* ======================================================
-       Empty / loading
-       ====================================================== */
-
-    .empty {
-      padding: 38px 18px;
-      border: 1px dashed rgba(255,255,255,0.10);
-      border-radius: var(--radius);
-      text-align: center;
-      color: var(--muted);
-      background: rgba(255,255,255,0.018);
-    }
-
-    .empty-title {
-      color: var(--text);
-      font-size: 15px;
       font-weight: 800;
     }
 
-    .empty-note {
-      margin-top: 7px;
-      color: var(--muted2);
+    .remove-watchlist {
+      width: 100%;
+      margin-top: 10px;
+      padding: 9px;
+      color: #9aa8bb;
+      background: transparent;
+      border: 1px solid rgba(148, 163, 184, 0.12);
+      border-radius: 9px;
       font-size: 12px;
-      line-height: 1.6;
     }
 
-    .loading {
-      padding: 50px 20px;
-      color: var(--muted);
+    .remove-watchlist:hover {
+      color: var(--red);
+      border-color: rgba(255, 92, 103, 0.25);
+    }
+
+    /* =====================================================
+       Empty / loading / error
+       ===================================================== */
+
+    .state-box {
+      padding: 45px 20px;
       text-align: center;
-    }
-
-    .error {
-      padding: 18px;
-      border: 1px solid rgba(255,92,104,0.18);
-      border-radius: 14px;
-      color: #ff9ca5;
-      background: rgba(255,92,104,0.06);
-      font-size: 13px;
-      line-height: 1.6;
-    }
-
-    /* ======================================================
-       Search result
-       ====================================================== */
-
-    .search-result-card {
-      padding: 15px;
-      border: 1px solid var(--border);
-      border-radius: 14px;
-      background: var(--panel);
-    }
-
-    .search-result-top {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 12px;
-    }
-
-    .search-result-name {
-      color: var(--text);
-      font-size: 17px;
-      font-weight: 850;
-    }
-
-    .search-result-code {
-      margin-top: 4px;
       color: var(--muted);
-      font-size: 12px;
+      border: 1px dashed rgba(148, 163, 184, 0.18);
+      border-radius: var(--radius);
+      background: rgba(13, 27, 45, 0.58);
     }
 
-    /* ======================================================
-       Footer
-       ====================================================== */
+    .state-title {
+      color: #dce4ef;
+      font-size: 16px;
+      font-weight: 800;
+    }
 
-    footer {
-      margin-top: 40px;
-      padding: 20px 4px;
+    .state-text {
+      margin-top: 8px;
+      font-size: 13px;
+      line-height: 1.7;
+    }
+
+    .error-box {
+      color: #ffb4ba;
+      border-color: rgba(255, 92, 103, 0.25);
+      background: rgba(100, 20, 30, 0.16);
+    }
+
+    /* =====================================================
+       Footer
+       ===================================================== */
+
+    .footer {
+      margin-top: 28px;
+      padding-top: 18px;
       color: var(--muted2);
+      border-top: 1px solid rgba(148, 163, 184, 0.08);
       text-align: center;
       font-size: 11px;
       line-height: 1.7;
     }
 
-    /* ======================================================
+    /* =====================================================
+       Search result card
+       ===================================================== */
+
+    .search-result-card {
+      border: 1px solid rgba(94, 167, 255, 0.18);
+      border-radius: 14px;
+      background: rgba(10, 25, 43, 0.92);
+    }
+
+    /* =====================================================
        Responsive
-       ====================================================== */
+       ===================================================== */
 
-    @media (max-width: 720px) {
-
+    @media (max-width: 760px) {
       .app {
         width: min(100% - 18px, 1180px);
         padding-top: 10px;
       }
 
       .hero {
-        padding: 22px 18px;
-        border-radius: 20px;
+        padding: 24px 20px;
+        border-radius: 19px;
       }
 
-      .summary-grid {
-        gap: 9px;
-      }
-
-      .summary-card {
-        min-height: 120px;
-        padding: 16px;
-      }
-
-      .summary-value {
-        font-size: 22px;
-      }
-
-      .tabs {
-        gap: 4px;
-        padding: 4px;
-      }
-
-      .tab {
-        min-height: 40px;
-        padding: 0 3px;
-        font-size: 11px;
-      }
-
+      .dashboard-grid,
       .cards {
         grid-template-columns: 1fr;
       }
 
-      .search-box {
-        gap: 7px;
+      .info-card {
+        min-height: 125px;
       }
 
-      .search-button {
-        padding: 0 15px;
+      .stock-card {
+        padding: 18px;
+      }
+
+      .search-panel {
+        padding: 16px;
+      }
+
+      .holding-stats {
+        grid-template-columns: 1fr;
       }
     }
 
-    @media (max-width: 430px) {
-
-      .hero-title {
-        font-size: 27px;
+    @media (max-width: 470px) {
+      .search-row {
+        flex-direction: column;
       }
 
-      .summary-card {
-        min-height: 110px;
-      }
-
-      .summary-value {
-        font-size: 20px;
+      .search-button {
+        width: 100%;
       }
 
       .holding-grid {
         grid-template-columns: 1fr;
+      }
+
+      .card-bottom {
+        align-items: flex-start;
+        flex-direction: column;
       }
     }
   </style>
@@ -774,128 +759,162 @@
 
 <div class="app">
 
-  <!-- ======================================================
+  <!-- =====================================================
        ① AI MARKET INTELLIGENCE
-       ====================================================== -->
+       ===================================================== -->
 
-  <section class="hero">
+  <header class="hero">
 
-    <div class="eyebrow">
-      AI MARKET INTELLIGENCE
+    <div class="brand">
+
+      <h1 class="brand-title">
+        AI MARKET INTELLIGENCE
+      </h1>
+
+      <div class="brand-subtitle">
+        台股市場
+      </div>
+
+      <div class="brand-caption">
+        今日量化訊號
+      </div>
+
     </div>
 
-    <h1 class="hero-title">
-      台股市場
-    </h1>
+    <div class="market-status-row">
 
-    <div class="hero-subtitle">
-      今日量化訊號
+      <div
+        id="marketStatus"
+        class="market-status"
+      >
+        <span
+          id="marketStatusDot"
+          class="status-dot closed"
+        ></span>
+
+        <span id="marketStatusText">
+          載入市場狀態
+        </span>
+      </div>
+
+      <div class="market-date">
+        最新交易日：
+        <strong id="latestMarketDate">--</strong>
+      </div>
+
     </div>
 
-    <div class="market-state">
-      <span
-        id="marketStateDot"
-        class="state-dot state-closed"
-      ></span>
-
-      <span id="marketStateText">
-        資料讀取中
-      </span>
-    </div>
-
-    <div class="market-date">
-      最新交易日：
-      <strong id="latestMarketDate">--</strong>
-    </div>
-
-  </section>
+  </header>
 
 
-  <!-- ======================================================
+  <!-- =====================================================
        ② 四小格資訊面板
-       ====================================================== -->
+       ===================================================== -->
 
-  <section class="summary-grid">
+  <section class="dashboard-grid">
 
-    <div class="summary-card">
+    <!-- 今日精選 -->
 
-      <div class="summary-label">
+    <div class="info-card">
+
+      <div class="info-label">
         今日精選
       </div>
 
       <div
         id="selectedCount"
-        class="summary-value"
+        class="info-value"
       >
         --
       </div>
 
-      <div class="summary-note">
+      <div class="info-sub">
         最新交易日篩選結果
       </div>
 
     </div>
 
 
-    <div class="summary-card">
+    <!-- 持有個股總盈虧 -->
 
-      <div class="summary-label">
+    <div class="info-card">
+
+      <div class="info-label">
         持有個股總盈虧
       </div>
 
       <div
         id="portfolioProfit"
-        class="summary-value"
+        class="info-value"
       >
         尚未建立持倉
       </div>
 
-      <div class="summary-note">
+      <div class="info-sub">
         目前持倉
       </div>
 
     </div>
 
 
-    <div class="summary-card">
+    <!-- 加權指數 -->
 
-      <div class="summary-label">
+    <div class="info-card">
+
+      <div class="info-label">
         加權指數
       </div>
 
-      <div
-        id="marketIndex"
-        class="summary-value"
-      >
-        --
-      </div>
+      <div class="index-main">
 
-      <div
-        id="marketIndexChange"
-        class="summary-note"
-      >
-        大盤資料尚未提供
+        <div
+          id="taiexValue"
+          class="info-value"
+        >
+          --
+        </div>
+
+        <div
+          id="taiexChange"
+          class="index-change"
+        >
+          --
+        </div>
+
       </div>
 
     </div>
 
 
-    <div class="summary-card">
+    <!-- 市場風向 -->
 
-      <div class="summary-label">
+    <div class="info-card">
+
+      <div class="info-label">
         市場風向
       </div>
 
-      <div
-        id="marketDirection"
-        class="summary-value"
-      >
-        --
+      <div class="market-direction">
+
+        <div
+          id="marketDirectionIcon"
+          class="direction-icon"
+        >
+          ⚪
+        </div>
+
+        <div
+          id="marketDirectionText"
+          class="direction-text"
+        >
+          --
+        </div>
+
       </div>
 
       <div
-        id="marketDirectionNote"
-        class="summary-note"
+        id="marketDirectionSub"
+        class="info-sub"
       >
         等待市場資料
       </div>
@@ -905,24 +924,24 @@
   </section>
 
 
-  <!-- ======================================================
+  <!-- =====================================================
        ③ 查詢個股
-       ====================================================== -->
+       ===================================================== -->
 
-  <section class="search-section">
+  <section class="search-panel">
 
-    <div class="section-title">
+    <div class="search-title">
       🔍 查詢個股
     </div>
 
-    <div class="search-box">
+    <div class="search-row">
 
       <input
         id="searchInput"
         class="search-input"
-        type="search"
-        placeholder="輸入股票名稱或代號"
+        type="text"
         autocomplete="off"
+        placeholder="輸入股票名稱或代號"
       >
 
       <button
@@ -943,76 +962,94 @@
   </section>
 
 
-  <!-- ======================================================
+  <!-- =====================================================
        ④ 五個固定分頁
-       ====================================================== -->
+       ===================================================== -->
 
-  <div class="tabs-wrap">
+  <nav
+    id="tabs"
+    class="tabs"
+    aria-label="股票分類"
+  >
 
-    <nav class="tabs">
+    <button
+      class="tab-button active"
+      data-tab="selected"
+      type="button"
+    >
+      今日精選
+    </button>
 
-      <button
-        class="tab active"
-        data-tab="selected"
-        type="button"
+    <button
+      class="tab-button"
+      data-tab="top10"
+      type="button"
+    >
+      Top 10
+    </button>
+
+    <button
+      class="tab-button"
+      data-tab="etf"
+      type="button"
+    >
+      ETF
+    </button>
+
+    <button
+      class="tab-button"
+      data-tab="bond"
+      type="button"
+    >
+      債券
+    </button>
+
+    <button
+      class="tab-button"
+      data-tab="watchlist"
+      type="button"
+    >
+      我的清單
+    </button>
+
+  </nav>
+
+
+  <!-- =====================================================
+       內容
+       ===================================================== -->
+
+  <main>
+
+    <div class="section-header">
+
+      <h2
+        id="sectionTitle"
+        class="section-title"
       >
         今日精選
-      </button>
+      </h2>
 
-      <button
-        class="tab"
-        data-tab="top10"
-        type="button"
+      <div
+        id="sectionCount"
+        class="section-count"
       >
-        Top 10
-      </button>
+        --
+      </div>
 
-      <button
-        class="tab"
-        data-tab="etf"
-        type="button"
-      >
-        ETF
-      </button>
-
-      <button
-        class="tab"
-        data-tab="bond"
-        type="button"
-      >
-        債券
-      </button>
-
-      <button
-        class="tab"
-        data-tab="watchlist"
-        type="button"
-      >
-        我的清單
-      </button>
-
-    </nav>
-
-  </div>
-
-
-  <!-- ======================================================
-       ⑤ Content
-       ====================================================== -->
-
-  <main
-    id="mainContent"
-    class="content"
-  >
-    <div class="loading">
-      正在讀取市場資料……
     </div>
+
+    <section
+      id="cards"
+      class="cards"
+    ></section>
+
   </main>
 
 
-  <footer>
+  <footer class="footer">
     AI MARKET INTELLIGENCE<br>
-    Data source: Data/prices.json
+    資料依 Data/prices.json 最新有效交易日資料顯示
   </footer>
 
 </div>
@@ -1022,2109 +1059,168 @@
 "use strict";
 
 /* ============================================================
-   CONFIG
+   AI MARKET INTELLIGENCE
+   index.html
+
+   對齊：
+   fetch_data.py V10.3
+
+   前台原則：
+   ------------------------------------------------------------
+   1. 後台負責技術分析
+   2. 前台只呈現整理後的投資資訊
+   3. 主卡片不公開 RSI / MACD / KD / MA / Volume
+   4. 不顯示 6/6
+   5. 不顯示強度分數
+   6. 不對任何特定股票做特殊處理
+   7. 1319 不存在任何特殊驗證邏輯
+   8. 台股紅漲綠跌
+   ============================================================ */
+
+
+/* ============================================================
+   全域資料
    ============================================================ */
 
 const DATA_URL = "./Data/prices.json";
 
-const WATCHLIST_STORAGE_KEY =
-  "tw_ai_market_watchlist_v1";
-
-const HOLDINGS_STORAGE_KEY =
-  "tw_ai_market_holdings_v1";
-
-
-/* ============================================================
-   STATE
-   ============================================================ */
-
-let marketData = null;
+let appData = null;
 
 let activeTab = "selected";
 
-let watchlist = loadJSON(
-  WATCHLIST_STORAGE_KEY,
-  []
+let allItems = [];
+
+let stockItems = [];
+
+let selectedItems = [];
+
+let top10Items = [];
+
+let etfItems = [];
+
+let bondItems = [];
+
+let watchlist = loadWatchlist();
+
+
+/* ============================================================
+   DOM
+   ============================================================ */
+
+const els = {
+  marketStatus:
+    document.getElementById("marketStatus"),
+
+  marketStatusDot:
+    document.getElementById("marketStatusDot"),
+
+  marketStatusText:
+    document.getElementById("marketStatusText"),
+
+  latestMarketDate:
+    document.getElementById("latestMarketDate"),
+
+  selectedCount:
+    document.getElementById("selectedCount"),
+
+  portfolioProfit:
+    document.getElementById("portfolioProfit"),
+
+  taiexValue:
+    document.getElementById("taiexValue"),
+
+  taiexChange:
+    document.getElementById("taiexChange"),
+
+  marketDirectionIcon:
+    document.getElementById("marketDirectionIcon"),
+
+  marketDirectionText:
+    document.getElementById("marketDirectionText"),
+
+  marketDirectionSub:
+    document.getElementById("marketDirectionSub"),
+
+  searchInput:
+    document.getElementById("searchInput"),
+
+  searchButton:
+    document.getElementById("searchButton"),
+
+  searchResult:
+    document.getElementById("searchResult"),
+
+  tabs:
+    document.getElementById("tabs"),
+
+  sectionTitle:
+    document.getElementById("sectionTitle"),
+
+  sectionCount:
+    document.getElementById("sectionCount"),
+
+  cards:
+    document.getElementById("cards")
+};
+
+
+/* ============================================================
+   初始化
+   ============================================================ */
+
+document.addEventListener(
+  "DOMContentLoaded",
+  () => {
+
+    bindEvents();
+
+    loadData();
+
+  }
 );
 
-let holdings = loadJSON(
-  HOLDINGS_STORAGE_KEY,
-  {}
-);
-
 
 /* ============================================================
-   Helpers
+   Events
    ============================================================ */
 
-function loadJSON(key, fallback) {
-
-  try {
-
-    const raw =
-      localStorage.getItem(key);
-
-    if (!raw) {
-      return fallback;
-    }
-
-    const parsed =
-      JSON.parse(raw);
-
-    return parsed;
-
-  } catch (error) {
-
-    console.warn(
-      "localStorage 讀取失敗",
-      error
-    );
-
-    return fallback;
-  }
-}
-
-
-function saveJSON(key, value) {
-
-  try {
-
-    localStorage.setItem(
-      key,
-      JSON.stringify(value)
-    );
-
-  } catch (error) {
-
-    console.warn(
-      "localStorage 寫入失敗",
-      error
-    );
-  }
-}
-
-
-function safeNumber(value) {
-
-  if (
-    value === null ||
-    value === undefined ||
-    value === ""
-  ) {
-    return null;
-  }
-
-  const number =
-    Number(value);
-
-  if (!Number.isFinite(number)) {
-    return null;
-  }
-
-  return number;
-}
-
-
-function formatNumber(
-  value,
-  digits = 2
-) {
-
-  const number =
-    safeNumber(value);
-
-  if (number === null) {
-    return "--";
-  }
-
-  return number.toLocaleString(
-    "zh-TW",
-    {
-      minimumFractionDigits: digits,
-      maximumFractionDigits: digits
-    }
-  );
-}
-
-
-function formatInteger(value) {
-
-  const number =
-    safeNumber(value);
-
-  if (number === null) {
-    return "--";
-  }
-
-  return Math.round(number)
-    .toLocaleString("zh-TW");
-}
-
-
-function formatPercent(value) {
-
-  const number =
-    safeNumber(value);
-
-  if (number === null) {
-    return "--";
-  }
-
-  const prefix =
-    number > 0
-      ? "+"
-      : "";
-
-  return (
-    prefix
-    + number.toFixed(2)
-    + "%"
-  );
-}
-
-
-function escapeHTML(value) {
-
-  return String(value ?? "")
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#039;");
-}
-
-
-/* ============================================================
-   Market status
-   ============================================================ */
-
-function isWeekday(dateString) {
-
-  if (!dateString) {
-    return false;
-  }
-
-  const date =
-    new Date(
-      dateString + "T12:00:00+08:00"
-    );
-
-  if (Number.isNaN(date.getTime())) {
-    return false;
-  }
-
-  const day =
-    date.getDay();
-
-  return (
-    day !== 0 &&
-    day !== 6
-  );
-}
-
-
-function updateMarketState() {
-
-  const date =
-    marketData?.latest_market_date
-    || marketData?.date;
-
-  const today =
-    new Intl.DateTimeFormat(
-      "en-CA",
-      {
-        timeZone: "Asia/Taipei",
-        year: "numeric",
-        month: "2-digit",
-        day: "2-digit"
-      }
-    ).format(
-      new Date()
-    );
-
-  const dot =
-    document.getElementById(
-      "marketStateDot"
-    );
-
-  const text =
-    document.getElementById(
-      "marketStateText"
-    );
-
-  if (!date) {
-
-    dot.className =
-      "state-dot state-closed";
-
-    text.textContent =
-      "資料尚未更新";
-
-    return;
-  }
-
-  /*
-   * V10.3 的 date / latest_market_date
-   * 是實際有效行情交易日。
-   *
-   * 如果最新交易日不是今天，
-   * 不假造今天有收盤。
-   */
-
-  if (date === today) {
-
-    dot.className =
-      "state-dot state-open";
-
-    text.textContent =
-      "🟢 今日開市";
-
-  } else {
-
-    dot.className =
-      "state-dot state-closed";
-
-    text.textContent =
-      "🔴 非交易日／等待最新行情";
-  }
-}
-
-
-/* ============================================================
-   Portfolio
-   ============================================================ */
-
-function calculatePortfolioProfit() {
-
-  if (
-    !marketData ||
-    !Array.isArray(
-      marketData.universe?.items
-    )
-  ) {
-    return null;
-  }
-
-  let totalProfit = 0;
-
-  let hasPosition = false;
-
-  const allItems =
-    marketData.universe.items;
-
-  for (const holdingCode of Object.keys(holdings)) {
-
-    const holding =
-      holdings[holdingCode];
-
-    const shares =
-      safeNumber(
-        holding?.shares
-      );
-
-    const avgCost =
-      safeNumber(
-        holding?.avgCost
-      );
-
-    if (
-      shares === null ||
-      avgCost === null ||
-      shares <= 0 ||
-      avgCost <= 0
-    ) {
-      continue;
-    }
-
-    const stock =
-      allItems.find(
-        item =>
-          String(
-            item.code
-          ) === String(
-            holdingCode
-          )
-      );
-
-    if (!stock) {
-      continue;
-    }
-
-    /*
-     * prices.json 的完整 Universe
-     * 本身只保存 universe metadata。
-     *
-     * 個股行情在：
-     * today_selected / top10 / etfs / bonds
-     *
-     * 所以從所有可取得的結果找行情。
-     */
-
-    const current =
-      findStockData(
-        holdingCode
-      );
-
-    const price =
-      safeNumber(
-        current?.price
-      );
-
-    if (price === null) {
-      continue;
-    }
-
-    const profit =
-      (
-        price -
-        avgCost
-      ) * shares;
-
-    totalProfit +=
-      profit;
-
-    hasPosition = true;
-  }
-
-  if (!hasPosition) {
-    return null;
-  }
-
-  return totalProfit;
-}
-
-
-/* ============================================================
-   Find stock data
-   ============================================================ */
-
-function allMarketItems() {
-
-  if (!marketData) {
-    return [];
-  }
-
-  const result = [];
-
-  const sources = [
-    marketData.today_selected,
-    marketData.top10,
-    marketData.etfs,
-    marketData.bonds
-  ];
-
-  for (const source of sources) {
-
-    if (!Array.isArray(source)) {
-      continue;
-    }
-
-    for (const item of source) {
-
-      if (!item?.symbol) {
-        continue;
-      }
-
-      if (
-        !result.some(
-          existing =>
-            existing.symbol === item.symbol
-        )
-      ) {
-        result.push(item);
-      }
-    }
-  }
-
-  return result;
-}
-
-
-function findStockData(
-  codeOrSymbol
-) {
-
-  const query =
-    String(
-      codeOrSymbol ?? ""
-    )
-    .trim()
-    .toLowerCase();
-
-  if (!query) {
-    return null;
-  }
-
-  const items =
-    allMarketItems();
-
-  return (
-    items.find(
-      item =>
-        String(
-          item.code ?? ""
-        )
-        .toLowerCase() === query
-    )
-    ||
-    items.find(
-      item =>
-        String(
-          item.symbol ?? ""
-        )
-        .toLowerCase() === query
-    )
-    ||
-    items.find(
-      item =>
-        String(
-          item.name ?? ""
-        )
-        .toLowerCase()
-        .includes(query)
-    )
-    ||
-    null
-  );
-}
-
-
-/* ============================================================
-   Market Direction
-   ============================================================ */
-
-function calculateMarketDirection() {
-
-  const breadth =
-    marketData?.summary?.market_breadth
-    || {};
-
-  const rising =
-    safeNumber(
-      breadth.rising
-    ) || 0;
-
-  const falling =
-    safeNumber(
-      breadth.falling
-    ) || 0;
-
-  const unchanged =
-    safeNumber(
-      breadth.unchanged
-    ) || 0;
-
-  const total =
-    rising +
-    falling +
-    unchanged;
-
-  if (total <= 0) {
-
-    return {
-      label: "--",
-      note: "市場資料不足",
-      className: ""
-    };
-  }
-
-  const risingRatio =
-    rising / total;
-
-  const fallingRatio =
-    falling / total;
-
-  if (
-    risingRatio >= 0.60
-    &&
-    rising > falling
-  ) {
-
-    return {
-      label: "🟢 偏多",
-      note: "市場氣氛偏強",
-      className: "up"
-    };
-  }
-
-  if (
-    fallingRatio >= 0.60
-    &&
-    falling > rising
-  ) {
-
-    return {
-      label: "🔴 偏弱",
-      note: "市場氣氛偏弱",
-      className: "down"
-    };
-  }
-
-  return {
-    label: "🟡 震盪",
-    note: "多空力量接近",
-    className: "warning"
-  };
-}
-
-
-/* ============================================================
-   Strength
-   ============================================================ */
-
-function strengthInfo(
-  item
-) {
-
-  const signal =
-    String(
-      item?.signal ?? ""
-    );
-
-  /*
-   * V10.3 已經產生 signal。
-   * 前台只顯示整理後的強度，
-   * 不顯示 strength_score。
-   */
-
-  if (
-    signal.includes("強勢")
-  ) {
-
-    return {
-      text: "🟢 強勢",
-      className: "strong"
-    };
-  }
-
-  if (
-    signal.includes("偏多")
-  ) {
-
-    return {
-      text: "🟢 偏多",
-      className: "strong"
-    };
-  }
-
-  if (
-    signal.includes("弱勢")
-    ||
-    signal.includes("偏弱")
-  ) {
-
-    return {
-      text: "🔴 弱勢",
-      className: "weak"
-    };
-  }
-
-  return {
-    text: "🟡 中性",
-    className: "neutral"
-  };
-}
-
-
-/* ============================================================
-   Recommendation
-   ============================================================ */
-
-function recommendationForNormal(
-  item
-) {
-
-  const recommendation =
-    String(
-      item?.recommendation ?? ""
-    );
-
-  const signal =
-    String(
-      item?.signal ?? ""
-    );
-
-  /*
-   * 前台不顯示後台的 6/6。
-   * recommendation 如果本身只是：
-   * 「符合 6/6 核心條件」
-   * 也不能直接原樣顯示。
-   */
-
-  if (
-    recommendation.includes("符合")
-  ) {
-
-    if (
-      signal.includes("強勢")
-      ||
-      signal.includes("偏多")
-    ) {
-      return "偏多，可分批";
-    }
-
-    return "積極關注";
-  }
-
-  if (
-    recommendation.includes("接近")
-  ) {
-    return "等待拉回";
-  }
-
-  if (
-    recommendation.includes("部分")
-  ) {
-    return "續抱觀察";
-  }
-
-  return "暫停操作";
-}
-
-
-/* ============================================================
-   Holding recommendation
-   ============================================================ */
-
-function recommendationForHolding(
-  item,
-  holding
-) {
-
-  const shares =
-    safeNumber(
-      holding?.shares
-    );
-
-  const avgCost =
-    safeNumber(
-      holding?.avgCost
-    );
-
-  const price =
-    safeNumber(
-      item?.price
-    );
-
-  if (
-    shares === null ||
-    avgCost === null ||
-    price === null ||
-    shares <= 0 ||
-    avgCost <= 0
-  ) {
-
-    return recommendationForNormal(
-      item
-    );
-  }
-
-  const returnPct =
-    (
-      (
-        price -
-        avgCost
-      )
-      / avgCost
-    ) * 100;
-
-  const strength =
-    strengthInfo(
-      item
-    );
-
-  if (
-    returnPct >= 20
-  ) {
-
-    return "考慮減碼，鎖定部分獲利";
-  }
-
-  if (
-    returnPct >= 10
-    &&
-    strength.className === "strong"
-  ) {
-
-    return "持有觀察，不追價";
-  }
-
-  if (
-    returnPct < -20
-  ) {
-
-    return "檢視風險，暫停加碼";
-  }
-
-  if (
-    strength.className === "strong"
-    &&
-    returnPct <= 8
-  ) {
-
-    return "偏多，可分批加碼";
-  }
-
-  if (
-    strength.className === "neutral"
-  ) {
-
-    return "續抱觀察";
-  }
-
-  return "暫停加碼";
-}
-
-
-/* ============================================================
-   Change class
-   ============================================================ */
-
-function changeClass(
-  value
-) {
-
-  const number =
-    safeNumber(value);
-
-  if (number === null) {
-    return "flat";
-  }
-
-  if (number > 0) {
-    return "up";
-  }
-
-  if (number < 0) {
-    return "down";
-  }
-
-  return "flat";
-}
-
-
-/* ============================================================
-   Stock card
-   ============================================================ */
-
-function createStockCard(
-  item,
-  options = {}
-) {
-
-  const code =
-    escapeHTML(
-      item?.code ?? "--"
-    );
-
-  const name =
-    escapeHTML(
-      item?.name ?? "--"
-    );
-
-  const price =
-    safeNumber(
-      item?.price
-    );
-
-  const change =
-    safeNumber(
-      item?.change_pct
-    );
-
-  const strength =
-    strengthInfo(item);
-
-  const recommendation =
-    options.watchlist
-      ? recommendationForHolding(
-          item,
-          holdings[item.code]
-        )
-      : recommendationForNormal(
-          item
-        );
-
-  const isWatched =
-    watchlist.some(
-      symbol =>
-        String(symbol) ===
-        String(item.symbol)
-    );
-
-  const priceText =
-    price === null
-      ? "--"
-      : formatNumber(
-          price,
-          price < 100 ? 2 : 2
-        );
-
-  const changeText =
-    formatPercent(change);
-
-  const changeCls =
-    changeClass(change);
-
-  const holding =
-    holdings[item.code]
-    || {};
-
-  let holdingHTML = "";
-
-  if (options.watchlist) {
-
-    const shares =
-      safeNumber(
-        holding.shares
-      );
-
-    const avgCost =
-      safeNumber(
-        holding.avgCost
-      );
-
-    let marketValue = null;
-    let profit = null;
-    let returnPct = null;
-
-    if (
-      shares !== null &&
-      price !== null
-    ) {
-
-      marketValue =
-        shares * price;
-    }
-
-    if (
-      shares !== null &&
-      avgCost !== null &&
-      price !== null
-    ) {
-
-      profit =
-        (
-          price -
-          avgCost
-        ) * shares;
-
-      returnPct =
-        (
-          (
-            price -
-            avgCost
-          )
-          / avgCost
-        ) * 100;
-    }
-
-    holdingHTML = `
-      <div class="holding-grid">
-
-        <div class="holding-item">
-          <div class="holding-item-label">
-            持有股數
-          </div>
-          <div class="holding-item-value">
-            ${
-              shares === null
-                ? "--"
-                : formatInteger(shares)
-            } 股
-          </div>
-        </div>
-
-        <div class="holding-item">
-          <div class="holding-item-label">
-            平均成本
-          </div>
-          <div class="holding-item-value">
-            ${
-              avgCost === null
-                ? "--"
-                : formatNumber(avgCost, 2)
-            }
-          </div>
-        </div>
-
-        <div class="holding-item">
-          <div class="holding-item-label">
-            目前市值
-          </div>
-          <div class="holding-item-value">
-            ${
-              marketValue === null
-                ? "--"
-                : formatInteger(marketValue)
-            }
-          </div>
-        </div>
-
-        <div class="holding-item">
-          <div class="holding-item-label">
-            損益
-          </div>
-          <div
-            class="
-              holding-item-value
-              ${
-                profit !== null
-                  ? (
-                    profit > 0
-                      ? "up"
-                      : profit < 0
-                        ? "down"
-                        : ""
-                  )
-                  : ""
-              }
-            "
-          >
-            ${
-              profit === null
-                ? "--"
-                : (
-                  (profit > 0 ? "+" : "")
-                  + formatInteger(profit)
-                )
-            }
-          </div>
-        </div>
-
-        <div class="holding-item">
-          <div class="holding-item-label">
-            報酬率
-          </div>
-          <div
-            class="
-              holding-item-value
-              ${
-                returnPct !== null
-                  ? (
-                    returnPct > 0
-                      ? "up"
-                      : returnPct < 0
-                        ? "down"
-                        : ""
-                  )
-                  : ""
-              }
-            "
-          >
-            ${
-              returnPct === null
-                ? "--"
-                : formatPercent(returnPct)
-            }
-          </div>
-        </div>
-
-      </div>
-
-      <div class="holding-edit">
-
-        <input
-          type="number"
-          min="0"
-          step="1"
-          placeholder="持有股數"
-          value="${
-            shares === null
-              ? ""
-              : shares
-          }"
-          data-holding-shares="${code}"
-        >
-
-        <input
-          type="number"
-          min="0"
-          step="0.01"
-          placeholder="平均成本"
-          value="${
-            avgCost === null
-              ? ""
-              : avgCost
-          }"
-          data-holding-cost="${code}"
-        >
-
-      </div>
-    `;
-  }
-
-  return `
-    <article class="stock-card">
-
-      <div class="stock-head">
-
-        <div>
-          <div class="stock-name">
-            ${name}
-          </div>
-
-          <div class="stock-code">
-            ${code}
-          </div>
-        </div>
-
-        <div class="asset-badge">
-          ${escapeHTML(item.type || "stock")}
-        </div>
-
-      </div>
-
-      <div class="price-row">
-
-        <div class="price">
-          ${priceText}
-        </div>
-
-        <div class="change ${changeCls}">
-          ${changeText}
-        </div>
-
-      </div>
-
-      <div class="card-divider"></div>
-
-      <div class="strength-row">
-
-        <div class="label">
-          指數強度
-        </div>
-
-        <div
-          class="
-            strength
-            ${strength.className}
-          "
-        >
-          ${strength.text}
-        </div>
-
-      </div>
-
-      <div class="recommendation">
-
-        <div class="recommendation-title">
-          建議
-        </div>
-
-        <div class="recommendation-text">
-          ${escapeHTML(recommendation)}
-        </div>
-
-      </div>
-
-      ${holdingHTML}
-
-      <div class="card-actions">
-
-        ${
-          options.watchlist
-            ? `
-              <button
-                class="small-button"
-                type="button"
-                data-remove-watchlist="${escapeHTML(item.symbol)}"
-              >
-                移除清單
-              </button>
-            `
-            : `
-              <button
-                class="
-                  small-button
-                  ${
-                    isWatched
-                      ? ""
-                      : "primary"
-                  }
-                "
-                type="button"
-                data-add-watchlist="${escapeHTML(item.symbol)}"
-              >
-                ${
-                  isWatched
-                    ? "已加入我的清單"
-                    : "＋加入我的清單"
-                }
-              </button>
-            `
-        }
-
-      </div>
-
-    </article>
-  `;
-}
-
-
-/* ============================================================
-   Render cards
-   ============================================================ */
-
-function renderCards(
-  items,
-  options = {}
-) {
-
-  if (
-    !Array.isArray(items)
-    ||
-    items.length === 0
-  ) {
-
-    return `
-      <div class="empty">
-
-        <div class="empty-title">
-          ${escapeHTML(
-            options.emptyTitle
-            || "目前沒有資料"
-          )}
-        </div>
-
-        <div class="empty-note">
-          ${escapeHTML(
-            options.emptyNote
-            || "目前沒有符合條件的資料。"
-          )}
-        </div>
-
-      </div>
-    `;
-  }
-
-  return `
-    <div class="cards">
-      ${
-        items
-          .map(
-            item =>
-              createStockCard(
-                item,
-                options
-              )
-          )
-          .join("")
-      }
-    </div>
-  `;
-}
-
-
-/* ============================================================
-   Tab data
-   ============================================================ */
-
-function getTabItems(tab) {
-
-  if (!marketData) {
-    return [];
-  }
-
-  switch (tab) {
-
-    case "selected":
-      return Array.isArray(
-        marketData.today_selected
-      )
-        ? marketData.today_selected
-        : [];
-
-    case "top10":
-      return Array.isArray(
-        marketData.top10
-      )
-        ? marketData.top10
-        : [];
-
-    case "etf":
-      return Array.isArray(
-        marketData.etfs
-      )
-        ? marketData.etfs
-        : [];
-
-    case "bond":
-      return Array.isArray(
-        marketData.bonds
-      )
-        ? marketData.bonds
-        : [];
-
-    case "watchlist":
-      return getWatchlistItems();
-
-    default:
-      return [];
-  }
-}
-
-
-/* ============================================================
-   Watchlist
-   ============================================================ */
-
-function getWatchlistItems() {
-
-  if (!Array.isArray(watchlist)) {
-    return [];
-  }
-
-  const result = [];
-
-  for (const symbol of watchlist) {
-
-    const item =
-      findStockData(symbol);
-
-    if (item) {
-      result.push(item);
-    }
-  }
-
-  return result;
-}
-
-
-function addToWatchlist(
-  symbol
-) {
-
-  if (!symbol) {
-    return;
-  }
-
-  if (!Array.isArray(watchlist)) {
-    watchlist = [];
-  }
-
-  if (
-    watchlist.includes(symbol)
-  ) {
-    return;
-  }
-
-  watchlist.push(symbol);
-
-  saveJSON(
-    WATCHLIST_STORAGE_KEY,
-    watchlist
-  );
-
-  renderActiveTab();
-}
-
-
-function removeFromWatchlist(
-  symbol
-) {
-
-  watchlist =
-    watchlist.filter(
-      value =>
-        String(value) !==
-        String(symbol)
-    );
-
-  saveJSON(
-    WATCHLIST_STORAGE_KEY,
-    watchlist
-  );
-
-  renderActiveTab();
-}
-
-
-/* ============================================================
-   Holdings
-   ============================================================ */
-
-function saveHolding(
-  code,
-  shares,
-  avgCost
-) {
-
-  const parsedShares =
-    safeNumber(shares);
-
-  const parsedCost =
-    safeNumber(avgCost);
-
-  if (
-    parsedShares === null
-    ||
-    parsedCost === null
-    ||
-    parsedShares <= 0
-    ||
-    parsedCost <= 0
-  ) {
-
-    delete holdings[code];
-
-  } else {
-
-    holdings[code] = {
-      shares: parsedShares,
-      avgCost: parsedCost
-    };
-  }
-
-  saveJSON(
-    HOLDINGS_STORAGE_KEY,
-    holdings
-  );
-
-  updatePortfolioSummary();
-  renderActiveTab();
-}
-
-
-/* ============================================================
-   Portfolio summary
-   ============================================================ */
-
-function updatePortfolioSummary() {
-
-  const element =
-    document.getElementById(
-      "portfolioProfit"
-    );
-
-  const profit =
-    calculatePortfolioProfit();
-
-  element.className =
-    "summary-value";
-
-  if (profit === null) {
-
-    element.textContent =
-      "尚未建立持倉";
-
-    return;
-  }
-
-  if (profit > 0) {
-
-    element.classList.add(
-      "up"
-    );
-
-  } else if (profit < 0) {
-
-    element.classList.add(
-      "down"
-    );
-  }
-
-  element.textContent =
-    (
-      profit > 0
-        ? "+"
-        : ""
-    )
-    + formatInteger(profit)
-    + " 元";
-}
-
-
-/* ============================================================
-   Summary
-   ============================================================ */
-
-function updateSummary() {
-
-  const selected =
-    Array.isArray(
-      marketData?.today_selected
-    )
-      ? marketData.today_selected
-      : [];
-
-  document.getElementById(
-    "selectedCount"
-  ).textContent =
-    formatInteger(
-      selected.length
-    );
-
-  document.getElementById(
-    "latestMarketDate"
-  ).textContent =
-    marketData?.latest_market_date
-    || marketData?.date
-    || "--";
-
-  updateMarketState();
-
-  /*
-   * V10.3 目前沒有大盤指數欄位。
-   * 因此禁止假造數值。
-   */
-
-  const indexValue =
-    marketData?.market_index
-    ?? marketData?.summary?.market_index
-    ?? null;
-
-  const indexChange =
-    marketData?.market_index_change_pct
-    ?? marketData?.summary?.market_index_change_pct
-    ?? null;
-
-  const indexElement =
-    document.getElementById(
-      "marketIndex"
-    );
-
-  const indexChangeElement =
-    document.getElementById(
-      "marketIndexChange"
-    );
-
-  if (indexValue !== null) {
-
-    indexElement.textContent =
-      formatNumber(
-        indexValue,
-        2
-      );
-
-    indexChangeElement.textContent =
-      indexChange === null
-        ? "--"
-        : formatPercent(
-            indexChange
+function bindEvents() {
+
+  els.tabs
+    .addEventListener(
+      "click",
+      event => {
+
+        const button =
+          event.target.closest(
+            ".tab-button"
           );
 
-    indexChangeElement.className =
-      "summary-note "
-      + changeClass(indexChange);
-
-  } else {
-
-    indexElement.textContent =
-      "--";
-
-    indexChangeElement.textContent =
-      "大盤資料尚未提供";
-
-    indexChangeElement.className =
-      "summary-note";
-  }
-
-
-  const direction =
-    calculateMarketDirection();
-
-  const directionElement =
-    document.getElementById(
-      "marketDirection"
-    );
-
-  const directionNote =
-    document.getElementById(
-      "marketDirectionNote"
-    );
-
-  directionElement.textContent =
-    direction.label;
-
-  directionElement.className =
-    "summary-value "
-    + (
-      direction.className
-      || ""
-    );
-
-  directionNote.textContent =
-    direction.note;
-
-  updatePortfolioSummary();
-}
-
-
-/* ============================================================
-   Content titles
-   ============================================================ */
-
-function getContentTitle(tab) {
-
-  switch (tab) {
-
-    case "selected":
-      return "今日精選";
-
-    case "top10":
-      return "Top 10";
-
-    case "etf":
-      return "ETF";
-
-    case "bond":
-      return "債券";
-
-    case "watchlist":
-      return "我的清單";
-
-    default:
-      return "";
-  }
-}
-
-
-function getEmptyText(tab) {
-
-  switch (tab) {
-
-    case "selected":
-      return {
-        title: "今日沒有符合條件的個股",
-        note: "最新交易日目前沒有可列入今日精選的股票。"
-      };
-
-    case "top10":
-      return {
-        title: "目前沒有 Top 10",
-        note: "後台目前沒有提供 Top 10 資料。"
-      };
-
-    case "etf":
-      return {
-        title: "目前沒有 ETF 資料",
-        note: "後台目前沒有提供 ETF 資料。"
-      };
-
-    case "bond":
-      return {
-        title: "目前沒有債券資料",
-        note: "後台目前沒有提供債券資料。"
-      };
-
-    case "watchlist":
-      return {
-        title: "我的清單目前是空的",
-        note: "請先查詢個股，再按「＋加入我的清單」。"
-      };
-
-    default:
-      return {
-        title: "目前沒有資料",
-        note: ""
-      };
-  }
-}
-
-
-/* ============================================================
-   Render active tab
-   ============================================================ */
-
-function renderActiveTab() {
-
-  const container =
-    document.getElementById(
-      "mainContent"
-    );
-
-  const items =
-    getTabItems(
-      activeTab
-    );
-
-  const title =
-    getContentTitle(
-      activeTab
-    );
-
-  const empty =
-    getEmptyText(
-      activeTab
-    );
-
-  container.innerHTML = `
-
-    <div class="content-header">
-
-      <h2 class="content-title">
-        ${escapeHTML(title)}
-      </h2>
-
-      <div class="content-count">
-        ${formatInteger(items.length)} 筆
-      </div>
-
-    </div>
-
-    ${
-      renderCards(
-        items,
-        {
-          watchlist:
-            activeTab === "watchlist",
-
-          emptyTitle:
-            empty.title,
-
-          emptyNote:
-            empty.note
+        if (!button) {
+          return;
         }
-      )
-    }
 
-  `;
+        const tab =
+          button.dataset.tab;
 
-  bindCardEvents();
-}
-
-
-/* ============================================================
-   Card events
-   ============================================================ */
-
-function bindCardEvents() {
-
-  document
-    .querySelectorAll(
-      "[data-add-watchlist]"
-    )
-    .forEach(
-      button => {
-
-        button.addEventListener(
-          "click",
-          () => {
-
-            addToWatchlist(
-              button.dataset.addWatchlist
-            );
-          }
-        );
-      }
-    );
-
-
-  document
-    .querySelectorAll(
-      "[data-remove-watchlist]"
-    )
-    .forEach(
-      button => {
-
-        button.addEventListener(
-          "click",
-          () => {
-
-            removeFromWatchlist(
-              button.dataset.removeWatchlist
-            );
-          }
-        );
-      }
-    );
-
-
-  document
-    .querySelectorAll(
-      "[data-holding-shares]"
-    )
-    .forEach(
-      input => {
-
-        input.addEventListener(
-          "change",
-          () => {
-
-            const code =
-              input.dataset.holdingShares;
-
-            const costInput =
-              document.querySelector(
-                `[data-holding-cost="${code}"]`
-              );
-
-            saveHolding(
-              code,
-              input.value,
-              costInput?.value
-            );
-          }
-        );
-      }
-    );
-
-
-  document
-    .querySelectorAll(
-      "[data-holding-cost]"
-    )
-    .forEach(
-      input => {
-
-        input.addEventListener(
-          "change",
-          () => {
-
-            const code =
-              input.dataset.holdingCost;
-
-            const sharesInput =
-              document.querySelector(
-                `[data-holding-shares="${code}"]`
-              );
-
-            saveHolding(
-              code,
-              sharesInput?.value,
-              input.value
-            );
-          }
-        );
-      }
-    );
-}
-
-
-/* ============================================================
-   Search
-   ============================================================ */
-
-function performSearch() {
-
-  const input =
-    document.getElementById(
-      "searchInput"
-    );
-
-  const result =
-    document.getElementById(
-      "searchResult"
-    );
-
-  const query =
-    input.value.trim();
-
-  if (!query) {
-
-    result.innerHTML = "";
-
-    return;
-  }
-
-  const item =
-    findStockData(query);
-
-  if (!item) {
-
-    result.innerHTML = `
-      <div class="empty">
-        <div class="empty-title">
-          找不到個股
-        </div>
-        <div class="empty-note">
-          請輸入正確的股票名稱或代號。
-        </div>
-      </div>
-    `;
-
-    return;
-  }
-
-  const isWatched =
-    watchlist.includes(
-      item.symbol
-    );
-
-  const strength =
-    strengthInfo(item);
-
-  const recommendation =
-    recommendationForNormal(
-      item
-    );
-
-  result.innerHTML = `
-
-    <div class="search-result-card">
-
-      <div class="search-result-top">
-
-        <div>
-
-          <div class="search-result-name">
-            ${escapeHTML(item.name)}
-          </div>
-
-          <div class="search-result-code">
-            ${escapeHTML(item.code)}
-          </div>
-
-        </div>
-
-        <button
-          id="searchAddButton"
-          class="
-            small-button
-            ${
-              isWatched
-                ? ""
-                : "primary"
-            }
-          "
-          type="button"
-        >
-          ${
-            isWatched
-              ? "已加入我的清單"
-              : "＋加入我的清單"
-          }
-        </button>
-
-      </div>
-
-      <div class="price-row">
-
-        <div class="price">
-          ${
-            item.price === null
-              ? "--"
-              : formatNumber(item.price, 2)
-          }
-        </div>
-
-        <div
-          class="
-            change
-            ${changeClass(item.change_pct)}
-          "
-        >
-          ${formatPercent(item.change_pct)}
-        </div>
-
-      </div>
-
-      <div class="card-divider"></div>
-
-      <div class="strength-row">
-
-        <div class="label">
-          指數強度
-        </div>
-
-        <div
-          class="
-            strength
-            ${strength.className}
-          "
-        >
-          ${strength.text}
-        </div>
-
-      </div>
-
-      <div class="recommendation">
-
-        <div class="recommendation-title">
-          建議
-        </div>
-
-        <div class="recommendation-text">
-          ${escapeHTML(recommendation)}
-        </div>
-
-      </div>
-
-    </div>
-  `;
-
-
-  const addButton =
-    document.getElementById(
-      "searchAddButton"
-    );
-
-  addButton.addEventListener(
-    "click",
-    () => {
-
-      addToWatchlist(
-        item.symbol
-      );
-
-      performSearch();
-    }
-  );
-}
-
-
-/* ============================================================
-   Tabs events
-   ============================================================ */
-
-function bindTabs() {
-
-  document
-    .querySelectorAll(
-      ".tab"
-    )
-    .forEach(
-      button => {
-
-        button.addEventListener(
-          "click",
-          () => {
-
-            activeTab =
-              button.dataset.tab;
-
-            document
-              .querySelectorAll(
-                ".tab"
-              )
-              .forEach(
-                tab =>
-                  tab.classList.remove(
-                    "active"
-                  )
-              );
-
-            button.classList.add(
-              "active"
-            );
-
-            renderActiveTab();
-          }
-        );
-      }
-    );
-}
-
-
-/* ============================================================
-   Load data
-   ============================================================ */
-
-async function loadMarketData() {
-
-  const container =
-    document.getElementById(
-      "mainContent"
-    );
-
-  try {
-
-    const response =
-      await fetch(
-        DATA_URL
-        + "?t="
-        + Date.now(),
-        {
-          cache: "no-store"
+        if (!tab) {
+          return;
         }
-      );
 
-    if (!response.ok) {
+        setActiveTab(tab);
 
-      throw new Error(
-        `HTTP ${response.status}`
-      );
-    }
-
-    const data =
-      await response.json();
-
-    if (
-      !data
-      ||
-      typeof data !== "object"
-    ) {
-
-      throw new Error(
-        "prices.json 格式錯誤"
-      );
-    }
-
-    marketData = data;
-
-    updateSummary();
-
-    renderActiveTab();
-
-  } catch (error) {
-
-    console.error(
-      "prices.json 讀取失敗",
-      error
+      }
     );
 
-    container.innerHTML = `
 
-      <div class="error">
-
-        <strong>
-          資料尚未更新
-        </strong>
-
-        <br><br>
-
-        無法讀取：
-        Data/prices.json
-
-        <br><br>
-
-        請確認 GitHub Actions 是否已完成
-        fetch_data.py V10.3，
-        並確認 Data/prices.json 已成功提交。
-
-      </div>
-
-    `;
-
-    document.getElementById(
-      "latestMarketDate"
-    ).textContent =
-      "資料尚未更新";
-
-    document.getElementById(
-      "selectedCount"
-    ).textContent =
-      "--";
-
-    document.getElementById(
-      "marketStateText"
-    ).textContent =
-      "🔴 資料尚未更新";
-  }
-}
-
-
-/* ============================================================
-   Search events
-   ============================================================ */
-
-function bindSearch() {
-
-  document
-    .getElementById(
-      "searchButton"
-    )
+  els.searchButton
     .addEventListener(
       "click",
       performSearch
     );
 
 
-  document
-    .getElementById(
-      "searchInput"
-    )
+  els.searchInput
     .addEventListener(
       "keydown",
       event => {
@@ -3134,30 +1230,3362 @@ function bindSearch() {
         ) {
 
           performSearch();
+
         }
+
       }
     );
+
+
+  els.cards
+    .addEventListener(
+      "input",
+      event => {
+
+        const input =
+          event.target.closest(
+            "[data-holding-field]"
+          );
+
+        if (!input) {
+          return;
+        }
+
+        updateHoldingFromInput(
+          input
+        );
+
+      }
+    );
+
+
+  els.cards
+    .addEventListener(
+      "click",
+      event => {
+
+        const addButton =
+          event.target.closest(
+            "[data-add-watchlist]"
+          );
+
+        if (addButton) {
+
+          addToWatchlist(
+            addButton.dataset.addWatchlist
+          );
+
+          return;
+
+        }
+
+
+        const removeButton =
+          event.target.closest(
+            "[data-remove-watchlist]"
+          );
+
+        if (removeButton) {
+
+          removeFromWatchlist(
+            removeButton.dataset.removeWatchlist
+          );
+
+        }
+
+      }
+    );
+
 }
 
 
 /* ============================================================
-   Initialize
+   Load JSON
    ============================================================ */
 
-function init() {
+async function loadData() {
 
-  bindTabs();
+  renderLoading();
 
-  bindSearch();
+  try {
 
-  loadMarketData();
+    const response =
+      await fetch(
+        DATA_URL + "?t=" + Date.now(),
+        {
+          cache: "no-store"
+        }
+      );
+
+
+    if (!response.ok) {
+
+      throw new Error(
+        "HTTP " + response.status
+      );
+
+    }
+
+
+    const data =
+      await response.json();
+
+
+    validateData(data);
+
+
+    appData = data;
+
+    prepareData();
+
+    renderDashboard();
+
+    renderCurrentTab();
+
+  }
+  catch (error) {
+
+    console.error(
+      "無法載入儀表板資料：",
+      error
+    );
+
+    renderError(error);
+
+  }
+
 }
 
 
-document.addEventListener(
-  "DOMContentLoaded",
-  init
-);
+/* ============================================================
+   Validate
+   ============================================================ */
+
+function validateData(data) {
+
+  if (
+    !data ||
+    typeof data !== "object" ||
+    Array.isArray(data)
+  ) {
+
+    throw new Error(
+      "prices.json 根資料格式錯誤"
+    );
+
+  }
+
+
+  if (
+    data.status &&
+    data.status !== "success"
+  ) {
+
+    throw new Error(
+      "後台資料狀態不是 success"
+    );
+
+  }
+
+
+  if (
+    !Array.isArray(
+      data.today_selected
+    )
+  ) {
+
+    throw new Error(
+      "today_selected 資料不存在或格式錯誤"
+    );
+
+  }
+
+
+  if (
+    !Array.isArray(
+      data.top10
+    )
+  ) {
+
+    throw new Error(
+      "top10 資料不存在或格式錯誤"
+    );
+
+  }
+
+
+  if (
+    data.universe &&
+    Array.isArray(
+      data.universe.items
+    )
+  ) {
+
+    return;
+
+  }
+
+}
+
+
+/* ============================================================
+   Prepare
+   ============================================================ */
+
+function prepareData() {
+
+  selectedItems =
+    normalizeItems(
+      appData.today_selected
+    );
+
+
+  top10Items =
+    normalizeItems(
+      appData.top10
+    );
+
+
+  etfItems =
+    normalizeItems(
+      Array.isArray(
+        appData.etfs
+      )
+        ? appData.etfs
+        : []
+    );
+
+
+  bondItems =
+    normalizeItems(
+      Array.isArray(
+        appData.bonds
+      )
+        ? appData.bonds
+        : []
+    );
+
+
+  if (
+    appData.universe &&
+    Array.isArray(
+      appData.universe.items
+    )
+  ) {
+
+    allItems =
+      normalizeItems(
+        appData.universe.items
+      );
+
+  }
+  else {
+
+    allItems =
+      [
+        ...selectedItems,
+        ...top10Items,
+        ...etfItems,
+        ...bondItems
+      ];
+
+  }
+
+
+  allItems =
+    uniqueBySymbol(
+      allItems
+    );
+
+
+  stockItems =
+    allItems.filter(
+      item =>
+        item.type === "stock"
+    );
+
+
+  selectedItems =
+    mergeWithUniverse(
+      selectedItems
+    );
+
+  top10Items =
+    mergeWithUniverse(
+      top10Items
+    );
+
+  etfItems =
+    mergeWithUniverse(
+      etfItems
+    );
+
+  bondItems =
+    mergeWithUniverse(
+      bondItems
+    );
+
+}
+
+
+/* ============================================================
+   Normalize
+   ============================================================ */
+
+function normalizeItems(items) {
+
+  if (!Array.isArray(items)) {
+    return [];
+  }
+
+
+  return items
+    .filter(
+      item =>
+        item &&
+        typeof item === "object"
+    )
+    .map(
+      item => {
+
+        const indicators =
+          item.indicators || {};
+
+        const conditions =
+          item.core_conditions || {};
+
+        return {
+          ...item,
+
+          symbol:
+            item.symbol ||
+            normalizeSymbol(
+              item.code
+            ),
+
+          code:
+            item.code ||
+            extractCode(
+              item.symbol
+            ),
+
+          name:
+            item.name ||
+            item.code ||
+            extractCode(
+              item.symbol
+            ),
+
+          type:
+            normalizeType(
+              item.type
+            ),
+
+          market:
+            item.market ||
+            inferMarket(
+              item.symbol
+            ),
+
+          price:
+            toNumber(
+              item.price
+            ),
+
+          change_pct:
+            toNumber(
+              item.change_pct
+            ),
+
+          ai_score:
+            toNumber(
+              item.ai_score
+            ),
+
+          strength_score:
+            toNumber(
+              item.strength_score
+            ),
+
+          indicators,
+
+          core_conditions:
+            conditions
+        };
+
+      }
+    );
+
+}
+
+
+/* ============================================================
+   Merge
+   ============================================================ */
+
+function mergeWithUniverse(
+  items
+) {
+
+  return items.map(
+    item => {
+
+      const full =
+        allItems.find(
+          x =>
+            x.symbol ===
+            item.symbol
+        );
+
+      return full
+        ? {
+            ...full,
+            ...item
+          }
+        : item;
+
+    }
+  );
+
+}
+
+
+/* ============================================================
+   Utility
+   ============================================================ */
+
+function toNumber(value) {
+
+  if (
+    value === null ||
+    value === undefined ||
+    value === ""
+  ) {
+
+    return null;
+
+  }
+
+
+  const number =
+    Number(value);
+
+
+  return Number.isFinite(
+    number
+  )
+    ? number
+    : null;
+
+}
+
+
+function normalizeSymbol(
+  value
+) {
+
+  if (!value) {
+    return "";
+  }
+
+
+  const s =
+    String(value)
+      .trim();
+
+
+  if (
+    s.endsWith(".TW") ||
+    s.endsWith(".TWO")
+  ) {
+
+    return s;
+
+  }
+
+
+  if (
+    /^\d+$/.test(s)
+  ) {
+
+    return (
+      s.padStart(4, "0")
+      + ".TW"
+    );
+
+  }
+
+
+  return s;
+
+}
+
+
+function extractCode(
+  symbol
+) {
+
+  if (!symbol) {
+    return "";
+  }
+
+
+  return String(symbol)
+    .split(".")[0];
+
+}
+
+
+function inferMarket(
+  symbol
+) {
+
+  if (
+    String(symbol)
+      .endsWith(".TWO")
+  ) {
+
+    return "TWO";
+
+  }
+
+
+  if (
+    String(symbol)
+      .endsWith(".TW")
+  ) {
+
+    return "TW";
+
+  }
+
+
+  return "OTHER";
+
+}
+
+
+function normalizeType(
+  type
+) {
+
+  const value =
+    String(
+      type || "stock"
+    ).toLowerCase();
+
+
+  if (
+    value === "etf"
+  ) {
+
+    return "etf";
+
+  }
+
+
+  if (
+    value === "bond" ||
+    value === "bond_etf" ||
+    value === "bond-fund"
+  ) {
+
+    return "bond";
+
+  }
+
+
+  return "stock";
+
+}
+
+
+function uniqueBySymbol(
+  items
+) {
+
+  const map =
+    new Map();
+
+
+  items.forEach(
+    item => {
+
+      if (
+        item.symbol
+      ) {
+
+        map.set(
+          item.symbol,
+          item
+        );
+
+      }
+
+    }
+  );
+
+
+  return Array.from(
+    map.values()
+  );
+
+}
+
+
+/* ============================================================
+   Dashboard
+   ============================================================ */
+
+function renderDashboard() {
+
+  renderLatestMarketDate();
+
+  renderMarketStatus();
+
+  renderSelectedCount();
+
+  renderPortfolioSummary();
+
+  renderTaiex();
+
+  renderMarketDirection();
+
+}
+
+
+/* ============================================================
+   Latest market date
+   ============================================================ */
+
+function renderLatestMarketDate() {
+
+  const date =
+    appData.latest_market_date ||
+    appData.date ||
+    "--";
+
+
+  els.latestMarketDate.textContent =
+    formatDate(date);
+
+}
+
+
+/* ============================================================
+   Market status
+   ============================================================ */
+
+function renderMarketStatus() {
+
+  const latestDate =
+    appData.latest_market_date ||
+    appData.date;
+
+
+  if (!latestDate) {
+
+    els.marketStatusDot
+      .className =
+      "status-dot closed";
+
+    els.marketStatusText
+      .textContent =
+      "🔴 非交易日";
+
+    return;
+
+  }
+
+
+  const marketDate =
+    new Date(
+      latestDate + "T00:00:00+08:00"
+    );
+
+
+  const now =
+    new Date();
+
+
+  const sameDate =
+    marketDate
+      .toLocaleDateString(
+        "en-CA",
+        {
+          timeZone:
+            "Asia/Taipei"
+        }
+      ) ===
+    now
+      .toLocaleDateString(
+        "en-CA",
+        {
+          timeZone:
+            "Asia/Taipei"
+        }
+      );
+
+
+  if (sameDate) {
+
+    els.marketStatusDot
+      .className =
+      "status-dot open";
+
+    els.marketStatusText
+      .textContent =
+      "🟢 今日開市";
+
+  }
+  else {
+
+    els.marketStatusDot
+      .className =
+      "status-dot closed";
+
+    els.marketStatusText
+      .textContent =
+      "🔴 非交易日";
+
+  }
+
+}
+
+
+/* ============================================================
+   Selected count
+   ============================================================ */
+
+function renderSelectedCount() {
+
+  els.selectedCount.textContent =
+    selectedItems.length
+      .toLocaleString(
+        "zh-TW"
+      );
+
+}
+
+
+/* ============================================================
+   Portfolio
+   ============================================================ */
+
+function renderPortfolioSummary() {
+
+  const positions =
+    getPositions();
+
+
+  if (
+    positions.length === 0
+  ) {
+
+    els.portfolioProfit
+      .textContent =
+      "尚未建立持倉";
+
+    els.portfolioProfit
+      .className =
+      "info-value";
+
+    return;
+
+  }
+
+
+  let totalProfit = 0;
+
+  let hasProfitValue =
+    false;
+
+
+  positions.forEach(
+    position => {
+
+      const result =
+        calculateHolding(
+          position.item,
+          position.shares,
+          position.cost
+        );
+
+
+      if (
+        result &&
+        result.profit !== null
+      ) {
+
+        totalProfit +=
+          result.profit;
+
+        hasProfitValue =
+          true;
+
+      }
+
+    }
+  );
+
+
+  if (!hasProfitValue) {
+
+    els.portfolioProfit
+      .textContent =
+      "尚未建立持倉";
+
+    els.portfolioProfit
+      .className =
+      "info-value";
+
+    return;
+
+  }
+
+
+  els.portfolioProfit
+    .textContent =
+    formatSignedCurrency(
+      totalProfit
+    );
+
+
+  els.portfolioProfit
+    .className =
+    "info-value " +
+    (
+      totalProfit > 0
+        ? "up"
+        : totalProfit < 0
+          ? "down"
+          : "flat"
+    );
+
+}
+
+
+/* ============================================================
+   TAIEX
+   ============================================================
+
+   fetch_data.py V10.3 目前沒有建立明確的加權指數欄位。
+
+   因此：
+   - 有後台資料才顯示
+   - 沒有資料就顯示 --
+   - 絕不自行假造數字
+   ============================================================ */
+
+function renderTaiex() {
+
+  const index =
+    findTaiexData();
+
+
+  if (!index) {
+
+    els.taiexValue.textContent =
+      "--";
+
+    els.taiexChange.textContent =
+      "--";
+
+    els.taiexChange.className =
+      "index-change flat";
+
+    return;
+
+  }
+
+
+  const value =
+    toNumber(
+      index.value ??
+      index.price ??
+      index.close ??
+      index.index
+    );
+
+
+  const change =
+    toNumber(
+      index.change_pct ??
+      index.changePercent ??
+      index.percent
+    );
+
+
+  els.taiexValue.textContent =
+    value === null
+      ? "--"
+      : formatNumber(
+          value,
+          2
+        );
+
+
+  if (change === null) {
+
+    els.taiexChange.textContent =
+      "--";
+
+    els.taiexChange.className =
+      "index-change flat";
+
+  }
+  else {
+
+    els.taiexChange.textContent =
+      formatSignedPercent(
+        change
+      );
+
+    els.taiexChange.className =
+      "index-change " +
+      priceColorClass(
+        change
+      );
+
+  }
+
+}
+
+
+/* ============================================================
+   Find TAIEX
+   ============================================================ */
+
+function findTaiexData() {
+
+  const candidates = [
+
+    appData.taiex,
+
+    appData.taiwan_index,
+
+    appData.market_index,
+
+    appData.index,
+
+    appData.market &&
+      appData.market.taiex,
+
+    appData.market &&
+      appData.market.index,
+
+    appData.summary &&
+      appData.summary.taiex,
+
+    appData.summary &&
+      appData.summary.market_index
+
+  ];
+
+
+  for (
+    const candidate
+    of candidates
+  ) {
+
+    if (
+      candidate &&
+      typeof candidate === "object"
+    ) {
+
+      return candidate;
+
+    }
+
+  }
+
+
+  return null;
+
+}
+
+
+/* ============================================================
+   Market direction
+   ============================================================ */
+
+function renderMarketDirection() {
+
+  const direction =
+    getMarketDirection();
+
+
+  els.marketDirectionIcon
+    .textContent =
+    direction.icon;
+
+
+  els.marketDirectionText
+    .textContent =
+    direction.text;
+
+
+  els.marketDirectionSub
+    .textContent =
+    direction.sub;
+
+
+  els.marketDirectionText
+    .className =
+    "direction-text " +
+    direction.className;
+
+}
+
+
+/* ============================================================
+   Market direction
+
+   優先使用後台已整理結果。
+
+   如果後台沒有 market_direction，
+   前台只根據 market_breadth 做簡單呈現。
+
+   不公開計算規則。
+   ============================================================ */
+
+function getMarketDirection() {
+
+  const candidates = [
+
+    appData.market_direction,
+
+    appData.marketDirection,
+
+    appData.market &&
+      appData.market.direction,
+
+    appData.summary &&
+      appData.summary.market_direction,
+
+    appData.summary &&
+      appData.summary.marketDirection
+
+  ];
+
+
+  for (
+    const candidate
+    of candidates
+  ) {
+
+    if (
+      candidate &&
+      typeof candidate === "object"
+    ) {
+
+      const text =
+        candidate.text ||
+        candidate.label ||
+        candidate.direction;
+
+
+      if (text) {
+
+        return normalizeDirection(
+          text,
+          candidate.description ||
+          candidate.sub
+        );
+
+      }
+
+    }
+
+
+    if (
+      typeof candidate === "string"
+    ) {
+
+      return normalizeDirection(
+        candidate,
+        ""
+      );
+
+    }
+
+  }
+
+
+  const breadth =
+    appData.summary &&
+    appData.summary.market_breadth;
+
+
+  if (
+    !breadth ||
+    typeof breadth !== "object"
+  ) {
+
+    return {
+      icon: "⚪",
+      text: "--",
+      sub: "等待市場資料",
+      className: "flat"
+    };
+
+  }
+
+
+  const rising =
+    Number(
+      breadth.rising || 0
+    );
+
+
+  const falling =
+    Number(
+      breadth.falling || 0
+    );
+
+
+  if (
+    rising > falling
+  ) {
+
+    return {
+      icon: "🟢",
+      text: "偏多",
+      sub: "市場氣氛偏強",
+      className: "strength-strong"
+    };
+
+  }
+
+
+  if (
+    falling > rising
+  ) {
+
+    return {
+      icon: "🔴",
+      text: "偏弱",
+      sub: "市場氣氛偏弱",
+      className: "strength-weak"
+    };
+
+  }
+
+
+  return {
+    icon: "🟡",
+    text: "震盪",
+    sub: "多空力量接近",
+    className: "strength-neutral"
+  };
+
+}
+
+
+function normalizeDirection(
+  value,
+  description
+) {
+
+  const text =
+    String(value);
+
+
+  if (
+    text.includes("偏多") ||
+    text.includes("強")
+  ) {
+
+    return {
+      icon: "🟢",
+      text: "偏多",
+      sub:
+        description ||
+        "市場氣氛偏強",
+      className:
+        "strength-strong"
+    };
+
+  }
+
+
+  if (
+    text.includes("偏弱") ||
+    text.includes("弱")
+  ) {
+
+    return {
+      icon: "🔴",
+      text: "偏弱",
+      sub:
+        description ||
+        "市場氣氛偏弱",
+      className:
+        "strength-weak"
+    };
+
+  }
+
+
+  if (
+    text.includes("震盪") ||
+    text.includes("中性")
+  ) {
+
+    return {
+      icon: "🟡",
+      text: "震盪",
+      sub:
+        description ||
+        "多空力量接近",
+      className:
+        "strength-neutral"
+    };
+
+  }
+
+
+  return {
+    icon: "⚪",
+    text: text,
+    sub:
+      description ||
+      "",
+    className: "flat"
+  };
+
+}
+
+
+/* ============================================================
+   Tabs
+   ============================================================ */
+
+function setActiveTab(
+  tab
+) {
+
+  activeTab = tab;
+
+
+  document
+    .querySelectorAll(
+      ".tab-button"
+    )
+    .forEach(
+      button => {
+
+        button.classList.toggle(
+          "active",
+          button.dataset.tab ===
+          tab
+        );
+
+      }
+    );
+
+
+  renderCurrentTab();
+
+}
+
+
+function renderCurrentTab() {
+
+  let items = [];
+
+  let title = "";
+
+
+  switch (
+    activeTab
+  ) {
+
+    case "selected":
+
+      items =
+        selectedItems;
+
+      title =
+        "今日精選";
+
+      break;
+
+
+    case "top10":
+
+      items =
+        top10Items;
+
+      title =
+        "Top 10";
+
+      break;
+
+
+    case "etf":
+
+      items =
+        etfItems;
+
+      title =
+        "ETF";
+
+      break;
+
+
+    case "bond":
+
+      items =
+        bondItems;
+
+      title =
+        "債券";
+
+      break;
+
+
+    case "watchlist":
+
+      items =
+        getWatchlistItems();
+
+      title =
+        "我的清單";
+
+      break;
+
+
+    default:
+
+      items =
+        selectedItems;
+
+      title =
+        "今日精選";
+
+  }
+
+
+  els.sectionTitle.textContent =
+    title;
+
+
+  els.sectionCount.textContent =
+    `${items.length} 檔`;
+
+
+  renderCards(
+    items,
+    activeTab
+  );
+
+}
+
+
+/* ============================================================
+   Cards
+   ============================================================ */
+
+function renderCards(
+  items,
+  tab
+) {
+
+  if (
+    !Array.isArray(items) ||
+    items.length === 0
+  ) {
+
+    renderEmptyState(
+      tab
+    );
+
+    return;
+
+  }
+
+
+  els.cards.innerHTML =
+    items
+      .map(
+        item =>
+          renderStockCard(
+            item,
+            tab
+          )
+      )
+      .join("");
+
+}
+
+
+/* ============================================================
+   Stock card
+   ============================================================ */
+
+function renderStockCard(
+  item,
+  tab
+) {
+
+  const name =
+    escapeHtml(
+      item.name ||
+      item.code ||
+      "--"
+    );
+
+
+  const code =
+    escapeHtml(
+      item.code ||
+      extractCode(
+        item.symbol
+      )
+    );
+
+
+  const price =
+    item.price === null
+      ? "--"
+      : formatNumber(
+          item.price,
+          2
+        );
+
+
+  const change =
+    item.change_pct === null
+      ? "--"
+      : formatSignedPercent(
+          item.change_pct
+        );
+
+
+  const changeClass =
+    priceColorClass(
+      item.change_pct
+    );
+
+
+  const strength =
+    getStrength(
+      item
+    );
+
+
+  const recommendation =
+    getRecommendation(
+      item,
+      tab
+    );
+
+
+  const assetBadge =
+    getAssetBadge(
+      item
+    );
+
+
+  let html = `
+
+    <article
+      class="stock-card"
+      data-symbol="${escapeAttribute(
+        item.symbol || ""
+      )}"
+    >
+
+      <div class="stock-head">
+
+        <div>
+
+          <div class="stock-name">
+            ${name}
+          </div>
+
+          <div class="stock-code">
+            ${code}
+          </div>
+
+        </div>
+
+        <div class="asset-badge">
+          ${assetBadge}
+        </div>
+
+      </div>
+
+
+      <div class="stock-price-row">
+
+        <div class="stock-price">
+          ${price}
+        </div>
+
+        <div
+          class="stock-change ${changeClass}"
+        >
+          ${change}
+        </div>
+
+      </div>
+
+
+      <div class="stock-divider"></div>
+
+
+      <div class="card-bottom">
+
+        <div
+          class="strength ${strength.className}"
+        >
+
+          <span class="strength-dot"></span>
+
+          <span>
+            ${strength.text}
+          </span>
+
+        </div>
+
+      </div>
+
+
+      <div class="recommendation">
+
+        <span class="recommendation-label">
+          建議
+        </span>
+
+        ${escapeHtml(
+          recommendation
+        )}
+
+      </div>
+  `;
+
+
+  if (
+    tab !== "watchlist" &&
+    item.symbol
+  ) {
+
+    const isAdded =
+      isInWatchlist(
+        item.symbol
+      );
+
+
+    if (!isAdded) {
+
+      html += `
+
+        <button
+          type="button"
+          class="add-watchlist"
+          data-add-watchlist="${escapeAttribute(
+            item.symbol
+          )}"
+        >
+          ＋加入我的清單
+        </button>
+
+      `;
+
+    }
+    else {
+
+      html += `
+
+        <button
+          type="button"
+          class="add-watchlist"
+          disabled
+        >
+          ✓ 已加入我的清單
+        </button>
+
+      `;
+
+    }
+
+  }
+
+
+  if (
+    tab === "watchlist"
+  ) {
+
+    html +=
+      renderHoldingBox(
+        item
+      );
+
+  }
+
+
+  html += `
+    </article>
+  `;
+
+
+  return html;
+
+}
+
+
+/* ============================================================
+   Asset badge
+   ============================================================ */
+
+function getAssetBadge(
+  item
+) {
+
+  if (
+    item.type === "etf"
+  ) {
+
+    return "ETF";
+
+  }
+
+
+  if (
+    item.type === "bond"
+  ) {
+
+    return "債券";
+
+  }
+
+
+  return "股票";
+
+}
+
+
+/* ============================================================
+   Strength
+
+   注意：
+   前台不顯示 strength_score。
+   只轉換成文字。
+   ============================================================ */
+
+function getStrength(
+  item
+) {
+
+  const signal =
+    String(
+      item.signal || ""
+    );
+
+
+  if (
+    signal.includes("強勢")
+  ) {
+
+    return {
+      text: "強勢",
+      className:
+        "strength-strong"
+    };
+
+  }
+
+
+  if (
+    signal.includes("偏多")
+  ) {
+
+    return {
+      text: "強勢",
+      className:
+        "strength-strong"
+    };
+
+  }
+
+
+  if (
+    signal.includes("弱勢") ||
+    signal.includes("偏弱")
+  ) {
+
+    return {
+      text: "弱勢",
+      className:
+        "strength-weak"
+    };
+
+  }
+
+
+  const score =
+    toNumber(
+      item.strength_score
+    );
+
+
+  if (
+    score !== null
+  ) {
+
+    if (
+      score >= 70
+    ) {
+
+      return {
+        text: "強勢",
+        className:
+          "strength-strong"
+      };
+
+    }
+
+
+    if (
+      score >= 45
+    ) {
+
+      return {
+        text: "中性",
+        className:
+          "strength-neutral"
+      };
+
+    }
+
+
+    return {
+      text: "弱勢",
+      className:
+        "strength-weak"
+    };
+
+  }
+
+
+  return {
+    text: "中性",
+    className:
+      "strength-neutral"
+  };
+
+}
+
+
+/* ============================================================
+   Recommendation
+   ============================================================ */
+
+function getRecommendation(
+  item,
+  tab
+) {
+
+  if (
+    tab === "watchlist"
+  ) {
+
+    return getHoldingRecommendation(
+      item
+    );
+
+  }
+
+
+  if (
+    item.recommendation
+  ) {
+
+    return translateRecommendation(
+      item.recommendation
+    );
+
+  }
+
+
+  return "等待進一步觀察";
+
+}
+
+
+/* ============================================================
+   Translate backend recommendation
+
+   不把 6/6 或技術公式顯示出來。
+   ============================================================ */
+
+function translateRecommendation(
+  value
+) {
+
+  const text =
+    String(value);
+
+
+  if (
+    text.includes("符合")
+  ) {
+
+    return "偏多，可分批";
+
+  }
+
+
+  if (
+    text.includes("接近")
+  ) {
+
+    return "積極關注";
+
+  }
+
+
+  if (
+    text.includes("部分")
+  ) {
+
+    return "等待拉回";
+
+  }
+
+
+  if (
+    text.includes("暫不")
+  ) {
+
+    return "暫停操作";
+
+  }
+
+
+  return text;
+
+}
+
+
+/* ============================================================
+   Holding recommendation
+   ============================================================ */
+
+function getHoldingRecommendation(
+  item
+) {
+
+  const position =
+    getPosition(
+      item.symbol
+    );
+
+
+  if (!position) {
+
+    return "尚未建立持倉";
+
+  }
+
+
+  const shares =
+    toNumber(
+      position.shares
+    );
+
+
+  const cost =
+    toNumber(
+      position.cost
+    );
+
+
+  const price =
+    toNumber(
+      item.price
+    );
+
+
+  if (
+    !shares ||
+    !cost ||
+    price === null
+  ) {
+
+    return "請輸入持有股數與平均成本";
+
+  }
+
+
+  const result =
+    calculateHolding(
+      item,
+      shares,
+      cost
+    );
+
+
+  if (!result) {
+
+    return "等待持倉資料";
+
+  }
+
+
+  const profitPct =
+    result.returnPct;
+
+
+  const strength =
+    getStrength(
+      item
+    );
+
+
+  if (
+    profitPct >= 25 &&
+    strength.text === "強勢"
+  ) {
+
+    return "續抱觀察，不追價";
+
+  }
+
+
+  if (
+    profitPct >= 15
+  ) {
+
+    return "持有觀察，不追價";
+
+  }
+
+
+  if (
+    profitPct <= -15
+  ) {
+
+    return "暫停加碼，注意風險";
+
+  }
+
+
+  if (
+    profitPct <= -8
+  ) {
+
+    return "等待止穩，再評估加碼";
+
+  }
+
+
+  if (
+    strength.text === "強勢"
+  ) {
+
+    return "偏多，可分批加碼";
+
+  }
+
+
+  if (
+    strength.text === "弱勢"
+  ) {
+
+    return "暫停加碼";
+
+  }
+
+
+  return "持有觀察";
+
+}
+
+
+/* ============================================================
+   Holding box
+   ============================================================ */
+
+function renderHoldingBox(
+  item
+) {
+
+  const position =
+    getPosition(
+      item.symbol
+    );
+
+
+  const shares =
+    position
+      ? position.shares
+      : "";
+
+
+  const cost =
+    position
+      ? position.cost
+      : "";
+
+
+  const result =
+    calculateHolding(
+      item,
+      toNumber(shares),
+      toNumber(cost)
+    );
+
+
+  const marketValue =
+    result
+      ? formatCurrency(
+          result.marketValue
+        )
+      : "--";
+
+
+  const profit =
+    result
+      ? formatSignedCurrency(
+          result.profit
+        )
+      : "--";
+
+
+  const returnPct =
+    result
+      ? formatSignedPercent(
+          result.returnPct
+        )
+      : "--";
+
+
+  const profitClass =
+    result
+      ? priceColorClass(
+          result.profit
+        )
+      : "flat";
+
+
+  return `
+
+    <div class="holding-box">
+
+      <div class="holding-grid">
+
+        <div class="holding-field">
+
+          <label>
+            持有股數
+          </label>
+
+          <input
+            type="number"
+            min="0"
+            step="1"
+            value="${escapeAttribute(
+              shares
+            )}"
+            placeholder="請輸入"
+            data-holding-field="shares"
+            data-symbol="${escapeAttribute(
+              item.symbol
+            )}"
+          >
+
+        </div>
+
+
+        <div class="holding-field">
+
+          <label>
+            平均成本
+          </label>
+
+          <input
+            type="number"
+            min="0"
+            step="0.01"
+            value="${escapeAttribute(
+              cost
+            )}"
+            placeholder="請輸入"
+            data-holding-field="cost"
+            data-symbol="${escapeAttribute(
+              item.symbol
+            )}"
+          >
+
+        </div>
+
+      </div>
+
+
+      <div class="holding-stats">
+
+        <div class="holding-stat">
+
+          <div class="holding-stat-label">
+            目前市值
+          </div>
+
+          <div class="holding-stat-value">
+            ${marketValue}
+          </div>
+
+        </div>
+
+
+        <div class="holding-stat">
+
+          <div class="holding-stat-label">
+            損益
+          </div>
+
+          <div
+            class="holding-stat-value ${profitClass}"
+          >
+            ${profit}
+          </div>
+
+        </div>
+
+
+        <div class="holding-stat">
+
+          <div class="holding-stat-label">
+            報酬率
+          </div>
+
+          <div
+            class="holding-stat-value ${profitClass}"
+          >
+            ${returnPct}
+          </div>
+
+        </div>
+
+      </div>
+
+
+      <button
+        type="button"
+        class="remove-watchlist"
+        data-remove-watchlist="${escapeAttribute(
+          item.symbol
+        )}"
+      >
+        移除我的清單
+      </button>
+
+    </div>
+
+  `;
+
+}
+
+
+/* ============================================================
+   Holding calculation
+   ============================================================ */
+
+function calculateHolding(
+  item,
+  shares,
+  cost
+) {
+
+  const currentPrice =
+    toNumber(
+      item &&
+      item.price
+    );
+
+
+  const quantity =
+    toNumber(
+      shares
+    );
+
+
+  const averageCost =
+    toNumber(
+      cost
+    );
+
+
+  if (
+    currentPrice === null ||
+    quantity === null ||
+    averageCost === null ||
+    quantity <= 0 ||
+    averageCost <= 0
+  ) {
+
+    return null;
+
+  }
+
+
+  const marketValue =
+    currentPrice *
+    quantity;
+
+
+  const invested =
+    averageCost *
+    quantity;
+
+
+  const profit =
+    marketValue -
+    invested;
+
+
+  const returnPct =
+    invested === 0
+      ? null
+      : (
+          profit /
+          invested
+        ) * 100;
+
+
+  return {
+    marketValue,
+    invested,
+    profit,
+    returnPct
+  };
+
+}
+
+
+/* ============================================================
+   Search
+   ============================================================ */
+
+function performSearch() {
+
+  const keyword =
+    els.searchInput
+      .value
+      .trim()
+      .toLowerCase();
+
+
+  if (!keyword) {
+
+    els.searchResult.innerHTML =
+      "";
+
+    return;
+
+  }
+
+
+  const results =
+    allItems.filter(
+      item => {
+
+        const code =
+          String(
+            item.code || ""
+          ).toLowerCase();
+
+        const name =
+          String(
+            item.name || ""
+          ).toLowerCase();
+
+        const symbol =
+          String(
+            item.symbol || ""
+          ).toLowerCase();
+
+        return (
+          code.includes(keyword) ||
+          name.includes(keyword) ||
+          symbol.includes(keyword)
+        );
+
+      }
+    )
+    .slice(
+      0,
+      8
+    );
+
+
+  if (
+    results.length === 0
+  ) {
+
+    els.searchResult.innerHTML = `
+
+      <div class="state-box">
+
+        <div class="state-title">
+          找不到個股
+        </div>
+
+        <div class="state-text">
+          請確認股票名稱或代號。
+        </div>
+
+      </div>
+
+    `;
+
+    return;
+
+  }
+
+
+  els.searchResult.innerHTML =
+    results
+      .map(
+        item =>
+          renderSearchResult(
+            item
+          )
+      )
+      .join("");
+
+}
+
+
+/* ============================================================
+   Search result
+   ============================================================ */
+
+function renderSearchResult(
+  item
+) {
+
+  const price =
+    item.price === null
+      ? "--"
+      : formatNumber(
+          item.price,
+          2
+        );
+
+
+  const change =
+    item.change_pct === null
+      ? "--"
+      : formatSignedPercent(
+          item.change_pct
+        );
+
+
+  const added =
+    isInWatchlist(
+      item.symbol
+    );
+
+
+  return `
+
+    <article
+      class="stock-card search-result-card"
+    >
+
+      <div class="stock-head">
+
+        <div>
+
+          <div class="stock-name">
+            ${escapeHtml(
+              item.name
+            )}
+          </div>
+
+          <div class="stock-code">
+            ${escapeHtml(
+              item.code
+            )}
+          </div>
+
+        </div>
+
+        <div class="asset-badge">
+          ${getAssetBadge(
+            item
+          )}
+        </div>
+
+      </div>
+
+
+      <div class="stock-price-row">
+
+        <div class="stock-price">
+          ${price}
+        </div>
+
+        <div
+          class="stock-change ${priceColorClass(
+            item.change_pct
+          )}"
+        >
+          ${change}
+        </div>
+
+      </div>
+
+
+      <div class="recommendation">
+
+        <span class="recommendation-label">
+          指數強度
+        </span>
+
+        ${escapeHtml(
+          getStrength(item).text
+        )}
+
+      </div>
+
+
+      ${
+        added
+          ? `
+              <button
+                type="button"
+                class="add-watchlist"
+                disabled
+              >
+                ✓ 已加入我的清單
+              </button>
+            `
+          : `
+              <button
+                type="button"
+                class="add-watchlist"
+                data-add-watchlist="${escapeAttribute(
+                  item.symbol
+                )}"
+              >
+                ＋加入我的清單
+              </button>
+            `
+      }
+
+    </article>
+
+  `;
+
+}
+
+
+/* ============================================================
+   Watchlist
+   ============================================================ */
+
+function loadWatchlist() {
+
+  try {
+
+    const raw =
+      localStorage.getItem(
+        "ai_market_watchlist_v10"
+      );
+
+
+    if (!raw) {
+      return {};
+    }
+
+
+    const parsed =
+      JSON.parse(raw);
+
+
+    if (
+      !parsed ||
+      typeof parsed !== "object"
+    ) {
+
+      return {};
+
+    }
+
+
+    return parsed;
+
+  }
+  catch (error) {
+
+    console.warn(
+      "讀取我的清單失敗",
+      error
+    );
+
+    return {};
+
+  }
+
+}
+
+
+function saveWatchlist() {
+
+  try {
+
+    localStorage.setItem(
+      "ai_market_watchlist_v10",
+      JSON.stringify(
+        watchlist
+      )
+    );
+
+  }
+  catch (error) {
+
+    console.warn(
+      "儲存我的清單失敗",
+      error
+    );
+
+  }
+
+}
+
+
+function isInWatchlist(
+  symbol
+) {
+
+  return Boolean(
+    symbol &&
+    watchlist[
+      symbol
+    ]
+  );
+
+}
+
+
+function addToWatchlist(
+  symbol
+) {
+
+  const item =
+    allItems.find(
+      x =>
+        x.symbol ===
+        symbol
+    );
+
+
+  if (!item) {
+    return;
+  }
+
+
+  if (
+    !watchlist[symbol]
+  ) {
+
+    watchlist[symbol] = {
+      symbol,
+      shares: "",
+      cost: ""
+    };
+
+  }
+
+
+  saveWatchlist();
+
+  renderCurrentTab();
+
+  renderPortfolioSummary();
+
+
+  if (
+    els.searchResult
+  ) {
+
+    performSearch();
+
+  }
+
+}
+
+
+function removeFromWatchlist(
+  symbol
+) {
+
+  if (
+    watchlist[symbol]
+  ) {
+
+    delete watchlist[
+      symbol
+    ];
+
+  }
+
+
+  saveWatchlist();
+
+  renderCurrentTab();
+
+  renderPortfolioSummary();
+
+
+  if (
+    els.searchInput.value.trim()
+  ) {
+
+    performSearch();
+
+  }
+
+}
+
+
+function getPosition(
+  symbol
+) {
+
+  if (
+    !symbol ||
+    !watchlist[symbol]
+  ) {
+
+    return null;
+
+  }
+
+
+  return watchlist[
+    symbol
+  ];
+
+}
+
+
+function getWatchlistItems() {
+
+  const symbols =
+    Object.keys(
+      watchlist
+    );
+
+
+  return symbols
+    .map(
+      symbol =>
+        allItems.find(
+          item =>
+            item.symbol ===
+            symbol
+        )
+    )
+    .filter(Boolean);
+
+}
+
+
+function getPositions() {
+
+  return getWatchlistItems()
+    .map(
+      item => {
+
+        const position =
+          getPosition(
+            item.symbol
+          );
+
+
+        if (!position) {
+          return null;
+        }
+
+
+        const shares =
+          toNumber(
+            position.shares
+          );
+
+
+        const cost =
+          toNumber(
+            position.cost
+          );
+
+
+        if (
+          shares === null ||
+          cost === null ||
+          shares <= 0 ||
+          cost <= 0
+        ) {
+
+          return null;
+
+        }
+
+
+        return {
+          item,
+          shares,
+          cost
+        };
+
+      }
+    )
+    .filter(Boolean);
+
+}
+
+
+/* ============================================================
+   Holding input
+   ============================================================ */
+
+function updateHoldingFromInput(
+  input
+) {
+
+  const symbol =
+    input.dataset.symbol;
+
+
+  const field =
+    input.dataset.holdingField;
+
+
+  if (
+    !symbol ||
+    !field
+  ) {
+
+    return;
+
+  }
+
+
+  if (
+    !watchlist[symbol]
+  ) {
+
+    watchlist[symbol] = {
+      symbol,
+      shares: "",
+      cost: ""
+    };
+
+  }
+
+
+  watchlist[symbol][
+    field
+  ] = input.value;
+
+
+  saveWatchlist();
+
+
+  /*
+    不重新 render 卡片。
+    這樣輸入框不會因為每打一個字就失去焦點。
+    */
+
+  updateWatchlistCalculatedValues(
+    symbol
+  );
+
+
+  renderPortfolioSummary();
+
+}
+
+
+function updateWatchlistCalculatedValues(
+  symbol
+) {
+
+  if (
+    activeTab !== "watchlist"
+  ) {
+
+    return;
+
+  }
+
+
+  const item =
+    allItems.find(
+      x =>
+        x.symbol ===
+        symbol
+    );
+
+
+  if (!item) {
+    return;
+  }
+
+
+  const position =
+    getPosition(
+      symbol
+    );
+
+
+  if (!position) {
+    return;
+  }
+
+
+  const result =
+    calculateHolding(
+      item,
+      position.shares,
+      position.cost
+    );
+
+
+  const card =
+    els.cards.querySelector(
+      `[data-symbol="${cssEscape(
+        symbol
+      )}"]`
+    );
+
+
+  if (!card) {
+    return;
+  }
+
+
+  const stats =
+    card.querySelectorAll(
+      ".holding-stat-value"
+    );
+
+
+  if (
+    !stats ||
+    stats.length < 3
+  ) {
+
+    return;
+
+  }
+
+
+  if (!result) {
+
+    stats[0].textContent =
+      "--";
+
+    stats[1].textContent =
+      "--";
+
+    stats[2].textContent =
+      "--";
+
+    stats[1].className =
+      "holding-stat-value";
+
+    stats[2].className =
+      "holding-stat-value";
+
+    return;
+
+  }
+
+
+  stats[0].textContent =
+    formatCurrency(
+      result.marketValue
+    );
+
+
+  stats[1].textContent =
+    formatSignedCurrency(
+      result.profit
+    );
+
+
+  stats[2].textContent =
+    formatSignedPercent(
+      result.returnPct
+    );
+
+
+  const color =
+    priceColorClass(
+      result.profit
+    );
+
+
+  stats[1].className =
+    "holding-stat-value " +
+    color;
+
+
+  stats[2].className =
+    "holding-stat-value " +
+    color;
+
+
+  const recommendation =
+    card.querySelector(
+      ".recommendation"
+    );
+
+
+  if (recommendation) {
+
+    recommendation.innerHTML = `
+
+      <span class="recommendation-label">
+        建議
+      </span>
+
+      ${escapeHtml(
+        getHoldingRecommendation(
+          item
+        )
+      )}
+
+    `;
+
+  }
+
+}
+
+
+/* ============================================================
+   Empty state
+   ============================================================ */
+
+function renderEmptyState(
+  tab
+) {
+
+  if (
+    tab === "watchlist"
+  ) {
+
+    els.cards.innerHTML = `
+
+      <div class="state-box">
+
+        <div class="state-title">
+          我的清單目前是空的
+        </div>
+
+        <div class="state-text">
+          請先使用上方「查詢個股」，
+          找到股票後加入我的清單。
+          <br>
+          加入後即可輸入持有股數與平均成本。
+        </div>
+
+      </div>
+
+    `;
+
+    return;
+
+  }
+
+
+  const messages = {
+
+    selected:
+      "目前沒有符合條件的今日精選個股。",
+
+    top10:
+      "目前沒有 Top 10 資料。",
+
+    etf:
+      "目前沒有 ETF 資料。",
+
+    bond:
+      "目前沒有債券資料。"
+
+  };
+
+
+  els.cards.innerHTML = `
+
+    <div class="state-box">
+
+      <div class="state-title">
+        ${escapeHtml(
+          messages[tab] ||
+          "目前沒有資料。"
+        )}
+      </div>
+
+      <div class="state-text">
+        資料會依最新有效交易日更新。
+      </div>
+
+    </div>
+
+  `;
+
+}
+
+
+/* ============================================================
+   Loading
+   ============================================================ */
+
+function renderLoading() {
+
+  els.cards.innerHTML = `
+
+    <div class="state-box">
+
+      <div class="state-title">
+        正在載入市場資料
+      </div>
+
+      <div class="state-text">
+        正在讀取 Data/prices.json
+      </div>
+
+    </div>
+
+  `;
+
+}
+
+
+/* ============================================================
+   Error
+   ============================================================ */
+
+function renderError(
+  error
+) {
+
+  els.selectedCount.textContent =
+    "--";
+
+
+  els.latestMarketDate.textContent =
+    "--";
+
+
+  els.cards.innerHTML = `
+
+    <div class="state-box error-box">
+
+      <div class="state-title">
+        無法載入儀表板資料
+      </div>
+
+      <div class="state-text">
+        HTTP / JSON 資料讀取失敗。<br>
+        ${escapeHtml(
+          error &&
+          error.message
+            ? error.message
+            : "未知錯誤"
+        )}
+      </div>
+
+    </div>
+
+  `;
+
+}
+
+
+/* ============================================================
+   Formatting
+   ============================================================ */
+
+function formatDate(
+  value
+) {
+
+  if (!value) {
+    return "--";
+  }
+
+
+  const match =
+    String(value)
+      .match(
+        /^(\d{4})-(\d{2})-(\d{2})/
+      );
+
+
+  if (!match) {
+    return String(value);
+  }
+
+
+  return (
+    match[1] +
+    "-" +
+    match[2] +
+    "-" +
+    match[3]
+  );
+
+}
+
+
+function formatNumber(
+  value,
+  decimals = 2
+) {
+
+  const number =
+    toNumber(value);
+
+
+  if (number === null) {
+    return "--";
+  }
+
+
+  return number.toLocaleString(
+    "zh-TW",
+    {
+      minimumFractionDigits:
+        decimals,
+      maximumFractionDigits:
+        decimals
+    }
+  );
+
+}
+
+
+function formatCurrency(
+  value
+) {
+
+  const number =
+    toNumber(value);
+
+
+  if (number === null) {
+    return "--";
+  }
+
+
+  return (
+    number.toLocaleString(
+      "zh-TW",
+      {
+        maximumFractionDigits: 0
+      }
+    ) +
+    " 元"
+  );
+
+}
+
+
+function formatSignedCurrency(
+  value
+) {
+
+  const number =
+    toNumber(value);
+
+
+  if (number === null) {
+    return "--";
+  }
+
+
+  const rounded =
+    Math.round(
+      number
+    );
+
+
+  const prefix =
+    rounded > 0
+      ? "+"
+      : rounded < 0
+        ? "-"
+        : "";
+
+
+  return (
+    prefix +
+    Math.abs(
+      rounded
+    ).toLocaleString(
+      "zh-TW"
+    ) +
+    " 元"
+  );
+
+}
+
+
+function formatSignedPercent(
+  value
+) {
+
+  const number =
+    toNumber(value);
+
+
+  if (number === null) {
+    return "--";
+  }
+
+
+  const prefix =
+    number > 0
+      ? "+"
+      : number < 0
+        ? "-"
+        : "";
+
+
+  return (
+    prefix +
+    Math.abs(number)
+      .toFixed(2) +
+    "%"
+  );
+
+}
+
+
+function priceColorClass(
+  value
+) {
+
+  const number =
+    toNumber(value);
+
+
+  if (
+    number === null
+  ) {
+
+    return "flat";
+
+  }
+
+
+  if (
+    number > 0
+  ) {
+
+    return "up";
+
+  }
+
+
+  if (
+    number < 0
+  ) {
+
+    return "down";
+
+  }
+
+
+  return "flat";
+
+}
+
+
+/* ============================================================
+   Escape
+   ============================================================ */
+
+function escapeHtml(
+  value
+) {
+
+  return String(
+    value ?? ""
+  )
+    .replace(
+      /&/g,
+      "&amp;"
+    )
+    .replace(
+      /</g,
+      "&lt;"
+    )
+    .replace(
+      />/g,
+      "&gt;"
+    )
+    .replace(
+      /"/g,
+      "&quot;"
+    )
+    .replace(
+      /'/g,
+      "&#039;"
+    );
+
+}
+
+
+function escapeAttribute(
+  value
+) {
+
+  return escapeHtml(
+    value
+  );
+
+}
+
+
+function cssEscape(
+  value
+) {
+
+  if (
+    window.CSS &&
+    typeof window.CSS.escape ===
+      "function"
+  ) {
+
+    return window.CSS.escape(
+      value
+    );
+
+  }
+
+
+  return String(value)
+    .replace(
+      /["\\]/g,
+      "\\$&"
+    );
+
+}
+
+
+/* ============================================================
+   End
+   ============================================================ */
+
 </script>
 
 </body>
