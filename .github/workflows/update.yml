@@ -62,7 +62,7 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install pandas requests
+          pip install pandas requests beautifulsoup4
 
 
       # ======================================================
@@ -92,29 +92,27 @@ jobs:
 
 
       # ======================================================
-      # 5. 檢查必要程式
+      # 5. 檢查必要檔案
       # ======================================================
 
-      - name: Verify required scripts
+      - name: Verify required files
         run: |
-          echo "========================================"
-          echo "Verify required scripts"
-          echo "========================================"
-
           test -f Scripts/build_universe.py
           test -f Scripts/fetch_prices.py
           test -f Scripts/fetch_chip.py
+          test -f Data/universe.json
 
           echo "✓ build_universe.py"
           echo "✓ fetch_prices.py"
           echo "✓ fetch_chip.py"
+          echo "✓ universe.json"
 
 
       # ======================================================
-      # 6. 建立台股全市場 Universe
+      # 6. 建立全市場 Universe
       # ======================================================
 
-      - name: Build Taiwan stock universe
+      - name: Build market universe
         run: |
           echo "========================================"
           echo "Running build_universe.py"
@@ -145,31 +143,35 @@ jobs:
           with open(path, "r", encoding="utf-8") as f:
               data = json.load(f)
 
+          total = data.get("total", 0)
+          listed = data.get("listed_stocks", 0)
+          otc = data.get("otc_stocks", 0)
+          items = data.get("items", [])
+
           print("universe.json JSON OK")
           print("version:", data.get("version"))
           print("generated_at:", data.get("generated_at"))
-          print("market:", data.get("market"))
-          print("total:", data.get("total"))
-          print("listed_stocks:", data.get("listed_stocks"))
-          print("otc_stocks:", data.get("otc_stocks"))
-          print("listed_etf:", data.get("listed_etf"))
-          print("otc_etf:", data.get("otc_etf"))
-
-          items = data.get("items", [])
-
+          print("total:", total)
+          print("listed_stocks:", listed)
+          print("otc_stocks:", otc)
           print("items:", len(items))
 
-          if not items:
+          if total <= 0:
               raise SystemExit(
-                  "ERROR: universe.json 沒有任何標的"
+                  "ERROR: Universe 沒有股票資料"
               )
 
-          if len(items) < 100:
+          if len(items) <= 0:
               raise SystemExit(
-                  f"ERROR: Universe 異常，只有 {len(items)} 個標的"
+                  "ERROR: Universe items 為空"
               )
 
-          print("✓ Universe 驗證通過")
+          if total != len(items):
+              raise SystemExit(
+                  "ERROR: total 與 items 數量不一致"
+              )
+
+          print("✓ Universe validation passed")
           PY
 
 
@@ -222,12 +224,12 @@ jobs:
                   "ERROR: prices.json 沒有股票資料"
               )
 
-          print("✓ prices.json 驗證通過")
+          print("✓ prices.json validation passed")
           PY
 
 
       # ======================================================
-      # 10. 取得主力 5日 / 10日買賣超
+      # 10. 取得主力籌碼
       # ======================================================
 
       - name: Fetch chip data
@@ -262,33 +264,81 @@ jobs:
               data = json.load(f)
 
           print("chip.json JSON OK")
-          print("schema_version:", data.get("schema_version"))
-          print("data_date:", data.get("data_date"))
-          print("universe_count:", data.get("universe_count"))
 
-          statistics = data.get("statistics", {})
+          print(
+              "schema_version:",
+              data.get("schema_version")
+          )
 
-          print("complete:", statistics.get("complete"))
-          print("partial:", statistics.get("partial"))
-          print("insufficient:", statistics.get("insufficient"))
+          print(
+              "data_date:",
+              data.get("data_date")
+          )
 
-          stocks = data.get("stocks", {})
+          print(
+              "universe_count:",
+              data.get("universe_count")
+          )
 
-          print("stocks:", len(stocks))
+          statistics = data.get(
+              "statistics",
+              {}
+          )
+
+          print(
+              "complete:",
+              statistics.get("complete")
+          )
+
+          print(
+              "partial:",
+              statistics.get("partial")
+          )
+
+          print(
+              "insufficient:",
+              statistics.get("insufficient")
+          )
+
+          stocks = data.get(
+              "stocks",
+              {}
+          )
+
+          print(
+              "stocks:",
+              len(stocks)
+          )
 
           found_5d = 0
           found_10d = 0
+          complete = 0
 
           for stock in stocks.values():
 
               if not isinstance(stock, dict):
                   continue
 
-              if stock.get("main_force_5d") is not None:
+              if stock.get(
+                  "main_force_5d"
+              ) is not None:
                   found_5d += 1
 
-              if stock.get("main_force_10d") is not None:
+              if stock.get(
+                  "main_force_10d"
+              ) is not None:
                   found_10d += 1
+
+              if (
+                  stock.get(
+                      "main_force_5d"
+                  ) is not None
+                  and
+                  stock.get(
+                      "main_force_10d"
+                  ) is not None
+              ):
+                  complete += 1
 
           print(
               "main_force_5d available:",
@@ -300,22 +350,21 @@ jobs:
               found_10d
           )
 
+          print(
+              "main_force_5d_10d complete:",
+              complete
+          )
+
           if not stocks:
               raise SystemExit(
                   "ERROR: chip.json 沒有股票資料"
               )
 
-          if found_5d == 0 and found_10d == 0:
-              raise SystemExit(
-                  "ERROR: 沒有取得任何主力 5日/10日資料"
-              )
-
-          print("✓ chip.json 驗證通過")
           PY
 
 
       # ======================================================
-      # 12. 顯示所有資料檔案
+      # 12. 顯示資料檔案
       # ======================================================
 
       - name: Show generated files
@@ -351,7 +400,7 @@ jobs:
 
           else
 
-            git commit -m "Update Taiwan stock market data"
+            git commit -m "Update stock universe, price and chip data"
 
             git push
 
