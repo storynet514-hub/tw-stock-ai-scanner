@@ -1,0 +1,33 @@
+{
+  "status": {
+    "market": "TW",
+    "market_status": "closed",
+    "latest_trading_date": null,
+    "updated_at": null
+  },
+  "market": {
+    "index": {
+      "name": "加權指數",
+      "value": null,
+      "change": null,
+      "change_pct": null
+    },
+    "sentiment": {
+      "level": null,
+      "description": null
+    }
+  },
+  "summary": {
+    "today_picks": 0,
+    "holdings_profit": null,
+    "has_holdings": false
+  },
+  "tabs": {
+    "today_picks": [],
+    "top10": [],
+    "etf": [],
+    "bond": [],
+    "watchlist": []
+  },
+  "stocks": {}
+}
