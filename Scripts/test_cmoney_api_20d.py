@@ -2,146 +2,94 @@
 # -*- coding: utf-8 -*-
 
 """
-台股 AI 選股系統
 CMoney API 20D 探測器
-TEST-20D-API-V2.0
+TEST-20D-API-V3.0
 
 目的：
-1. 探測 CMoney 個股頁面
-2. 實際下載 Nuxt JavaScript bundles
-3. 從 JS 中尋找 API_FORUM_OCEAN_SERVICE
-4. 尋找 API endpoint / path / fetch / axios / request 線索
-5. 實際測試候選 endpoint
-6. 判斷是否存在真正的「主力 20D 歷史資料」
+1. 不再盲猜大量 API endpoint
+2. 追蹤 CMoney Forum Ocean Service
+3. 從 Nuxt JS 找出實際 API 呼叫
+4. 實際呼叫候選 endpoint
+5. 分析 response 是否真的包含 >=20 個交易日期
+6. 同一資料結構必須包含主力買賣超相關欄位
+7. 確認後才標記 true_20d = True
 
 固定測試：
-3081 聯亞
 2337 旺宏
-2368 金像電
 2426 鼎元
-
-重要：
-- 不修改正式 fetch_chip.py
-- 不修改 index.html
-- 不修改正式 chip.json
-- 不把「20日集中」當成主力20D
-- 不把 JS bundle 本身誤判成 API
-- 沒有 >=20 個不同交易日期 + 主力買賣超欄位，不判定成功
-
-輸出：
-Data/test_cmoney_api_20d.json
+2368 金像電
+3081 聯亞
 """
 
 from __future__ import annotations
 
 import json
 import re
-import sys
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import urljoin, urlparse
 
 import requests
-from bs4 import BeautifulSoup
 
 
-# ============================================================
-# 基本設定
-# ============================================================
+VERSION = "TEST-20D-API-V3.0"
 
-VERSION = "TEST-20D-API-V2.0"
+ROOT = Path(__file__).resolve().parent.parent
+OUT = ROOT / "Data" / "test_cmoney_api_20d.json"
 
-BASE_DIR = Path(__file__).resolve().parent.parent
-DATA_DIR = BASE_DIR / "Data"
-OUTPUT_FILE = DATA_DIR / "test_cmoney_api_20d.json"
+BASE = "https://www.cmoney.tw"
 
-REQUEST_TIMEOUT = 30
-REQUEST_DELAY = 0.35
+TIMEOUT = 25
 
-MAX_JS_FILES = 80
-MAX_CANDIDATE_URLS = 100
-
-TEST_STOCKS = [
-    {
-        "symbol": "3081",
-        "name": "聯亞",
-    },
-    {
-        "symbol": "2337",
-        "name": "旺宏",
-    },
-    {
-        "symbol": "2368",
-        "name": "金像電",
-    },
-    {
-        "symbol": "2426",
-        "name": "鼎元",
-    },
+STOCKS = [
+    ("2337", "旺宏"),
+    ("2426", "鼎元"),
+    ("2368", "金像電"),
+    ("3081", "聯亞"),
 ]
-
-
-# ============================================================
-# URL
-# ============================================================
-
-CMONEY_URL = (
-    "https://www.cmoney.tw/forum/stock/"
-    "{symbol}?s=main-force"
-)
-
-CMONEY_ORIGIN = "https://www.cmoney.tw"
-
-
-# ============================================================
-# HTTP
-# ============================================================
 
 HEADERS = {
     "User-Agent": (
-        "Mozilla/5.0 "
-        "(Windows NT 10.0; Win64; x64) "
-        "AppleWebKit/537.36 "
-        "(KHTML, like Gecko) "
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) "
         "Chrome/131.0 Safari/537.36"
     ),
-    "Accept": (
-        "text/html,application/xhtml+xml,"
-        "application/xml;q=0.9,"
-        "image/avif,image/webp,*/*;q=0.8"
-    ),
     "Accept-Language": "zh-TW,zh;q=0.9,en;q=0.8",
-    "Connection": "keep-alive",
+    "Referer": BASE + "/",
 }
 
-
-# ============================================================
-# Log
-# ============================================================
-
-def log(message=""):
-    print(message, flush=True)
-
-
-def section(title):
-    log("")
-    log("=" * 76)
-    log(title)
-    log("=" * 76)
-
-
-# ============================================================
-# 日期
-# ============================================================
-
-DATE_REGEX = re.compile(
-    r"\b(?:"
-    r"\d{4}[/-]\d{1,2}[/-]\d{1,2}"
-    r"|"
-    r"\d{4}\.\d{1,2}\.\d{1,2}"
-    r")\b"
+DATE_RE = re.compile(
+    r"(?:19|20)\d{2}[-/.]\d{1,2}[-/.]\d{1,2}"
 )
+
+FORCE_RE = re.compile(
+    r"""
+    主力
+    |主力買賣超
+    |主力買超
+    |主力賣超
+    |買賣超
+    |net[_-]?buy
+    |net[_-]?sell
+    |net[_-]?buy[_-]?sell
+    |main[_-]?force
+    |mainForce
+    |buy[_-]?sell
+    |buySell
+    """,
+    re.I | re.X,
+)
+
+OCEAN_KEYWORDS = (
+    "API_FORUM_OCEAN_SERVICE",
+    "SERVICE_FORUM_OCEAN_SERVICE",
+    "forumOceanService",
+)
+
+
+def now_iso():
+    return datetime.now(timezone.utc).isoformat()
 
 
 def normalize_date(value):
@@ -150,1817 +98,931 @@ def normalize_date(value):
 
     text = str(value).strip()
 
-    match = DATE_REGEX.fullmatch(text)
+    m = DATE_RE.fullmatch(text)
 
-    if not match:
+    if not m:
         return None
 
-    text = text.replace("-", "/")
-    text = text.replace(".", "/")
-
-    return text
-
-
-def extract_dates(text):
-    if not text:
-        return []
-
-    found = DATE_REGEX.findall(text)
-
-    result = []
-
-    seen = set()
-
-    for value in found:
-        normalized = normalize_date(value)
-
-        if not normalized:
-            continue
-
-        if normalized in seen:
-            continue
-
-        seen.add(normalized)
-        result.append(normalized)
-
-    return result
-
-
-# ============================================================
-# 主力欄位辨識
-# ============================================================
-
-FORCE_KEYWORDS = [
-    "買賣超",
-    "主力買賣超",
-    "主力",
-    "main_force",
-    "mainforce",
-    "main-force",
-    "mainForce",
-    "main_force_buy_sell",
-    "mainForceBuySell",
-    "buy_sell",
-    "buySell",
-    "buysell",
-    "net_buy",
-    "netBuy",
-    "netbuy",
-]
-
-
-def contains_force_keyword(text):
-    if not text:
-        return False
-
-    lower = text.lower()
-
-    for keyword in FORCE_KEYWORDS:
-        if keyword.lower() in lower:
-            return True
-
-    return False
-
-
-# ============================================================
-# API URL 判斷
-# ============================================================
-
-API_HINTS = [
-    "api",
-    "ajax",
-    "service",
-    "ocean",
-    "json",
-    "graphql",
-    "main-force",
-    "main_force",
-    "mainforce",
-    "buy",
-    "sell",
-    "chip",
-    "history",
-]
-
-
-def looks_like_api(text):
-    if not text:
-        return False
-
-    lower = text.lower()
-
-    return any(
-        hint in lower
-        for hint in API_HINTS
+    return (
+        text
+        .replace("-", "/")
+        .replace(".", "/")
     )
 
 
-# ============================================================
-# URL 清理
-# ============================================================
+def extract_dates_from_text(text):
+    dates = []
 
-def clean_url(value, base_url):
+    for value in DATE_RE.findall(text or ""):
+        value = normalize_date(value)
+
+        if value and value not in dates:
+            dates.append(value)
+
+    return dates
+
+
+def make_absolute_url(value, base_url):
     if not value:
         return None
 
-    value = value.strip()
-
-    value = value.strip(
-        "\"'`"
+    value = (
+        value.strip()
+        .strip("\"'")
+        .strip("`")
+        .replace("\\/", "/")
     )
 
-    value = value.replace(
-        "\\/",
-        "/"
+    if value.startswith("//"):
+        return "https:" + value
+
+    if value.startswith("/"):
+        return urljoin(base_url, value)
+
+    if value.startswith("http://"):
+        return value
+
+    if value.startswith("https://"):
+        return value
+
+    return None
+
+
+def is_cmoney_url(url):
+    try:
+        host = urlparse(url).netloc.lower()
+        return host == "www.cmoney.tw" or host.endswith(".cmoney.tw")
+    except Exception:
+        return False
+
+
+def extract_script_urls(html, page_url):
+    results = []
+
+    pattern = re.compile(
+        r'<script[^>]+src=["\']([^"\']+)["\']',
+        re.I,
     )
 
-    value = value.replace(
-        "&amp;",
-        "&"
-    )
+    for raw in pattern.findall(html):
+        url = make_absolute_url(raw, page_url)
 
-    if value.startswith(
-        "//"
-    ):
-        value = "https:" + value
+        if url and url not in results:
+            results.append(url)
 
-    elif value.startswith(
-        "/"
-    ):
-        value = urljoin(
-            base_url,
-            value
-        )
-
-    elif value.startswith(
-        "./"
-    ):
-        value = urljoin(
-            base_url,
-            value
-        )
-
-    elif not (
-        value.startswith("http://")
-        or value.startswith("https://")
-    ):
-        return None
-
-    return value
+    return results
 
 
-# ============================================================
-# 從文字擷取 URL / path
-# ============================================================
+def extract_runtime_context(text):
+    contexts = []
 
-def extract_url_candidates(
-    text,
-    base_url
-):
-    if not text:
-        return []
+    for keyword in OCEAN_KEYWORDS:
 
-    found = []
+        start = 0
 
-    # 完整 URL
-    absolute_urls = re.findall(
-        r"https?://[^\s\"'<>\\]+",
-        text,
-        flags=re.IGNORECASE,
-    )
+        while True:
 
-    for value in absolute_urls:
-        cleaned = clean_url(
-            value,
-            base_url
-        )
+            pos = text.find(keyword, start)
 
-        if cleaned:
-            found.append(cleaned)
+            if pos < 0:
+                break
 
-    # 以 / 開頭的 endpoint
-    path_candidates = re.findall(
+            context = text[
+                max(0, pos - 1200):
+                min(len(text), pos + 3500)
+            ]
+
+            context = re.sub(
+                r"\s+",
+                " ",
+                context,
+            )
+
+            if context not in contexts:
+                contexts.append(context)
+
+            start = pos + len(keyword)
+
+    return contexts[:50]
+
+
+def extract_urls_from_js(js, js_url):
+
+    urls = []
+
+    patterns = [
+        r'https?://[^\s"\'`<>\\]+',
+        r'/(?:api|service|forum|graphql|TickDataService)[^\s"\'`<>\\]*',
+    ]
+
+    for pattern in patterns:
+
+        for raw in re.findall(
+            pattern,
+            js,
+            flags=re.I,
+        ):
+
+            url = make_absolute_url(
+                raw,
+                js_url,
+            )
+
+            if not url:
+                continue
+
+            if not is_cmoney_url(url):
+                continue
+
+            if url not in urls:
+                urls.append(url)
+
+    return urls
+
+
+def extract_call_sites(js, js_url):
+
+    results = []
+
+    pattern = re.compile(
         r"""
         (?:
-            ["'`]
+            \$axios
+            |
+            axios
+            |
+            fetch
+            |
+            \$fetch
         )
-        (
-            /[^"'`\\\s]{2,500}
-        )
-        (?:
-            ["'`]
-        )
+        \s*
+        (?:\.\s*(get|post|put|delete))?
+        \s*\(
         """,
-        text,
-        flags=re.VERBOSE,
+        re.I | re.X,
     )
 
-    for value in path_candidates:
+    for match in pattern.finditer(js):
 
-        if not looks_like_api(value):
-            continue
+        method = (
+            match.group(1)
+            or "GET"
+        ).upper()
 
-        cleaned = clean_url(
-            value,
-            base_url
-        )
-
-        if cleaned:
-            found.append(cleaned)
-
-    # 常見 service / API 字串
-    quoted_candidates = re.findall(
-        r"""
-        ["'`]
-        (
-            [^"'`]{2,500}
-            (?:
-                api
-                |ajax
-                |service
-                |ocean
-                |main-force
-                |main_force
-            )
-            [^"'`]{0,500}
-        )
-        ["'`]
-        """,
-        text,
-        flags=re.IGNORECASE | re.VERBOSE,
-    )
-
-    for value in quoted_candidates:
-
-        if value.startswith(
-            "http://"
-        ) or value.startswith(
-            "https://"
-        ) or value.startswith("/"):
-            cleaned = clean_url(
-                value,
-                base_url
-            )
-
-            if cleaned:
-                found.append(cleaned)
-
-    result = []
-
-    seen = set()
-
-    for value in found:
-
-        if value in seen:
-            continue
-
-        seen.add(value)
-        result.append(value)
-
-    return result
-
-
-# ============================================================
-# HTML Script
-# ============================================================
-
-def extract_script_urls(
-    soup,
-    page_url
-):
-    result = []
-
-    seen = set()
-
-    for script in soup.find_all(
-        "script"
-    ):
-
-        src = script.get(
-            "src"
-        )
-
-        if not src:
-            continue
-
-        full = clean_url(
-            src,
-            page_url
-        )
-
-        if not full:
-            continue
-
-        if full in seen:
-            continue
-
-        seen.add(full)
-        result.append(full)
-
-    return result
-
-
-# ============================================================
-# HTML 內嵌資料分析
-# ============================================================
-
-def inspect_html(
-    html
-):
-    dates = extract_dates(
-        html
-    )
-
-    return {
-        "date_count": len(dates),
-        "dates": dates[:100],
-        "has_force_keyword": contains_force_keyword(
-            html
-        ),
-        "api_forum_ocean_count": html.lower().count(
-            "api_forum_ocean_service"
-        ),
-        "main_force_count": html.lower().count(
-            "main-force"
-        ),
-        "20d_count": html.lower().count(
-            "20d"
-        ),
-        "20day_count": html.count(
-            "20日"
-        ),
-    }
-
-
-# ============================================================
-# JSON 深度分析
-# ============================================================
-
-def inspect_json(
-    payload
-):
-    date_values = []
-    force_keys = []
-    array_paths = []
-
-    date_key_names = {
-        "date",
-        "日期",
-        "day",
-        "trade_date",
-        "tradedate",
-        "tradeDate",
-        "datetime",
-        "time",
-        "dateTime",
-    }
-
-    force_key_names = {
-        "買賣超",
-        "主力買賣超",
-        "main_force",
-        "mainforce",
-        "mainForce",
-        "main-force",
-        "main_force_buy_sell",
-        "mainForceBuySell",
-        "buy_sell",
-        "buySell",
-        "buysell",
-        "net_buy",
-        "netBuy",
-        "netbuy",
-    }
-
-    def walk(
-        value,
-        path=""
-    ):
-
-        if isinstance(
-            value,
-            dict
-        ):
-
-            for key, child in value.items():
-
-                key_text = str(
-                    key
-                )
-
-                normalized = (
-                    key_text
-                    .replace("_", "")
-                    .replace("-", "")
-                    .replace(" ", "")
-                    .lower()
-                )
-
-                if (
-                    key_text in date_key_names
-                    or normalized in {
-                        "date",
-                        "tradedate",
-                        "datetime",
-                    }
-                ):
-
-                    if isinstance(
-                        child,
-                        str
-                    ):
-                        normalized_date = normalize_date(
-                            child
-                        )
-
-                        if normalized_date:
-                            date_values.append(
-                                normalized_date
-                            )
-
-                    elif isinstance(
-                        child,
-                        list
-                    ):
-
-                        for item in child[:200]:
-                            normalized_date = normalize_date(
-                                item
-                            )
-
-                            if normalized_date:
-                                date_values.append(
-                                    normalized_date
-                                )
-
-                if (
-                    key_text in force_key_names
-                    or normalized in {
-                        "mainforce",
-                        "mainforcebuysell",
-                        "buysell",
-                        "netbuy",
-                    }
-                ):
-                    force_keys.append(
-                        f"{path}/{key_text}"
-                    )
-
-                walk(
-                    child,
-                    f"{path}/{key_text}"
-                )
-
-        elif isinstance(
-            value,
-            list
-        ):
-
-            if len(value) >= 10:
-                array_paths.append({
-                    "path": path,
-                    "length": len(value),
-                })
-
-            for index, child in enumerate(
-                value[:200]
-            ):
-                walk(
-                    child,
-                    f"{path}[{index}]"
-                )
-
-        elif isinstance(
-            value,
-            str
-        ):
-
-            normalized_date = normalize_date(
-                value
-            )
-
-            if normalized_date:
-                date_values.append(
-                    normalized_date
-                )
-
-    walk(
-        payload
-    )
-
-    dates = list(
-        dict.fromkeys(
-            date_values
-        )
-    )
-
-    keys = list(
-        dict.fromkeys(
-            force_keys
-        )
-    )
-
-    return {
-        "date_count": len(dates),
-        "dates": dates[:100],
-        "force_keys": keys[:100],
-        "array_paths": array_paths[:100],
-        "has_force_keyword": bool(keys),
-    }
-
-
-# ============================================================
-# JS 內容探測
-# ============================================================
-
-def inspect_js(
-    js,
-    js_url
-):
-    lower = js.lower()
-
-    api_ocean_positions = []
-
-    start = 0
-
-    needle = "api_forum_ocean_service"
-
-    while True:
-
-        position = lower.find(
-            needle,
-            start
-        )
-
-        if position < 0:
-            break
-
-        left = max(
+        start = max(
             0,
-            position - 1200
+            match.start() - 1000,
         )
 
-        right = min(
+        end = min(
             len(js),
-            position + 2500
+            match.start() + 3500,
         )
 
-        context = js[
-            left:right
-        ]
+        context = js[start:end]
 
         context = re.sub(
             r"\s+",
             " ",
-            context
+            context,
         )
 
-        api_ocean_positions.append(
-            context[:4000]
+        urls = extract_urls_from_js(
+            context,
+            js_url,
         )
 
-        start = (
-            position
-            + len(needle)
+        results.append(
+            {
+                "method": method,
+                "urls": urls,
+                "context": context[:4500],
+            }
         )
 
-    urls = extract_url_candidates(
-        js,
-        js_url
+    return results
+
+
+def contains_force_field(key):
+
+    return bool(
+        FORCE_RE.search(
+            str(key)
+        )
     )
 
-    # --------------------------------------------------------
-    # 特別抓 API / service / ocean 周圍字串
-    # --------------------------------------------------------
 
-    endpoint_contexts = []
+def analyze_json_structure(payload):
 
-    endpoint_pattern = re.compile(
-        r"""
-        ["'`]
-        (
-            [^"'`]{0,1000}
-            (?:
-                /api/
-                |/api
-                |api/
-                |service/
-                |ocean
-                |ajax
-                |main-force
-                |main_force
-                |mainforce
-            )
-            [^"'`]{0,1000}
-        )
-        ["'`]
-        """,
-        flags=re.IGNORECASE | re.VERBOSE,
-    )
+    dates = []
+    force_fields = []
+    arrays = []
 
-    for match in endpoint_pattern.finditer(
-        js
-    ):
+    def walk(value, path="$", depth=0):
 
-        value = match.group(
-            1
-        )
+        if depth > 20:
+            return
 
-        if len(value) <= 2500:
-            endpoint_contexts.append(
+        if isinstance(value, dict):
+
+            for key, child in value.items():
+
+                key_text = str(key)
+
+                if contains_force_field(
+                    key_text
+                ):
+
+                    force_fields.append(
+                        f"{path}/{key_text}"
+                    )
+
+                normalized_key = re.sub(
+                    r"[_\-\s]",
+                    "",
+                    key_text,
+                ).lower()
+
+                if normalized_key in (
+                    "date",
+                    "tradedate",
+                    "datetime",
+                    "tradingdate",
+                ):
+
+                    if isinstance(
+                        child,
+                        str,
+                    ):
+
+                        date = normalize_date(
+                            child
+                        )
+
+                        if date:
+                            dates.append(date)
+
+                    elif isinstance(
+                        child,
+                        list,
+                    ):
+
+                        for item in child:
+
+                            date = normalize_date(
+                                item
+                            )
+
+                            if date:
+                                dates.append(date)
+
+                walk(
+                    child,
+                    f"{path}/{key_text}",
+                    depth + 1,
+                )
+
+        elif isinstance(value, list):
+
+            if len(value) >= 10:
+
+                arrays.append(
+                    {
+                        "path": path,
+                        "length": len(value),
+                    }
+                )
+
+            for index, child in enumerate(
+                value[:250]
+            ):
+
+                walk(
+                    child,
+                    f"{path}[{index}]",
+                    depth + 1,
+                )
+
+        elif isinstance(value, str):
+
+            date = normalize_date(
                 value
             )
 
-    endpoint_contexts = list(
-        dict.fromkeys(
-            endpoint_contexts
-        )
+            if date:
+                dates.append(date)
+
+    walk(payload)
+
+    dates = list(
+        dict.fromkeys(dates)
+    )
+
+    force_fields = list(
+        dict.fromkeys(force_fields)
     )
 
     return {
-        "js_url": js_url,
-        "size": len(js),
-        "api_forum_ocean_count": lower.count(
-            "api_forum_ocean_service"
+        "date_count": len(dates),
+        "dates": dates[:100],
+        "force_fields": force_fields[:100],
+        "arrays": arrays[:100],
+        "has_20_dates": len(dates) >= 20,
+        "has_force_field": bool(
+            force_fields
         ),
-        "main_force_count": lower.count(
-            "main-force"
+        "true_20d": (
+            len(dates) >= 20
+            and bool(force_fields)
         ),
-        "main_force_underscore_count": lower.count(
-            "main_force"
-        ),
-        "20d_count": lower.count(
-            "20d"
-        ),
-        "20day_count": lower.count(
-            "20日"
-        ),
-        "buy_sell_count": lower.count(
-            "buy_sell"
-        ),
-        "force_keyword": contains_force_keyword(
-            js
-        ),
-        "api_ocean_contexts": api_ocean_positions[:20],
-        "urls": urls[:200],
-        "endpoint_strings": endpoint_contexts[:200],
     }
 
 
-# ============================================================
-# 建立候選 API
-# ============================================================
+def build_parameter_sets(symbol):
 
-def build_candidates(
-    page_url,
-    js_reports
-):
-    candidates = []
-
-    seen = set()
-
-    def add(
-        value,
-        source
-    ):
-
-        if not value:
-            return
-
-        cleaned = clean_url(
-            value,
-            page_url
-        )
-
-        if not cleaned:
-            return
-
-        parsed = urlparse(
-            cleaned
-        )
-
-        # ----------------------------------------------------
-        # 只測 HTTP(S)
-        # ----------------------------------------------------
-
-        if parsed.scheme not in {
-            "http",
-            "https",
-        }:
-            return
-
-        # ----------------------------------------------------
-        # JS / CSS / image 不當 endpoint
-        # ----------------------------------------------------
-
-        lower_path = parsed.path.lower()
-
-        blocked_extensions = (
-            ".js",
-            ".css",
-            ".png",
-            ".jpg",
-            ".jpeg",
-            ".gif",
-            ".svg",
-            ".ico",
-            ".woff",
-            ".woff2",
-            ".ttf",
-        )
-
-        if lower_path.endswith(
-            blocked_extensions
-        ):
-            return
-
-        # ----------------------------------------------------
-        # 排除明顯頁面
-        # ----------------------------------------------------
-
-        if (
-            parsed.path == "/forum/"
-            and not parsed.query
-        ):
-            return
-
-        key = cleaned
-
-        if key in seen:
-            return
-
-        seen.add(key)
-
-        candidates.append({
-            "url": cleaned,
-            "source": source,
-        })
-
-    # --------------------------------------------------------
-    # JS 中所有 URL
-    # --------------------------------------------------------
-
-    for report in js_reports:
-
-        for url in report.get(
-            "urls",
-            []
-        ):
-
-            if looks_like_api(
-                url
-            ):
-                add(
-                    url,
-                    "js_url"
-                )
-
-        # ----------------------------------------------------
-        # endpoint 字串
-        # ----------------------------------------------------
-
-        for value in report.get(
-            "endpoint_strings",
-            []
-        ):
-
-            # 可能是一整段帶參數字串
-            direct = clean_url(
-                value,
-                page_url
-            )
-
-            if direct:
-                add(
-                    direct,
-                    "js_endpoint"
-                )
-
-            # 再從字串中抽 URL
-            for url in extract_url_candidates(
-                value,
-                page_url
-            ):
-                add(
-                    url,
-                    "js_endpoint_extract"
-                )
-
-    # --------------------------------------------------------
-    # 優先排序：
-    # ocean / API / service / main-force
-    # --------------------------------------------------------
-
-    def score(item):
-        value = item["url"].lower()
-
-        score_value = 0
-
-        if "api_forum_ocean_service" in value:
-            score_value += 100
-
-        if "ocean" in value:
-            score_value += 60
-
-        if "/api/" in value:
-            score_value += 50
-
-        if "api" in value:
-            score_value += 30
-
-        if "service" in value:
-            score_value += 30
-
-        if "ajax" in value:
-            score_value += 25
-
-        if "main-force" in value:
-            score_value += 20
-
-        if "main_force" in value:
-            score_value += 20
-
-        if "buy" in value:
-            score_value += 10
-
-        if "sell" in value:
-            score_value += 10
-
-        return score_value
-
-    candidates.sort(
-        key=score,
-        reverse=True
-    )
-
-    return candidates[
-        :MAX_CANDIDATE_URLS
+    return [
+        {"symbol": symbol},
+        {"stockId": symbol},
+        {"stockNo": symbol},
+        {"stockCode": symbol},
+        {"code": symbol},
+        {"ticker": symbol},
+        {"id": symbol},
     ]
 
-
-# ============================================================
-# 實際測試 Endpoint
-# ============================================================
 
 def test_endpoint(
     session,
     url,
-    stock_symbol,
-    referer
+    method,
+    symbol,
 ):
-    result = {
-        "url": url,
-        "status_code": None,
-        "content_type": "",
-        "size": 0,
-        "json": False,
-        "date_count": 0,
-        "dates": [],
-        "has_force_key": False,
-        "force_keys": [],
-        "array_paths": [],
-        "confirmed_20d": False,
-        "error": None,
-    }
 
-    try:
+    results = []
 
-        response = session.get(
-            url,
-            headers={
-                **HEADERS,
-                "Referer": referer,
-            },
-            timeout=REQUEST_TIMEOUT,
-        )
+    parameter_sets = build_parameter_sets(
+        symbol
+    )
 
-        result[
-            "status_code"
-        ] = response.status_code
-
-        result[
-            "content_type"
-        ] = response.headers.get(
-            "content-type",
-            ""
-        )
-
-        result[
-            "size"
-        ] = len(
-            response.content
-        )
-
-        if response.status_code != 200:
-            return result
-
-        text = response.text
-
-        # ----------------------------------------------------
-        # JSON
-        # ----------------------------------------------------
+    for params in parameter_sets:
 
         try:
 
-            payload = response.json()
-
-            result[
-                "json"
-            ] = True
-
-            inspected = inspect_json(
-                payload
-            )
-
-            result[
-                "date_count"
-            ] = inspected[
-                "date_count"
-            ]
-
-            result[
-                "dates"
-            ] = inspected[
-                "dates"
-            ]
-
-            result[
-                "has_force_key"
-            ] = inspected[
-                "has_force_keyword"
-            ]
-
-            result[
-                "force_keys"
-            ] = inspected[
-                "force_keys"
-            ]
-
-            result[
-                "array_paths"
-            ] = inspected[
-                "array_paths"
-            ]
-
-        except Exception:
-
-            # ------------------------------------------------
-            # 非 JSON
-            # ------------------------------------------------
-
-            dates = extract_dates(
-                text
-            )
-
-            result[
-                "date_count"
-            ] = len(dates)
-
-            result[
-                "dates"
-            ] = dates[:100]
-
-            result[
-                "has_force_key"
-            ] = contains_force_keyword(
-                text
-            )
-
-        # ----------------------------------------------------
-        # 真正 20D 判定
-        # ----------------------------------------------------
-
-        result[
-            "confirmed_20d"
-        ] = (
-            result["date_count"] >= 20
-            and result["has_force_key"]
-        )
-
-        return result
-
-    except Exception as exc:
-
-        result[
-            "error"
-        ] = str(exc)
-
-        return result
-
-
-# ============================================================
-# 單一股票
-# ============================================================
-
-def test_stock(
-    session,
-    stock
-):
-    symbol = stock[
-        "symbol"
-    ]
-
-    name = stock[
-        "name"
-    ]
-
-    page_url = CMONEY_URL.format(
-        symbol=symbol
-    )
-
-    section(
-        f"{symbol} {name}：CMoney 20D V2 探測"
-    )
-
-    result = {
-        "symbol": symbol,
-        "name": name,
-        "page_url": page_url,
-        "page_status": None,
-        "html_size": 0,
-        "html_inspection": {},
-        "script_count": 0,
-        "js_downloaded": 0,
-        "js_reports": [],
-        "candidate_urls": [],
-        "api_tests": [],
-        "confirmed_20d_api": False,
-    }
-
-    # --------------------------------------------------------
-    # Page
-    # --------------------------------------------------------
-
-    response = session.get(
-        page_url,
-        headers=HEADERS,
-        timeout=REQUEST_TIMEOUT,
-    )
-
-    result[
-        "page_status"
-    ] = response.status_code
-
-    result[
-        "html_size"
-    ] = len(
-        response.content
-    )
-
-    log(
-        f"✓ HTTP：{response.status_code}"
-    )
-
-    log(
-        f"✓ URL：{page_url}"
-    )
-
-    log(
-        f"✓ HTML："
-        f"{len(response.content):,} bytes"
-    )
-
-    if response.status_code != 200:
-        result[
-            "error"
-        ] = f"HTTP {response.status_code}"
-
-        return result
-
-    html = response.text
-
-    html_info = inspect_html(
-        html
-    )
-
-    result[
-        "html_inspection"
-    ] = html_info
-
-    log(
-        f"HTML 日期數量："
-        f"{html_info['date_count']}"
-    )
-
-    log(
-        f"20日文字："
-        f"{html_info['20day_count']}"
-    )
-
-    log(
-        f"20D文字："
-        f"{html_info['20d_count']}"
-    )
-
-    log(
-        f"API_FORUM_OCEAN_SERVICE："
-        f"{html_info['api_forum_ocean_count']}"
-    )
-
-    # --------------------------------------------------------
-    # Script URLs
-    # --------------------------------------------------------
-
-    soup = BeautifulSoup(
-        html,
-        "html.parser"
-    )
-
-    script_urls = extract_script_urls(
-        soup,
-        page_url
-    )
-
-    result[
-        "script_count"
-    ] = len(script_urls)
-
-    log(
-        f"發現 JavaScript："
-        f"{len(script_urls)} 個"
-    )
-
-    # --------------------------------------------------------
-    # 優先分析 Nuxt JS
-    # --------------------------------------------------------
-
-    prioritized = []
-
-    for js_url in script_urls:
-
-        lower = js_url.lower()
-
-        score = 0
-
-        if "_nuxt" in lower:
-            score += 100
-
-        if ".modern.js" in lower:
-            score += 50
-
-        if "app" in lower:
-            score += 20
-
-        prioritized.append(
-            (
-                score,
-                js_url,
-            )
-        )
-
-    prioritized.sort(
-        reverse=True
-    )
-
-    prioritized = prioritized[
-        :MAX_JS_FILES
-    ]
-
-    # --------------------------------------------------------
-    # Download / inspect JS
-    # --------------------------------------------------------
-
-    for index, (_, js_url) in enumerate(
-        prioritized,
-        start=1
-    ):
-
-        log(
-            f"[JS {index}/{len(prioritized)}] "
-            f"{js_url}"
-        )
-
-        try:
-
-            js_response = session.get(
-                js_url,
-                headers={
-                    **HEADERS,
-                    "Referer": page_url,
-                },
-                timeout=REQUEST_TIMEOUT,
-            )
-
-            if js_response.status_code != 200:
-
-                log(
-                    f"   HTTP："
-                    f"{js_response.status_code}"
+            if method == "POST":
+
+                response = session.post(
+                    url,
+                    json=params,
+                    headers=HEADERS,
+                    timeout=TIMEOUT,
                 )
 
-                continue
+            else:
 
-            content_type = js_response.headers.get(
-                "content-type",
-                ""
-            ).lower()
+                response = session.get(
+                    url,
+                    params=params,
+                    headers=HEADERS,
+                    timeout=TIMEOUT,
+                )
 
-            js_text = js_response.text
+            item = {
+                "url": response.url,
+                "method": method,
+                "params": params,
+                "status": response.status_code,
+                "content_type": response.headers.get(
+                    "content-type",
+                    "",
+                ),
+                "bytes": len(
+                    response.content
+                ),
+            }
 
-            # ------------------------------------------------
-            # 只分析 JS
-            # ------------------------------------------------
+            text = response.text
 
             if (
-                "javascript" not in content_type
-                and "text/" not in content_type
-                and not js_url.lower().endswith(".js")
+                response.status_code == 200
+                and (
+                    "json"
+                    in item["content_type"].lower()
+                    or text.lstrip().startswith(
+                        "{"
+                    )
+                    or text.lstrip().startswith(
+                        "["
+                    )
+                )
             ):
-                continue
 
-            report = inspect_js(
-                js_text,
-                js_url
+                try:
+
+                    payload = response.json()
+
+                    analysis = (
+                        analyze_json_structure(
+                            payload
+                        )
+                    )
+
+                    item[
+                        "payload_analysis"
+                    ] = analysis
+
+                    if analysis[
+                        "true_20d"
+                    ]:
+
+                        results.append(
+                            item
+                        )
+
+                        return results
+
+                except Exception as exc:
+
+                    item[
+                        "json_error"
+                    ] = repr(exc)
+
+            results.append(item)
+
+        except Exception as exc:
+
+            results.append(
+                {
+                    "url": url,
+                    "method": method,
+                    "params": params,
+                    "error": str(exc)[:1000],
+                }
             )
 
-            result[
-                "js_reports"
-            ].append(
-                report
+        time.sleep(0.15)
+
+    return results
+
+
+def main():
+
+    OUT.parent.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
+
+    session = requests.Session()
+
+    session.headers.update(
+        HEADERS
+    )
+
+    report = {
+        "version": VERSION,
+        "started_at": now_iso(),
+        "stocks": [],
+    }
+
+    print("=" * 76)
+    print(
+        "台股 AI 選股系統 "
+        "CMoney API 20D 探測器 V3"
+    )
+    print("=" * 76)
+
+    print(
+        "固定測試："
+    )
+
+    for symbol, name in STOCKS:
+
+        print(
+            f"  {symbol} {name}"
+        )
+
+    for symbol, name in STOCKS:
+
+        print()
+        print("=" * 76)
+        print(
+            f"{symbol} {name}"
+        )
+        print("=" * 76)
+
+        page_url = (
+            f"{BASE}/forum/stock/"
+            f"{symbol}?s=main-force"
+        )
+
+        stock = {
+            "symbol": symbol,
+            "name": name,
+            "page_url": page_url,
+            "true_20d": False,
+            "html": {},
+            "js_evidence": [],
+            "candidate_urls": [],
+            "call_sites": [],
+            "tests": [],
+        }
+
+        try:
+
+            response = session.get(
+                page_url,
+                headers=HEADERS,
+                timeout=TIMEOUT,
             )
 
-            result[
-                "js_downloaded"
-            ] += 1
-
-            interesting = (
-                report[
-                    "api_forum_ocean_count"
-                ] > 0
-                or report[
-                    "force_keyword"
-                ]
-                or report[
-                    "20d_count"
-                ] > 0
+            print(
+                f"HTTP：{response.status_code}"
             )
 
-            if interesting:
+            if response.status_code != 200:
 
-                log(
-                    "   ★ 發現重要線索："
-                    f"API_OCEAN="
-                    f"{report['api_forum_ocean_count']} "
-                    f"20D="
-                    f"{report['20d_count']} "
-                    f"主力="
-                    f"{report['force_keyword']} "
-                    f"URL="
-                    f"{len(report['urls'])} "
-                    f"Endpoint="
-                    f"{len(report['endpoint_strings'])}"
+                stock["error"] = (
+                    "stock page HTTP "
+                    f"{response.status_code}"
                 )
 
-                for context in report[
-                    "api_ocean_contexts"
-                ][:3]:
+                report[
+                    "stocks"
+                ].append(stock)
 
-                    log(
-                        "   API_FORUM_OCEAN_SERVICE "
-                        "上下文："
+                continue
+
+            html = response.text
+
+            stock["html"] = {
+                "status": response.status_code,
+                "bytes": len(
+                    response.content
+                ),
+                "dates": extract_dates_from_text(
+                    html
+                ),
+                "date_count": len(
+                    extract_dates_from_text(
+                        html
+                    )
+                ),
+                "ocean_contexts": (
+                    extract_runtime_context(
+                        html
+                    )
+                ),
+            }
+
+            scripts = extract_script_urls(
+                html,
+                page_url,
+            )
+
+            print(
+                f"發現 JavaScript："
+                f"{len(scripts)} 個"
+            )
+
+            all_candidates = []
+            all_calls = []
+
+            for index, script_url in enumerate(
+                scripts[:120],
+                1,
+            ):
+
+                try:
+
+                    js_response = session.get(
+                        script_url,
+                        headers=HEADERS,
+                        timeout=TIMEOUT,
                     )
 
-                    log(
+                    if (
+                        js_response.status_code
+                        != 200
+                    ):
+                        continue
+
+                    js = js_response.text
+
+                    has_ocean = any(
+                        keyword.lower()
+                        in js.lower()
+                        for keyword
+                        in OCEAN_KEYWORDS
+                    )
+
+                    if not has_ocean:
+                        continue
+
+                    urls = extract_urls_from_js(
+                        js,
+                        script_url,
+                    )
+
+                    calls = extract_call_sites(
+                        js,
+                        script_url,
+                    )
+
+                    all_candidates.extend(
+                        urls
+                    )
+
+                    all_calls.extend(
+                        calls
+                    )
+
+                    stock[
+                        "js_evidence"
+                    ].append(
+                        {
+                            "script": script_url,
+                            "bytes": len(
+                                js_response.content
+                            ),
+                            "ocean_context": (
+                                extract_runtime_context(
+                                    js
+                                )[:10]
+                            ),
+                            "urls": urls[:100],
+                            "calls": calls[:30],
+                        }
+                    )
+
+                    print(
+                        f"★ JS {index}: "
+                        f"{script_url}"
+                    )
+
+                    print(
                         "   "
-                        + context[:1000]
+                        f"發現候選 URL："
+                        f"{len(urls)}"
                     )
 
-            time.sleep(
-                REQUEST_DELAY
+                except Exception:
+                    pass
+
+                time.sleep(0.05)
+
+            all_candidates = list(
+                dict.fromkeys(
+                    all_candidates
+                )
+            )
+
+            stock[
+                "candidate_urls"
+            ] = all_candidates[:200]
+
+            stock[
+                "call_sites"
+            ] = all_calls[:150]
+
+            print(
+                "候選 endpoint："
+                f"{len(all_candidates)}"
+            )
+
+            # 優先測試與 Ocean / service / chip / force
+            # 相關的 endpoint。
+            def score(url):
+
+                text = url.lower()
+
+                score = 0
+
+                keywords = [
+                    "ocean",
+                    "forum",
+                    "service",
+                    "chip",
+                    "force",
+                    "main",
+                    "api",
+                ]
+
+                for keyword in keywords:
+
+                    if keyword in text:
+                        score -= 10
+
+                return score
+
+            candidates = sorted(
+                all_candidates,
+                key=score,
+            )
+
+            tested_urls = set()
+
+            for endpoint in candidates[:100]:
+
+                if endpoint in tested_urls:
+                    continue
+
+                tested_urls.add(
+                    endpoint
+                )
+
+                method = "GET"
+
+                for call in all_calls:
+
+                    if endpoint in call.get(
+                        "urls",
+                        [],
+                    ):
+
+                        method = call.get(
+                            "method",
+                            "GET",
+                        )
+
+                        break
+
+                print()
+                print(
+                    f"[API]"
+                    f" {endpoint}"
+                )
+
+                print(
+                    f"METHOD：{method}"
+                )
+
+                test_results = test_endpoint(
+                    session,
+                    endpoint,
+                    method,
+                    symbol,
+                )
+
+                stock[
+                    "tests"
+                ].extend(
+                    test_results
+                )
+
+                winner = next(
+                    (
+                        item
+                        for item
+                        in test_results
+                        if item.get(
+                            "payload_analysis",
+                            {},
+                        ).get(
+                            "true_20d",
+                            False,
+                        )
+                    ),
+                    None,
+                )
+
+                if winner:
+
+                    stock[
+                        "true_20d"
+                    ] = True
+
+                    stock[
+                        "winning_endpoint"
+                    ] = endpoint
+
+                    stock[
+                        "winning_method"
+                    ] = method
+
+                    stock[
+                        "winning_result"
+                    ] = winner
+
+                    print()
+                    print(
+                        "★★★★★★★★★★★★★★★★★★★★★★★★"
+                    )
+
+                    print(
+                        "★ 真正 20D API 已確認"
+                    )
+
+                    print(
+                        f"★ {method} "
+                        f"{endpoint}"
+                    )
+
+                    print(
+                        "★★★★★★★★★★★★★★★★★★★★★★★★"
+                    )
+
+                    break
+
+            print()
+            print(
+                f"{symbol} {name}"
+            )
+
+            print(
+                "HTML 日期："
+                f"{stock['html']['date_count']}"
+            )
+
+            print(
+                "JS Ocean 證據："
+                f"{len(stock['js_evidence'])}"
+            )
+
+            print(
+                "候選 URL："
+                f"{len(stock['candidate_urls'])}"
+            )
+
+            print(
+                "實際測試："
+                f"{len(stock['tests'])}"
+            )
+
+            print(
+                "真正20D："
+                f"{stock['true_20d']}"
             )
 
         except Exception as exc:
 
-            log(
-                f"   ⚠️ JS 下載失敗："
-                f"{exc}"
+            stock[
+                "error"
+            ] = repr(exc)
+
+            print(
+                "❌ 發生錯誤：",
+                repr(exc),
             )
 
-    # --------------------------------------------------------
-    # Candidate endpoints
-    # --------------------------------------------------------
+        report[
+            "stocks"
+        ].append(stock)
 
-    candidates = build_candidates(
-        page_url,
-        result["js_reports"]
+    true_count = sum(
+        1
+        for stock
+        in report["stocks"]
+        if stock.get(
+            "true_20d",
+            False,
+        )
     )
 
-    result[
-        "candidate_urls"
-    ] = candidates
-
-    section(
-        f"{symbol}：API Endpoint 實際測試"
-    )
-
-    log(
-        f"候選 endpoint："
-        f"{len(candidates)}"
-    )
-
-    for item in candidates:
-
-        log(
-            f"   {item['url']}"
-        )
-
-    # --------------------------------------------------------
-    # Test endpoints
-    # --------------------------------------------------------
-
-    for index, item in enumerate(
-        candidates,
-        start=1
-    ):
-
-        api_url = item[
-            "url"
-        ]
-
-        log(
-            ""
-        )
-
-        log(
-            f"[API {index}/{len(candidates)}]"
-        )
-
-        log(
-            f"測試：{api_url}"
-        )
-
-        api_result = test_endpoint(
-            session,
-            api_url,
-            symbol,
-            page_url,
-        )
-
-        api_result[
-            "source"
-        ] = item[
-            "source"
-        ]
-
-        result[
-            "api_tests"
-        ].append(
-            api_result
-        )
-
-        if api_result[
-            "status_code"
-        ] == 200:
-
-            log(
-                f"   HTTP：200"
-            )
-
-            log(
-                f"   Content-Type："
-                f"{api_result['content_type']}"
-            )
-
-            log(
-                f"   大小："
-                f"{api_result['size']:,} bytes"
-            )
-
-            log(
-                f"   JSON："
-                f"{api_result['json']}"
-            )
-
-            log(
-                f"   日期："
-                f"{api_result['date_count']}"
-            )
-
-            log(
-                f"   主力欄位："
-                f"{api_result['has_force_key']}"
-            )
-
-            if api_result[
-                "confirmed_20d"
-            ]:
-
-                result[
-                    "confirmed_20d_api"
-                ] = True
-
-                log(
-                    ""
-                )
-
-                log(
-                    "   ★★★★★"
-                )
-
-                log(
-                    "   ★ 找到真正疑似主力 20D API ★"
-                )
-
-                log(
-                    "   ★★★★★"
-                )
-
-                log(
-                    f"   日期數量："
-                    f"{api_result['date_count']}"
-                )
-
-                log(
-                    f"   主力欄位："
-                    f"{api_result['force_keys'][:20]}"
-                )
-
-        elif api_result[
-            "error"
-        ]:
-
-            log(
-                f"   ⚠️ "
-                f"{api_result['error']}"
-            )
-
-        else:
-
-            log(
-                f"   HTTP："
-                f"{api_result['status_code']}"
-            )
-
-        time.sleep(
-            REQUEST_DELAY
-        )
-
-    return result
-
-
-# ============================================================
-# 最終摘要
-# ============================================================
-
-def final_summary(
-    results
-):
-
-    section(
-        "CMoney API 20D V2 最終判定"
-    )
-
-    confirmed_count = 0
-
-    for result in results:
-
-        symbol = result[
-            "symbol"
-        ]
-
-        name = result[
-            "name"
-        ]
-
-        html_dates = result[
-            "html_inspection"
-        ].get(
-            "date_count",
-            0
-        )
-
-        js_count = result[
-            "js_downloaded"
-        ]
-
-        candidate_count = len(
-            result[
-                "candidate_urls"
-            ]
-        )
-
-        api_tests = result[
-            "api_tests"
-        ]
-
-        confirmed = result[
-            "confirmed_20d_api"
-        ]
-
-        if confirmed:
-            confirmed_count += 1
-
-        log(
-            f"{symbol} {name}"
-        )
-
-        log(
-            f"  HTML日期：{html_dates}"
-        )
-
-        log(
-            f"  JS下載：{js_count}"
-        )
-
-        log(
-            f"  Candidate API："
-            f"{candidate_count}"
-        )
-
-        log(
-            f"  API實測："
-            f"{len(api_tests)}"
-        )
-
-        log(
-            f"  真正20D："
-            f"{confirmed}"
-        )
-
-        # 找出最佳候選
-        confirmed_items = [
-            item
-            for item in api_tests
-            if item.get(
-                "confirmed_20d"
-            )
-        ]
-
-        if confirmed_items:
-
-            for item in confirmed_items:
-
-                log(
-                    "  ★ endpoint："
-                    + item[
-                        "url"
-                    ]
-                )
-
-    log("")
-    log(
-        f"真正20D API："
-        f"{confirmed_count}/"
-        f"{len(results)}"
-    )
-
-    log("")
-    log(
-        "V2 判定規則："
-    )
-
-    log(
-        "1. HTML 出現「20日集中」≠ 主力20D"
-    )
-
-    log(
-        "2. JS 出現 API_FORUM_OCEAN_SERVICE "
-        "≠ API 已確認"
-    )
-
-    log(
-        "3. 必須實際呼叫 endpoint"
-    )
-
-    log(
-        "4. 必須取得至少20個不同日期"
-    )
-
-    log(
-        "5. 同一資料結構中必須存在主力買賣超相關欄位"
-    )
-
-    log(
-        "6. 未滿足上述條件，一律 False"
-    )
-
-    if confirmed_count == 0:
-
-        log("")
-        log(
-            "⚠️ V2 仍未確認真正主力20D API"
-        )
-
-    elif confirmed_count < len(results):
-
-        log("")
-        log(
-            "⚠️ 部分股票確認到主力20D API"
-        )
-
-    else:
-
-        log("")
-        log(
-            "✓ 四檔全部確認主力20D API"
-        )
-
-
-# ============================================================
-# 儲存
-# ============================================================
-
-def save_results(
-    results,
-    elapsed
-):
-
-    DATA_DIR.mkdir(
-        parents=True,
-        exist_ok=True
-    )
-
-    output = {
-        "schema_version": VERSION,
-        "generated_at": datetime.now().strftime(
-            "%Y-%m-%d %H:%M:%S"
+    report[
+        "final"
+    ] = {
+        "tested": len(STOCKS),
+        "true_20d_count": true_count,
+        "true_20d": (
+            true_count > 0
         ),
-        "purpose": (
-            "CMoney 主力20D API 深度探測"
-        ),
-        "test_stocks": TEST_STOCKS,
-        "results": results,
-        "elapsed_seconds": round(
-            elapsed,
-            2
+        "rule": (
+            "同一 structured response "
+            "必須至少20個不同日期，"
+            "且存在主力買賣超相關欄位"
         ),
     }
 
-    temp_file = OUTPUT_FILE.with_suffix(
-        ".json.tmp"
-    )
+    report[
+        "finished_at"
+    ] = now_iso()
 
-    with temp_file.open(
-        "w",
-        encoding="utf-8"
-    ) as file:
-
-        json.dump(
-            output,
-            file,
+    OUT.write_text(
+        json.dumps(
+            report,
             ensure_ascii=False,
-            indent=2
-        )
-
-    # 寫入後驗證
-    with temp_file.open(
-        "r",
-        encoding="utf-8"
-    ) as file:
-
-        verify = json.load(
-            file
-        )
-
-    if not isinstance(
-        verify,
-        dict
-    ):
-        raise RuntimeError(
-            "測試結果 JSON 驗證失敗"
-        )
-
-    temp_file.replace(
-        OUTPUT_FILE
+            indent=2,
+        ),
+        encoding="utf-8",
     )
 
-    log("")
-    log(
-        f"✓ 結果已寫入："
-        f"{OUTPUT_FILE}"
+    print()
+    print("=" * 76)
+
+    print(
+        "CMoney API 20D V3 最終判定"
     )
 
-
-# ============================================================
-# Main
-# ============================================================
-
-def main():
-
-    start = time.time()
-
-    log("")
-    log("=" * 76)
-    log(
-        "台股 AI 選股系統 "
-        f"CMoney API 20D 探測器 {VERSION}"
-    )
-    log("=" * 76)
-
-    log(
-        "開始時間："
-        + datetime.now().strftime(
-            "%Y-%m-%d %H:%M:%S"
-        )
+    print(
+        f"真正20D API："
+        f"{true_count}/{len(STOCKS)}"
     )
 
-    log("")
-    log(
-        "固定測試股票："
+    print(
+        f"結果已寫入：{OUT}"
     )
 
-    for stock in TEST_STOCKS:
+    print("=" * 76)
 
-        log(
-            f"  {stock['symbol']} "
-            f"{stock['name']}"
-        )
-
-    session = requests.Session()
-
-    results = []
-
-    try:
-
-        for stock in TEST_STOCKS:
-
-            try:
-
-                result = test_stock(
-                    session,
-                    stock
-                )
-
-            except Exception as exc:
-
-                result = {
-                    "symbol": stock[
-                        "symbol"
-                    ],
-                    "name": stock[
-                        "name"
-                    ],
-                    "error": str(exc),
-                    "confirmed_20d_api": False,
-                }
-
-                log(
-                    f"❌ {stock['symbol']} "
-                    f"測試失敗：{exc}"
-                )
-
-            results.append(
-                result
-            )
-
-            time.sleep(
-                REQUEST_DELAY
-            )
-
-        elapsed = (
-            time.time()
-            - start
-        )
-
-        final_summary(
-            results
-        )
-
-        save_results(
-            results,
-            elapsed
-        )
-
-        log("")
-        log("=" * 76)
-        log(
-            "✓ CMoney API 20D V2 探測完成"
-        )
-        log("=" * 76)
-
-        log(
-            f"耗時："
-            f"{elapsed:.1f} 秒"
-        )
-
-        log(
-            f"結果："
-            f"{OUTPUT_FILE}"
-        )
-
-        return 0
-
-    except Exception as exc:
-
-        log("")
-        log("=" * 76)
-        log(
-            "❌ CMoney API 20D V2 執行失敗"
-        )
-        log("=" * 76)
-
-        log(
-            f"原因：{exc}"
-        )
-
-        return 1
-
-
-# ============================================================
-# Entry
-# ============================================================
 
 if __name__ == "__main__":
-    sys.exit(
-        main()
-    )
+    main()
