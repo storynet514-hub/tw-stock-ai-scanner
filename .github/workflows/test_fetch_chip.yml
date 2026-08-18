@@ -1,4 +1,4 @@
-name: Test fetch_chip
+name: Test fetch_chip 2337 2426
 
 on:
   workflow_dispatch:
@@ -8,7 +8,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout
+      - name: Checkout repository
         uses: actions/checkout@v4
 
       - name: Setup Python
@@ -20,34 +20,174 @@ jobs:
         run: |
           pip install requests beautifulsoup4
 
-      - name: Run fetch_chip.py
+      - name: Create test universe
         run: |
-          python Scripts/fetch_chip.py
+          python - <<'PY'
+          import json
+          from pathlib import Path
 
-      - name: Show chip.json
+          path = Path("Data/universe.json")
+
+          with path.open("r", encoding="utf-8") as f:
+              data = json.load(f)
+
+          items = data.get("items", [])
+
+          targets = {"2337", "2426"}
+
+          selected = []
+
+          for item in items:
+              if not isinstance(item, dict):
+                  continue
+
+              code = item.get("code")
+
+              if code is None:
+                  code = item.get("symbol")
+
+              if code is None:
+                  continue
+
+              code = str(code).strip().upper()
+              code = code.replace(".TW", "")
+              code = code.replace(".TWO", "")
+
+              if code in targets:
+                  selected.append(item)
+
+          if len(selected) != 2:
+              raise RuntimeError(
+                  f"找不到完整測試股票："
+                  f"{[item.get('code', item.get('symbol')) for item in selected]}"
+              )
+
+          test_data = {
+              "items": selected
+          }
+
+          with path.open("w", encoding="utf-8") as f:
+              json.dump(
+                  test_data,
+                  f,
+                  ensure_ascii=False,
+                  indent=2
+              )
+
+          print("========================================")
+          print("小規模測試 Universe")
+          print("========================================")
+
+          for item in selected:
+              print(
+                  item.get("code", item.get("symbol")),
+                  item.get("name", "")
+              )
+
+          print()
+          print("測試股票數量:", len(selected))
+          PY
+
+      - name: Verify test universe
         run: |
           python - <<'PY'
           import json
 
-          with open("Data/chip.json", "r", encoding="utf-8") as f:
+          with open("Data/universe.json", "r", encoding="utf-8") as f:
               data = json.load(f)
+
+          items = data.get("items", [])
+
+          print("========================================")
+          print("確認 fetch_chip 測試 Universe")
+          print("========================================")
+
+          print("Universe 數量:", len(items))
+
+          for item in items:
+              print(
+                  item.get("code", item.get("symbol")),
+                  item.get("name", "")
+              )
+
+          if len(items) != 2:
+              raise RuntimeError(
+                  f"測試 Universe 異常，目前 {len(items)} 檔"
+              )
+          PY
+
+      - name: Run fetch_chip.py
+        run: |
+          python Scripts/fetch_chip.py
+
+      - name: Verify chip.json
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          path = Path("Data/chip.json")
+
+          if not path.exists():
+              raise RuntimeError("找不到 Data/chip.json")
+
+          with path.open("r", encoding="utf-8") as f:
+              data = json.load(f)
+
+          stocks = data.get("stocks", {})
+
+          print()
+          print("========================================")
+          print("chip.json 測試結果")
+          print("========================================")
 
           print("Universe:", data.get("universe_count"))
           print("Statistics:", data.get("statistics"))
 
-          stocks = data.get("stocks", {})
-
           for code in ["2337", "2426"]:
-              if code in stocks:
-                  s = stocks[code]
-                  print()
-                  print(code, s.get("name"))
-                  print("1D :", s.get("main_force_1d"))
-                  print("5D :", s.get("main_force_5d"))
-                  print("10D:", s.get("main_force_10d"))
-                  print("History:", s.get("history_count"))
-                  print("Status:", s.get("status"))
-              else:
-                  print()
-                  print(code, "NOT FOUND")
+
+              print()
+              print("----------------------------------------")
+              print(code)
+              print("----------------------------------------")
+
+              if code not in stocks:
+                  raise RuntimeError(
+                      f"{code} 沒有寫入 chip.json"
+                  )
+
+              stock = stocks[code]
+
+              print("名稱:", stock.get("name"))
+              print("1D :", stock.get("main_force_1d"))
+              print("5D :", stock.get("main_force_5d"))
+              print("10D:", stock.get("main_force_10d"))
+              print("歷史筆數:", stock.get("history_count"))
+              print("狀態:", stock.get("status"))
+
+              if stock.get("main_force_1d") is None:
+                  raise RuntimeError(
+                      f"{code} 1D 無資料"
+                  )
+
+              if stock.get("main_force_5d") is None:
+                  raise RuntimeError(
+                      f"{code} 5D 無資料"
+                  )
+
+              if stock.get("main_force_10d") is None:
+                  raise RuntimeError(
+                      f"{code} 10D 無資料"
+                  )
+
+              if stock.get("history_count", 0) < 10:
+                  raise RuntimeError(
+                      f"{code} 歷史資料不足10筆"
+                  )
+
+          print()
+          print("========================================")
+          print("✓ 2337 / 2426 小規模測試通過")
+          print("✓ 1D / 5D / 10D 均有資料")
+          print("========================================")
           PY
