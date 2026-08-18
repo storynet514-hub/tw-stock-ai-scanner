@@ -3,60 +3,32 @@
 
 """
 台股 AI 選股系統
-fetch_chip.py V3.0
+fetch_chip.py V3.1
 
-============================================================
-核心功能
-============================================================
+功能：
+1. 讀取 Data/universe.json
+2. 支援 build_universe.py 產生的：
+      2330.TW
+      2426.TW
+      7794.TWO
+3. 取得 CMoney 公開主力資料
+4. 計算：
+      主力 1 日
+      主力 5 日
+      主力 10 日
+5. 輸出 Data/chip.json
 
-取得台股全市場：
-
-1. 每日主力買賣超
-2. 主力 5 日買賣超
-3. 主力 10 日買賣超
-
-============================================================
-重要定義
-============================================================
-
-本程式的「主力」：
-
-不是三大法人。
-
-不是：
-
-- 外資
-- 投信
-- 自營商
-
-而是以公開券商分點資料所形成的「主力買賣超」數值。
-
-主力 5 日：
-最近 5 個交易日每日主力買賣超加總。
-
-主力 10 日：
-最近 10 個交易日每日主力買賣超加總。
+主力定義：
+券商分點主力買賣超，不是三大法人。
 
 單位：
 張。
 
 正數 = 主力買超
 負數 = 主力賣超
-
-============================================================
-資料來源
-============================================================
-
-CMoney 公開個股主力進出頁面。
-
-不使用 WantGoo。
-
-============================================================
-輸出
-============================================================
-
-Data/chip.json
 """
+
+from __future__ import annotations
 
 import json
 import re
@@ -73,7 +45,7 @@ from bs4 import BeautifulSoup
 # 基本設定
 # ============================================================
 
-VERSION = "V3.0"
+VERSION = "V3.1"
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -87,29 +59,35 @@ REQUEST_TIMEOUT = 30
 
 REQUEST_DELAY = 0.20
 
-# 每檔股票至少需要幾筆歷史資料
 MIN_HISTORY = 10
 
+
+# ============================================================
 # CMoney
+# ============================================================
+
 CMONEY_URL = (
     "https://www.cmoney.tw/forum/stock/"
     "{symbol}?s=main-force"
 )
 
-# 備援 mobile 頁面
 CMONEY_MOBILE_URL = (
     "https://mobile.cmoney.tw/forum/stock/"
     "{symbol}?s=main-force"
 )
 
-# User-Agent
+
+# ============================================================
+# HTTP
+# ============================================================
+
 HEADERS = {
     "User-Agent": (
         "Mozilla/5.0 "
         "(Windows NT 10.0; Win64; x64) "
         "AppleWebKit/537.36 "
         "(KHTML, like Gecko) "
-        "Chrome/120.0.0.0 Safari/537.36"
+        "Chrome/131.0 Safari/537.36"
     ),
     "Accept": (
         "text/html,application/xhtml+xml,"
@@ -140,6 +118,55 @@ def section(title):
 
 
 # ============================================================
+# Universe Symbol 正規化
+# ============================================================
+
+def normalize_symbol(value):
+
+    if value is None:
+        return ""
+
+    symbol = str(value).strip().upper()
+
+    if not symbol:
+        return ""
+
+    # --------------------------------------------------------
+    # build_universe.py 格式：
+    #
+    # 2330.TW
+    # 2426.TW
+    # 7794.TWO
+    #
+    # 轉成 CMoney 所需：
+    #
+    # 2330
+    # 2426
+    # 7794
+    # --------------------------------------------------------
+
+    match = re.fullmatch(
+        r"([0-9]{4,6})\.(TW|TWO)",
+        symbol
+    )
+
+    if match:
+        return match.group(1)
+
+    # --------------------------------------------------------
+    # 兼容純股票代號
+    # --------------------------------------------------------
+
+    if re.fullmatch(
+        r"[0-9]{4,6}",
+        symbol
+    ):
+        return symbol
+
+    return ""
+
+
+# ============================================================
 # 讀取 Universe
 # ============================================================
 
@@ -163,7 +190,8 @@ def load_universe():
     if not isinstance(data, dict):
 
         raise RuntimeError(
-            "universe.json 格式錯誤"
+            "universe.json 格式錯誤："
+            "頂層必須是 object"
         )
 
     items = data.get(
@@ -174,7 +202,8 @@ def load_universe():
     if not isinstance(items, list):
 
         raise RuntimeError(
-            "universe.json items 不是 list"
+            "universe.json items "
+            "不是 list"
         )
 
     stocks = []
@@ -186,44 +215,43 @@ def load_universe():
         if not isinstance(item, dict):
             continue
 
-        symbol = item.get(
-            "symbol"
+        raw_symbol = (
+            item.get("symbol")
+            or item.get("code")
+            or item.get("ticker")
         )
 
-        if symbol is None:
-            continue
+        symbol = normalize_symbol(
+            raw_symbol
+        )
 
-        symbol = str(
-            symbol
-        ).strip()
-
-        # 台股普通股票 4 碼
-        if not re.fullmatch(
-            r"\d{4}",
-            symbol
-        ):
+        if not symbol:
             continue
 
         if symbol in seen:
             continue
 
-        seen.add(symbol)
+        name = str(
+            item.get(
+                "name",
+                ""
+            )
+        ).strip()
+
+        market = str(
+            item.get(
+                "market",
+                ""
+            )
+        ).strip()
 
         stocks.append({
             "symbol": symbol,
-            "name": str(
-                item.get(
-                    "name",
-                    ""
-                )
-            ).strip(),
-            "market": str(
-                item.get(
-                    "market",
-                    ""
-                )
-            ).strip(),
+            "name": name,
+            "market": market,
         })
+
+        seen.add(symbol)
 
     if not stocks:
 
@@ -235,6 +263,17 @@ def load_universe():
         f"Universe 股票數量："
         f"{len(stocks)}"
     )
+
+    # 顯示前幾檔確認格式
+    log("Universe 前 5 檔：")
+
+    for stock in stocks[:5]:
+
+        log(
+            f"  {stock['symbol']} "
+            f"{stock['name']} "
+            f"{stock['market']}"
+        )
 
     return stocks
 
@@ -253,30 +292,27 @@ def parse_number(text):
     if not text:
         return None
 
-    # 移除千分位
     text = text.replace(
         ",",
         ""
     )
 
-    # 移除 %
     text = text.replace(
         "%",
         ""
     )
 
-    # 處理中文 N/A
-    if text.upper() in [
+    if text.upper() in {
         "N/A",
         "NA",
         "-",
         "--",
         "－",
-        "—"
-    ]:
+        "—",
+        "無",
+    }:
         return None
 
-    # 保留負號、小數
     match = re.search(
         r"-?\d+(?:\.\d+)?",
         text
@@ -330,10 +366,8 @@ def request_page(
 
             text = response.text
 
-            if not text:
-                continue
-
-            return text
+            if text:
+                return text
 
         except Exception as exc:
 
@@ -349,6 +383,50 @@ def request_page(
 
 
 # ============================================================
+# 日期判斷
+# ============================================================
+
+def parse_date_text(value):
+
+    if not value:
+        return None
+
+    value = str(value).strip()
+
+    patterns = [
+        r"\d{4}/\d{1,2}/\d{1,2}",
+        r"\d{4}-\d{1,2}-\d{1,2}",
+    ]
+
+    for pattern in patterns:
+
+        match = re.fullmatch(
+            pattern,
+            value
+        )
+
+        if match:
+
+            normalized = value.replace(
+                "-",
+                "/"
+            )
+
+            try:
+
+                return datetime.strptime(
+                    normalized,
+                    "%Y/%m/%d"
+                )
+
+            except Exception:
+
+                return None
+
+    return None
+
+
+# ============================================================
 # 解析主力歷史資料
 # ============================================================
 
@@ -361,9 +439,9 @@ def parse_main_force_table(html):
 
     rows = []
 
-    # --------------------------------------------------------
-    # 找所有 table
-    # --------------------------------------------------------
+    # ========================================================
+    # 1. Table
+    # ========================================================
 
     tables = soup.find_all(
         "table"
@@ -374,9 +452,6 @@ def parse_main_force_table(html):
         tr_list = table.find_all(
             "tr"
         )
-
-        if not tr_list:
-            continue
 
         for tr in tr_list:
 
@@ -401,39 +476,21 @@ def parse_main_force_table(html):
             if len(values) < 3:
                 continue
 
-            # ------------------------------------------------
-            # 找日期
-            # ------------------------------------------------
-
             date_index = None
 
             for i, value in enumerate(
                 values
             ):
 
-                if re.fullmatch(
-                    r"\d{4}/\d{1,2}/\d{1,2}",
+                if parse_date_text(
                     value
-                ):
-
-                    date_index = i
-                    break
-
-                if re.fullmatch(
-                    r"\d{4}-\d{1,2}-\d{1,2}",
-                    value
-                ):
+                ) is not None:
 
                     date_index = i
                     break
 
             if date_index is None:
                 continue
-
-            # ------------------------------------------------
-            # 日期後第一個數字通常就是
-            # 主力買賣超
-            # ------------------------------------------------
 
             force_value = None
 
@@ -442,16 +499,13 @@ def parse_main_force_table(html):
                 len(values)
             ):
 
-                candidate = values[i]
-
                 number = parse_number(
-                    candidate
+                    values[i]
                 )
 
                 if number is not None:
 
                     force_value = number
-
                     break
 
             if force_value is None:
@@ -459,9 +513,7 @@ def parse_main_force_table(html):
 
             date_text = values[
                 date_index
-            ]
-
-            date_text = date_text.replace(
+            ].replace(
                 "-",
                 "/"
             )
@@ -471,10 +523,9 @@ def parse_main_force_table(html):
                 "main_force": force_value
             })
 
-    # --------------------------------------------------------
-    # 如果 table 沒抓到
-    # 嘗試整頁文字解析
-    # --------------------------------------------------------
+    # ========================================================
+    # 2. 整頁文字備援
+    # ========================================================
 
     if not rows:
 
@@ -493,13 +544,12 @@ def parse_main_force_table(html):
             lines
         ):
 
-            if not re.fullmatch(
-                r"\d{4}/\d{1,2}/\d{1,2}",
+            if parse_date_text(
                 line
-            ):
+            ) is None:
+
                 continue
 
-            # 往後找數字
             force_value = None
 
             for j in range(
@@ -517,32 +567,42 @@ def parse_main_force_table(html):
                 if number is not None:
 
                     force_value = number
-
                     break
 
             if force_value is None:
                 continue
 
             rows.append({
-                "date": line,
+                "date": line.replace(
+                    "-",
+                    "/"
+                ),
                 "main_force": force_value
             })
 
-    # --------------------------------------------------------
-    # 去除重複日期
-    # --------------------------------------------------------
+    # ========================================================
+    # 3. 去除重複
+    # ========================================================
 
     unique = {}
 
     for row in rows:
 
-        date = row[
+        date = row.get(
             "date"
-        ]
+        )
 
-        unique[date] = row[
+        value = row.get(
             "main_force"
-        ]
+        )
+
+        if not date:
+            continue
+
+        if value is None:
+            continue
+
+        unique[date] = value
 
     result = []
 
@@ -553,12 +613,14 @@ def parse_main_force_table(html):
             "main_force": value
         })
 
-    # 日期由新到舊
+    # ========================================================
+    # 4. 新 → 舊
+    # ========================================================
+
     result.sort(
-        key=lambda x: datetime.strptime(
-            x["date"],
-            "%Y/%m/%d"
-        ),
+        key=lambda x: parse_date_text(
+            x["date"]
+        ) or datetime.min,
         reverse=True
     )
 
@@ -566,7 +628,7 @@ def parse_main_force_table(html):
 
 
 # ============================================================
-# 取得單一股票
+# 單一股票
 # ============================================================
 
 def fetch_stock(
@@ -597,7 +659,7 @@ def fetch_stock(
 
 
 # ============================================================
-# 計算 5 / 10 日
+# 計算 1 / 5 / 10 日
 # ============================================================
 
 def calculate_periods(
@@ -616,9 +678,7 @@ def calculate_periods(
         "main_force_1d": None,
         "main_force_5d": None,
         "main_force_10d": None,
-        "history_count": len(
-            values
-        ),
+        "history_count": len(values),
     }
 
     if len(values) >= 1:
@@ -626,9 +686,7 @@ def calculate_periods(
         result[
             "main_force_1d"
         ] = round(
-            sum(
-                values[:1]
-            ),
+            sum(values[:1]),
             2
         )
 
@@ -637,9 +695,7 @@ def calculate_periods(
         result[
             "main_force_5d"
         ] = round(
-            sum(
-                values[:5]
-            ),
+            sum(values[:5]),
             2
         )
 
@@ -648,9 +704,7 @@ def calculate_periods(
         result[
             "main_force_10d"
         ] = round(
-            sum(
-                values[:10]
-            ),
+            sum(values[:10]),
             2
         )
 
@@ -658,7 +712,7 @@ def calculate_periods(
 
 
 # ============================================================
-# 判斷資料狀態
+# Status
 # ============================================================
 
 def get_status(data):
@@ -671,19 +725,23 @@ def get_status(data):
         "main_force_10d"
     )
 
-    if d5 is not None and d10 is not None:
-
+    if (
+        d5 is not None
+        and d10 is not None
+    ):
         return "complete"
 
-    if d5 is not None or d10 is not None:
-
+    if (
+        d5 is not None
+        or d10 is not None
+    ):
         return "partial"
 
     return "insufficient"
 
 
 # ============================================================
-# 主力資料抓取
+# 全市場抓取
 # ============================================================
 
 def fetch_all(stocks):
@@ -756,7 +814,6 @@ def fetch_all(stocks):
                 periods
             )
 
-            # 只保留最近 10 筆
             record[
                 "history"
             ] = history[:10]
@@ -780,22 +837,19 @@ def fetch_all(stocks):
             else:
                 insufficient += 1
 
-            d5 = record[
-                "main_force_5d"
-            ]
-
-            d10 = record[
-                "main_force_10d"
-            ]
-
             log(
-                f"   主力5日："
-                f"{d5 if d5 is not None else 'N/A'}"
+                "   主力1日："
+                f"{record['main_force_1d']}"
             )
 
             log(
-                f"   主力10日："
-                f"{d10 if d10 is not None else 'N/A'}"
+                "   主力5日："
+                f"{record['main_force_5d']}"
+            )
+
+            log(
+                "   主力10日："
+                f"{record['main_force_10d']}"
             )
 
             if status != "complete":
@@ -814,18 +868,6 @@ def fetch_all(stocks):
 
             log(
                 f"   ⚠️ 取得失敗：{exc}"
-            )
-
-            log(
-                "   主力5日：N/A"
-            )
-
-            log(
-                "   主力10日：N/A"
-            )
-
-            log(
-                "   ⚠️ 籌碼資料不足"
             )
 
         results[
@@ -874,10 +916,6 @@ def validate(
         f"不足：{insufficient}"
     )
 
-    log(
-        f"主力5/10日完整：{complete}"
-    )
-
     if not results:
 
         raise RuntimeError(
@@ -909,15 +947,11 @@ def validate(
         f"主力10日有效：{valid_10d}"
     )
 
-    # 至少 5 日資料必須存在
     if valid_5d == 0:
 
         raise RuntimeError(
-            "本次完全沒有取得有效主力5日資料。"
+            "本次完全沒有取得有效主力5日資料"
         )
-
-    # 不要求 100% 成功
-    # 避免單一來源短暫異常導致資料完全中斷
 
     log(
         "✓ 籌碼資料驗證通過"
@@ -925,7 +959,7 @@ def validate(
 
 
 # ============================================================
-# 儲存 chip.json
+# 寫入 chip.json
 # ============================================================
 
 def save_chip(
@@ -998,7 +1032,7 @@ def save_chip(
     )
 
     log(
-        f"✓ chip.json 建立成功"
+        "✓ chip.json 建立成功"
     )
 
     log(
@@ -1012,7 +1046,7 @@ def save_chip(
 
 
 # ============================================================
-# 主程式
+# Main
 # ============================================================
 
 def main():
@@ -1036,15 +1070,7 @@ def main():
 
     try:
 
-        # ----------------------------------------------------
-        # 1. Universe
-        # ----------------------------------------------------
-
         stocks = load_universe()
-
-        # ----------------------------------------------------
-        # 2. 抓主力
-        # ----------------------------------------------------
 
         (
             results,
@@ -1055,10 +1081,6 @@ def main():
             stocks
         )
 
-        # ----------------------------------------------------
-        # 3. 驗證
-        # ----------------------------------------------------
-
         validate(
             results,
             len(stocks),
@@ -1066,10 +1088,6 @@ def main():
             partial,
             insufficient
         )
-
-        # ----------------------------------------------------
-        # 4. 寫檔
-        # ----------------------------------------------------
 
         save_chip(
             results,
