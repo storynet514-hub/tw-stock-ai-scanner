@@ -1,6 +1,6 @@
 {
   "schema_version": "V3.1",
-  "generated_at": "2026-08-18 10:30:50",
+  "generated_at": "2026-08-18 11:36:51",
   "data_date": "2026-08-18",
   "source": "CMoney",
   "definition": {
@@ -23701,16 +23701,12 @@
       "name": "",
       "market": "TPEx",
       "source": "CMoney",
-      "main_force_1d": 98.8,
-      "main_force_5d": 498.5,
-      "main_force_10d": 994.9,
+      "main_force_1d": 99.0,
+      "main_force_5d": 499.2,
+      "main_force_10d": 995.0,
       "history_count": 10,
       "status": "complete",
       "history": [
-        {
-          "date": "2026/08/18",
-          "main_force": 98.8
-        },
         {
           "date": "2026/08/17",
           "main_force": 99.0
@@ -23745,6 +23741,10 @@
         },
         {
           "date": "2026/08/05",
+          "main_force": 98.9
+        },
+        {
+          "date": "2026/08/04",
           "main_force": 98.9
         }
       ],
@@ -23917,16 +23917,12 @@
       "name": "",
       "market": "TPEx",
       "source": "CMoney",
-      "main_force_1d": 12.45,
-      "main_force_5d": 64.6,
-      "main_force_10d": 131.5,
+      "main_force_1d": 12.6,
+      "main_force_5d": 65.5,
+      "main_force_10d": 132.2,
       "history_count": 10,
       "status": "complete",
       "history": [
-        {
-          "date": "2026/08/18",
-          "main_force": 12.45
-        },
         {
           "date": "2026/08/17",
           "main_force": 12.6
@@ -23962,6 +23958,10 @@
         {
           "date": "2026/08/05",
           "main_force": 13.4
+        },
+        {
+          "date": "2026/08/04",
+          "main_force": 13.15
         }
       ],
       "error": null
