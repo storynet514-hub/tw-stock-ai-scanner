@@ -3,17 +3,18 @@
 
 """
 台股 AI 選股系統
-fetch_chip.py V4.0
+fetch_chip.py V4.1
 
 ============================================================
 核心功能
 ============================================================
 
-取得台股全市場：
+取得台股 Universe：
 
 1. 每日主力買賣超
 2. 主力 5 日買賣超
 3. 主力 10 日買賣超
+4. 主力 20 日買賣超
 
 ============================================================
 重要定義
@@ -45,6 +46,9 @@ fetch_chip.py V4.0
 主力 10 日：
 最近 10 個交易日每日主力買賣超加總。
 
+主力 20 日：
+最近 20 個交易日每日主力買賣超加總。
+
 ============================================================
 資料來源
 ============================================================
@@ -52,26 +56,20 @@ fetch_chip.py V4.0
 CMoney 公開個股主力進出頁面。
 
 ============================================================
-重要修正 V4.0
+CMoney Parser
 ============================================================
-
-V3.0 的解析方式：
-
-日期後第一個數字 = 主力買賣超
-
-這個假設錯誤。
 
 CMoney 實際表格：
 
 日期 | 收盤價 | 買賣超 | 家數差 | 5日集中 | 20日集中
 
-因此 V4.0：
+本版本維持已驗證成功的 Parser：
 
 1. 優先讀取 table header
 2. 找到「買賣超」欄位
 3. 依欄位位置取得真正的主力買賣超
-4. 不再把收盤價當成主力買賣超
-5. 若找不到明確 header，不使用猜測方式
+4. 不把收盤價當成主力買賣超
+5. 若找不到明確 header，不使用模糊猜測
 6. 降級使用嚴格文字結構解析
 7. 若仍無法確認，該股票標記失敗
 
@@ -80,7 +78,18 @@ CMoney 實際表格：
 ============================================================
 
 Data/chip.json
+
+包含：
+
+main_force_1d
+main_force_5d
+main_force_10d
+main_force_20d
+
+history：
+最近 20 個交易日主力買賣超
 """
+
 
 from __future__ import annotations
 
@@ -99,7 +108,7 @@ from bs4 import BeautifulSoup
 # 基本設定
 # ============================================================
 
-VERSION = "V4.0"
+VERSION = "V4.1"
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -113,22 +122,32 @@ REQUEST_TIMEOUT = 30
 
 REQUEST_DELAY = 0.20
 
-# 每檔股票至少需要幾筆歷史資料
-MIN_HISTORY = 10
+# ------------------------------------------------------------
+# 最少需要 20 個交易日
+# ------------------------------------------------------------
 
+MIN_HISTORY = 20
+
+
+# ============================================================
 # CMoney
+# ============================================================
+
 CMONEY_URL = (
     "https://www.cmoney.tw/forum/stock/"
     "{symbol}?s=main-force"
 )
 
-# 備援 mobile
 CMONEY_MOBILE_URL = (
     "https://mobile.cmoney.tw/forum/stock/"
     "{symbol}?s=main-force"
 )
 
+
+# ============================================================
 # User-Agent
+# ============================================================
+
 HEADERS = {
     "User-Agent": (
         "Mozilla/5.0 "
@@ -171,7 +190,7 @@ def section(title):
 
 def load_universe():
 
-    section("讀取台股全市場 Universe")
+    section("讀取台股 Universe")
 
     if not UNIVERSE_FILE.exists():
 
@@ -224,13 +243,7 @@ def load_universe():
         symbol = str(symbol).strip()
 
         # ----------------------------------------------------
-        # symbol 可能是：
-        #
-        # 2337
-        # 2337.TW
-        # 2337.TWO
-        #
-        # CMoney 只需要 4~6 碼代號
+        # CMoney 只需要代號
         # ----------------------------------------------------
 
         symbol = symbol.upper()
@@ -290,24 +303,9 @@ def parse_number(text):
     if not text:
         return None
 
-    # --------------------------------------------------------
-    # 中文/空白/符號
-    # --------------------------------------------------------
-
-    text = text.replace(
-        ",",
-        ""
-    )
-
-    text = text.replace(
-        "張",
-        ""
-    )
-
-    text = text.replace(
-        "%",
-        ""
-    )
+    text = text.replace(",", "")
+    text = text.replace("張", "")
+    text = text.replace("%", "")
 
     if text.upper() in {
         "N/A",
@@ -321,10 +319,6 @@ def parse_number(text):
         "無",
     }:
         return None
-
-    # --------------------------------------------------------
-    # 數字
-    # --------------------------------------------------------
 
     match = re.search(
         r"[-+]?\d+(?:\.\d+)?",
@@ -418,11 +412,9 @@ def is_main_force_header(text):
 
     header = normalize_header(text)
 
-    # 精確優先
     if header == "買賣超":
         return True
 
-    # CMoney 可能存在變體
     if (
         "買賣超" in header
         and "家數" not in header
@@ -434,7 +426,7 @@ def is_main_force_header(text):
 
 
 # ============================================================
-# 取得網頁
+# 取得 CMoney 網頁
 # ============================================================
 
 def request_page(
@@ -486,7 +478,7 @@ def request_page(
 
 
 # ============================================================
-# 解析 Table
+# Table Header Parser
 #
 # 正確結構：
 #
@@ -512,7 +504,7 @@ def parse_table_with_header(
             continue
 
         # ----------------------------------------------------
-        # 找 header
+        # 找 Header
         # ----------------------------------------------------
 
         header_row = None
@@ -571,7 +563,7 @@ def parse_table_with_header(
         ]
 
         # ----------------------------------------------------
-        # 找欄位
+        # 找日期與買賣超欄位
         # ----------------------------------------------------
 
         date_index = -1
@@ -677,12 +669,8 @@ def parse_table_with_header(
 # ============================================================
 # 嚴格文字備援
 #
-# 只有在 HTML table 無法直接解析時使用。
+# 結構：
 #
-# 不再使用：
-# 「日期後第一個數字」
-#
-# 而是使用：
 # 日期 → 收盤價 → 買賣超
 #
 # ============================================================
@@ -715,15 +703,6 @@ def parse_text_fallback(
         if not date_text:
             continue
 
-        # ----------------------------------------------------
-        # 日期後尋找：
-        #
-        # 第一個數字 = 收盤價
-        # 第二個數字 = 買賣超
-        #
-        # 並且最多只搜尋 6 行
-        # ----------------------------------------------------
-
         numeric_values = []
 
         for j in range(
@@ -750,7 +729,7 @@ def parse_text_fallback(
         if len(numeric_values) < 2:
             continue
 
-        # 第二個數字才是買賣超
+        # 第二個數字 = 買賣超
         force_value = numeric_values[1]
 
         result.append({
@@ -762,7 +741,7 @@ def parse_text_fallback(
 
 
 # ============================================================
-# 解析主力歷史資料
+# 主力歷史資料
 # ============================================================
 
 def parse_main_force_table(
@@ -775,8 +754,7 @@ def parse_main_force_table(
     )
 
     # --------------------------------------------------------
-    # 第一優先：
-    # 明確 Header 定位
+    # 第一優先：明確 Header
     # --------------------------------------------------------
 
     rows = parse_table_with_header(
@@ -790,8 +768,7 @@ def parse_main_force_table(
         )
 
     # --------------------------------------------------------
-    # 第二優先：
-    # 嚴格文字結構
+    # 第二優先：嚴格文字結構
     # --------------------------------------------------------
 
     rows = parse_text_fallback(
@@ -900,7 +877,7 @@ def fetch_stock(
 
 
 # ============================================================
-# 計算 1 / 5 / 10 日
+# 計算 1 / 5 / 10 / 20 日
 # ============================================================
 
 def calculate_periods(
@@ -919,10 +896,15 @@ def calculate_periods(
         "main_force_1d": None,
         "main_force_5d": None,
         "main_force_10d": None,
+        "main_force_20d": None,
         "history_count": len(
             values
         ),
     }
+
+    # --------------------------------------------------------
+    # 1D
+    # --------------------------------------------------------
 
     if len(values) >= 1:
 
@@ -933,6 +915,10 @@ def calculate_periods(
             2
         )
 
+    # --------------------------------------------------------
+    # 5D
+    # --------------------------------------------------------
+
     if len(values) >= 5:
 
         result[
@@ -942,12 +928,29 @@ def calculate_periods(
             2
         )
 
+    # --------------------------------------------------------
+    # 10D
+    # --------------------------------------------------------
+
     if len(values) >= 10:
 
         result[
             "main_force_10d"
         ] = round(
             sum(values[:10]),
+            2
+        )
+
+    # --------------------------------------------------------
+    # 20D
+    # --------------------------------------------------------
+
+    if len(values) >= 20:
+
+        result[
+            "main_force_20d"
+        ] = round(
+            sum(values[:20]),
             2
         )
 
@@ -970,9 +973,18 @@ def get_status(
         "main_force_10d"
     )
 
+    d20 = data.get(
+        "main_force_20d"
+    )
+
+    # --------------------------------------------------------
+    # 20D 完整才算 complete
+    # --------------------------------------------------------
+
     if (
         d5 is not None
         and d10 is not None
+        and d20 is not None
     ):
 
         return "complete"
@@ -980,6 +992,7 @@ def get_status(
     if (
         d5 is not None
         or d10 is not None
+        or d20 is not None
     ):
 
         return "partial"
@@ -988,7 +1001,7 @@ def get_status(
 
 
 # ============================================================
-# 全市場
+# 全市場 / Universe
 # ============================================================
 
 def fetch_all(
@@ -1041,12 +1054,18 @@ def fetch_all(
                 "market"
             ],
             "source": "CMoney",
+
             "main_force_1d": None,
             "main_force_5d": None,
             "main_force_10d": None,
+            "main_force_20d": None,
+
             "history_count": 0,
+
             "status": "insufficient",
+
             "history": [],
+
             "error": None,
         }
 
@@ -1066,12 +1085,12 @@ def fetch_all(
             )
 
             # ------------------------------------------------
-            # 只保留最近 10 個交易日
+            # 這裡改成保留最近 20 個交易日
             # ------------------------------------------------
 
             record[
                 "history"
-            ] = history[:10]
+            ] = history[:20]
 
             record[
                 "status"
@@ -1095,6 +1114,10 @@ def fetch_all(
 
                 insufficient += 1
 
+            # ------------------------------------------------
+            # 顯示
+            # ------------------------------------------------
+
             log(
                 f"   主力1日："
                 f"{record['main_force_1d']}"
@@ -1110,10 +1133,20 @@ def fetch_all(
                 f"{record['main_force_10d']}"
             )
 
+            log(
+                f"   主力20日："
+                f"{record['main_force_20d']}"
+            )
+
+            log(
+                f"   歷史筆數："
+                f"{record['history_count']}"
+            )
+
             if status != "complete":
 
                 log(
-                    "   ⚠️ 籌碼資料不足"
+                    "   ⚠️ 籌碼資料不足 20 日"
                 )
 
         except Exception as exc:
@@ -1138,6 +1171,10 @@ def fetch_all(
 
             log(
                 "   主力10日：N/A"
+            )
+
+            log(
+                "   主力20日：N/A"
             )
 
         results[
@@ -1191,6 +1228,7 @@ def validate(
     valid_1d = 0
     valid_5d = 0
     valid_10d = 0
+    valid_20d = 0
 
     for record in results.values():
 
@@ -1212,6 +1250,12 @@ def validate(
 
             valid_10d += 1
 
+        if record.get(
+            "main_force_20d"
+        ) is not None:
+
+            valid_20d += 1
+
     log(
         f"主力1日有效：{valid_1d}"
     )
@@ -1224,22 +1268,24 @@ def validate(
         f"主力10日有效：{valid_10d}"
     )
 
+    log(
+        f"主力20日有效：{valid_20d}"
+    )
+
     if not results:
 
         raise RuntimeError(
             "沒有任何股票資料"
         )
 
-    if valid_5d == 0:
+    # --------------------------------------------------------
+    # 20D 是本版本必要條件
+    # --------------------------------------------------------
+
+    if valid_20d == 0:
 
         raise RuntimeError(
-            "本次完全沒有取得有效主力5日資料"
-        )
-
-    if valid_10d == 0:
-
-        raise RuntimeError(
-            "本次完全沒有取得有效主力10日資料"
+            "本次完全沒有取得有效主力20日資料"
         )
 
     log(
@@ -1272,33 +1318,53 @@ def save_chip(
 
     output = {
         "schema_version": VERSION,
+
         "generated_at": now.strftime(
             "%Y-%m-%d %H:%M:%S"
         ),
+
         "data_date": now.strftime(
             "%Y-%m-%d"
         ),
+
         "source": "CMoney",
+
         "definition": {
+
             "main_force": (
                 "CMoney 主力進出之買賣超"
             ),
+
             "main_force_5d": (
                 "最近5個交易日主力買賣超加總"
             ),
+
             "main_force_10d": (
                 "最近10個交易日主力買賣超加總"
             ),
+
+            "main_force_20d": (
+                "最近20個交易日主力買賣超加總"
+            ),
+
             "unit": "張",
+
             "positive": "主力買超",
+
             "negative": "主力賣超",
         },
+
         "universe_count": total,
+
         "statistics": {
+
             "complete": complete,
+
             "partial": partial,
+
             "insufficient": insufficient,
         },
+
         "stocks": results,
     }
 
@@ -1359,6 +1425,34 @@ def save_chip(
             "chip.json 股票數量驗證失敗"
         )
 
+    # --------------------------------------------------------
+    # 確認 20D 欄位存在
+    # --------------------------------------------------------
+
+    for symbol, record in verify_stocks.items():
+
+        if (
+            record.get(
+                "main_force_20d"
+            ) is None
+        ):
+
+            raise RuntimeError(
+                f"{symbol} 缺少 main_force_20d"
+            )
+
+        history = record.get(
+            "history",
+            []
+        )
+
+        if len(history) < MIN_HISTORY:
+
+            raise RuntimeError(
+                f"{symbol} history 不足 "
+                f"{MIN_HISTORY} 筆"
+            )
+
     temp_file.replace(
         CHIP_FILE
     )
@@ -1411,61 +1505,54 @@ def main():
         # ----------------------------------------------------
 
         stocks = load_universe()
+
         # ----------------------------------------------------
-
-        # DEBUG：確認 2337 / 2426 是否進入 Chip Universe
-
+        # DEBUG
+        # 確認指定股票是否進入 Chip Universe
         # ----------------------------------------------------
 
         log("")
-
+        log("=" * 64)
+        log(
+            "DEBUG：檢查指定股票是否進入 fetch_chip Universe"
+        )
         log("=" * 64)
 
-        log("DEBUG：檢查指定股票是否進入 fetch_chip Universe")
-
-        log("=" * 64)
-
-        for target in ["2337", "2426"]:
+        for target in [
+            "2337",
+            "2426"
+        ]:
 
             matches = [
-
                 stock
-
                 for stock in stocks
-
-                if stock.get("symbol") == target
-
+                if stock.get(
+                    "symbol"
+                ) == target
             ]
 
             if matches:
 
                 log(
-
                     f"✓ {target} 已進入 Chip Universe"
-
                 )
 
                 for stock in matches:
 
                     log(
-
                         f"  symbol={stock.get('symbol')}, "
-
                         f"name={stock.get('name')}, "
-
                         f"market={stock.get('market')}"
-
                     )
 
             else:
 
                 log(
-
                     f"❌ {target} 不在 Chip Universe"
-
                 )
 
         log("")
+
         # ----------------------------------------------------
         # 2. CMoney
         # ----------------------------------------------------
