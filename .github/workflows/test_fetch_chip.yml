@@ -1,0 +1,53 @@
+name: Test fetch_chip
+
+on:
+  workflow_dispatch:
+
+jobs:
+  test-fetch-chip:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          pip install requests beautifulsoup4
+
+      - name: Run fetch_chip.py
+        run: |
+          python Scripts/fetch_chip.py
+
+      - name: Show chip.json
+        run: |
+          python - <<'PY'
+          import json
+
+          with open("Data/chip.json", "r", encoding="utf-8") as f:
+              data = json.load(f)
+
+          print("Universe:", data.get("universe_count"))
+          print("Statistics:", data.get("statistics"))
+
+          stocks = data.get("stocks", {})
+
+          for code in ["2337", "2426"]:
+              if code in stocks:
+                  s = stocks[code]
+                  print()
+                  print(code, s.get("name"))
+                  print("1D :", s.get("main_force_1d"))
+                  print("5D :", s.get("main_force_5d"))
+                  print("10D:", s.get("main_force_10d"))
+                  print("History:", s.get("history_count"))
+                  print("Status:", s.get("status"))
+              else:
+                  print()
+                  print(code, "NOT FOUND")
+          PY
