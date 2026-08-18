@@ -1,4 +1,4 @@
-name: Debug Universe
+name: Debug CMoney
 
 on:
   workflow_dispatch:
@@ -16,6 +16,10 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Run debug_universe.py
+      - name: Install dependencies
         run: |
-          python Scripts/debug_universe.py
+          pip install requests beautifulsoup4
+
+      - name: Run CMoney Debug
+        run: |
+          python Scripts/debug_cmoney.py
