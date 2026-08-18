@@ -1411,7 +1411,61 @@ def main():
         # ----------------------------------------------------
 
         stocks = load_universe()
+        # ----------------------------------------------------
 
+        # DEBUG：確認 2337 / 2426 是否進入 Chip Universe
+
+        # ----------------------------------------------------
+
+        log("")
+
+        log("=" * 64)
+
+        log("DEBUG：檢查指定股票是否進入 fetch_chip Universe")
+
+        log("=" * 64)
+
+        for target in ["2337", "2426"]:
+
+            matches = [
+
+                stock
+
+                for stock in stocks
+
+                if stock.get("symbol") == target
+
+            ]
+
+            if matches:
+
+                log(
+
+                    f"✓ {target} 已進入 Chip Universe"
+
+                )
+
+                for stock in matches:
+
+                    log(
+
+                        f"  symbol={stock.get('symbol')}, "
+
+                        f"name={stock.get('name')}, "
+
+                        f"market={stock.get('market')}"
+
+                    )
+
+            else:
+
+                log(
+
+                    f"❌ {target} 不在 Chip Universe"
+
+                )
+
+        log("")
         # ----------------------------------------------------
         # 2. CMoney
         # ----------------------------------------------------
