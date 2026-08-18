@@ -1,944 +1,620 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-
-"""
-台股 AI 選股系統
-test_cmoney_20d.py
-
-用途：
-    探測 CMoney 主力進出頁面是否存在：
-    1. 超過 10 日的歷史資料
-    2. 20 日主力買賣超資料
-    3. 20 日統計相關 JSON / API / JavaScript 線索
+name: Test fetch_chip 4 Stocks
 
-注意：
-    本程式是獨立測試工具。
+on:
+  workflow_dispatch:
 
-    不修改：
-    - index.html
-    - fetch_chip.py
-    - chip.json
+jobs:
+  test-fetch-chip:
+    runs-on: ubuntu-latest
 
-只測試 4 檔：
-    3081
-    2337
-    2368
-    2426
+    steps:
 
-輸出：
-    - console
-    - Data/test_cmoney_20d.json
-"""
+      # ======================================================
+      # 1. Checkout
+      # ======================================================
 
-from __future__ import annotations
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-import json
-import re
-import sys
-import time
-from datetime import datetime
-from pathlib import Path
 
-import requests
-from bs4 import BeautifulSoup
+      # ======================================================
+      # 2. Python
+      # ======================================================
 
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
 
-# ============================================================
-# 基本設定
-# ============================================================
 
-VERSION = "TEST-20D-V1.0"
+      # ======================================================
+      # 3. 安裝套件
+      # ======================================================
 
-BASE_DIR = Path(__file__).resolve().parent.parent
-DATA_DIR = BASE_DIR / "Data"
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install requests beautifulsoup4
 
-OUTPUT_FILE = DATA_DIR / "test_cmoney_20d.json"
 
-TEST_SYMBOLS = [
-    "3081",
-    "2337",
-    "2368",
-    "2426",
-]
+      # ======================================================
+      # 4. 建立 4 檔測試 Universe
+      #
+      # 不修改 GitHub 正式 Universe
+      #
+      # 只在 Action 執行環境中暫時建立：
+      #
+      # 2337 旺宏
+      # 2426 鼎元
+      # 3081 聯亞
+      # 2368 金像電
+      # ======================================================
 
-REQUEST_TIMEOUT = 30
-REQUEST_DELAY = 0.5
+      - name: Create 4-stock test universe
+        run: |
 
-CMONEY_URLS = [
-    "https://www.cmoney.tw/forum/stock/{symbol}?s=main-force",
-    "https://mobile.cmoney.tw/forum/stock/{symbol}?s=main-force",
-]
+          python - <<'PY'
 
-HEADERS = {
-    "User-Agent": (
-        "Mozilla/5.0 "
-        "(Windows NT 10.0; Win64; x64) "
-        "AppleWebKit/537.36 "
-        "(KHTML, like Gecko) "
-        "Chrome/131.0 Safari/537.36"
-    ),
-    "Accept": (
-        "text/html,application/xhtml+xml,"
-        "application/xml;q=0.9,image/avif,"
-        "image/webp,*/*;q=0.8"
-    ),
-    "Accept-Language": "zh-TW,zh;q=0.9,en;q=0.8",
-}
+          import json
+          from pathlib import Path
 
 
-# ============================================================
-# Log
-# ============================================================
+          UNIVERSE_FILE = Path("Data/universe.json")
 
-def log(message=""):
-    print(message, flush=True)
 
+          TARGETS = {
+              "2337",
+              "2426",
+              "3081",
+              "2368",
+          }
 
-def section(title):
 
-    log("")
-    log("=" * 72)
-    log(title)
-    log("=" * 72)
+          print("=" * 64)
+          print("建立 4 檔測試 Universe")
+          print("=" * 64)
 
 
-# ============================================================
-# 取得頁面
-# ============================================================
+          if not UNIVERSE_FILE.exists():
 
-def request_page(session, symbol):
+              raise RuntimeError(
+                  "找不到 Data/universe.json"
+              )
 
-    errors = []
 
-    for template in CMONEY_URLS:
+          with UNIVERSE_FILE.open(
+              "r",
+              encoding="utf-8"
+          ) as f:
 
-        url = template.format(
-            symbol=symbol
-        )
+              original = json.load(f)
 
-        try:
 
-            response = session.get(
-                url,
-                headers=HEADERS,
-                timeout=REQUEST_TIMEOUT
-            )
+          items = original.get(
+              "items",
+              []
+          )
 
-            response.raise_for_status()
 
-            html = response.text
+          if not isinstance(
+              items,
+              list
+          ):
 
-            if html:
+              raise RuntimeError(
+                  "universe.json items 不是 list"
+              )
 
-                return {
-                    "url": url,
-                    "status_code": response.status_code,
-                    "html": html,
-                }
 
-        except Exception as exc:
+          selected = []
 
-            errors.append(
-                f"{url}: {exc}"
-            )
 
-    raise RuntimeError(
-        "；".join(errors)
-    )
+          for item in items:
 
+              if not isinstance(
+                  item,
+                  dict
+              ):
+                  continue
 
-# ============================================================
-# 正規化
-# ============================================================
 
-def normalize(text):
+              code = item.get("code")
 
-    if text is None:
-        return ""
 
-    return (
-        str(text)
-        .replace("\n", "")
-        .replace("\r", "")
-        .replace("\t", "")
-        .replace(" ", "")
-        .replace("\u3000", "")
-        .strip()
-    )
+              if code is None:
 
+                  code = item.get(
+                      "symbol"
+                  )
 
-# ============================================================
-# 日期
-# ============================================================
 
-DATE_RE = re.compile(
-    r"(20\d{2})[/-](\d{1,2})[/-](\d{1,2})"
-)
+              if code is None:
 
+                  continue
 
-def find_dates(text):
 
-    dates = []
+              code = str(
+                  code
+              ).strip().upper()
 
-    for match in DATE_RE.finditer(text):
 
-        date = (
-            f"{match.group(1)}/"
-            f"{int(match.group(2)):02d}/"
-            f"{int(match.group(3)):02d}"
-        )
+              code = code.replace(
+                  ".TW",
+                  ""
+              )
 
-        if date not in dates:
+              code = code.replace(
+                  ".TWO",
+                  ""
+              )
 
-            dates.append(date)
 
-    return dates
+              if code in TARGETS:
 
+                  selected.append(
+                      item
+                  )
 
-# ============================================================
-# 數字
-# ============================================================
 
-NUMBER_RE = re.compile(
-    r"[-+]?\d+(?:,\d{3})*(?:\.\d+)?"
-)
+          found = set()
 
 
-def extract_numbers(text):
+          for item in selected:
 
-    values = []
+              code = item.get("code")
 
-    for match in NUMBER_RE.finditer(text):
+              if code is None:
 
-        raw = match.group(0)
+                  code = item.get(
+                      "symbol"
+                  )
 
-        raw = raw.replace(",", "")
+              code = str(
+                  code
+              ).strip().upper()
 
-        try:
+              code = code.replace(
+                  ".TW",
+                  ""
+              )
 
-            values.append(
-                float(raw)
-            )
+              code = code.replace(
+                  ".TWO",
+                  ""
+              )
 
-        except Exception:
+              found.add(
+                  code
+              )
 
-            pass
 
-    return values
+          missing = TARGETS - found
 
 
-# ============================================================
-# Table 探測
-# ============================================================
+          if missing:
 
-def inspect_tables(soup):
+              raise RuntimeError(
+                  "測試股票缺失："
+                  + ", ".join(
+                      sorted(missing)
+                  )
+              )
 
-    tables = soup.find_all("table")
 
-    output = []
+          # --------------------------------------------------
+          # 只保留 4 檔
+          # --------------------------------------------------
 
-    for table_index, table in enumerate(
-        tables
-    ):
+          test_universe = {
+              "items": selected
+          }
 
-        rows = table.find_all("tr")
 
-        table_info = {
-            "table_index": table_index,
-            "row_count": len(rows),
-            "headers": [],
-            "rows": [],
-            "contains_20": False,
-            "contains_main_force": False,
-        }
+          with UNIVERSE_FILE.open(
+              "w",
+              encoding="utf-8"
+          ) as f:
 
-        for row_index, tr in enumerate(
-            rows
-        ):
+              json.dump(
+                  test_universe,
+                  f,
+                  ensure_ascii=False,
+                  indent=2
+              )
 
-            cells = tr.find_all(
-                ["th", "td"]
-            )
 
-            values = [
-                cell.get_text(
-                    " ",
-                    strip=True
-                )
-                for cell in cells
-            ]
+          print()
+          print("測試股票：")
 
-            normalized = [
-                normalize(value)
-                for value in values
-            ]
 
-            if row_index == 0:
+          for item in selected:
 
-                table_info[
-                    "headers"
-                ] = normalized
+              code = item.get(
+                  "code"
+              )
 
-            for value in normalized:
+              if code is None:
 
-                if "20" in value:
+                  code = item.get(
+                      "symbol"
+                  )
 
-                    table_info[
-                        "contains_20"
-                    ] = True
+              print(
+                  f"  {code} "
+                  f"{item.get('name', '')}"
+              )
 
-                if "買賣超" in value:
 
-                    table_info[
-                        "contains_main_force"
-                    ] = True
+          print()
+          print(
+              f"測試 Universe 數量："
+              f"{len(selected)}"
+          )
 
-            if values:
 
-                table_info[
-                    "rows"
-                ].append(values)
+          if len(selected) != 4:
 
-        output.append(
-            table_info
-        )
+              raise RuntimeError(
+                  "測試 Universe 不是 4 檔"
+              )
 
-    return output
 
+          print()
+          print(
+              "✓ 4 檔測試 Universe 建立完成"
+          )
 
-# ============================================================
-# 搜尋 HTML 內的 20D 關鍵字
-# ============================================================
+          PY
 
-def inspect_keywords(html):
 
-    keywords = [
-        "20日",
-        "20 日",
-        "20day",
-        "20Day",
-        "20D",
-        "20d",
-        "20",
-        "買賣超",
-        "主力",
-        "main-force",
-        "main_force",
-        "api",
-        "ajax",
-        "json",
-    ]
+      # ======================================================
+      # 5. 執行前再次確認
+      # ======================================================
 
-    result = {}
+      - name: Verify 4-stock universe
+        run: |
 
-    for keyword in keywords:
+          python - <<'PY'
 
-        result[keyword] = html.lower().count(
-            keyword.lower()
-        )
+          import json
 
-    return result
 
+          with open(
+              "Data/universe.json",
+              "r",
+              encoding="utf-8"
+          ) as f:
 
-# ============================================================
-# 搜尋 script / JSON 線索
-# ============================================================
+              data = json.load(f)
 
-def inspect_scripts(soup):
 
-    scripts = soup.find_all("script")
+          items = data.get(
+              "items",
+              []
+          )
 
-    matches = []
 
-    patterns = [
-        r"https?://[^\"']+",
-        r"/api/[^\"']+",
-        r"api[^\"']*",
-        r"ajax[^\"']*",
-        r"json[^\"']*",
-        r"main-force[^\"']*",
-        r"main_force[^\"']*",
-        r"20d[^\"']*",
-        r"20day[^\"']*",
-        r"20日[^\"']*",
-        r"買賣超[^\"']*",
-    ]
+          print("=" * 64)
+          print("確認 fetch_chip 執行前 Universe")
+          print("=" * 64)
 
-    for script_index, script in enumerate(
-        scripts
-    ):
 
-        content = script.string
+          print(
+              f"Universe 數量：{len(items)}"
+          )
 
-        if content is None:
 
-            content = script.get_text()
+          for item in items:
 
-        if not content:
+              print(
+                  f"{item.get('code', item.get('symbol'))} "
+                  f"{item.get('name', '')}"
+              )
 
-            continue
 
-        for pattern in patterns:
+          if len(items) != 4:
 
-            found = re.findall(
-                pattern,
-                content,
-                flags=re.IGNORECASE
-            )
+              raise RuntimeError(
+                  f"錯誤：目前 Universe "
+                  f"為 {len(items)} 檔，不是 4 檔"
+              )
 
-            for item in found:
 
-                item = item.strip()
+          print()
+          print(
+              "✓ 確認只會執行 4 檔"
+          )
 
-                if item and item not in matches:
+          PY
 
-                    matches.append(
-                        {
-                            "script_index": script_index,
-                            "pattern": pattern,
-                            "value": item[:500],
-                        }
-                    )
 
-    return matches
+      # ======================================================
+      # 6. 執行正式 fetch_chip.py
+      # ======================================================
 
+      - name: Run fetch_chip.py
+        run: |
 
-# ============================================================
-# 探測是否真的超過 10 個日期
-# ============================================================
+          echo "========================================"
+          echo "開始執行 fetch_chip.py"
+          echo "========================================"
 
-def inspect_history_depth(
-    soup,
-    html
-):
+          python Scripts/fetch_chip.py
 
-    dates = find_dates(html)
 
-    unique_dates = sorted(
-        set(dates),
-        reverse=True
-    )
+      # ======================================================
+      # 7. 驗證 chip.json
+      # ======================================================
 
-    return {
-        "date_count_in_html": len(
-            unique_dates
-        ),
-        "dates": unique_dates[:50],
-        "has_11_or_more_dates": (
-            len(unique_dates) >= 11
-        ),
-        "has_20_or_more_dates": (
-            len(unique_dates) >= 20
-        ),
-    }
+      - name: Verify chip.json
+        run: |
 
+          python - <<'PY'
 
-# ============================================================
-# 尋找 table 中可能的 20 日欄位
-# ============================================================
+          import json
+          from pathlib import Path
 
-def find_20_columns(
-    tables
-):
 
-    results = []
+          CHIP_FILE = Path(
+              "Data/chip.json"
+          )
 
-    for table in tables:
 
-        headers = table.get(
-            "headers",
-            []
-        )
+          TARGETS = [
+              "2337",
+              "2426",
+              "3081",
+              "2368",
+          ]
 
-        for index, header in enumerate(
-            headers
-        ):
 
-            if "20" in header:
+          print()
+          print("=" * 64)
+          print("驗證 chip.json")
+          print("=" * 64)
 
-                results.append({
-                    "table_index": table[
-                        "table_index"
-                    ],
-                    "column_index": index,
-                    "header": header,
-                })
 
-    return results
+          if not CHIP_FILE.exists():
 
+              raise RuntimeError(
+                  "找不到 Data/chip.json"
+              )
 
-# ============================================================
-# 分析單一股票
-# ============================================================
 
-def analyze_stock(
-    session,
-    symbol
-):
+          with CHIP_FILE.open(
+              "r",
+              encoding="utf-8"
+          ) as f:
 
-    section(
-        f"測試股票：{symbol}"
-    )
+              data = json.load(f)
 
-    result = {
-        "symbol": symbol,
-        "success": False,
-        "url": None,
-        "status_code": None,
-        "html_length": 0,
-        "history_depth": {},
-        "keywords": {},
-        "tables": [],
-        "twenty_columns": [],
-        "script_matches": [],
-        "error": None,
-    }
 
-    try:
+          stocks = data.get(
+              "stocks",
+              {}
+          )
 
-        page = request_page(
-            session,
-            symbol
-        )
 
-        html = page["html"]
+          if not isinstance(
+              stocks,
+              dict
+          ):
 
-        result["success"] = True
-        result["url"] = page["url"]
-        result["status_code"] = page[
-            "status_code"
-        ]
-        result["html_length"] = len(
-            html
-        )
+              raise RuntimeError(
+                  "chip.json stocks 格式錯誤"
+              )
 
-        log(
-            f"✓ HTTP："
-            f"{page['status_code']}"
-        )
 
-        log(
-            f"✓ URL："
-            f"{page['url']}"
-        )
+          print(
+              "chip.json Universe：",
+              data.get(
+                  "universe_count"
+              )
+          )
 
-        log(
-            f"✓ HTML："
-            f"{len(html):,} bytes"
-        )
 
-        soup = BeautifulSoup(
-            html,
-            "html.parser"
-        )
+          print(
+              "Statistics：",
+              data.get(
+                  "statistics"
+              )
+          )
 
-        # ----------------------------------------------------
-        # 1. 歷史日期深度
-        # ----------------------------------------------------
 
-        history_depth = inspect_history_depth(
-            soup,
-            html
-        )
+          if len(stocks) != 4:
 
-        result[
-            "history_depth"
-        ] = history_depth
+              raise RuntimeError(
+                  f"chip.json 股票數量 "
+                  f"為 {len(stocks)}，不是 4"
+              )
 
-        log(
-            f"HTML 日期數量："
-            f"{history_depth['date_count_in_html']}"
-        )
 
-        log(
-            f"是否 >= 11 日："
-            f"{history_depth['has_11_or_more_dates']}"
-        )
+          # ==================================================
+          # 逐檔驗證
+          # ==================================================
 
-        log(
-            f"是否 >= 20 日："
-            f"{history_depth['has_20_or_more_dates']}"
-        )
+          for code in TARGETS:
 
-        # ----------------------------------------------------
-        # 2. Table
-        # ----------------------------------------------------
+              print()
+              print("-" * 64)
+              print(
+                  f"股票：{code}"
+              )
+              print("-" * 64)
 
-        tables = inspect_tables(
-            soup
-        )
 
-        result[
-            "tables"
-        ] = tables
+              if code not in stocks:
 
-        log(
-            f"HTML Table 數量："
-            f"{len(tables)}"
-        )
+                  raise RuntimeError(
+                      f"{code} 不存在於 chip.json"
+                  )
 
-        # ----------------------------------------------------
-        # 3. 20 日欄位
-        # ----------------------------------------------------
 
-        twenty_columns = find_20_columns(
-            tables
-        )
+              stock = stocks[code]
 
-        result[
-            "twenty_columns"
-        ] = twenty_columns
 
-        if twenty_columns:
+              name = stock.get(
+                  "name"
+              )
 
-            log(
-                "✓ 發現包含「20」的 Table 欄位："
-            )
+              force_1d = stock.get(
+                  "main_force_1d"
+              )
 
-            for item in twenty_columns:
+              force_5d = stock.get(
+                  "main_force_5d"
+              )
 
-                log(
-                    f"   table="
-                    f"{item['table_index']} "
-                    f"column="
-                    f"{item['column_index']} "
-                    f"header="
-                    f"{item['header']}"
-                )
+              force_10d = stock.get(
+                  "main_force_10d"
+              )
 
-        else:
+              history_count = stock.get(
+                  "history_count"
+              )
 
-            log(
-                "⚠️ 未在 Table header 找到 20 日欄位"
-            )
+              status = stock.get(
+                  "status"
+              )
 
-        # ----------------------------------------------------
-        # 4. 關鍵字
-        # ----------------------------------------------------
 
-        keywords = inspect_keywords(
-            html
-        )
+              print(
+                  f"名稱：{name}"
+              )
 
-        result[
-            "keywords"
-        ] = keywords
+              print(
+                  f"主力 1D ：{force_1d}"
+              )
 
-        log(
-            "關鍵字命中："
-        )
+              print(
+                  f"主力 5D ：{force_5d}"
+              )
 
-        for keyword, count in keywords.items():
+              print(
+                  f"主力 10D：{force_10d}"
+              )
 
-            if count:
+              print(
+                  f"歷史筆數：{history_count}"
+              )
 
-                log(
-                    f"   {keyword}: {count}"
-                )
+              print(
+                  f"狀態：{status}"
+              )
 
-        # ----------------------------------------------------
-        # 5. Script / API 線索
-        # ----------------------------------------------------
 
-        script_matches = inspect_scripts(
-            soup
-        )
+              # ----------------------------------------------
+              # 必須存在 1D
+              # ----------------------------------------------
 
-        result[
-            "script_matches"
-        ] = script_matches
+              if force_1d is None:
 
-        log(
-            f"Script/API 線索："
-            f"{len(script_matches)}"
-        )
+                  raise RuntimeError(
+                      f"{code} 主力 1D 無資料"
+                  )
 
-        for item in script_matches[:30]:
 
-            log(
-                "   "
-                f"[script {item['script_index']}] "
-                f"{item['value'][:300]}"
-            )
+              # ----------------------------------------------
+              # 必須存在 5D
+              # ----------------------------------------------
 
-        # ----------------------------------------------------
-        # 6. 顯示前幾個 Table header
-        # ----------------------------------------------------
+              if force_5d is None:
 
-        log("")
-        log(
-            "Table Headers："
-        )
+                  raise RuntimeError(
+                      f"{code} 主力 5D 無資料"
+                  )
 
-        for table in tables:
 
-            headers = table.get(
-                "headers",
-                []
-            )
+              # ----------------------------------------------
+              # 必須存在 10D
+              # ----------------------------------------------
 
-            if headers:
+              if force_10d is None:
 
-                log(
-                    f"   table "
-                    f"{table['table_index']}: "
-                    f"{headers}"
-                )
+                  raise RuntimeError(
+                      f"{code} 主力 10D 無資料"
+                  )
 
-        # ----------------------------------------------------
-        # 7. 顯示前 3 列
-        # ----------------------------------------------------
 
-        log("")
-        log(
-            "Table 前 3 筆資料："
-        )
+              # ----------------------------------------------
+              # 至少 10 筆歷史
+              # ----------------------------------------------
 
-        for table in tables:
+              if (
+                  history_count is None
+                  or history_count < 10
+              ):
 
-            rows = table.get(
-                "rows",
-                []
-            )
+                  raise RuntimeError(
+                      f"{code} 歷史資料不足 10 筆"
+                  )
 
-            if not rows:
-                continue
 
-            log(
-                f"   table "
-                f"{table['table_index']}:"
-            )
+              # ----------------------------------------------
+              # 狀態必須 complete
+              # ----------------------------------------------
 
-            for row in rows[:4]:
+              if status != "complete":
 
-                log(
-                    f"      {row}"
-                )
+                  raise RuntimeError(
+                      f"{code} status "
+                      f"不是 complete："
+                      f"{status}"
+                  )
 
-    except Exception as exc:
 
-        result[
-            "error"
-        ] = str(exc)
+          # ==================================================
+          # 全部通過
+          # ==================================================
 
-        log(
-            f"❌ 測試失敗：{exc}"
-        )
+          print()
+          print("=" * 64)
+          print(
+              "✓ 4 檔 fetch_chip 測試全部通過"
+          )
+          print("=" * 64)
 
-    return result
+          print()
+          print(
+              "測試股票："
+          )
 
+          print(
+              "2337 / 2426 / 3081 / 2368"
+          )
 
-# ============================================================
-# 儲存
-# ============================================================
+          print()
+          print(
+              "確認項目："
+          )
 
-def save_results(
-    results
-):
+          print(
+              "✓ Universe = 4"
+          )
 
-    DATA_DIR.mkdir(
-        parents=True,
-        exist_ok=True
-    )
+          print(
+              "✓ 四檔都有 1D"
+          )
 
-    output = {
-        "schema_version": VERSION,
-        "generated_at": datetime.now().strftime(
-            "%Y-%m-%d %H:%M:%S"
-        ),
-        "purpose": (
-            "探測 CMoney 20D 主力歷史資料來源"
-        ),
-        "test_symbols": TEST_SYMBOLS,
-        "results": results,
-    }
+          print(
+              "✓ 四檔都有 5D"
+          )
 
-    temp = OUTPUT_FILE.with_suffix(
-        ".json.tmp"
-    )
+          print(
+              "✓ 四檔都有 10D"
+          )
 
-    with temp.open(
-        "w",
-        encoding="utf-8"
-    ) as f:
+          print(
+              "✓ 四檔歷史資料 >= 10 筆"
+          )
 
-        json.dump(
-            output,
-            f,
-            ensure_ascii=False,
-            indent=2
-        )
+          print(
+              "✓ 四檔 status = complete"
+          )
 
-    with temp.open(
-        "r",
-        encoding="utf-8"
-    ) as f:
+          print()
+          print(
+              "下一步才能進入全市場測試。"
+          )
 
-        json.load(f)
-
-    temp.replace(
-        OUTPUT_FILE
-    )
-
-    log("")
-    log(
-        f"✓ 測試結果已寫入："
-        f"{OUTPUT_FILE}"
-    )
-
-
-# ============================================================
-# 總結
-# ============================================================
-
-def summarize(
-    results
-):
-
-    section(
-        "20D 探測結果總結"
-    )
-
-    for result in results:
-
-        symbol = result[
-            "symbol"
-        ]
-
-        if not result[
-            "success"
-        ]:
-
-            log(
-                f"{symbol}: ❌ HTTP/頁面失敗"
-            )
-
-            continue
-
-        depth = result[
-            "history_depth"
-        ]
-
-        twenty = result[
-            "twenty_columns"
-        ]
-
-        log(
-            f"{symbol}: "
-            f"HTML日期="
-            f"{depth.get('date_count_in_html', 0)}, "
-            f">=20日="
-            f"{depth.get('has_20_or_more_dates', False)}, "
-            f"20日欄位="
-            f"{len(twenty)}"
-        )
-
-    log("")
-    log(
-        "判定原則："
-    )
-
-    log(
-        "1. 若 HTML 本身有 >=20 個交易日，"
-        "代表資料可能已存在，只是目前 Parser 沒抓到。"
-    )
-
-    log(
-        "2. 若 HTML 有 20 日欄位，"
-        "必須確認它是否為「主力買賣超20日加總」。"
-    )
-
-    log(
-        "3. 若 HTML 沒有 >=20 日資料，"
-        "下一步才需要找 API / AJAX / JSON endpoint。"
-    )
-
-    log(
-        "4. 絕不把「20日集中」當成「主力20日買賣超」。"
-    )
-
-
-# ============================================================
-# Main
-# ============================================================
-
-def main():
-
-    start = time.time()
-
-    log("")
-    log("=" * 72)
-    log(
-        f"台股 AI 選股系統 "
-        f"CMoney 20D 探測器 {VERSION}"
-    )
-    log("=" * 72)
-
-    log(
-        "開始時間："
-        + datetime.now().strftime(
-            "%Y-%m-%d %H:%M:%S"
-        )
-    )
-
-    log("")
-    log(
-        "測試股票："
-        + ", ".join(
-            TEST_SYMBOLS
-        )
-    )
-
-    session = requests.Session()
-
-    results = []
-
-    for symbol in TEST_SYMBOLS:
-
-        result = analyze_stock(
-            session,
-            symbol
-        )
-
-        results.append(
-            result
-        )
-
-        time.sleep(
-            REQUEST_DELAY
-        )
-
-    save_results(
-        results
-    )
-
-    summarize(
-        results
-    )
-
-    elapsed = (
-        time.time()
-        - start
-    )
-
-    log("")
-    log("=" * 72)
-    log(
-        "✓ CMoney 20D 探測完成"
-    )
-    log(
-        f"耗時：{elapsed:.1f} 秒"
-    )
-    log(
-        f"結果：{OUTPUT_FILE}"
-    )
-    log("=" * 72)
-
-    return 0
-
-
-if __name__ == "__main__":
-
-    sys.exit(
-        main()
-    )
+          PY
