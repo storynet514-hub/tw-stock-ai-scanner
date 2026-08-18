@@ -1,10 +1,10 @@
-name: Test fetch_chip 4 Stocks
+name: Test fetch_chip 20D - 4 Stocks
 
 on:
   workflow_dispatch:
 
 jobs:
-  test_cmoney_20d.py:
+  test_fetch_chip:
     runs-on: ubuntu-latest
 
     steps:
@@ -42,12 +42,12 @@ jobs:
       #
       # 不修改 GitHub 正式 Universe
       #
-      # 只在 Action 執行環境中暫時建立：
+      # 只在 Action runner 暫時測試：
       #
       # 2337 旺宏
       # 2426 鼎元
-      # 3081 聯亞
       # 2368 金像電
+      # 3081 聯亞
       # ======================================================
 
       - name: Create 4-stock test universe
@@ -65,8 +65,8 @@ jobs:
           TARGETS = {
               "2337",
               "2426",
-              "3081",
               "2368",
+              "3081",
           }
 
 
@@ -76,7 +76,6 @@ jobs:
 
 
           if not UNIVERSE_FILE.exists():
-
               raise RuntimeError(
                   "找不到 Data/universe.json"
               )
@@ -86,21 +85,13 @@ jobs:
               "r",
               encoding="utf-8"
           ) as f:
-
               original = json.load(f)
 
 
-          items = original.get(
-              "items",
-              []
-          )
+          items = original.get("items", [])
 
 
-          if not isinstance(
-              items,
-              list
-          ):
-
+          if not isinstance(items, list):
               raise RuntimeError(
                   "universe.json items 不是 list"
               )
@@ -111,49 +102,24 @@ jobs:
 
           for item in items:
 
-              if not isinstance(
-                  item,
-                  dict
-              ):
+              if not isinstance(item, dict):
                   continue
-
 
               code = item.get("code")
 
+              if code is None:
+                  code = item.get("symbol")
 
               if code is None:
-
-                  code = item.get(
-                      "symbol"
-                  )
-
-
-              if code is None:
-
                   continue
 
+              code = str(code).strip().upper()
 
-              code = str(
-                  code
-              ).strip().upper()
-
-
-              code = code.replace(
-                  ".TW",
-                  ""
-              )
-
-              code = code.replace(
-                  ".TWO",
-                  ""
-              )
-
+              code = code.replace(".TW", "")
+              code = code.replace(".TWO", "")
 
               if code in TARGETS:
-
-                  selected.append(
-                      item
-                  )
+                  selected.append(item)
 
 
           found = set()
@@ -164,46 +130,28 @@ jobs:
               code = item.get("code")
 
               if code is None:
+                  code = item.get("symbol")
 
-                  code = item.get(
-                      "symbol"
-                  )
+              if code is None:
+                  continue
 
-              code = str(
-                  code
-              ).strip().upper()
+              code = str(code).strip().upper()
 
-              code = code.replace(
-                  ".TW",
-                  ""
-              )
+              code = code.replace(".TW", "")
+              code = code.replace(".TWO", "")
 
-              code = code.replace(
-                  ".TWO",
-                  ""
-              )
-
-              found.add(
-                  code
-              )
+              found.add(code)
 
 
           missing = TARGETS - found
 
 
           if missing:
-
               raise RuntimeError(
                   "測試股票缺失："
-                  + ", ".join(
-                      sorted(missing)
-                  )
+                  + ", ".join(sorted(missing))
               )
 
-
-          # --------------------------------------------------
-          # 只保留 4 檔
-          # --------------------------------------------------
 
           test_universe = {
               "items": selected
@@ -229,15 +177,10 @@ jobs:
 
           for item in selected:
 
-              code = item.get(
-                  "code"
-              )
+              code = item.get("code")
 
               if code is None:
-
-                  code = item.get(
-                      "symbol"
-                  )
+                  code = item.get("symbol")
 
               print(
                   f"  {code} "
@@ -253,7 +196,6 @@ jobs:
 
 
           if len(selected) != 4:
-
               raise RuntimeError(
                   "測試 Universe 不是 4 檔"
               )
@@ -268,7 +210,7 @@ jobs:
 
 
       # ======================================================
-      # 5. 執行前再次確認
+      # 5. 執行前再次確認 Universe
       # ======================================================
 
       - name: Verify 4-stock universe
@@ -288,10 +230,7 @@ jobs:
               data = json.load(f)
 
 
-          items = data.get(
-              "items",
-              []
-          )
+          items = data.get("items", [])
 
 
           print("=" * 64)
@@ -304,19 +243,51 @@ jobs:
           )
 
 
+          expected = {
+              "2337",
+              "2426",
+              "2368",
+              "3081",
+          }
+
+
+          actual = set()
+
+
           for item in items:
 
+              code = item.get(
+                  "code",
+                  item.get("symbol")
+              )
+
+              if code is None:
+                  continue
+
+              code = str(code).strip().upper()
+
+              code = code.replace(".TW", "")
+              code = code.replace(".TWO", "")
+
+              actual.add(code)
+
               print(
-                  f"{item.get('code', item.get('symbol'))} "
+                  f"{code} "
                   f"{item.get('name', '')}"
               )
 
 
           if len(items) != 4:
-
               raise RuntimeError(
                   f"錯誤：目前 Universe "
                   f"為 {len(items)} 檔，不是 4 檔"
+              )
+
+
+          if actual != expected:
+              raise RuntimeError(
+                  f"錯誤：Universe 不符合預期："
+                  f"{sorted(actual)}"
               )
 
 
@@ -344,9 +315,20 @@ jobs:
 
       # ======================================================
       # 7. 驗證 chip.json
+      #
+      # 核心：
+      #
+      # 1D
+      # 5D
+      # 10D
+      # 20D
+      #
+      # history >= 20
+      #
+      # 並重新計算 20D
       # ======================================================
 
-      - name: Verify chip.json
+      - name: Verify chip.json 20D
         run: |
 
           python - <<'PY'
@@ -363,19 +345,18 @@ jobs:
           TARGETS = [
               "2337",
               "2426",
-              "3081",
               "2368",
+              "3081",
           ]
 
 
           print()
           print("=" * 64)
-          print("驗證 chip.json")
+          print("驗證 chip.json / 主力 20D")
           print("=" * 64)
 
 
           if not CHIP_FILE.exists():
-
               raise RuntimeError(
                   "找不到 Data/chip.json"
               )
@@ -395,11 +376,7 @@ jobs:
           )
 
 
-          if not isinstance(
-              stocks,
-              dict
-          ):
-
+          if not isinstance(stocks, dict):
               raise RuntimeError(
                   "chip.json stocks 格式錯誤"
               )
@@ -407,22 +384,17 @@ jobs:
 
           print(
               "chip.json Universe：",
-              data.get(
-                  "universe_count"
-              )
+              data.get("universe_count")
           )
 
 
           print(
               "Statistics：",
-              data.get(
-                  "statistics"
-              )
+              data.get("statistics")
           )
 
 
           if len(stocks) != 4:
-
               raise RuntimeError(
                   f"chip.json 股票數量 "
                   f"為 {len(stocks)}，不是 4"
@@ -444,7 +416,6 @@ jobs:
 
 
               if code not in stocks:
-
                   raise RuntimeError(
                       f"{code} 不存在於 chip.json"
                   )
@@ -453,9 +424,7 @@ jobs:
               stock = stocks[code]
 
 
-              name = stock.get(
-                  "name"
-              )
+              name = stock.get("name")
 
               force_1d = stock.get(
                   "main_force_1d"
@@ -469,8 +438,17 @@ jobs:
                   "main_force_10d"
               )
 
+              force_20d = stock.get(
+                  "main_force_20d"
+              )
+
               history_count = stock.get(
                   "history_count"
+              )
+
+              history = stock.get(
+                  "history",
+                  []
               )
 
               status = stock.get(
@@ -495,7 +473,16 @@ jobs:
               )
 
               print(
-                  f"歷史筆數：{history_count}"
+                  f"主力 20D：{force_20d}"
+              )
+
+              print(
+                  f"history_count：{history_count}"
+              )
+
+              print(
+                  f"實際 history 長度："
+                  f"{len(history)}"
               )
 
               print(
@@ -504,54 +491,76 @@ jobs:
 
 
               # ----------------------------------------------
-              # 必須存在 1D
+              # 1D
               # ----------------------------------------------
 
               if force_1d is None:
-
                   raise RuntimeError(
                       f"{code} 主力 1D 無資料"
                   )
 
 
               # ----------------------------------------------
-              # 必須存在 5D
+              # 5D
               # ----------------------------------------------
 
               if force_5d is None:
-
                   raise RuntimeError(
                       f"{code} 主力 5D 無資料"
                   )
 
 
               # ----------------------------------------------
-              # 必須存在 10D
+              # 10D
               # ----------------------------------------------
 
               if force_10d is None:
-
                   raise RuntimeError(
                       f"{code} 主力 10D 無資料"
                   )
 
 
               # ----------------------------------------------
-              # 至少 10 筆歷史
+              # 20D
               # ----------------------------------------------
 
-              if (
-                  history_count is None
-                  or history_count < 10
-              ):
-
+              if force_20d is None:
                   raise RuntimeError(
-                      f"{code} 歷史資料不足 10 筆"
+                      f"{code} 主力 20D 無資料"
                   )
 
 
               # ----------------------------------------------
-              # 狀態必須 complete
+              # history_count >= 20
+              # ----------------------------------------------
+
+              if (
+                  history_count is None
+                  or history_count < 20
+              ):
+
+                  raise RuntimeError(
+                      f"{code} history_count "
+                      f"不足 20："
+                      f"{history_count}"
+                  )
+
+
+              # ----------------------------------------------
+              # 實際 history >= 20
+              # ----------------------------------------------
+
+              if len(history) < 20:
+
+                  raise RuntimeError(
+                      f"{code} history 實際筆數 "
+                      f"不足 20："
+                      f"{len(history)}"
+                  )
+
+
+              # ----------------------------------------------
+              # status complete
               # ----------------------------------------------
 
               if status != "complete":
@@ -563,6 +572,142 @@ jobs:
                   )
 
 
+              # ----------------------------------------------
+              # 重新計算 20D
+              #
+              # history 應該是最新日期在前
+              # ----------------------------------------------
+
+              values = []
+
+              for row in history[:20]:
+
+                  value = row.get(
+                      "main_force"
+                  )
+
+                  if value is None:
+                      raise RuntimeError(
+                          f"{code} history "
+                          f"存在空的 main_force"
+                      )
+
+                  values.append(
+                      float(value)
+                  )
+
+
+              calculated_20d = round(
+                  sum(values),
+                  2
+              )
+
+
+              print(
+                  f"重新計算 20D："
+                  f"{calculated_20d}"
+              )
+
+
+              # ----------------------------------------------
+              # 確認程式計算值與 history 加總一致
+              # ----------------------------------------------
+
+              if (
+                  abs(
+                      float(force_20d)
+                      - calculated_20d
+                  )
+                  > 0.01
+              ):
+
+                  raise RuntimeError(
+                      f"{code} 主力20D計算錯誤："
+                      f"欄位={force_20d}, "
+                      f"重新計算={calculated_20d}"
+                  )
+
+
+              print(
+                  "✓ 20D 加總驗證通過"
+              )
+
+
+              # ----------------------------------------------
+              # 額外驗證 1D
+              # ----------------------------------------------
+
+              calculated_1d = round(
+                  values[0],
+                  2
+              )
+
+
+              if (
+                  abs(
+                      float(force_1d)
+                      - calculated_1d
+                  )
+                  > 0.01
+              ):
+
+                  raise RuntimeError(
+                      f"{code} 主力1D計算錯誤"
+                  )
+
+
+              # ----------------------------------------------
+              # 額外驗證 5D
+              # ----------------------------------------------
+
+              calculated_5d = round(
+                  sum(values[:5]),
+                  2
+              )
+
+
+              if (
+                  abs(
+                      float(force_5d)
+                      - calculated_5d
+                  )
+                  > 0.01
+              ):
+
+                  raise RuntimeError(
+                      f"{code} 主力5D計算錯誤"
+                  )
+
+
+              # ----------------------------------------------
+              # 額外驗證 10D
+              # ----------------------------------------------
+
+              calculated_10d = round(
+                  sum(values[:10]),
+                  2
+              )
+
+
+              if (
+                  abs(
+                      float(force_10d)
+                      - calculated_10d
+                  )
+                  > 0.01
+              ):
+
+                  raise RuntimeError(
+                      f"{code} 主力10D計算錯誤"
+                  )
+
+
+              print(
+                  "✓ 1D / 5D / 10D / 20D "
+                  "全部計算一致"
+              )
+
+
           # ==================================================
           # 全部通過
           # ==================================================
@@ -570,9 +715,10 @@ jobs:
           print()
           print("=" * 64)
           print(
-              "✓ 4 檔 fetch_chip 測試全部通過"
+              "✓ 4 檔 fetch_chip 20D 測試全部通過"
           )
           print("=" * 64)
+
 
           print()
           print(
@@ -580,8 +726,9 @@ jobs:
           )
 
           print(
-              "2337 / 2426 / 3081 / 2368"
+              "2337 / 2426 / 2368 / 3081"
           )
+
 
           print()
           print(
@@ -605,11 +752,31 @@ jobs:
           )
 
           print(
-              "✓ 四檔歷史資料 >= 10 筆"
+              "✓ 四檔都有 20D"
+          )
+
+          print(
+              "✓ 四檔 history >= 20"
           )
 
           print(
               "✓ 四檔 status = complete"
+          )
+
+          print(
+              "✓ 1D = history[0]"
+          )
+
+          print(
+              "✓ 5D = history[:5] 加總"
+          )
+
+          print(
+              "✓ 10D = history[:10] 加總"
+          )
+
+          print(
+              "✓ 20D = history[:20] 加總"
           )
 
           print()
