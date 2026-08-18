@@ -3,34 +3,22 @@
 
 """
 CMoney API 20D 探測器
-TEST-20D-API-V4.0
+TEST-20D-API-V5.0
 
-核心目的
-========
+V5 核心策略：
 
-V3 的問題：
-1. 從 axios/fetch 附近猜 URL
-2. 自己猜 symbol / stockId / stockNo 等參數
-3. 沒有真正追蹤 forumOceanService 的 method
-4. response 中只要任何地方出現「買賣超」就可能誤判
-
-V4 改為：
-
-1. 抓取 CMoney Forum 個股主力頁
-2. 找出 API_FORUM_OCEAN_SERVICE / forumOceanService
-3. 追蹤 service configuration
-4. 找出 forumOceanService 實際 method 呼叫
-5. 從 source code 擷取：
-   - method
-   - URL
-   - query
-   - body
-   - arguments
-6. 只有 source-trace 得到的 request 才列為高優先候選
-7. 實際呼叫 response
-8. 對 JSON 做「同一資料結構」分析
-9. 日期 >= 20 且同一 record structure
-   同時存在主力買賣超欄位才判定 True
+1. 取得 CMoney 股票頁
+2. 找出所有 Nuxt JS
+3. 鎖定 Ocean Service 相關 JS
+4. 不再只搜尋 axios/fetch
+5. 擷取 Ocean Service definition 周邊完整原始碼
+6. 從 definition / method / request builder 還原 API 線索
+7. 建立 source-derived request candidates
+8. 實際呼叫候選 request
+9. 分析 response：
+   - >=20 個不同交易日期
+   - 同一 structured response 存在主力買賣超欄位
+10. 符合才 true_20d=True
 
 固定測試：
 2337 旺宏
@@ -39,8 +27,8 @@ V4 改為：
 3081 聯亞
 
 注意：
-這是「探測器」，不是正式資料抓取程式。
-任何 API 都必須經過實際 response 驗證才可以進正式系統。
+3081 = 聯亞
+3088 = 艾訊
 """
 
 from __future__ import annotations
@@ -50,21 +38,20 @@ import re
 import time
 from datetime import datetime, timezone
 from pathlib import Path
-from urllib.parse import (
-    parse_qs,
-    urlencode,
-    urljoin,
-    urlparse,
-    urlunparse,
-)
+from urllib.parse import urljoin, urlparse
 
 import requests
 
 
-VERSION = "TEST-20D-API-V4.0"
+VERSION = "TEST-20D-API-V5.0"
 
 ROOT = Path(__file__).resolve().parent.parent
-OUT = ROOT / "Data" / "test_cmoney_api_20d.json"
+
+OUT = (
+    ROOT
+    / "Data"
+    / "test_cmoney_api_20d.json"
+)
 
 BASE = "https://www.cmoney.tw"
 
@@ -79,18 +66,21 @@ STOCKS = [
 
 HEADERS = {
     "User-Agent": (
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-        "AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Mozilla/5.0 "
+        "(Windows NT 10.0; Win64; x64) "
+        "AppleWebKit/537.36 "
+        "(KHTML, like Gecko) "
         "Chrome/131.0 Safari/537.36"
     ),
     "Accept": (
-        "application/json,text/plain,*/*"
+        "application/json,"
+        "text/plain,"
+        "*/*"
     ),
     "Accept-Language": (
         "zh-TW,zh;q=0.9,en;q=0.8"
     ),
     "Referer": BASE + "/",
-    "Origin": BASE,
 }
 
 DATE_RE = re.compile(
@@ -104,8 +94,6 @@ FORCE_RE = re.compile(
     |主力買超
     |主力賣超
     |買賣超
-    |買超
-    |賣超
     |net[_-]?buy
     |net[_-]?sell
     |net[_-]?buy[_-]?sell
@@ -113,7 +101,8 @@ FORCE_RE = re.compile(
     |mainForce
     |buy[_-]?sell
     |buySell
-    |force
+    |dealer
+    |institution
     """,
     re.I | re.X,
 )
@@ -122,60 +111,20 @@ OCEAN_KEYWORDS = (
     "API_FORUM_OCEAN_SERVICE",
     "SERVICE_FORUM_OCEAN_SERVICE",
     "forumOceanService",
+    "ForumOceanService",
+    "oceanService",
+    "OceanService",
 )
 
-REQUEST_KEYWORDS = (
-    "$axios",
-    "axios",
-    "fetch(",
-    "$fetch",
-    ".get(",
-    ".post(",
-    ".put(",
-)
-
-STOCK_ARGUMENT_KEYS = (
-    "symbol",
-    "stockid",
-    "stockno",
-    "stockcode",
-    "code",
-    "ticker",
-    "commkey",
-    "stockkey",
-    "id",
-    "sid",
-    "stock",
-)
-
-
-# ============================================================
-# 基本工具
-# ============================================================
 
 def now_iso():
-    return datetime.now(timezone.utc).isoformat()
-
-
-def clean_js(text):
-    if not text:
-        return ""
-
-    text = text.replace(
-        "\\/",
-        "/",
-    )
-
-    text = re.sub(
-        r"\s+",
-        " ",
-        text,
-    )
-
-    return text.strip()
+    return datetime.now(
+        timezone.utc
+    ).isoformat()
 
 
 def normalize_date(value):
+
     if value is None:
         return None
 
@@ -186,49 +135,25 @@ def normalize_date(value):
     if not m:
         return None
 
-    parts = re.split(
-        r"[-/.]",
-        text,
+    return (
+        text
+        .replace("-", "/")
+        .replace(".", "/")
     )
-
-    if len(parts) != 3:
-        return None
-
-    try:
-        year = int(parts[0])
-        month = int(parts[1])
-        day = int(parts[2])
-
-        if not (
-            1900 <= year <= 2100
-            and 1 <= month <= 12
-            and 1 <= day <= 31
-        ):
-            return None
-
-        return (
-            f"{year:04d}/"
-            f"{month:02d}/"
-            f"{day:02d}"
-        )
-
-    except Exception:
-        return None
 
 
 def extract_dates_from_text(text):
+
     dates = []
 
     for value in DATE_RE.findall(
         text or ""
     ):
 
-        date = normalize_date(
-            value
-        )
+        value = normalize_date(value)
 
-        if date and date not in dates:
-            dates.append(date)
+        if value and value not in dates:
+            dates.append(value)
 
     return dates
 
@@ -237,11 +162,12 @@ def make_absolute_url(
     value,
     base_url,
 ):
+
     if not value:
         return None
 
     value = (
-        str(value)
+        value
         .strip()
         .strip("\"'")
         .strip("`")
@@ -257,24 +183,24 @@ def make_absolute_url(
             value,
         )
 
-    if value.startswith(
-        "http://"
-    ):
+    if value.startswith("http://"):
         return value
 
-    if value.startswith(
-        "https://"
-    ):
+    if value.startswith("https://"):
         return value
 
     return None
 
 
 def is_cmoney_url(url):
+
     try:
-        host = urlparse(
-            url
-        ).netloc.lower()
+
+        host = (
+            urlparse(url)
+            .netloc
+            .lower()
+        )
 
         return (
             host == "www.cmoney.tw"
@@ -287,43 +213,17 @@ def is_cmoney_url(url):
         return False
 
 
-def dedupe(items):
-    result = []
-
-    seen = set()
-
-    for item in items:
-
-        key = json.dumps(
-            item,
-            ensure_ascii=False,
-            sort_keys=True,
-        ) if isinstance(
-            item,
-            (dict, list),
-        ) else str(item)
-
-        if key in seen:
-            continue
-
-        seen.add(key)
-        result.append(item)
-
-    return result
-
-
-# ============================================================
-# HTML / JS
-# ============================================================
-
 def extract_script_urls(
     html,
     page_url,
 ):
+
     results = []
 
     pattern = re.compile(
-        r'<script[^>]+src=["\']([^"\']+)["\']',
+        r'<script[^>]+src=["\']'
+        r'([^"\']+)'
+        r'["\']',
         re.I,
     )
 
@@ -340,28 +240,33 @@ def extract_script_urls(
             url
             and url not in results
         ):
+
             results.append(url)
 
     return results
 
 
-def extract_runtime_context(
+def find_keyword_contexts(
     text,
+    keywords,
+    radius=3000,
+    limit=100,
 ):
-    contexts = []
 
-    lowered = text.lower()
+    results = []
 
-    for keyword in OCEAN_KEYWORDS:
+    lower = text.lower()
+
+    for keyword in keywords:
+
+        keyword_lower = keyword.lower()
 
         start = 0
 
-        key_lower = keyword.lower()
-
         while True:
 
-            pos = lowered.find(
-                key_lower,
+            pos = lower.find(
+                keyword_lower,
                 start,
             )
 
@@ -371,1101 +276,321 @@ def extract_runtime_context(
             context = text[
                 max(
                     0,
-                    pos - 3000,
+                    pos - radius,
                 ):
                 min(
                     len(text),
-                    pos + 8000,
+                    pos + radius,
                 )
             ]
 
-            context = clean_js(
-                context
+            context = re.sub(
+                r"\s+",
+                " ",
+                context,
             )
 
-            if context not in contexts:
-                contexts.append(
-                    context
-                )
+            results.append(
+                {
+                    "keyword": keyword,
+                    "position": pos,
+                    "context": context,
+                }
+            )
 
             start = (
                 pos
-                + len(key_lower)
+                + len(keyword_lower)
             )
 
-    return contexts[:50]
+            if len(results) >= limit:
+                return results
+
+    return results
 
 
-def find_matching_bracket(
-    text,
-    start,
-    opening="{",
-    closing="}",
-):
-    if (
-        start < 0
-        or start >= len(text)
-        or text[start] != opening
-    ):
-        return -1
+def extract_ocean_contexts(text):
 
-    depth = 0
-
-    quote = None
-    escaped = False
-
-    for i in range(
-        start,
-        len(text),
-    ):
-
-        ch = text[i]
-
-        if quote:
-
-            if escaped:
-                escaped = False
-                continue
-
-            if ch == "\\":
-                escaped = True
-                continue
-
-            if ch == quote:
-                quote = None
-
-            continue
-
-        if ch in (
-            '"',
-            "'",
-            "`",
-        ):
-            quote = ch
-            continue
-
-        if ch == opening:
-            depth += 1
-
-        elif ch == closing:
-            depth -= 1
-
-            if depth == 0:
-                return i
-
-    return -1
-
-
-def extract_balanced(
-    text,
-    start,
-):
-    if start < 0:
-        return ""
-
-    opening = text[start]
-
-    pairs = {
-        "{": "}",
-        "[": "]",
-        "(": ")",
-    }
-
-    closing = pairs.get(
-        opening
-    )
-
-    if not closing:
-        return ""
-
-    end = find_matching_bracket(
+    return find_keyword_contexts(
         text,
-        start,
-        opening,
-        closing,
+        OCEAN_KEYWORDS,
+        radius=3500,
+        limit=100,
     )
 
-    if end < 0:
-        return ""
 
-    return text[
-        start:end + 1
-    ]
-
-
-def extract_urls_from_js(
-    js,
-    js_url,
+def extract_urls_from_text(
+    text,
+    base_url,
 ):
+
     urls = []
 
     patterns = [
+
         r'https?://[^\s"\'`<>\\]+',
-        r'/(?:api|service|forum|graphql|TickDataService)[^\s"\'`<>\\]*',
+
+        r'["\']'
+        r'/(?:api|service|forum|graphql|'
+        r'TickDataService|'
+        r'api/[^"\']+)'
+        r'["\']',
+
+        r'["\']'
+        r'(?:api|service)/'
+        r'[^"\']+'
+        r'["\']',
     ]
 
     for pattern in patterns:
 
         for raw in re.findall(
             pattern,
-            js,
+            text,
             flags=re.I,
         ):
 
-            raw = (
-                raw
-                .rstrip(
-                    ".,;:)"
-                )
+            raw = raw.strip(
+                "\"'"
             )
 
             url = make_absolute_url(
                 raw,
-                js_url,
+                base_url,
             )
 
             if not url:
                 continue
 
-            if not is_cmoney_url(
-                url
-            ):
+            if not is_cmoney_url(url):
                 continue
 
             if url not in urls:
-                urls.append(
-                    url
-                )
+                urls.append(url)
 
     return urls
 
 
-# ============================================================
-# Ocean Service 追蹤
-# ============================================================
-
-def find_ocean_positions(js):
-    positions = []
-
-    lowered = js.lower()
-
-    for keyword in OCEAN_KEYWORDS:
-
-        key = keyword.lower()
-
-        start = 0
-
-        while True:
-
-            pos = lowered.find(
-                key,
-                start,
-            )
-
-            if pos < 0:
-                break
-
-            positions.append(
-                {
-                    "keyword": keyword,
-                    "position": pos,
-                }
-            )
-
-            start = (
-                pos
-                + len(key)
-            )
-
-    return sorted(
-        positions,
-        key=lambda x: x[
-            "position"
-        ],
-    )
-
-
-def extract_service_definitions(
-    js,
+def extract_function_candidates(
+    text,
 ):
-    """
-    嘗試找：
-
-    forumOceanService: ...
-    forumOceanService = ...
-    forumOceanService(...)
-    """
 
     results = []
 
     patterns = [
-        r"""
-        forumOceanService
-        \s*:
-        """,
-        r"""
-        forumOceanService
-        \s*=
-        """,
-        r"""
-        forumOceanService
-        \s*\
-        \(
-        """,
+
+        r'(?:async\s+)?function\s+'
+        r'([A-Za-z_$][\w$]*)\s*'
+        r'\(([^)]*)\)',
+
+        r'([A-Za-z_$][\w$]*)\s*:\s*'
+        r'(?:async\s*)?function\s*'
+        r'\(([^)]*)\)',
+
+        r'([A-Za-z_$][\w$]*)\s*=\s*'
+        r'(?:async\s*)?'
+        r'\(([^)]*)\)\s*=>',
+
+        r'([A-Za-z_$][\w$]*)\s*=\s*'
+        r'(?:async\s*)?'
+        r'([A-Za-z_$][\w$]*)',
     ]
 
     for pattern in patterns:
 
         for match in re.finditer(
             pattern,
-            js,
-            flags=re.I | re.X,
+            text,
+            flags=re.I,
         ):
 
-            start = match.start()
+            name = match.group(1)
 
-            context = js[
-                max(
-                    0,
-                    start - 2000,
-                ):
-                min(
-                    len(js),
-                    start + 6000,
-                )
-            ]
+            args = (
+                match.group(2)
+                if match.lastindex >= 2
+                else ""
+            )
 
             results.append(
                 {
-                    "position": start,
-                    "match": match.group(0),
-                    "context": clean_js(
-                        context
-                    ),
+                    "name": name,
+                    "args": args,
+                    "position": match.start(),
                 }
             )
 
-    return dedupe(
-        results
-    )[:100]
+    unique = {}
 
+    for item in results:
 
-def extract_ocean_contexts(
-    js,
-):
-    contexts = []
+        key = (
+            item["name"],
+            item["position"],
+        )
 
-    positions = find_ocean_positions(
-        js
+        unique[key] = item
+
+    return list(
+        unique.values()
     )
 
-    for item in positions:
 
-        pos = item[
-            "position"
-        ]
-
-        context = js[
-            max(
-                0,
-                pos - 5000,
-            ):
-            min(
-                len(js),
-                pos + 12000,
-            )
-        ]
-
-        contexts.append(
-            {
-                "keyword": item[
-                    "keyword"
-                ],
-                "position": pos,
-                "context": clean_js(
-                    context
-                ),
-            }
-        )
-
-    return contexts[:50]
-
-
-# ============================================================
-# Request Source Trace
-# ============================================================
-
-def extract_request_calls(
-    js,
-    js_url,
+def extract_request_patterns(
+    text,
+    base_url,
 ):
-    """
-    找出 axios/fetch 呼叫，
-    同時保留完整 source context。
-
-    這裡不再假設 URL 一定是 literal。
-    """
-
-    results = []
-
-    pattern = re.compile(
-        r"""
-        (?:
-            \$axios
-            |
-            axios
-            |
-            fetch
-            |
-            \$fetch
-        )
-        \s*
-        (?:
-            \.
-            \s*
-            (get|post|put|delete|request)
-        )?
-        \s*
-        \(
-        """,
-        re.I | re.X,
-    )
-
-    for match in pattern.finditer(
-        js
-    ):
-
-        method = (
-            match.group(1)
-            or "GET"
-        ).upper()
-
-        start = match.start()
-
-        open_pos = js.find(
-            "(",
-            match.start(),
-        )
-
-        argument_text = ""
-
-        if open_pos >= 0:
-
-            balanced = (
-                extract_balanced(
-                    js,
-                    open_pos,
-                )
-            )
-
-            if balanced:
-
-                argument_text = balanced[
-                    1:-1
-                ]
-
-        context = js[
-            max(
-                0,
-                start - 2500,
-            ):
-            min(
-                len(js),
-                start + 7000,
-            )
-        ]
-
-        context = clean_js(
-            context
-        )
-
-        urls = extract_urls_from_js(
-            argument_text,
-            js_url,
-        )
-
-        if not urls:
-            urls = extract_urls_from_js(
-                context,
-                js_url,
-            )
-
-        results.append(
-            {
-                "method": method,
-                "position": start,
-                "argument": clean_js(
-                    argument_text
-                )[:8000],
-                "urls": urls[:50],
-                "context": context[
-                    :9000
-                ],
-                "ocean_related": (
-                    any(
-                        keyword.lower()
-                        in context.lower()
-                        for keyword
-                        in OCEAN_KEYWORDS
-                    )
-                ),
-            }
-        )
-
-    return results
-
-
-def find_ocean_related_calls(
-    js,
-    js_url,
-):
-    calls = extract_request_calls(
-        js,
-        js_url,
-    )
-
-    return [
-        call
-        for call in calls
-        if call.get(
-            "ocean_related"
-        )
-    ]
-
-
-def extract_method_calls(
-    js,
-):
-    """
-    找：
-
-    forumOceanService.xxx(
-    forumOceanService["xxx"](
-    """
 
     results = []
 
     patterns = [
+
+        # axios.get/post/etc
         re.compile(
-            r"""
-            forumOceanService
-            \s*\.\s*
-            ([A-Za-z_$][\w$]*)
-            \s*\(
-            """,
-            re.I | re.X,
+            r'(?:axios|\$axios)'
+            r'\s*\.\s*'
+            r'(get|post|put|delete|patch)'
+            r'\s*\(',
+            re.I,
         ),
+
+        # request.get/post/etc
         re.compile(
-            r"""
-            forumOceanService
-            \s*\[
-            \s*["']([^"']+)["']
-            \s*\]
-            \s*\(
-            """,
-            re.I | re.X,
+            r'(?:request|service|api|client)'
+            r'\s*\.\s*'
+            r'(get|post|put|delete|patch)'
+            r'\s*\(',
+            re.I,
+        ),
+
+        # fetch(...)
+        re.compile(
+            r'\bfetch\s*\(',
+            re.I,
+        ),
+
+        # $fetch(...)
+        re.compile(
+            r'\$fetch\s*\(',
+            re.I,
+        ),
+
+        # .request(...)
+        re.compile(
+            r'\.request\s*\(',
+            re.I,
+        ),
+
+        # method: "GET"
+        re.compile(
+            r'\bmethod\s*:\s*["\']'
+            r'(GET|POST|PUT|DELETE|PATCH)'
+            r'["\']',
+            re.I,
         ),
     ]
 
     for pattern in patterns:
 
         for match in pattern.finditer(
-            js
+            text
         ):
 
-            method_name = (
-                match.group(1)
+            start = max(
+                0,
+                match.start() - 1500,
             )
 
-            start = match.start()
-
-            open_pos = js.find(
-                "(",
-                match.start(),
+            end = min(
+                len(text),
+                match.start() + 5000,
             )
 
-            args = ""
-
-            if open_pos >= 0:
-
-                balanced = (
-                    extract_balanced(
-                        js,
-                        open_pos,
-                    )
-                )
-
-                if balanced:
-                    args = balanced[
-                        1:-1
-                    ]
-
-            context = js[
-                max(
-                    0,
-                    start - 3000,
-                ):
-                min(
-                    len(js),
-                    start + 7000,
-                )
+            context = text[
+                start:end
             ]
+
+            context = re.sub(
+                r"\s+",
+                " ",
+                context,
+            )
+
+            urls = extract_urls_from_text(
+                context,
+                base_url,
+            )
+
+            method = "GET"
+
+            if match.lastindex:
+
+                value = (
+                    match.group(1)
+                    or ""
+                ).upper()
+
+                if value in {
+                    "GET",
+                    "POST",
+                    "PUT",
+                    "DELETE",
+                    "PATCH",
+                }:
+
+                    method = value
 
             results.append(
                 {
-                    "method_name": method_name,
-                    "position": start,
-                    "arguments": clean_js(
-                        args
-                    )[:6000],
-                    "context": clean_js(
-                        context
-                    )[:9000],
+                    "method": method,
+                    "position": match.start(),
+                    "urls": urls[:50],
+                    "context": context[:6000],
                 }
             )
 
-    return dedupe(
-        results
-    )[:200]
+    return results
 
 
-def trace_service_chain(
-    js,
-    js_url,
-):
-    """
-    把 Ocean service 相關證據全部集中起來。
-    """
-
-    ocean_contexts = (
-        extract_ocean_contexts(
-            js
-        )
-    )
-
-    definitions = (
-        extract_service_definitions(
-            js
-        )
-    )
-
-    service_methods = (
-        extract_method_calls(
-            js
-        )
-    )
-
-    request_calls = (
-        find_ocean_related_calls(
-            js,
-            js_url,
-        )
-    )
-
-    candidate_urls = []
-
-    for context in ocean_contexts:
-
-        candidate_urls.extend(
-            extract_urls_from_js(
-                context[
-                    "context"
-                ],
-                js_url,
-            )
-        )
-
-    for definition in definitions:
-
-        candidate_urls.extend(
-            extract_urls_from_js(
-                definition[
-                    "context"
-                ],
-                js_url,
-            )
-        )
-
-    for method in service_methods:
-
-        candidate_urls.extend(
-            extract_urls_from_js(
-                method[
-                    "context"
-                ],
-                js_url,
-            )
-        )
-
-    for call in request_calls:
-
-        candidate_urls.extend(
-            call.get(
-                "urls",
-                []
-            )
-        )
-
-    return {
-        "ocean_contexts": ocean_contexts,
-        "definitions": definitions,
-        "service_methods": service_methods,
-        "request_calls": request_calls,
-        "candidate_urls": dedupe(
-            candidate_urls
-        )[:200],
-    }
-
-
-# ============================================================
-# URL / Request 建構
-# ============================================================
-
-def replace_stock_tokens(
+def extract_string_literals(
     text,
-    symbol,
 ):
-    if not text:
-        return text
-
-    replacements = {
-        "STOCK": symbol,
-        "stock": symbol,
-        "SYMBOL": symbol,
-        "symbol": symbol,
-        "STOCKID": symbol,
-        "stockId": symbol,
-        "STOCKNO": symbol,
-        "stockNo": symbol,
-        "STOCKCODE": symbol,
-        "stockCode": symbol,
-        "CODE": symbol,
-        "code": symbol,
-        "TICKER": symbol,
-        "ticker": symbol,
-    }
-
-    for old, new in replacements.items():
-
-        text = text.replace(
-            "${" + old + "}",
-            new,
-        )
-
-    return text
-
-
-def substitute_symbol_in_url(
-    url,
-    symbol,
-):
-    if not url:
-        return url
-
-    parsed = urlparse(
-        url
-    )
-
-    query = parse_qs(
-        parsed.query,
-        keep_blank_values=True,
-    )
-
-    changed = False
-
-    for key in list(
-        query.keys()
-    ):
-
-        key_lower = key.lower()
-
-        if any(
-            token in key_lower
-            for token in (
-                "stock",
-                "symbol",
-                "ticker",
-                "code",
-                "commkey",
-            )
-        ):
-
-            query[key] = [
-                symbol
-            ]
-
-            changed = True
-
-    path = parsed.path
-
-    path = re.sub(
-        r"""
-        (stock(?:id|no|code)?|
-         symbol|
-         ticker|
-         commkey)
-        /
-        [A-Za-z0-9_.-]+
-        """,
-        lambda m: (
-            m.group(0).split(
-                "/"
-            )[0]
-            + "/"
-            + symbol
-        ),
-        path,
-        flags=re.I | re.X,
-    )
-
-    if (
-        not changed
-        and symbol not in path
-    ):
-        pass
-
-    return urlunparse(
-        (
-            parsed.scheme,
-            parsed.netloc,
-            path,
-            parsed.params,
-            urlencode(
-                query,
-                doseq=True,
-            ),
-            parsed.fragment,
-        )
-    )
-
-
-def build_source_candidates(
-    trace,
-    symbol,
-):
-    """
-    只建立「有 source 證據」的候選。
-
-    V3 那種大量自行猜參數的方式
-    在這裡不再作為第一層測試。
-    """
-
-    candidates = []
-
-    for call in trace.get(
-        "request_calls",
-        [],
-    ):
-
-        urls = call.get(
-            "urls",
-            []
-        )
-
-        for url in urls:
-
-            url = substitute_symbol_in_url(
-                url,
-                symbol,
-            )
-
-            candidates.append(
-                {
-                    "url": url,
-                    "method": call.get(
-                        "method",
-                        "GET",
-                    ),
-                    "source": "request_call",
-                    "argument": call.get(
-                        "argument",
-                        "",
-                    ),
-                    "context": call.get(
-                        "context",
-                        "",
-                    ),
-                }
-            )
-
-    for method in trace.get(
-        "service_methods",
-        [],
-    ):
-
-        urls = extract_urls_from_js(
-            method.get(
-                "context",
-                ""
-            ),
-            BASE,
-        )
-
-        for url in urls:
-
-            url = substitute_symbol_in_url(
-                url,
-                symbol,
-            )
-
-            candidates.append(
-                {
-                    "url": url,
-                    "method": "GET",
-                    "source": (
-                        "service_method"
-                    ),
-                    "service_method": (
-                        method.get(
-                            "method_name"
-                        )
-                    ),
-                    "arguments": (
-                        method.get(
-                            "arguments",
-                            "",
-                        )
-                    ),
-                    "context": method.get(
-                        "context",
-                        "",
-                    ),
-                }
-            )
-
-    candidates = dedupe(
-        candidates
-    )
-
-    return candidates[:200]
-
-
-# ============================================================
-# Response 結構分析
-# ============================================================
-
-def contains_force_field(
-    key
-):
-    return bool(
-        FORCE_RE.search(
-            str(key)
-        )
-    )
-
-
-def is_date_key(key):
-    normalized = re.sub(
-        r"[_\-\s]",
-        "",
-        str(key),
-    ).lower()
-
-    return normalized in {
-        "date",
-        "tradedate",
-        "datetime",
-        "tradingdate",
-        "datevalue",
-        "day",
-        "tradingday",
-    }
-
-
-def is_force_key(key):
-    return contains_force_field(
-        key
-    )
-
-
-def analyze_record(
-    record,
-    path,
-):
-    if not isinstance(
-        record,
-        dict,
-    ):
-        return None
-
-    dates = []
-
-    force_fields = []
-
-    for key, value in record.items():
-
-        if is_date_key(
-            key
-        ):
-
-            if isinstance(
-                value,
-                str,
-            ):
-
-                date = normalize_date(
-                    value
-                )
-
-                if date:
-                    dates.append(
-                        date
-                    )
-
-            elif isinstance(
-                value,
-                list,
-            ):
-
-                for item in value:
-
-                    date = normalize_date(
-                        item
-                    )
-
-                    if date:
-                        dates.append(
-                            date
-                        )
-
-        if is_force_key(
-            key
-        ):
-
-            force_fields.append(
-                str(key)
-            )
-
-    return {
-        "path": path,
-        "dates": list(
-            dict.fromkeys(
-                dates
-            )
-        ),
-        "force_fields": list(
-            dict.fromkeys(
-                force_fields
-            )
-        ),
-        "date_count": len(
-            set(dates)
-        ),
-        "has_force_field": bool(
-            force_fields
-        ),
-    }
-
-
-def analyze_same_structure_array(
-    array,
-    path,
-):
-    if not isinstance(
-        array,
-        list,
-    ):
-        return []
-
-    records = []
-
-    for index, item in enumerate(
-        array[:1000]
-    ):
-
-        if not isinstance(
-            item,
-            dict,
-        ):
-            continue
-
-        analysis = analyze_record(
-            item,
-            f"{path}[{index}]",
-        )
-
-        if analysis:
-            records.append(
-                analysis
-            )
-
-    if not records:
-        return []
-
-    # 判斷整個 array 是否為同型資料。
-    signatures = {}
-
-    for record in records:
-
-        signature = tuple(
-            sorted(
-                record[
-                    "force_fields"
-                ]
-            )
-        )
-
-        signatures.setdefault(
-            signature,
-            [],
-        ).append(
-            record
-        )
 
     results = []
 
-    for signature, group in signatures.items():
+    pattern = re.compile(
+        r'["\']([^"\']{2,500})["\']'
+    )
 
-        if not signature:
-            continue
+    for match in pattern.finditer(
+        text
+    ):
 
-        all_dates = []
+        value = match.group(1)
 
-        for record in group:
+        lower = value.lower()
 
-            all_dates.extend(
-                record[
-                    "dates"
-                ]
+        if any(
+            keyword in lower
+            for keyword in (
+                "/api/",
+                "api/",
+                "/service/",
+                "tickdataservice",
+                "graphql",
+                "chip",
+                "force",
+                "main",
+                "ocean",
             )
+        ):
 
-        unique_dates = list(
-            dict.fromkeys(
-                all_dates
+            results.append(
+                {
+                    "value": value,
+                    "position": match.start(),
+                }
             )
-        )
-
-        results.append(
-            {
-                "path": path,
-                "record_count": len(
-                    group
-                ),
-                "force_signature": (
-                    list(signature)
-                ),
-                "date_count": len(
-                    unique_dates
-                ),
-                "dates": unique_dates[
-                    :100
-                ],
-                "has_20_dates": (
-                    len(
-                        unique_dates
-                    ) >= 20
-                ),
-                "same_structure": True,
-                "true_20d": (
-                    len(
-                        unique_dates
-                    ) >= 20
-                    and bool(
-                        signature
-                    )
-                ),
-            }
-        )
 
     return results
 
@@ -1473,25 +598,10 @@ def analyze_same_structure_array(
 def analyze_json_structure(
     payload
 ):
-    """
-    最重要的 V4 判定：
 
-    不是：
-        JSON 某處有日期
-        +
-        JSON 某處有主力
-
-    而是：
-
-        同一個 array /
-        同一資料結構
-        裡有 >=20 日期
-        且有主力欄位
-    """
-
-    all_dates = []
+    dates = []
     force_fields = []
-    structural_candidates = []
+    arrays = []
 
     def walk(
         value,
@@ -1507,52 +617,68 @@ def analyze_json_structure(
             dict,
         ):
 
-            # 單筆 record
-            record = analyze_record(
-                value,
-                path,
-            )
-
-            if record:
-
-                if record[
-                    "dates"
-                ]:
-                    all_dates.extend(
-                        record[
-                            "dates"
-                        ]
-                    )
-
-                force_fields.extend(
-                    record[
-                        "force_fields"
-                    ]
-                )
-
             for key, child in value.items():
 
-                child_path = (
-                    f"{path}/{key}"
-                )
+                key_text = str(key)
 
-                if isinstance(
-                    child,
-                    list,
-                ) and len(
-                    child
-                ) >= 5:
+                if FORCE_RE.search(
+                    key_text
+                ):
 
-                    structural_candidates.extend(
-                        analyze_same_structure_array(
-                            child,
-                            child_path,
-                        )
+                    force_fields.append(
+                        f"{path}/{key_text}"
                     )
+
+                normalized = re.sub(
+                    r"[_\-\s]",
+                    "",
+                    key_text,
+                ).lower()
+
+                if normalized in {
+                    "date",
+                    "tradedate",
+                    "datetime",
+                    "tradingdate",
+                    "dealdate",
+                    "transdate",
+                }:
+
+                    if isinstance(
+                        child,
+                        str,
+                    ):
+
+                        date = normalize_date(
+                            child
+                        )
+
+                        if date:
+                            dates.append(
+                                date
+                            )
+
+                    elif isinstance(
+                        child,
+                        list,
+                    ):
+
+                        for item in child:
+
+                            date = normalize_date(
+                                item
+                            )
+
+                            if date:
+                                dates.append(
+                                    date
+                                )
 
                 walk(
                     child,
-                    child_path,
+                    (
+                        f"{path}/{key_text}"
+                    ),
                     depth + 1,
                 )
 
@@ -1561,13 +687,13 @@ def analyze_json_structure(
             list,
         ):
 
-            if len(value) >= 5:
+            if len(value) >= 10:
 
-                structural_candidates.extend(
-                    analyze_same_structure_array(
-                        value,
-                        path,
-                    )
+                arrays.append(
+                    {
+                        "path": path,
+                        "length": len(value),
+                    }
                 )
 
             for index, child in enumerate(
@@ -1590,18 +716,14 @@ def analyze_json_structure(
             )
 
             if date:
-                all_dates.append(
+                dates.append(
                     date
                 )
 
-    walk(
-        payload
-    )
+    walk(payload)
 
-    all_dates = list(
-        dict.fromkeys(
-            all_dates
-        )
+    dates = list(
+        dict.fromkeys(dates)
     )
 
     force_fields = list(
@@ -1610,343 +732,187 @@ def analyze_json_structure(
         )
     )
 
-    structural_candidates = dedupe(
-        structural_candidates
-    )
-
-    winners = [
-        item
-        for item
-        in structural_candidates
-        if item.get(
-            "true_20d",
-            False,
-        )
-    ]
-
     return {
-        "global_date_count": len(
-            all_dates
+        "date_count": len(dates),
+        "dates": dates[:200],
+        "force_fields": force_fields[:200],
+        "arrays": arrays[:200],
+        "has_20_dates": (
+            len(dates) >= 20
         ),
-        "global_dates": all_dates[
-            :100
-        ],
-        "global_force_fields": (
-            force_fields[:100]
+        "has_force_field": bool(
+            force_fields
         ),
-        "structural_candidates": (
-            structural_candidates[:100]
-        ),
-        "winner_structures": (
-            winners[:20]
-        ),
-        "true_20d": bool(
-            winners
+        "true_20d": (
+            len(dates) >= 20
+            and bool(force_fields)
         ),
     }
 
 
-# ============================================================
-# Request 執行
-# ============================================================
+def build_parameter_sets(
+    symbol
+):
 
-def build_request_variants(
-    candidate,
+    return [
+
+        {"symbol": symbol},
+
+        {"stockId": symbol},
+
+        {"stockNo": symbol},
+
+        {"stockCode": symbol},
+
+        {"code": symbol},
+
+        {"ticker": symbol},
+
+        {"id": symbol},
+
+        {"stock": symbol},
+
+        {"stock_id": symbol},
+
+        {"stock_code": symbol},
+
+    ]
+
+
+def test_endpoint(
+    session,
+    url,
+    method,
     symbol,
 ):
-    """
-    不再像 V3 一樣盲猜七種參數。
 
-    第一優先：
-        source code 原始 request
+    results = []
 
-    第二優先：
-        URL 本身已含 stock token
-
-    第三優先：
-        少量保守變體。
-    """
-
-    url = candidate.get(
-        "url"
-    )
-
-    method = candidate.get(
-        "method",
-        "GET",
-    ).upper()
-
-    variants = []
-
-    variants.append(
-        {
-            "method": method,
-            "url": substitute_symbol_in_url(
-                url,
-                symbol,
-            ),
-            "params": None,
-            "json": None,
-            "source": "source_url",
-        }
-    )
-
-    parsed = urlparse(
-        url
-    )
-
-    query = parse_qs(
-        parsed.query,
-        keep_blank_values=True,
-    )
-
-    query_variants = []
-
-    if query:
-
-        for key in list(
-            query.keys()
-        ):
-
-            key_lower = key.lower()
-
-            if any(
-                token in key_lower
-                for token in (
-                    "stock",
-                    "symbol",
-                    "ticker",
-                    "code",
-                    "commkey",
-                )
-            ):
-
-                q = {
-                    k: list(v)
-                    for k, v
-                    in query.items()
-                }
-
-                q[key] = [
-                    symbol
-                ]
-
-                query_variants.append(
-                    q
-                )
-
-    for q in query_variants:
-
-        clean_url = urlunparse(
-            (
-                parsed.scheme,
-                parsed.netloc,
-                parsed.path,
-                parsed.params,
-                urlencode(
-                    q,
-                    doseq=True,
-                ),
-                parsed.fragment,
-            )
+    params_list = (
+        build_parameter_sets(
+            symbol
         )
+    )
 
-        variants.append(
-            {
+    for params in params_list:
+
+        try:
+
+            if method == "POST":
+
+                response = session.post(
+                    url,
+                    json=params,
+                    headers=HEADERS,
+                    timeout=TIMEOUT,
+                )
+
+            else:
+
+                response = session.get(
+                    url,
+                    params=params,
+                    headers=HEADERS,
+                    timeout=TIMEOUT,
+                )
+
+            item = {
+
+                "url": response.url,
+
                 "method": method,
-                "url": clean_url,
-                "params": None,
-                "json": None,
-                "source": (
-                    "source_query"
+
+                "params": params,
+
+                "status": (
+                    response.status_code
+                ),
+
+                "content_type": (
+                    response.headers.get(
+                        "content-type",
+                        "",
+                    )
+                ),
+
+                "bytes": len(
+                    response.content
                 ),
             }
-        )
 
-    # 如果 source method 的 argument 明確出現
-    # stock/symbol 等 key，才建立 body variant。
-    argument = (
-        candidate.get(
-            "argument",
-            ""
-        )
-        or candidate.get(
-            "arguments",
-            ""
-        )
-    )
+            text = response.text
 
-    if argument:
+            if (
+                response.status_code == 200
+                and (
+                    "json"
+                    in item[
+                        "content_type"
+                    ].lower()
 
-        lowered = argument.lower()
+                    or text.lstrip().startswith(
+                        "{"
+                    )
 
-        if any(
-            key in lowered
-            for key in STOCK_ARGUMENT_KEYS
-        ):
-
-            for key in (
-                "symbol",
-                "stockId",
-                "stockNo",
-                "stockCode",
-                "code",
-                "ticker",
-            ):
-
-                variants.append(
-                    {
-                        "method": method,
-                        "url": substitute_stock_tokens(
-                            url,
-                            symbol,
-                        ),
-                        "params": {
-                            key: symbol
-                        },
-                        "json": None,
-                        "source": (
-                            "source_argument"
-                        ),
-                    }
-                )
-
-    return dedupe(
-        variants
-    )[:15]
-
-
-def test_request(
-    session,
-    request,
-    symbol,
-):
-    try:
-
-        method = request.get(
-            "method",
-            "GET",
-        ).upper()
-
-        url = request.get(
-            "url"
-        )
-
-        params = request.get(
-            "params"
-        )
-
-        json_body = request.get(
-            "json"
-        )
-
-        if method == "POST":
-
-            response = session.post(
-                url,
-                params=params,
-                json=json_body,
-                headers=HEADERS,
-                timeout=TIMEOUT,
-            )
-
-        elif method == "PUT":
-
-            response = session.put(
-                url,
-                params=params,
-                json=json_body,
-                headers=HEADERS,
-                timeout=TIMEOUT,
-            )
-
-        else:
-
-            response = session.get(
-                url,
-                params=params,
-                headers=HEADERS,
-                timeout=TIMEOUT,
-            )
-
-        item = {
-            "request": request,
-            "final_url": response.url,
-            "status": response.status_code,
-            "content_type": response.headers.get(
-                "content-type",
-                "",
-            ),
-            "bytes": len(
-                response.content
-            ),
-        }
-
-        text = response.text
-
-        if (
-            response.status_code == 200
-            and (
-                "json"
-                in item[
-                    "content_type"
-                ].lower()
-                or text.lstrip().startswith(
-                    "{"
-                )
-                or text.lstrip().startswith(
-                    "["
-                )
-            )
-        ):
-
-            try:
-
-                payload = response.json()
-
-                analysis = (
-                    analyze_json_structure(
-                        payload
+                    or text.lstrip().startswith(
+                        "["
                     )
                 )
+            ):
 
-                item[
-                    "payload_analysis"
-                ] = analysis
+                try:
 
-                if analysis[
-                    "true_20d"
-                ]:
+                    payload = (
+                        response.json()
+                    )
+
+                    analysis = (
+                        analyze_json_structure(
+                            payload
+                        )
+                    )
 
                     item[
-                        "confirmed"
-                    ] = True
+                        "payload_analysis"
+                    ] = analysis
 
-                    return item
+                    if analysis[
+                        "true_20d"
+                    ]:
 
-            except Exception as exc:
+                        results.append(
+                            item
+                        )
 
-                item[
-                    "json_error"
-                ] = repr(
-                    exc
-                )
+                        return results
 
-        return item
+                except Exception as exc:
 
-    except Exception as exc:
+                    item[
+                        "json_error"
+                    ] = repr(exc)
 
-        return {
-            "request": request,
-            "error": str(
-                exc
-            )[:1500],
-        }
+            results.append(
+                item
+            )
 
+        except Exception as exc:
 
-# ============================================================
-# 主程式
-# ============================================================
+            results.append(
+                {
+                    "url": url,
+                    "method": method,
+                    "params": params,
+                    "error": str(exc)[:1000],
+                }
+            )
+
+        time.sleep(
+            0.15
+        )
+
+    return results
+
 
 def main():
 
@@ -1962,16 +928,30 @@ def main():
     )
 
     report = {
+
         "version": VERSION,
+
         "started_at": now_iso(),
+
+        "strategy": (
+            "Source Trace → "
+            "Ocean Service → "
+            "Definition → "
+            "Method → "
+            "Request → "
+            "Response Structure"
+        ),
+
         "stocks": [],
     }
 
     print("=" * 76)
+
     print(
         "台股 AI 選股系統 "
-        "CMoney API 20D 探測器 V4"
+        "CMoney API 20D 探測器 V5"
     )
+
     print("=" * 76)
 
     print(
@@ -1979,10 +959,8 @@ def main():
     )
 
     print(
-        "Source Trace → "
-        "Ocean Service → "
-        "Method → "
-        "Request → "
+        "Source Trace → Ocean Service → "
+        "Definition → Method → Request → "
         "Response Structure"
     )
 
@@ -2002,9 +980,11 @@ def main():
 
         print()
         print("=" * 76)
+
         print(
             f"{symbol} {name}"
         )
+
         print("=" * 76)
 
         page_url = (
@@ -2013,14 +993,25 @@ def main():
         )
 
         stock = {
+
             "symbol": symbol,
+
             "name": name,
+
             "page_url": page_url,
+
             "true_20d": False,
+
             "html": {},
+
             "js_evidence": [],
-            "source_trace": [],
-            "candidate_requests": [],
+
+            "service_definitions": [],
+
+            "service_methods": [],
+
+            "request_candidates": [],
+
             "tests": [],
         }
 
@@ -2037,7 +1028,10 @@ def main():
                 f"{response.status_code}"
             )
 
-            if response.status_code != 200:
+            if (
+                response.status_code
+                != 200
+            ):
 
                 stock[
                     "error"
@@ -2048,9 +1042,7 @@ def main():
 
                 report[
                     "stocks"
-                ].append(
-                    stock
-                )
+                ].append(stock)
 
                 continue
 
@@ -2062,29 +1054,40 @@ def main():
                 )
             )
 
+            ocean_contexts = (
+                extract_ocean_contexts(
+                    html
+                )
+            )
+
             stock[
                 "html"
             ] = {
-                "status": response.status_code,
+
+                "status": (
+                    response.status_code
+                ),
+
                 "bytes": len(
                     response.content
                 ),
+
+                "dates": html_dates,
+
                 "date_count": len(
                     html_dates
                 ),
-                "dates": html_dates[
-                    :100
-                ],
+
                 "ocean_contexts": (
-                    extract_runtime_context(
-                        html
-                    )
+                    ocean_contexts[:30]
                 ),
             }
 
-            scripts = extract_script_urls(
-                html,
-                page_url,
+            scripts = (
+                extract_script_urls(
+                    html,
+                    page_url,
+                )
             )
 
             print(
@@ -2092,7 +1095,9 @@ def main():
                 f"{len(scripts)} 個"
             )
 
-            all_traces = []
+            all_candidates = []
+
+            all_request_candidates = []
 
             for index, script_url in enumerate(
                 scripts[:120],
@@ -2101,76 +1106,88 @@ def main():
 
                 try:
 
-                    js_response = session.get(
-                        script_url,
-                        headers=HEADERS,
-                        timeout=TIMEOUT,
+                    js_response = (
+                        session.get(
+                            script_url,
+                            headers=HEADERS,
+                            timeout=TIMEOUT,
+                        )
                     )
 
                     if (
                         js_response.status_code
                         != 200
                     ):
+
                         continue
 
-                    js = js_response.text
-
-                    has_ocean = any(
-                        keyword.lower()
-                        in js.lower()
-                        for keyword
-                        in OCEAN_KEYWORDS
+                    js = (
+                        js_response.text
                     )
 
-                    if not has_ocean:
+                    ocean = (
+                        extract_ocean_contexts(
+                            js
+                        )
+                    )
+
+                    if not ocean:
                         continue
 
-                    trace = (
-                        trace_service_chain(
+                    urls = (
+                        extract_urls_from_text(
                             js,
                             script_url,
                         )
                     )
 
-                    all_traces.append(
-                        {
-                            "script": script_url,
-                            "bytes": len(
-                                js_response.content
-                            ),
-                            "trace": trace,
-                        }
+                    request_patterns = (
+                        extract_request_patterns(
+                            js,
+                            script_url,
+                        )
+                    )
+
+                    strings = (
+                        extract_string_literals(
+                            js
+                        )
+                    )
+
+                    functions = (
+                        extract_function_candidates(
+                            js
+                        )
                     )
 
                     evidence = {
+
                         "script": script_url,
+
                         "bytes": len(
                             js_response.content
                         ),
-                        "ocean_context_count": len(
-                            trace[
-                                "ocean_contexts"
-                            ]
+
+                        "ocean_context_count": (
+                            len(ocean)
                         ),
-                        "definition_count": len(
-                            trace[
-                                "definitions"
-                            ]
+
+                        "ocean_contexts": (
+                            ocean[:50]
                         ),
-                        "service_method_count": len(
-                            trace[
-                                "service_methods"
-                            ]
+
+                        "urls": urls[:100],
+
+                        "request_patterns": (
+                            request_patterns[:100]
                         ),
-                        "request_call_count": len(
-                            trace[
-                                "request_calls"
-                            ]
+
+                        "strings": (
+                            strings[:200]
                         ),
-                        "candidate_url_count": len(
-                            trace[
-                                "candidate_urls"
-                            ]
+
+                        "functions": (
+                            functions[:200]
                         ),
                     }
 
@@ -2180,7 +1197,76 @@ def main():
                         evidence
                     )
 
+                    all_candidates.extend(
+                        urls
+                    )
+
+                    # --------------------------------------------------
+                    # V5 核心：
+                    # Ocean context 本身也視為 request source。
+                    # 即使 request pattern parser 沒抓到，
+                    # 也保留 context 給下一層分析。
+                    # --------------------------------------------------
+
+                    for ocean_item in ocean:
+
+                        context = (
+                            ocean_item[
+                                "context"
+                            ]
+                        )
+
+                        context_urls = (
+                            extract_urls_from_text(
+                                context,
+                                script_url,
+                            )
+                        )
+
+                        context_requests = (
+                            extract_request_patterns(
+                                context,
+                                script_url,
+                            )
+                        )
+
+                        if context_urls:
+
+                            all_candidates.extend(
+                                context_urls
+                            )
+
+                        if context_requests:
+
+                            all_request_candidates.extend(
+                                context_requests
+                            )
+
+                        stock[
+                            "service_definitions"
+                        ].append(
+                            {
+                                "script": script_url,
+                                "keyword": (
+                                    ocean_item[
+                                        "keyword"
+                                    ]
+                                ),
+                                "position": (
+                                    ocean_item[
+                                        "position"
+                                    ]
+                                ),
+                                "context": context,
+                                "urls": context_urls[:50],
+                                "requests": (
+                                    context_requests[:50]
+                                ),
+                            }
+                        )
+
                     print()
+
                     print(
                         f"★ JS {index}: "
                         f"{script_url}"
@@ -2188,109 +1274,69 @@ def main():
 
                     print(
                         "   Ocean context："
-                        f"{len(trace['ocean_contexts'])}"
+                        f"{len(ocean)}"
                     )
 
                     print(
-                        "   Service definition："
-                        f"{len(trace['definitions'])}"
-                    )
-
-                    print(
-                        "   Service method："
-                        f"{len(trace['service_methods'])}"
-                    )
-
-                    print(
-                        "   Request call："
-                        f"{len(trace['request_calls'])}"
+                        "   Request pattern："
+                        f"{len(request_patterns)}"
                     )
 
                     print(
                         "   Candidate URL："
-                        f"{len(trace['candidate_urls'])}"
+                        f"{len(urls)}"
                     )
-
-                    # 印出最重要的 method
-                    for method in trace[
-                        "service_methods"
-                    ][:20]:
-
-                        print(
-                            "   "
-                            f"→ forumOceanService."
-                            f"{method['method_name']}("
-                            f"{method['arguments'][:180]}"
-                            ")"
-                        )
-
-                    # 印出 request call
-                    for call in trace[
-                        "request_calls"
-                    ][:20]:
-
-                        print(
-                            "   "
-                            f"→ REQUEST "
-                            f"{call['method']}"
-                        )
-
-                        if call[
-                            "urls"
-                        ]:
-
-                            for url in call[
-                                "urls"
-                            ][:10]:
-
-                                print(
-                                    "      "
-                                    f"{url}"
-                                )
 
                 except Exception as exc:
 
-                    print(
-                        "   JS 探測錯誤："
-                        f"{str(exc)[:300]}"
+                    stock[
+                        "js_evidence"
+                    ].append(
+                        {
+                            "script": script_url,
+                            "error": repr(exc),
+                        }
                     )
 
                 time.sleep(
                     0.05
                 )
 
-            stock[
-                "source_trace"
-            ] = all_traces
-
-            # 建立 source-derived request
-            candidates = []
-
-            for trace_item in all_traces:
-
-                trace = trace_item[
-                    "trace"
-                ]
-
-                requests_found = (
-                    build_source_candidates(
-                        trace,
-                        symbol,
-                    )
+            all_candidates = list(
+                dict.fromkeys(
+                    all_candidates
                 )
+            )
 
-                candidates.extend(
-                    requests_found
+            all_request_candidates = (
+                list(
+                    {
+                        (
+                            item.get(
+                                "method",
+                                "GET"
+                            ),
+                            tuple(
+                                item.get(
+                                    "urls",
+                                    []
+                                )
+                            ),
+                            item.get(
+                                "position",
+                                -1
+                            ),
+                        ): item
+                        for item
+                        in all_request_candidates
+                    }.values()
                 )
-
-            candidates = dedupe(
-                candidates
             )
 
             stock[
-                "candidate_requests"
-            ] = candidates[
-                :200
+                "service_methods"
+            ] = all_request_candidates[
+                :300
             ]
 
             print()
@@ -2304,129 +1350,238 @@ def main():
 
             print(
                 f"Ocean JS："
-                f"{len(all_traces)}"
+                f"{len(stock['js_evidence'])}"
             )
 
             print(
-                f"Source-derived Request："
-                f"{len(candidates)}"
+                "Service definition："
+                f"{len(stock['service_definitions'])}"
+            )
+
+            print(
+                "Request pattern："
+                f"{len(all_request_candidates)}"
+            )
+
+            print(
+                "Candidate URL："
+                f"{len(all_candidates)}"
             )
 
             print(
                 "================================"
             )
 
-            tested = 0
+            # ----------------------------------------------------------
+            # 建立 request candidates
+            #
+            # 來源優先級：
+            #
+            # 1. Ocean context URL
+            # 2. request pattern URL
+            # 3. JS URL
+            #
+            # 不再單純因為 /api/ 就直接測試。
+            # ----------------------------------------------------------
 
-            # 優先 source request
-            for candidate in candidates[
-                :100
-            ]:
+            request_map = {}
 
-                variants = (
-                    build_request_variants(
-                        candidate,
+            for item in all_request_candidates:
+
+                method = (
+                    item.get(
+                        "method",
+                        "GET",
+                    )
+                )
+
+                for url in item.get(
+                    "urls",
+                    [],
+                ):
+
+                    key = (
+                        method,
+                        url,
+                    )
+
+                    request_map[
+                        key
+                    ] = {
+
+                        "method": method,
+
+                        "url": url,
+
+                        "source": (
+                            "request_pattern"
+                        ),
+
+                        "context": (
+                            item.get(
+                                "context",
+                                "",
+                            )
+                        ),
+                    }
+
+            # Ocean definitions
+
+            for definition in (
+                stock[
+                    "service_definitions"
+                ]
+            ):
+
+                for url in definition.get(
+                    "urls",
+                    [],
+                ):
+
+                    key = (
+                        "GET",
+                        url,
+                    )
+
+                    if key not in request_map:
+
+                        request_map[
+                            key
+                        ] = {
+
+                            "method": "GET",
+
+                            "url": url,
+
+                            "source": (
+                                "ocean_definition"
+                            ),
+
+                            "context": (
+                                definition.get(
+                                    "context",
+                                    "",
+                                )
+                            ),
+                        }
+
+            stock[
+                "request_candidates"
+            ] = list(
+                request_map.values()
+            )[:500]
+
+            print(
+                "Source-derived Request："
+                f"{len(stock['request_candidates'])}"
+            )
+
+            # ----------------------------------------------------------
+            # 如果仍然沒有 request，
+            # 不代表 API 不存在。
+            #
+            # V5 會輸出 Ocean definition，
+            # 下一版可以針對實際 definition
+            # 做精準 parser。
+            # ----------------------------------------------------------
+
+            for candidate in (
+                stock[
+                    "request_candidates"
+                ][:100]
+            ):
+
+                endpoint = candidate[
+                    "url"
+                ]
+
+                method = candidate[
+                    "method"
+                ]
+
+                print()
+                print(
+                    "[SOURCE API]"
+                )
+
+                print(
+                    f"{method} "
+                    f"{endpoint}"
+                )
+
+                test_results = (
+                    test_endpoint(
+                        session,
+                        endpoint,
+                        method,
                         symbol,
                     )
                 )
 
-                for request in variants:
+                stock[
+                    "tests"
+                ].extend(
+                    test_results
+                )
 
-                    tested += 1
+                winner = next(
+                    (
+                        item
+                        for item
+                        in test_results
+                        if item.get(
+                            "payload_analysis",
+                            {},
+                        ).get(
+                            "true_20d",
+                            False,
+                        )
+                    ),
+                    None,
+                )
 
-                    print()
-                    print(
-                        f"[TEST {tested}] "
-                        f"{request['method']} "
-                        f"{request['url']}"
-                    )
+                if winner:
 
-                    print(
-                        "SOURCE："
-                        f"{request['source']}"
-                    )
+                    stock[
+                        "true_20d"
+                    ] = True
 
-                    result = test_request(
-                        session,
-                        request,
-                        symbol,
+                    stock[
+                        "winning_endpoint"
+                    ] = endpoint
+
+                    stock[
+                        "winning_method"
+                    ] = method
+
+                    stock[
+                        "winning_source"
+                    ] = candidate.get(
+                        "source"
                     )
 
                     stock[
-                        "tests"
-                    ].append(
-                        result
+                        "winning_result"
+                    ] = winner
+
+                    print()
+                    print(
+                        "★★★★★★★★★★★★★★★★★★★★★★★★"
                     )
 
-                    analysis = result.get(
-                        "payload_analysis",
-                        {},
+                    print(
+                        "★ 真正 20D API 已確認"
                     )
 
-                    if analysis.get(
-                        "true_20d",
-                        False,
-                    ):
-
-                        stock[
-                            "true_20d"
-                        ] = True
-
-                        stock[
-                            "winning_request"
-                        ] = request
-
-                        stock[
-                            "winning_result"
-                        ] = result
-
-                        print()
-                        print(
-                            "★★★★★★★★★★★★★★★★★★★★★★★★"
-                        )
-
-                        print(
-                            "★ 真正 20D API 已確認"
-                        )
-
-                        print(
-                            "★ 方法："
-                            f"{request['method']}"
-                        )
-
-                        print(
-                            "★ URL："
-                            f"{request['url']}"
-                        )
-
-                        print(
-                            "★ Source："
-                            f"{request['source']}"
-                        )
-
-                        print(
-                            "★ 日期數："
-                            f"{analysis.get('global_date_count', 0)}"
-                        )
-
-                        print(
-                            "★ Winner 結構："
-                            f"{len(analysis.get('winner_structures', []))}"
-                        )
-
-                        print(
-                            "★★★★★★★★★★★★★★★★★★★★★★★★"
-                        )
-
-                        break
-
-                    time.sleep(
-                        0.10
+                    print(
+                        f"★ {method} "
+                        f"{endpoint}"
                     )
 
-                if stock[
-                    "true_20d"
-                ]:
+                    print(
+                        "★★★★★★★★★★★★★★★★★★★★★★★★"
+                    )
+
                     break
 
             print()
@@ -2445,8 +1600,13 @@ def main():
             )
 
             print(
+                "Service definition："
+                f"{len(stock['service_definitions'])}"
+            )
+
+            print(
                 "Source Request："
-                f"{len(stock['candidate_requests'])}"
+                f"{len(stock['request_candidates'])}"
             )
 
             print(
@@ -2463,9 +1623,7 @@ def main():
 
             stock[
                 "error"
-            ] = repr(
-                exc
-            )
+            ] = repr(exc)
 
             print(
                 "❌ 發生錯誤：",
@@ -2481,9 +1639,7 @@ def main():
     true_count = sum(
         1
         for stock
-        in report[
-            "stocks"
-        ]
+        in report["stocks"]
         if stock.get(
             "true_20d",
             False,
@@ -2493,21 +1649,19 @@ def main():
     report[
         "final"
     ] = {
-        "tested": len(
-            STOCKS
-        ),
+
+        "tested": len(STOCKS),
+
         "true_20d_count": true_count,
+
         "true_20d": (
             true_count > 0
         ),
+
         "rule": (
-            "必須在同一 structured "
-            "response/data array 中，"
-            "存在至少20個不同交易日期，"
-            "且同一資料結構存在主力買賣超相關欄位"
-        ),
-        "method": (
-            "V4 Source Trace First"
+            "同一 structured response "
+            "必須至少20個不同日期，"
+            "且存在主力買賣超相關欄位"
         ),
     }
 
@@ -2525,16 +1679,16 @@ def main():
     )
 
     print()
+
     print("=" * 76)
 
     print(
-        "CMoney API 20D V4 最終判定"
+        "CMoney API 20D V5 最終判定"
     )
 
     print(
         f"真正20D API："
-        f"{true_count}/"
-        f"{len(STOCKS)}"
+        f"{true_count}/{len(STOCKS)}"
     )
 
     for stock in report[
@@ -2542,34 +1696,16 @@ def main():
     ]:
 
         print(
-            f"  {stock['symbol']} "
+            f"  "
+            f"{stock['symbol']} "
             f"{stock['name']}："
             f"{stock.get('true_20d', False)}"
         )
 
-        if stock.get(
-            "winning_request"
-        ):
-
-            winning = stock[
-                "winning_request"
-            ]
-
-            print(
-                "    URL："
-                f"{winning.get('url')}"
-            )
-
-            print(
-                "    METHOD："
-                f"{winning.get('method')}"
-            )
-
     print()
 
     print(
-        f"結果已寫入："
-        f"{OUT}"
+        f"結果已寫入：{OUT}"
     )
 
     print("=" * 76)
