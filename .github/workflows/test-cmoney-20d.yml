@@ -1,0 +1,53 @@
+name: Test CMoney 20D
+
+on:
+  workflow_dispatch:
+
+jobs:
+  test-cmoney-20d:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install requests beautifulsoup4
+
+      - name: Check test files
+        run: |
+          echo "========================================"
+          echo "檢查 CMoney 20D 測試檔案"
+          echo "========================================"
+
+          test -f Scripts/test_cmoney_20d.py
+
+          echo "✓ Scripts/test_cmoney_20d.py 存在"
+
+      - name: Run CMoney 20D test
+        run: |
+          echo "========================================"
+          echo "開始 CMoney 20D 測試"
+          echo "========================================"
+          echo "測試股票固定為 4 檔："
+          echo "2337 旺宏"
+          echo "2426 鼎元"
+          echo "2368 金像電"
+          echo "3081"
+          echo "========================================"
+
+          python Scripts/test_cmoney_20d.py
+
+      - name: Test completed
+        if: success()
+        run: |
+          echo "========================================"
+          echo "✓ CMoney 20D 測試完成"
+          echo "========================================"
