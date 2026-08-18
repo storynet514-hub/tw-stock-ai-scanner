@@ -1,6 +1,6 @@
 {
   "schema_version": "V3.1",
-  "generated_at": "2026-08-18 09:18:06",
+  "generated_at": "2026-08-18 10:30:50",
   "data_date": "2026-08-18",
   "source": "CMoney",
   "definition": {
@@ -17114,15 +17114,11 @@
       "market": "TPEx",
       "source": "CMoney",
       "main_force_1d": 4.93,
-      "main_force_5d": 24.38,
-      "main_force_10d": 49.16,
+      "main_force_5d": 24.21,
+      "main_force_10d": 49.14,
       "history_count": 10,
       "status": "complete",
       "history": [
-        {
-          "date": "2026/08/18",
-          "main_force": 4.93
-        },
         {
           "date": "2026/08/17",
           "main_force": 4.93
@@ -17158,6 +17154,10 @@
         {
           "date": "2026/08/05",
           "main_force": 5.13
+        },
+        {
+          "date": "2026/08/04",
+          "main_force": 4.91
         }
       ],
       "error": null
@@ -23701,12 +23701,16 @@
       "name": "",
       "market": "TPEx",
       "source": "CMoney",
-      "main_force_1d": 99.0,
-      "main_force_5d": 499.2,
-      "main_force_10d": 995.0,
+      "main_force_1d": 98.8,
+      "main_force_5d": 498.5,
+      "main_force_10d": 994.9,
       "history_count": 10,
       "status": "complete",
       "history": [
+        {
+          "date": "2026/08/18",
+          "main_force": 98.8
+        },
         {
           "date": "2026/08/17",
           "main_force": 99.0
@@ -23741,10 +23745,6 @@
         },
         {
           "date": "2026/08/05",
-          "main_force": 98.9
-        },
-        {
-          "date": "2026/08/04",
           "main_force": 98.9
         }
       ],
@@ -23917,12 +23917,16 @@
       "name": "",
       "market": "TPEx",
       "source": "CMoney",
-      "main_force_1d": 12.6,
-      "main_force_5d": 65.5,
-      "main_force_10d": 132.2,
+      "main_force_1d": 12.45,
+      "main_force_5d": 64.6,
+      "main_force_10d": 131.5,
       "history_count": 10,
       "status": "complete",
       "history": [
+        {
+          "date": "2026/08/18",
+          "main_force": 12.45
+        },
         {
           "date": "2026/08/17",
           "main_force": 12.6
@@ -23958,10 +23962,6 @@
         {
           "date": "2026/08/05",
           "main_force": 13.4
-        },
-        {
-          "date": "2026/08/04",
-          "main_force": 13.15
         }
       ],
       "error": null
@@ -45582,16 +45582,12 @@
       "name": "",
       "market": "TPEx",
       "source": "CMoney",
-      "main_force_1d": 21.25,
-      "main_force_5d": 106.8,
-      "main_force_10d": 213.7,
+      "main_force_1d": 21.35,
+      "main_force_5d": 106.85,
+      "main_force_10d": 213.65,
       "history_count": 10,
       "status": "complete",
       "history": [
-        {
-          "date": "2026/08/18",
-          "main_force": 21.25
-        },
         {
           "date": "2026/08/17",
           "main_force": 21.35
@@ -45627,6 +45623,10 @@
         {
           "date": "2026/08/05",
           "main_force": 21.5
+        },
+        {
+          "date": "2026/08/04",
+          "main_force": 21.2
         }
       ],
       "error": null
