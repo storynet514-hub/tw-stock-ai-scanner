@@ -4,18 +4,13 @@ on:
   workflow_dispatch:
 
   schedule:
-    # ======================================================
-    # 台灣時間（UTC+8）
-    #
+    # 台灣時間 UTC+8
     # 09:15
     # 10:30
     # 12:00
     # 14:30
     # 16:30
     # 17:30
-    #
-    # GitHub Actions 使用 UTC
-    # ======================================================
 
     - cron: "15 1 * * 1-5"
     - cron: "30 2 * * 1-5"
@@ -88,6 +83,10 @@ jobs:
           ls -la Data || true
 
           echo ""
+          echo "Price directory:"
+          ls -la Data/prices || true
+
+          echo ""
           echo "========================================"
 
 
@@ -143,6 +142,11 @@ jobs:
           with open(path, "r", encoding="utf-8") as f:
               data = json.load(f)
 
+          if not isinstance(data, dict):
+              raise SystemExit(
+                  "ERROR: universe.json 頂層不是 object"
+              )
+
           total = data.get("total", 0)
           listed = data.get("listed_stocks", 0)
           otc = data.get("otc_stocks", 0)
@@ -155,6 +159,11 @@ jobs:
           print("listed_stocks:", listed)
           print("otc_stocks:", otc)
           print("items:", len(items))
+
+          if not isinstance(items, list):
+              raise SystemExit(
+                  "ERROR: universe.json items 不是 list"
+              )
 
           if total <= 0:
               raise SystemExit(
@@ -169,6 +178,11 @@ jobs:
           if total != len(items):
               raise SystemExit(
                   "ERROR: total 與 items 數量不一致"
+              )
+
+          if total < 1900:
+              raise SystemExit(
+                  f"ERROR: Universe 數量異常：{total}"
               )
 
           print("✓ Universe validation passed")
@@ -190,23 +204,6 @@ jobs:
 
       # ======================================================
       # 9. 驗證價格分檔
-      #
-      # 注意：
-      # prices_001.json 等分檔的實際結構由
-      # fetch_prices.py 決定。
-      #
-      # 不再假設頂層一定有 stocks/prices/data。
-      #
-      # 本驗證只確認：
-      # 1. Data/prices 存在
-      # 2. manifest.json 存在且 JSON 正確
-      # 3. manifest 有分檔
-      # 4. 每個分檔存在
-      # 5. 每個分檔 JSON 正確
-      # 6. 每個分檔至少有資料
-      # 7. 分檔數量與 manifest 一致
-      # 8. 股票總數達到合理範圍
-      #
       # ======================================================
 
       - name: Verify price shards
@@ -229,10 +226,6 @@ jobs:
           prices_dir = Path("Data/prices")
           manifest_path = prices_dir / "manifest.json"
 
-          # --------------------------------------------------
-          # 讀取 manifest
-          # --------------------------------------------------
-
           with manifest_path.open(
               "r",
               encoding="utf-8"
@@ -247,12 +240,14 @@ jobs:
           print("")
           print("manifest.json JSON OK")
           print("version:", manifest.get("version"))
-          print("schema_version:", manifest.get("schema_version"))
-          print("generated_at:", manifest.get("generated_at"))
-
-          # --------------------------------------------------
-          # 取得分檔清單
-          # --------------------------------------------------
+          print(
+              "schema_version:",
+              manifest.get("schema_version")
+          )
+          print(
+              "generated_at:",
+              manifest.get("generated_at")
+          )
 
           files = manifest.get("files")
 
@@ -266,33 +261,23 @@ jobs:
 
           if not isinstance(files, list):
               raise SystemExit(
-                  "ERROR: manifest.json files/shards 必須是 list"
+                  "ERROR: manifest files/shards 必須是 list"
               )
 
           if not files:
               raise SystemExit(
-                  "ERROR: manifest.json 沒有價格分檔"
+                  "ERROR: manifest 沒有價格分檔"
               )
 
-          print("manifest files:", len(files))
+          print(
+              "manifest files:",
+              len(files)
+          )
 
-          # --------------------------------------------------
-          # 驗證每一個分檔
-          # --------------------------------------------------
-
-          total_stocks = 0
-          total_rows = 0
           validated_files = 0
+          total_records = 0
 
           for entry in files:
-
-              # ----------------------------------------------
-              # 支援：
-              # "prices_001.json"
-              #
-              # 或：
-              # {"file": "prices_001.json"}
-              # ----------------------------------------------
 
               if isinstance(entry, str):
 
@@ -330,10 +315,6 @@ jobs:
                       f"ERROR: 分檔為空：{path}"
                   )
 
-              # ----------------------------------------------
-              # JSON 驗證
-              # ----------------------------------------------
-
               try:
 
                   with path.open(
@@ -345,25 +326,11 @@ jobs:
               except Exception as e:
 
                   raise SystemExit(
-                      f"ERROR: {filename} JSON 無法解析：{e}"
+                      f"ERROR: {filename} JSON "
+                      f"無法解析：{e}"
                   )
 
-              # ----------------------------------------------
-              # 不再硬性要求 object
-              #
-              # fetch_prices.py 實際輸出可能是：
-              #
-              # object
-              # list
-              #
-              # 兩者都接受。
-              # ----------------------------------------------
-
               if isinstance(shard, dict):
-
-                  # ------------------------------------------
-                  # 嘗試找股票資料容器
-                  # ------------------------------------------
 
                   stocks = None
 
@@ -384,157 +351,48 @@ jobs:
                           stocks = candidate
                           break
 
-                  # ------------------------------------------
-                  # 如果沒有標準容器
-                  #
-                  # 就把 object 本身視為資料容器。
-                  # ------------------------------------------
-
                   if stocks is None:
                       stocks = shard
 
                   if isinstance(stocks, dict):
 
-                      stock_count = len(stocks)
-
-                      if stock_count <= 0:
-                          raise SystemExit(
-                              f"ERROR: {filename} 沒有股票資料"
-                          )
-
-                      rows = 0
-
-                      for symbol, value in stocks.items():
-
-                          if not symbol:
-                              raise SystemExit(
-                                  f"ERROR: {filename} 出現空白 symbol"
-                              )
-
-                          if isinstance(value, list):
-
-                              rows += len(value)
-
-                          elif isinstance(value, dict):
-
-                              history = (
-                                  value.get("prices")
-                                  or value.get("history")
-                                  or value.get("data")
-                              )
-
-                              if isinstance(
-                                  history,
-                                  list
-                              ):
-
-                                  rows += len(history)
-
-                              else:
-
-                                  rows += 1
-
-                          else:
-
-                              # 若是其他基本型別，
-                              # 仍視為一筆資料。
-                              rows += 1
+                      count = len(stocks)
 
                   elif isinstance(stocks, list):
 
-                      stock_count = len(stocks)
-                      rows = len(stocks)
-
-                      if stock_count <= 0:
-                          raise SystemExit(
-                              f"ERROR: {filename} 沒有股票資料"
-                          )
+                      count = len(stocks)
 
                   else:
 
                       raise SystemExit(
-                          f"ERROR: {filename} 資料格式無法辨識"
+                          f"ERROR: {filename} "
+                          "資料格式無法辨識"
                       )
-
-              # ----------------------------------------------
-              # 頂層直接是 list
-              # ----------------------------------------------
 
               elif isinstance(shard, list):
 
-                  stock_count = len(shard)
-                  rows = len(shard)
-
-                  if stock_count <= 0:
-                      raise SystemExit(
-                          f"ERROR: {filename} 沒有股票資料"
-                      )
-
-              # ----------------------------------------------
-              # 其他型別
-              # ----------------------------------------------
+                  count = len(shard)
 
               else:
 
                   raise SystemExit(
-                      f"ERROR: {filename} JSON 結構錯誤"
+                      f"ERROR: {filename} "
+                      "JSON 結構錯誤"
                   )
 
-              total_stocks += stock_count
-              total_rows += rows
+              if count <= 0:
+                  raise SystemExit(
+                      f"ERROR: {filename} 沒有資料"
+                  )
+
               validated_files += 1
+              total_records += count
 
               print(
                   f"✓ {filename} | "
-                  f"{stock_count} records | "
+                  f"{count} records | "
                   f"{path.stat().st_size / 1024 / 1024:.2f} MB"
               )
-
-          # --------------------------------------------------
-          # manifest 數量驗證
-          # --------------------------------------------------
-
-          manifest_count = manifest.get("count")
-
-          if manifest_count is not None:
-
-              try:
-
-                  manifest_count = int(
-                      manifest_count
-                  )
-
-                  # 某些版本 count 代表股票總數，
-                  # 某些版本可能代表分檔數。
-                  #
-                  # 因此只有在明確等於分檔數時，
-                  # 才視為 shard count。
-                  #
-                  if manifest_count == len(files):
-
-                      print(
-                          "manifest count:",
-                          manifest_count,
-                          "(shard count)"
-                      )
-
-                  else:
-
-                      print(
-                          "manifest count:",
-                          manifest_count
-                      )
-
-              except (TypeError, ValueError):
-
-                  print(
-                      "WARNING: manifest count "
-                      "不是整數，略過此欄位驗證"
-                  )
-
-          # --------------------------------------------------
-          # 最終結果
-          # --------------------------------------------------
 
           print("")
           print("========================================")
@@ -548,12 +406,7 @@ jobs:
 
           print(
               "total records:",
-              total_stocks
-          )
-
-          print(
-              "total rows:",
-              total_rows
+              total_records
           )
 
           print(
@@ -561,52 +414,170 @@ jobs:
               len(files)
           )
 
-          # --------------------------------------------------
-          # 基本安全檢查
-          # --------------------------------------------------
-
           if validated_files != len(files):
-
               raise SystemExit(
-                  "ERROR: 並非所有價格分檔都驗證成功"
+                  "ERROR: 價格分檔驗證數量不一致"
               )
 
-          if validated_files <= 0:
-
+          if total_records < 1900:
               raise SystemExit(
-                  "ERROR: 沒有任何價格分檔"
-              )
-
-          if total_stocks <= 0:
-
-              raise SystemExit(
-                  "ERROR: 沒有任何價格資料"
-              )
-
-          # --------------------------------------------------
-          # 1985 Universe 保護
-          #
-          # 價格成功率目前約 99.85%，
-          # 所以至少應有接近 1985 檔。
-          #
-          # 設定最低門檻 1900，
-          # 防止 API 異常時產生空資料卻仍然 commit。
-          # --------------------------------------------------
-
-          if total_stocks < 1900:
-
-              raise SystemExit(
-                  "ERROR: 價格資料數量過低："
-                  f"{total_stocks}，"
-                  "低於安全門檻 1900"
+                  f"ERROR: 價格資料數量過低："
+                  f"{total_records}"
               )
 
           print("")
-          print("✓ Price shard validation passed")
+          print(
+              "✓ Price shard validation passed"
+          )
+          PY
 
 
       # ======================================================
-      # 10. 取得主力籌碼
+      # 10. 檢查 Universe 實際結構
+      #
+      # 注意：
+      # 這一步只讀取，不修改任何檔案。
+      #
+      # 目的：
+      # 確認 fetch_chip.py 執行前，
+      # universe.json 到底長什麼樣子。
+      # ======================================================
+
+      - name: Inspect universe before chip
+        run: |
+          echo "========================================"
+          echo "Inspect universe before fetch_chip.py"
+          echo "========================================"
+
+          python - <<'PY'
+          import json
+
+          path = "Data/universe.json"
+
+          with open(
+              path,
+              "r",
+              encoding="utf-8"
+          ) as f:
+              data = json.load(f)
+
+          print("")
+          print("Universe top-level type:")
+          print(type(data).__name__)
+
+          if isinstance(data, dict):
+
+              print("")
+              print("Universe keys:")
+
+              for key, value in data.items():
+
+                  if isinstance(value, list):
+
+                      print(
+                          f"  {key}: list "
+                          f"({len(value)})"
+                      )
+
+                  elif isinstance(value, dict):
+
+                      print(
+                          f"  {key}: dict "
+                          f"({len(value)})"
+                      )
+
+                  else:
+
+                      print(
+                          f"  {key}: "
+                          f"{type(value).__name__} "
+                          f"= {value}"
+                      )
+
+              items = data.get("items")
+
+              print("")
+              print(
+                  "items type:",
+                  type(items).__name__
+              )
+
+              if isinstance(items, list):
+
+                  print(
+                      "items count:",
+                      len(items)
+                  )
+
+                  if items:
+
+                      print("")
+                      print("First 3 Universe items:")
+
+                      for item in items[:3]:
+                          print(
+                              json.dumps(
+                                  item,
+                                  ensure_ascii=False
+                              )
+                          )
+
+                      print("")
+                      print("Last 3 Universe items:")
+
+                      for item in items[-3:]:
+                          print(
+                              json.dumps(
+                                  item,
+                                  ensure_ascii=False
+                              )
+                          )
+
+              else:
+
+                  print(
+                      "WARNING: items "
+                      "不是 list"
+                  )
+
+          elif isinstance(data, list):
+
+              print(
+                  "Universe is directly a list"
+              )
+
+              print(
+                  "items count:",
+                  len(data)
+              )
+
+              print("")
+              print("First 3 items:")
+
+              for item in data[:3]:
+                  print(
+                      json.dumps(
+                          item,
+                          ensure_ascii=False
+                      )
+                  )
+
+          else:
+
+              raise SystemExit(
+                  "ERROR: universe.json "
+                  "頂層格式異常"
+              )
+
+          print("")
+          print(
+              "✓ Universe inspection completed"
+          )
+          PY
+
+
+      # ======================================================
+      # 11. 取得主力籌碼
       # ======================================================
 
       - name: Fetch chip data
@@ -619,7 +590,7 @@ jobs:
 
 
       # ======================================================
-      # 11. 驗證 chip.json
+      # 12. 驗證 chip.json
       # ======================================================
 
       - name: Verify chip.json
@@ -637,8 +608,17 @@ jobs:
 
           path = "Data/chip.json"
 
-          with open(path, "r", encoding="utf-8") as f:
+          with open(
+              path,
+              "r",
+              encoding="utf-8"
+          ) as f:
               data = json.load(f)
+
+          if not isinstance(data, dict):
+              raise SystemExit(
+                  "ERROR: chip.json 頂層不是 object"
+              )
 
           print("chip.json JSON OK")
 
@@ -681,6 +661,12 @@ jobs:
               "stocks",
               {}
           )
+
+          if not isinstance(stocks, dict):
+              raise SystemExit(
+                  "ERROR: chip.json stocks "
+                  "不是 object"
+              )
 
           print(
               "stocks:",
@@ -738,21 +724,24 @@ jobs:
           if not stocks:
 
               raise SystemExit(
-                  "ERROR: chip.json 沒有股票資料"
+                  "ERROR: chip.json "
+                  "沒有股票資料"
               )
 
-          print("✓ chip.json validation passed")
+          print(
+              "✓ chip.json validation passed"
+          )
           PY
 
 
       # ======================================================
-      # 12. 顯示資料檔案
+      # 13. 顯示產生的資料
       # ======================================================
 
       - name: Show generated files
         run: |
           echo "========================================"
-          echo "Generated data files"
+          echo "Generated files"
           echo "========================================"
 
           echo ""
@@ -760,7 +749,7 @@ jobs:
           ls -lh Data/
 
           echo ""
-          echo "Price shards:"
+          echo "Data/prices:"
           ls -lh Data/prices/ || true
 
           echo ""
@@ -769,7 +758,7 @@ jobs:
 
 
       # ======================================================
-      # 13. Commit / Push
+      # 14. Commit / Push
       # ======================================================
 
       - name: Commit updated data
@@ -780,8 +769,14 @@ jobs:
           git add Data/universe.json
           git add Data/prices/
           git add Data/chip.json
-          git add Data/ui_data.json
-          git add Data/prices.json
+
+          if [ -f Data/ui_data.json ]; then
+            git add Data/ui_data.json
+          fi
+
+          if [ -f Data/prices.json ]; then
+            git add Data/prices.json
+          fi
 
           if git diff --cached --quiet; then
 
@@ -789,7 +784,8 @@ jobs:
 
           else
 
-            git commit -m "Update stock universe, price and chip data"
+            git commit -m \
+              "Update stock universe, price and chip data"
 
             git push
 
