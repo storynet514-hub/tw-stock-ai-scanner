@@ -1,0 +1,49 @@
+{
+  "version": "TEST",
+  "market": "TW",
+  "total": 6,
+  "items": [
+    {
+      "symbol": "2337.TW",
+      "code": "2337",
+      "name": "旺宏",
+      "market": "TW",
+      "type": "stock"
+    },
+    {
+      "symbol": "2426.TW",
+      "code": "2426",
+      "name": "鼎元",
+      "market": "TW",
+      "type": "stock"
+    },
+    {
+      "symbol": "2330.TW",
+      "code": "2330",
+      "name": "台積電",
+      "market": "TW",
+      "type": "stock"
+    },
+    {
+      "symbol": "3081.TWO",
+      "code": "3081",
+      "name": "聯亞",
+      "market": "TWO",
+      "type": "stock"
+    },
+    {
+      "symbol": "1303.TW",
+      "code": "1303",
+      "name": "南亞",
+      "market": "TW",
+      "type": "stock"
+    },
+    {
+      "symbol": "3017.TW",
+      "code": "3017",
+      "name": "奇鋐",
+      "market": "TW",
+      "type": "stock"
+    }
+  ]
+}
