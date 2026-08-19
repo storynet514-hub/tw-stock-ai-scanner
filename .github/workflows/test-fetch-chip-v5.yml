@@ -1,13 +1,14 @@
-name: Diagnose fetch_chip V5.0.1
+name: Verify fetch_chip V5.0.1
 
 on:
   workflow_dispatch:
 
 jobs:
-  diagnose-fetch-chip-v5:
+  verify-fetch-chip-v5:
     runs-on: ubuntu-latest
 
     steps:
+
       # ============================================================
       # 1. Checkout
       # ============================================================
@@ -31,22 +32,24 @@ jobs:
           pip install requests beautifulsoup4
 
       # ============================================================
-      # 4. 確認正式 V5.0.1 與診斷程式
+      # 4. 確認正式程式與驗證工具
       # ============================================================
-      - name: Check V5.0.1 diagnosis files
+      - name: Check V5.0.1 files
         run: |
           echo "========================================"
-          echo "確認 V5.0.1 診斷檔案"
+          echo "確認 V5.0.1 檔案"
           echo "========================================"
 
           test -f Scripts/fetch_chip.py
           test -f Scripts/diagnose_fetch_chip_v5.py
+          test -f Scripts/verify_fetch_chip_v5_output.py
 
-          echo "✓ Scripts/fetch_chip.py 存在"
-          echo "✓ Scripts/diagnose_fetch_chip_v5.py 存在"
+          echo "✓ Scripts/fetch_chip.py"
+          echo "✓ Scripts/diagnose_fetch_chip_v5.py"
+          echo "✓ Scripts/verify_fetch_chip_v5_output.py"
 
       # ============================================================
-      # 5. 確認 fetch_chip.py 必須是 V5.0.1
+      # 5. 確認正式 fetch_chip.py 版本
       # ============================================================
       - name: Verify official fetch_chip version
         run: |
@@ -70,50 +73,81 @@ jobs:
               )
 
           module = importlib.util.module_from_spec(spec)
+
           spec.loader.exec_module(module)
 
-          version = getattr(module, "VERSION", None)
+          version = getattr(
+              module,
+              "VERSION",
+              None
+          )
 
-          print("載入版本：", version)
+          print(
+              "載入版本：",
+              version
+          )
 
           if version != "V5.0.1":
               raise RuntimeError(
-                  f"目前 fetch_chip.py 不是 V5.0.1，而是 {version}"
+                  "目前 fetch_chip.py "
+                  f"不是 V5.0.1，而是 {version}"
               )
 
-          print("✓ 正式 fetch_chip.py V5.0.1 已確認")
+          print(
+              "✓ 正式 fetch_chip.py "
+              "V5.0.1 已確認"
+          )
           PY
 
       # ============================================================
-      # 6. 執行正式 V5.0.1 診斷
+      # 6. 執行四檔資料來源診斷
+      #
+      # 注意：
+      # 這一步只診斷，不執行 fetch_all()
       # ============================================================
-      - name: Run V5.0.1 diagnosis
+      - name: Run V5.0.1 source diagnosis
         run: |
           echo "========================================"
-          echo "開始 fetch_chip.py V5.0.1 診斷"
+          echo "開始 fetch_chip.py V5.0.1"
+          echo "四檔資料來源診斷"
           echo "========================================"
 
           python Scripts/diagnose_fetch_chip_v5.py
 
       # ============================================================
-      # 7. 顯示診斷結果
+      # 7. 確認診斷結果
       # ============================================================
-      - name: Show diagnosis result
-        if: always()
+      - name: Check diagnosis result
         run: |
           echo "========================================"
-          echo "V5.0.1 診斷結果"
+          echo "確認資料來源診斷結果"
           echo "========================================"
 
-          if [ -f Data/chip_v5_diagnosis.json ]; then
+          test -f Data/chip_v5_diagnosis.json
 
-            echo "✓ Data/chip_v5_diagnosis.json 已建立"
-            echo ""
+          echo "✓ Data/chip_v5_diagnosis.json 已建立"
 
-            python - <<'PY'
+      # ============================================================
+      # 8. 確認正式 chip.json
+      #
+      # 注意：
+      # 本步不重新抓資料。
+      # 只確認 repository 中已有正式輸出。
+      # ============================================================
+      - name: Check chip.json
+        run: |
+          echo "========================================"
+          echo "確認正式 Data/chip.json"
+          echo "========================================"
+
+          test -f Data/chip.json
+
+          echo "✓ Data/chip.json 存在"
+
+          python - <<'PY'
           import json
 
-          path = "Data/chip_v5_diagnosis.json"
+          path = "Data/chip.json"
 
           with open(
               path,
@@ -122,115 +156,270 @@ jobs:
           ) as f:
               data = json.load(f)
 
+          stocks = data.get(
+              "stocks",
+              {}
+          )
+
+          if not isinstance(
+              stocks,
+              dict
+          ):
+              raise RuntimeError(
+                  "Data/chip.json stocks 格式錯誤"
+              )
+
           print(
-              "Baseline:",
-              data.get("baseline_version")
+              "chip.json 股票數量：",
+              len(stocks)
+          )
+
+          required = [
+              "2337",
+              "2426",
+              "2368",
+              "3081",
+          ]
+
+          names = {
+              "2337": "旺宏",
+              "2426": "鼎元",
+              "2368": "金像電",
+              "3081": "聯亞",
+          }
+
+          for symbol in required:
+
+              if symbol not in stocks:
+                  raise RuntimeError(
+                      f"chip.json 找不到 {symbol}"
+                  )
+
+              print(
+                  f"✓ {symbol} "
+                  f"{names[symbol]} 存在"
+              )
+
+          print(
+              "✓ 四檔固定測試股票全部存在"
+          )
+          PY
+
+      # ============================================================
+      # 9. 驗證正式 chip.json
+      #
+      # 這一步：
+      #
+      # - 不呼叫 CMoney
+      # - 不執行 fetch_chip.py
+      # - 不執行 fetch_all()
+      # - 不修改 chip.json
+      # - 固定只驗證四檔
+      #
+      # 驗證：
+      #
+      # 1D
+      # 5D
+      # 10D
+      # 20D
+      #
+      # 並重新由 history 計算後比對。
+      # ============================================================
+      - name: Verify official chip output
+        run: |
+          echo "========================================"
+          echo "開始正式 chip.json 輸出驗證"
+          echo "========================================"
+
+          python Scripts/verify_fetch_chip_v5_output.py
+
+      # ============================================================
+      # 10. 顯示正式驗證摘要
+      # ============================================================
+      - name: Show verification summary
+        if: always()
+        run: |
+          echo "========================================"
+          echo "正式 chip.json 驗證摘要"
+          echo "========================================"
+
+          if [ -f Data/chip_v5_output_verification.json ]; then
+
+            echo "✓ 驗證結果檔案存在"
+            echo ""
+
+            python - <<'PY'
+          import json
+
+          path = (
+              "Data/"
+              "chip_v5_output_verification.json"
+          )
+
+          with open(
+              path,
+              "r",
+              encoding="utf-8"
+          ) as f:
+              data = json.load(f)
+
+          summary = data.get(
+              "summary",
+              {}
           )
 
           print(
-              "Test:",
-              data.get("test_version")
+              "測試股票：",
+              data.get(
+                  "scope",
+                  {}
+              ).get(
+                  "stock_count"
+              )
           )
 
-          print("")
-          print("Statistics:")
+          print(
+              "通過：",
+              summary.get(
+                  "passed"
+              )
+          )
 
           print(
-              json.dumps(
-                  data.get(
-                      "statistics",
-                      {}
-                  ),
-                  ensure_ascii=False,
-                  indent=2
+              "失敗：",
+              summary.get(
+                  "failed"
+              )
+          )
+
+          print(
+              "全部通過：",
+              summary.get(
+                  "all_passed"
               )
           )
 
           print("")
-          print("診斷股票:")
+          print("四檔驗證結果：")
 
-          for symbol, record in data.get(
-              "stocks",
+          for symbol, result in data.get(
+              "results",
               {}
           ).items():
 
+              name = result.get(
+                  "expected_name",
+                  ""
+              )
+
+              passed = result.get(
+                  "passed"
+              )
+
+              history_count = result.get(
+                  "history_count"
+              )
+
+              latest = result.get(
+                  "latest_date"
+              )
+
+              oldest = result.get(
+                  "oldest_date"
+              )
+
+              print("")
               print(
                   symbol,
-                  record.get("name"),
-                  "|",
-                  "homepage =",
-                  record.get(
-                      "homepage_count"
-                  ),
-                  "|",
-                  "discovered =",
-                  record.get(
-                      "discovered_count"
-                  ),
-                  "|",
-                  "pagination =",
-                  record.get(
-                      "pagination_count"
-                  ),
-                  "|",
-                  "abnormal =",
-                  record.get(
-                      "abnormal_count"
-                  )
+                  name
               )
 
-              first_abnormal = record.get(
-                  "first_abnormal"
+              print(
+                  "  passed =",
+                  passed
               )
 
-              if first_abnormal:
+              print(
+                  "  history =",
+                  history_count
+              )
 
-                  print(
-                      "   第一個異常來源："
+              print(
+                  "  date =",
+                  latest,
+                  "->",
+                  oldest
+              )
+
+              checks = result.get(
+                  "checks",
+                  {}
+              )
+
+              for field in [
+                  "main_force_1d",
+                  "main_force_5d",
+                  "main_force_10d",
+                  "main_force_20d",
+              ]:
+
+                  check = checks.get(
+                      field,
+                      {}
                   )
 
                   print(
-                      "   類型 =",
-                      first_abnormal.get(
-                          "url_type"
+                      " ",
+                      field,
+                      "=",
+                      check.get(
+                          "actual"
+                      ),
+                      "| recalculated =",
+                      check.get(
+                          "calculated"
+                      ),
+                      "| passed =",
+                      check.get(
+                          "passed"
                       )
                   )
 
-                  print(
-                      "   日期 =",
-                      first_abnormal.get(
-                          "date"
-                      )
-                  )
+              errors = result.get(
+                  "errors",
+                  []
+              )
+
+              if errors:
 
                   print(
-                      "   數值 =",
-                      first_abnormal.get(
-                          "main_force"
-                      )
+                      "  ERROR:"
                   )
 
-                  print(
-                      "   分類 =",
-                      first_abnormal.get(
-                          "classification"
+                  for error in errors:
+
+                      print(
+                          "   -",
+                          error
                       )
-                  )
           PY
 
           else
 
-            echo "❌ 找不到 Data/chip_v5_diagnosis.json"
+            echo "❌ 找不到："
+            echo "Data/chip_v5_output_verification.json"
 
           fi
 
       # ============================================================
-      # 8. 上傳診斷結果
+      # 11. 上傳診斷與驗證結果
       # ============================================================
-      - name: Upload diagnosis result
+      - name: Upload V5.0.1 verification artifacts
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: chip-v5-diagnosis-result
-          path: Data/chip_v5_diagnosis.json
+          name: fetch-chip-v5.0.1-verification
+          path: |
+            Data/chip_v5_diagnosis.json
+            Data/chip_v5_output_verification.json
           if-no-files-found: warn
