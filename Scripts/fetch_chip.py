@@ -41,45 +41,54 @@ CMoney「主力進出」頁面的：
 主力 20 日：
 最近 20 個交易日每日主力買賣超加總。
 
-============================================================
-明確排除
-============================================================
+注意：
 
-以下資料不屬於本程式的計算指標：
+CMoney 頁面中的：
 
-- 5日集中
-- 20日集中
-- 家數差
+「5日集中」
+「20日集中」
+「家數差」
 
-特別注意：
+全部不使用。
 
-CMoney 頁面中的「20日集中」
-不是主力 20 日買賣超。
-
-main_force_20d 必須由：
-
-最近 20 個交易日
-「每日買賣超」
-逐日加總
-
-取得。
+本程式絕對不使用「20日集中」計算 main_force_20d。
 
 ============================================================
-V5.1
+V5.1 修正
 ============================================================
 
-V5.1 基於 V5.0 架構：
+V5.0 問題：
 
-1. 保留 CMoney 網頁抓取
-2. 不進行 API endpoint 探測
-3. 保留歷史資料延伸取得
-4. 至少取得 20 個交易日
-5. 保留 5D
-6. 保留 10D
-7. 保留 20D
-8. 不使用 5日集中
-9. 不使用 20日集中
-10. 不使用家數差
+CMoney 首頁通常只顯示約 10 筆。
+
+舊版錯誤地大量猜測：
+
+?page=2
+?page=3
+offset=10
+offset=20
+limit=20
+
+這些參數可能只是重新取得同一批資料。
+
+因此 V5.1：
+
+1. 先取得主頁
+2. 解析主力買賣超
+3. 從 HTML 真正尋找：
+   - 查看更多
+   - data-* 屬性
+   - href
+   - onclick
+   - next / more / pagination
+4. 只接受「實際新增日期」的延伸資料
+5. 每次延伸後重新去重
+6. 若延伸頁完全沒有新增日期，不再無限重複請求
+7. 至少取得 20 個交易日才計算 20D
+8. 不使用 API endpoint 探測
+9. 不使用 5日集中
+10. 不使用 20日集中
+11. 不使用家數差
 
 ============================================================
 輸出
@@ -95,8 +104,9 @@ main_force_10d
 main_force_20d
 
 history：
-最近至少 20 個交易日主力買賣超
+至少最近 20 個交易日主力買賣超
 """
+
 
 from __future__ import annotations
 
@@ -107,9 +117,10 @@ import time
 
 from datetime import datetime
 from pathlib import Path
-from urllib.parse import urljoin
+from urllib.parse import urljoin, urlparse
 
 import requests
+
 from bs4 import BeautifulSoup
 
 
@@ -133,7 +144,7 @@ REQUEST_DELAY = 0.20
 
 MIN_HISTORY = 20
 
-MAX_FETCH_ROUNDS = 6
+MAX_MORE_ROUNDS = 8
 
 
 # ============================================================
@@ -184,6 +195,7 @@ def log(message=""):
 
 
 def section(title):
+
     log("")
     log("=" * 72)
     log(title)
@@ -199,6 +211,7 @@ def load_universe():
     section("讀取台股 Universe")
 
     if not UNIVERSE_FILE.exists():
+
         raise RuntimeError(
             f"找不到：{UNIVERSE_FILE}"
         )
@@ -207,16 +220,25 @@ def load_universe():
         "r",
         encoding="utf-8"
     ) as f:
+
         data = json.load(f)
 
     if not isinstance(data, dict):
+
         raise RuntimeError(
             "universe.json 格式錯誤"
         )
 
-    items = data.get("items", [])
+    items = data.get(
+        "items",
+        []
+    )
 
-    if not isinstance(items, list):
+    if not isinstance(
+        items,
+        list
+    ):
+
         raise RuntimeError(
             "universe.json items 不是 list"
         )
@@ -227,13 +249,21 @@ def load_universe():
 
     for item in items:
 
-        if not isinstance(item, dict):
+        if not isinstance(
+            item,
+            dict
+        ):
             continue
 
-        symbol = item.get("code")
+        symbol = item.get(
+            "code"
+        )
 
         if symbol is None:
-            symbol = item.get("symbol")
+
+            symbol = item.get(
+                "symbol"
+            )
 
         if symbol is None:
             continue
@@ -257,7 +287,9 @@ def load_universe():
         if symbol in seen:
             continue
 
-        seen.add(symbol)
+        seen.add(
+            symbol
+        )
 
         stocks.append({
             "symbol": symbol,
@@ -276,6 +308,7 @@ def load_universe():
         })
 
     if not stocks:
+
         raise RuntimeError(
             "Universe 沒有任何合法股票"
         )
@@ -297,14 +330,27 @@ def parse_number(text):
     if text is None:
         return None
 
-    text = str(text).strip()
+    text = str(
+        text
+    ).strip()
 
     if not text:
         return None
 
-    text = text.replace(",", "")
-    text = text.replace("張", "")
-    text = text.replace("%", "")
+    text = text.replace(
+        ",",
+        ""
+    )
+
+    text = text.replace(
+        "張",
+        ""
+    )
+
+    text = text.replace(
+        "%",
+        ""
+    )
 
     if text.upper() in {
         "N/A",
@@ -317,6 +363,7 @@ def parse_number(text):
         "—",
         "無",
     }:
+
         return None
 
     match = re.search(
@@ -328,10 +375,13 @@ def parse_number(text):
         return None
 
     try:
+
         return float(
             match.group(0)
         )
+
     except Exception:
+
         return None
 
 
@@ -339,36 +389,31 @@ def parse_number(text):
 # Date
 # ============================================================
 
+DATE_PATTERNS = [
+    r"\d{4}/\d{1,2}/\d{1,2}",
+    r"\d{4}-\d{1,2}-\d{1,2}",
+]
+
+
 def normalize_date(text):
 
     if text is None:
         return None
 
-    text = str(text).strip()
+    text = str(
+        text
+    ).strip()
 
-    patterns = [
-        r"(\d{4})/(\d{1,2})/(\d{1,2})",
-        r"(\d{4})-(\d{1,2})-(\d{1,2})",
-        r"(\d{4})(\d{2})(\d{2})",
-    ]
+    for pattern in DATE_PATTERNS:
 
-    for pattern in patterns:
-
-        match = re.fullmatch(
+        if re.fullmatch(
             pattern,
             text
-        )
+        ):
 
-        if match:
-
-            year, month, day = (
-                match.groups()
-            )
-
-            return (
-                f"{int(year):04d}/"
-                f"{int(month):02d}/"
-                f"{int(day):02d}"
+            return text.replace(
+                "-",
+                "/"
             )
 
     return None
@@ -383,35 +428,55 @@ def normalize_header(text):
     if text is None:
         return ""
 
-    return (
-        str(text)
-        .replace("\n", "")
-        .replace("\r", "")
-        .replace("\t", "")
-        .replace(" ", "")
-        .replace("\u3000", "")
-        .strip()
+    text = str(
+        text
     )
+
+    text = text.replace(
+        "\n",
+        ""
+    )
+
+    text = text.replace(
+        "\r",
+        ""
+    )
+
+    text = text.replace(
+        " ",
+        ""
+    )
+
+    text = text.replace(
+        "\u3000",
+        ""
+    )
+
+    return text.strip()
 
 
 def is_main_force_header(text):
 
-    header = normalize_header(text)
+    header = normalize_header(
+        text
+    )
 
-    # 只認真正的「買賣超」
-    #
-    # 不把：
-    # 家數差
-    # 5日集中
-    # 20日集中
-    #
-    # 當成主力買賣超。
+    if header == "買賣超":
+        return True
 
-    return header == "買賣超"
+    if (
+        "買賣超" in header
+        and "家數" not in header
+        and "集中" not in header
+    ):
+
+        return True
+
+    return False
 
 
 # ============================================================
-# HTTP
+# Request
 # ============================================================
 
 def request_url(
@@ -428,6 +493,7 @@ def request_url(
     response.raise_for_status()
 
     if not response.text:
+
         raise RuntimeError(
             "CMoney 回傳空白內容"
         )
@@ -460,7 +526,10 @@ def request_page(
                 url
             )
 
-            return html, url
+            return (
+                html,
+                url
+            )
 
         except Exception as exc:
 
@@ -475,7 +544,7 @@ def request_page(
 
 
 # ============================================================
-# Table Parser
+# Table parser
 # ============================================================
 
 def parse_table_with_header(
@@ -495,17 +564,9 @@ def parse_table_with_header(
         if not rows:
             continue
 
-        header_index = None
+        header_cells = None
 
-        headers = None
-
-        # ----------------------------------------------------
-        # 找真正的資料表頭
-        # ----------------------------------------------------
-
-        for index, tr in enumerate(
-            rows[:15]
-        ):
+        for tr in rows[:15]:
 
             cells = tr.find_all(
                 ["th", "td"]
@@ -514,7 +575,7 @@ def parse_table_with_header(
             if not cells:
                 continue
 
-            current_headers = [
+            headers = [
                 normalize_header(
                     cell.get_text(
                         " ",
@@ -524,15 +585,17 @@ def parse_table_with_header(
                 for cell in cells
             ]
 
-            has_date = (
-                "日期" in current_headers
+            has_date = any(
+                h == "日期"
+                or "日期" in h
+                for h in headers
             )
 
             has_force = any(
                 is_main_force_header(
                     h
                 )
-                for h in current_headers
+                for h in headers
             )
 
             if (
@@ -540,26 +603,24 @@ def parse_table_with_header(
                 and has_force
             ):
 
-                header_index = index
-
-                headers = (
-                    current_headers
-                )
+                header_cells = cells
 
                 break
 
-        if (
-            header_index is None
-            or headers is None
-        ):
+        if header_cells is None:
             continue
 
-        # ----------------------------------------------------
-        # 找欄位
-        # ----------------------------------------------------
+        headers = [
+            normalize_header(
+                cell.get_text(
+                    " ",
+                    strip=True
+                )
+            )
+            for cell in header_cells
+        ]
 
         date_index = -1
-
         force_index = -1
 
         for index, header in enumerate(
@@ -568,8 +629,12 @@ def parse_table_with_header(
 
             if (
                 date_index < 0
-                and header == "日期"
+                and (
+                    header == "日期"
+                    or "日期" in header
+                )
             ):
+
                 date_index = index
 
             if (
@@ -578,6 +643,7 @@ def parse_table_with_header(
                     header
                 )
             ):
+
                 force_index = index
 
         if (
@@ -588,13 +654,7 @@ def parse_table_with_header(
 
         result = []
 
-        # ----------------------------------------------------
-        # 解析資料列
-        # ----------------------------------------------------
-
-        for tr in rows[
-            header_index + 1:
-        ]:
+        for tr in rows:
 
             cells = tr.find_all(
                 ["th", "td"]
@@ -630,10 +690,11 @@ def parse_table_with_header(
 
             result.append({
                 "date": date_text,
-                "main_force": force_value,
+                "main_force": force_value
             })
 
         if result:
+
             return result
 
     return []
@@ -646,28 +707,6 @@ def parse_table_with_header(
 def parse_text_fallback(
     soup
 ):
-
-    """
-    僅作為 HTML table 解析失敗時的備援。
-
-    預期資料結構：
-
-    日期
-    收盤價
-    買賣超
-    ...
-
-    因此只取日期後最前面的兩個數字：
-
-    第一個 = 收盤價
-    第二個 = 買賣超
-
-    不使用後面的：
-
-    家數差
-    5日集中
-    20日集中
-    """
 
     text = soup.get_text(
         "\n",
@@ -693,12 +732,12 @@ def parse_text_fallback(
         if not date_text:
             continue
 
-        numeric_values = []
-
+        # 不再用模糊的第二個數字判定。
+        # 只接受日期後面具有合理表格結構的資料。
         for j in range(
             i + 1,
             min(
-                i + 8,
+                i + 6,
                 len(lines)
             )
         ):
@@ -707,32 +746,33 @@ def parse_text_fallback(
                 lines[j]
             )
 
-            if number is not None:
-                numeric_values.append(
-                    number
+            if number is None:
+                continue
+
+            # 只作為最後 fallback。
+            # 若下一行也是數字，通常：
+            # 收盤價 → 買賣超
+            if j + 1 < len(lines):
+
+                force_value = parse_number(
+                    lines[j + 1]
                 )
 
-            if len(
-                numeric_values
-            ) >= 2:
-                break
+                if force_value is not None:
 
-        if len(
-            numeric_values
-        ) < 2:
-            continue
+                    result.append({
+                        "date": date_text,
+                        "main_force":
+                            force_value
+                    })
 
-        result.append({
-            "date": date_text,
-            "main_force":
-                numeric_values[1],
-        })
+                    break
 
     return result
 
 
 # ============================================================
-# Parse main force
+# Parse history
 # ============================================================
 
 def parse_main_force_table(
@@ -744,22 +784,27 @@ def parse_main_force_table(
         "html.parser"
     )
 
-    result = parse_table_with_header(
+    rows = parse_table_with_header(
         soup
     )
 
-    if result:
+    if rows:
+
         return clean_history(
-            result
+            rows
         )
 
-    result = parse_text_fallback(
+    rows = parse_text_fallback(
         soup
     )
 
-    return clean_history(
-        result
-    )
+    if rows:
+
+        return clean_history(
+            rows
+        )
+
+    return []
 
 
 # ============================================================
@@ -772,26 +817,20 @@ def clean_history(
 
     unique = {}
 
-    for row in rows or []:
+    for row in rows:
 
-        if not isinstance(
-            row,
-            dict
-        ):
+        date = row.get(
+            "date"
+        )
+
+        value = row.get(
+            "main_force"
+        )
+
+        if not date:
             continue
 
-        date = normalize_date(
-            row.get("date")
-        )
-
-        value = parse_number(
-            row.get("main_force")
-        )
-
-        if (
-            date is None
-            or value is None
-        ):
+        if value is None:
             continue
 
         try:
@@ -805,19 +844,25 @@ def clean_history(
 
             continue
 
-        unique[date] = value
+        unique[date] = float(
+            value
+        )
 
-    result = [
-        {
+    result = []
+
+    for date, value in unique.items():
+
+        result.append({
             "date": date,
-            "main_force": value,
-        }
-        for date, value in unique.items()
-    ]
+            "main_force": value
+        })
 
-    # 最新 → 最舊
     result.sort(
-        key=lambda x: x["date"],
+        key=lambda x:
+            datetime.strptime(
+                x["date"],
+                "%Y/%m/%d"
+            ),
         reverse=True
     )
 
@@ -825,18 +870,41 @@ def clean_history(
 
 
 # ============================================================
-# 尋找下一頁 / 更多資料
-#
-# 注意：
-#
-# 這裡只使用網頁中實際存在的連結。
-#
-# 不做 API endpoint 探測。
+# URL 判定
 # ============================================================
 
-def find_next_urls(
+def is_cmoney_url(
+    url
+):
+
+    try:
+
+        parsed = urlparse(
+            url
+        )
+
+        host = (
+            parsed.netloc
+            or ""
+        ).lower()
+
+        return (
+            "cmoney.tw" in host
+        )
+
+    except Exception:
+
+        return False
+
+
+# ============================================================
+# 從 HTML 找真正的查看更多
+# ============================================================
+
+def discover_more_urls(
     html,
-    base_url
+    base_url,
+    symbol
 ):
 
     soup = BeautifulSoup(
@@ -846,131 +914,313 @@ def find_next_urls(
 
     urls = []
 
-    keywords = (
-        "查看更多",
-        "更多",
-        "下一頁",
-        "下一页",
-        "下一頁",
-        "Next",
-        "next",
-    )
-
-    # --------------------------------------------------------
-    # <a href="">
-    # --------------------------------------------------------
-
-    for anchor in soup.find_all(
-        "a",
-        href=True
+    def add_url(
+        raw
     ):
 
-        text = anchor.get_text(
-            " ",
-            strip=True
+        if not raw:
+            return
+
+        raw = str(
+            raw
+        ).strip()
+
+        raw = (
+            raw
+            .replace(
+                "\\/",
+                "/"
+            )
+            .replace(
+                "&amp;",
+                "&"
+            )
         )
 
-        href = anchor.get(
-            "href",
-            ""
+        if raw.startswith(
+            "javascript:"
+        ):
+            return
+
+        if raw.startswith(
+            "#"
+        ):
+            return
+
+        absolute = urljoin(
+            base_url,
+            raw
+        )
+
+        if not is_cmoney_url(
+            absolute
+        ):
+            return
+
+        if absolute not in urls:
+
+            urls.append(
+                absolute
+            )
+
+    # --------------------------------------------------------
+    # 1. href
+    # --------------------------------------------------------
+
+    for tag in soup.find_all(
+        True
+    ):
+
+        href = tag.get(
+            "href"
         )
 
         if not href:
             continue
 
-        is_candidate = (
-            any(
-                keyword in text
-                for keyword in keywords
-            )
-            or "page=" in href
-            or "pageNo=" in href
-            or "pageIndex=" in href
-            or "offset=" in href
+        text = tag.get_text(
+            " ",
+            strip=True
         )
 
-        if not is_candidate:
-            continue
+        href_lower = href.lower()
 
-        full_url = urljoin(
-            base_url,
-            href
-        )
+        if (
+            "查看更多" in text
+            or text.strip() == "更多"
+            or text.strip() == "下一頁"
+            or text.strip().lower() == "more"
+            or "main-force" in href_lower
+        ):
 
-        if full_url not in urls:
-            urls.append(
-                full_url
+            add_url(
+                href
             )
 
     # --------------------------------------------------------
-    # rel="next"
+    # 2. data-* 屬性
     # --------------------------------------------------------
 
-    for link in soup.find_all(
-        "link",
-        href=True
+    for tag in soup.find_all(
+        True
     ):
 
-        rel = link.get(
-            "rel",
-            []
-        )
-
-        if isinstance(
-            rel,
-            str
+        for attr, value in list(
+            tag.attrs.items()
         ):
-            rel = [rel]
 
-        if "next" in [
-            str(x).lower()
-            for x in rel
-        ]:
+            if not str(
+                attr
+            ).lower().startswith(
+                "data-"
+            ):
+                continue
 
-            full_url = urljoin(
-                base_url,
-                link["href"]
-            )
-
-            if full_url not in urls:
-                urls.append(
-                    full_url
+            if isinstance(
+                value,
+                list
+            ):
+                value = " ".join(
+                    value
                 )
 
-    return urls
+            value = str(
+                value
+            ).strip()
 
+            if not value:
+                continue
 
-# ============================================================
-# Pagination fallback
-#
-# 僅使用已存在頁面 URL 的 query 參數。
-# 不建立 CMoney API endpoint。
-# ============================================================
+            lower = value.lower()
 
-def build_page_urls(
-    base_url
-):
+            if (
+                "main-force" in lower
+                or "main_force" in lower
+                or "mainforce" in lower
+                or "more" in lower
+                or "next" in lower
+                or "page" in lower
+            ):
 
-    urls = []
+                # URL
+                if (
+                    value.startswith(
+                        "/"
+                    )
+                    or value.startswith(
+                        "http"
+                    )
+                ):
 
-    separator = (
-        "&"
-        if "?" in base_url
-        else "?"
-    )
+                    add_url(
+                        value
+                    )
 
-    for page in range(
-        2,
-        MAX_FETCH_ROUNDS + 2
+    # --------------------------------------------------------
+    # 3. onclick / data-action
+    # --------------------------------------------------------
+
+    for tag in soup.find_all(
+        True
     ):
 
-        urls.append(
-            f"{base_url}"
-            f"{separator}"
-            f"page={page}"
+        for attr in [
+            "onclick",
+            "data-action",
+            "data-url",
+            "data-href",
+            "data-link",
+        ]:
+
+            value = tag.get(
+                attr
+            )
+
+            if not value:
+                continue
+
+            value = str(
+                value
+            )
+
+            # 引號內 URL
+            matches = re.findall(
+                r"""['"]([^'"]+)['"]""",
+                value
+            )
+
+            for match in matches:
+
+                if (
+                    "cmoney.tw" in match
+                    or match.startswith(
+                        "/"
+                    )
+                ):
+
+                    add_url(
+                        match
+                    )
+
+    # --------------------------------------------------------
+    # 4. HTML 裡直接存在的完整 URL
+    # --------------------------------------------------------
+
+    absolute_urls = re.findall(
+        r'https?://[^"\'\s<>]+',
+        html,
+        flags=re.I
+    )
+
+    for raw in absolute_urls:
+
+        raw = raw.rstrip(
+            " )]},;'\""
         )
 
-    return urls
+        lower = raw.lower()
+
+        if (
+            "cmoney.tw" in lower
+            and (
+                "main-force" in lower
+                or "main_force" in lower
+                or "mainforce" in lower
+            )
+        ):
+
+            add_url(
+                raw
+            )
+
+    # --------------------------------------------------------
+    # 5. 相對路徑
+    # --------------------------------------------------------
+
+    relative_urls = re.findall(
+        r"""["'](/[^"']*(?:main-force|main_force|mainforce)[^"']*)["']""",
+        html,
+        flags=re.I
+    )
+
+    for raw in relative_urls:
+
+        add_url(
+            raw
+        )
+
+    # --------------------------------------------------------
+    # 去除與主頁完全相同的 URL
+    # --------------------------------------------------------
+
+    normalized_base = base_url.rstrip(
+        "/"
+    )
+
+    urls = [
+        url
+        for url in urls
+        if url.rstrip(
+            "/"
+        ) != normalized_base
+    ]
+
+    return list(
+        dict.fromkeys(
+            urls
+        )
+    )
+
+
+# ============================================================
+# 驗證延伸頁是否真的有新日期
+# ============================================================
+
+def merge_history(
+    current,
+    incoming
+):
+
+    current = clean_history(
+        current
+    )
+
+    incoming = clean_history(
+        incoming
+    )
+
+    existing_dates = {
+        row["date"]
+        for row in current
+    }
+
+    added = 0
+
+    for row in incoming:
+
+        date = row["date"]
+
+        if date in existing_dates:
+            continue
+
+        current.append(
+            row
+        )
+
+        existing_dates.add(
+            date
+        )
+
+        added += 1
+
+    current = clean_history(
+        current
+    )
+
+    return (
+        current,
+        added
+    )
 
 
 # ============================================================
@@ -982,20 +1232,21 @@ def fetch_20d_history(
     symbol
 ):
 
-    # --------------------------------------------------------
-    # 第一輪：主頁
-    # --------------------------------------------------------
-
     html, page_url = request_page(
         session,
         symbol
     )
 
-    history = clean_history(
-        parse_main_force_table(
-            html
-        )
+    history = parse_main_force_table(
+        html
     )
+
+    if not history:
+
+        raise RuntimeError(
+            "CMoney 頁面無法解析"
+            "主力買賣超資料"
+        )
 
     log(
         f"   首頁取得："
@@ -1009,111 +1260,178 @@ def fetch_20d_history(
         ]
 
     # --------------------------------------------------------
-    # 建立候選延伸頁面
+    # 只從實際 HTML 找延伸入口
     # --------------------------------------------------------
 
-    candidates = []
-
-    candidates.extend(
-        find_next_urls(
-            html,
-            page_url
-        )
+    pending_urls = discover_more_urls(
+        html,
+        page_url,
+        symbol
     )
 
-    candidates.extend(
-        build_page_urls(
-            page_url
-        )
+    log(
+        f"   找到歷史延伸入口："
+        f"{len(pending_urls)} 個"
     )
 
-    # 去重
-    candidates = list(
-        dict.fromkeys(
-            candidates
-        )
-    )
+    tested_urls = set()
 
-    visited = set(
-        [page_url]
-    )
+    no_new_rounds = 0
 
     # --------------------------------------------------------
-    # 最多 MAX_FETCH_ROUNDS 輪
+    # 延伸抓取
     # --------------------------------------------------------
 
-    rounds = 0
-
-    for url in candidates:
+    for round_index in range(
+        1,
+        MAX_MORE_ROUNDS + 1
+    ):
 
         if len(history) >= MIN_HISTORY:
             break
 
-        if url in visited:
-            continue
-
-        visited.add(url)
-
-        if rounds >= (
-            MAX_FETCH_ROUNDS
-        ):
+        if not pending_urls:
             break
 
-        rounds += 1
+        current_batch = pending_urls[
+            :10
+        ]
 
-        try:
+        pending_urls = pending_urls[
+            10:
+        ]
 
-            html_next = request_url(
-                session,
+        round_added = 0
+
+        log(
+            f"   歷史延伸第 "
+            f"{round_index} 輪："
+            f"{len(history)} 筆"
+        )
+
+        for url in current_batch:
+
+            if url in tested_urls:
+                continue
+
+            tested_urls.add(
                 url
             )
 
-            next_rows = (
-                parse_main_force_table(
-                    html_next
-                )
-            )
+            try:
 
-            if not next_rows:
+                response = session.get(
+                    url,
+                    headers=HEADERS,
+                    timeout=REQUEST_TIMEOUT
+                )
+
+                if response.status_code != 200:
+                    continue
+
+                page_history = (
+                    parse_main_force_table(
+                        response.text
+                    )
+                )
+
+                if not page_history:
+                    continue
+
+                old_count = len(
+                    history
+                )
+
+                (
+                    history,
+                    added
+                ) = merge_history(
+                    history,
+                    page_history
+                )
+
+                if added > 0:
+
+                    round_added += added
+
+                    log(
+                        f"      ✓ 新增 "
+                        f"{added} 筆"
+                    )
+
+                    log(
+                        f"      歷史："
+                        f"{len(history)} 筆"
+                    )
+
+                # ------------------------------------------------
+                # 延伸頁自己可能還有下一個入口
+                # ------------------------------------------------
+
+                nested_urls = (
+                    discover_more_urls(
+                        response.text,
+                        url,
+                        symbol
+                    )
+                )
+
+                for nested in nested_urls:
+
+                    if (
+                        nested
+                        not in tested_urls
+                        and nested
+                        not in pending_urls
+                    ):
+
+                        pending_urls.append(
+                            nested
+                        )
+
+                # ------------------------------------------------
+                # 若這個 URL 完全沒有新增日期，
+                # 不允許把它當成成功延伸。
+                # ------------------------------------------------
+
+                if added == 0:
+
+                    if len(history) == old_count:
+                        pass
+
+            except Exception:
                 continue
 
-            before = len(
-                history
+            time.sleep(
+                0.10
             )
 
-            combined = (
-                history
-                + next_rows
-            )
+            if len(history) >= MIN_HISTORY:
+                break
 
-            history = clean_history(
-                combined
-            )
+        if round_added == 0:
 
-            log(
-                f"   延伸第 {rounds} 輪："
-                f"{before} → "
-                f"{len(history)} 筆"
-            )
+            no_new_rounds += 1
 
-        except Exception as exc:
+        else:
 
-            log(
-                f"   延伸資料失敗："
-                f"{exc}"
-            )
+            no_new_rounds = 0
 
-        time.sleep(
-            REQUEST_DELAY
-        )
+        # --------------------------------------------------------
+        # 連續沒有新增資料，停止盲目重抓
+        # --------------------------------------------------------
+
+        if no_new_rounds >= 2:
+
+            break
+
+    # --------------------------------------------------------
+    # 最終清理
+    # --------------------------------------------------------
 
     history = clean_history(
         history
     )
-
-    # --------------------------------------------------------
-    # 最終驗證
-    # --------------------------------------------------------
 
     if len(history) < MIN_HISTORY:
 
@@ -1129,366 +1447,319 @@ def fetch_20d_history(
 
 
 # ============================================================
-# 計算 N 日
+# 計算 1 / 5 / 10 / 20
 # ============================================================
 
-def calculate_period(
-    history,
-    days
-):
-
-    if len(history) < days:
-        return None
-
-    values = [
-        float(
-            row["main_force"]
-        )
-        for row in history[
-            :days
-        ]
-    ]
-
-    total = sum(
-        values
-    )
-
-    if total.is_integer():
-        return int(total)
-
-    return round(
-        total,
-        2
-    )
-
-
-# ============================================================
-# 建立單檔結果
-# ============================================================
-
-def build_stock_result(
-    stock,
+def calculate_periods(
     history
 ):
 
-    history = clean_history(
-        history
-    )
-
-    result = {
-        "symbol": stock[
-            "symbol"
-        ],
-
-        "name": stock.get(
-            "name",
-            ""
-        ),
-
-        "market": stock.get(
-            "market",
-            ""
-        ),
-
-        "status": "insufficient",
-
-        "history_count": len(
-            history
-        ),
-
-        "main_force_1d": None,
-
-        "main_force_5d": None,
-
-        "main_force_10d": None,
-
-        "main_force_20d": None,
-
-        "history": history[
-            :MIN_HISTORY
-        ],
-
-        "error": None,
-    }
-
-    if not history:
-
-        result["error"] = (
-            "沒有取得主力買賣超"
-        )
-
-        return result
-
-    # --------------------------------------------------------
-    # 1D
-    # --------------------------------------------------------
-
-    result[
-        "main_force_1d"
-    ] = history[0][
-        "main_force"
+    values = [
+        row["main_force"]
+        for row in history
+        if row.get(
+            "main_force"
+        ) is not None
     ]
 
-    # --------------------------------------------------------
-    # 5D
-    # --------------------------------------------------------
+    result = {
+        "main_force_1d": None,
+        "main_force_5d": None,
+        "main_force_10d": None,
+        "main_force_20d": None,
+        "history_count": len(
+            values
+        ),
+    }
 
-    result[
-        "main_force_5d"
-    ] = calculate_period(
-        history,
-        5
-    )
+    if len(values) >= 1:
 
-    # --------------------------------------------------------
-    # 10D
-    # --------------------------------------------------------
-
-    result[
-        "main_force_10d"
-    ] = calculate_period(
-        history,
-        10
-    )
-
-    # --------------------------------------------------------
-    # 20D
-    # --------------------------------------------------------
-
-    result[
-        "main_force_20d"
-    ] = calculate_period(
-        history,
-        20
-    )
-
-    # --------------------------------------------------------
-    # 狀態
-    # --------------------------------------------------------
-
-    if (
         result[
             "main_force_1d"
-        ] is not None
-        and result[
+        ] = round(
+            sum(values[:1]),
+            2
+        )
+
+    if len(values) >= 5:
+
+        result[
             "main_force_5d"
-        ] is not None
-        and result[
+        ] = round(
+            sum(values[:5]),
+            2
+        )
+
+    if len(values) >= 10:
+
+        result[
             "main_force_10d"
-        ] is not None
-        and result[
+        ] = round(
+            sum(values[:10]),
+            2
+        )
+
+    if len(values) >= 20:
+
+        result[
             "main_force_20d"
-        ] is not None
-        and len(history) >= MIN_HISTORY
-    ):
-
-        result[
-            "status"
-        ] = "complete"
-
-    elif (
-        result[
-            "main_force_1d"
-        ] is not None
-    ):
-
-        result[
-            "status"
-        ] = "partial"
+        ] = round(
+            sum(values[:20]),
+            2
+        )
 
     return result
 
 
 # ============================================================
-# 單檔抓取
+# Status
 # ============================================================
 
-def fetch_stock(
-    session,
-    stock
+def get_status(
+    data
 ):
 
-    symbol = stock[
-        "symbol"
+    required = [
+        "main_force_1d",
+        "main_force_5d",
+        "main_force_10d",
+        "main_force_20d",
     ]
 
-    name = stock.get(
-        "name",
-        ""
+    if all(
+        data.get(
+            key
+        ) is not None
+        for key in required
+    ):
+
+        return "complete"
+
+    if data.get(
+        "main_force_1d"
+    ) is not None:
+
+        return "partial"
+
+    return "insufficient"
+
+
+# ============================================================
+# Fetch all
+# ============================================================
+
+def fetch_all(
+    stocks
+):
+
+    section(
+        "開始取得主力買賣超"
+    )
+
+    total = len(
+        stocks
     )
 
     log(
-        f"[{symbol}] {name}"
+        f"待處理股票：{total}"
     )
 
-    try:
+    session = requests.Session()
 
-        history = fetch_20d_history(
-            session,
-            symbol
-        )
+    session.headers.update(
+        HEADERS
+    )
 
-        result = build_stock_result(
-            stock,
-            history
-        )
+    results = {}
 
-        log(
-            "   1D  = "
-            f"{result['main_force_1d']}"
-        )
+    complete = 0
+    partial = 0
+    insufficient = 0
 
-        log(
-            "   5D  = "
-            f"{result['main_force_5d']}"
-        )
+    for index, stock in enumerate(
+        stocks,
+        start=1
+    ):
 
-        log(
-            "   10D = "
-            f"{result['main_force_10d']}"
-        )
+        symbol = stock[
+            "symbol"
+        ]
+
+        name = stock[
+            "name"
+        ]
 
         log(
-            "   20D = "
-            f"{result['main_force_20d']}"
+            f"[{index}/{total}] "
+            f"{symbol} {name}"
         )
 
-        log(
-            "   history = "
-            f"{result['history_count']}"
-        )
-
-        log(
-            "   status = "
-            f"{result['status']}"
-        )
-
-        return result
-
-    except Exception as exc:
-
-        log(
-            f"   ✗ 失敗：{exc}"
-        )
-
-        return {
+        record = {
             "symbol": symbol,
             "name": name,
-            "market": stock.get(
-                "market",
-                ""
-            ),
-            "status": "insufficient",
-            "history_count": 0,
+            "market": stock[
+                "market"
+            ],
+            "source": "CMoney",
+
             "main_force_1d": None,
             "main_force_5d": None,
             "main_force_10d": None,
             "main_force_20d": None,
+
+            "history_count": 0,
+
+            "status": "insufficient",
+
             "history": [],
-            "error": str(exc),
+
+            "error": None,
         }
 
+        try:
 
-# ============================================================
-# 驗證
-# ============================================================
+            history = fetch_20d_history(
+                session,
+                symbol
+            )
 
-def validate_results(
-    results
-):
+            periods = calculate_periods(
+                history
+            )
 
-    if not results:
+            record.update(
+                periods
+            )
 
-        raise RuntimeError(
-            "沒有任何股票結果"
+            record[
+                "history"
+            ] = history[:20]
+
+            record[
+                "status"
+            ] = get_status(
+                record
+            )
+
+            status = record[
+                "status"
+            ]
+
+            if status == "complete":
+
+                complete += 1
+
+            elif status == "partial":
+
+                partial += 1
+
+            else:
+
+                insufficient += 1
+
+            log(
+                f"   主力1日："
+                f"{record['main_force_1d']}"
+            )
+
+            log(
+                f"   主力5日："
+                f"{record['main_force_5d']}"
+            )
+
+            log(
+                f"   主力10日："
+                f"{record['main_force_10d']}"
+            )
+
+            log(
+                f"   主力20日："
+                f"{record['main_force_20d']}"
+            )
+
+            log(
+                f"   歷史筆數："
+                f"{record['history_count']}"
+            )
+
+        except Exception as exc:
+
+            insufficient += 1
+
+            record[
+                "error"
+            ] = str(exc)
+
+            log(
+                f"   ⚠️ 取得失敗："
+                f"{exc}"
+            )
+
+        results[
+            symbol
+        ] = record
+
+        time.sleep(
+            REQUEST_DELAY
         )
 
-    complete = 0
+    return (
+        results,
+        complete,
+        partial,
+        insufficient
+    )
 
+
+# ============================================================
+# Validate
+# ============================================================
+
+def validate(
+    results,
+    total,
+    complete,
+    partial,
+    insufficient
+):
+
+    section(
+        "籌碼資料驗證"
+    )
+
+    valid_1d = 0
     valid_5d = 0
-
     valid_10d = 0
-
     valid_20d = 0
 
-    for symbol, data in results.items():
+    for record in results.values():
 
-        if data.get(
-            "status"
-        ) == "complete":
+        if record.get(
+            "main_force_1d"
+        ) is not None:
 
-            complete += 1
+            valid_1d += 1
 
-        if data.get(
+        if record.get(
             "main_force_5d"
         ) is not None:
 
             valid_5d += 1
 
-        if data.get(
+        if record.get(
             "main_force_10d"
         ) is not None:
 
             valid_10d += 1
 
-        if data.get(
+        if record.get(
             "main_force_20d"
         ) is not None:
 
             valid_20d += 1
 
-        # ----------------------------------------------------
-        # 20D 必須能由 history 重算
-        # ----------------------------------------------------
-
-        history = data.get(
-            "history",
-            []
-        )
-
-        if (
-            data.get(
-                "status"
-            ) == "complete"
-            and len(history) >= 20
-        ):
-
-            expected = round(
-                sum(
-                    float(
-                        row[
-                            "main_force"
-                        ]
-                    )
-                    for row in history[
-                        :20
-                    ]
-                ),
-                2
-            )
-
-            actual = round(
-                float(
-                    data[
-                        "main_force_20d"
-                    ]
-                ),
-                2
-            )
-
-            if expected != actual:
-
-                raise RuntimeError(
-                    f"{symbol} "
-                    "main_force_20d "
-                    "重新加總驗證失敗："
-                    f"{actual} != {expected}"
-                )
-
-    section("資料驗證")
-
     log(
-        f"總股票：{len(results)}"
+        f"Universe：{total}"
     )
 
     log(
@@ -1496,73 +1767,108 @@ def validate_results(
     )
 
     log(
-        f"5D 有效：{valid_5d}"
+        f"部分：{partial}"
     )
 
     log(
-        f"10D 有效：{valid_10d}"
+        f"不足：{insufficient}"
     )
 
     log(
-        f"20D 有效：{valid_20d}"
+        f"主力1日有效：{valid_1d}"
     )
+
+    log(
+        f"主力5日有效：{valid_5d}"
+    )
+
+    log(
+        f"主力10日有效：{valid_10d}"
+    )
+
+    log(
+        f"主力20日有效：{valid_20d}"
+    )
+
+    if not results:
+
+        raise RuntimeError(
+            "沒有任何股票資料"
+        )
 
     if valid_20d == 0:
 
         raise RuntimeError(
-            "本次沒有任何有效 20D 主力資料"
+            "本次完全沒有取得有效"
+            "主力20日資料"
         )
 
-    return {
-        "complete": complete,
-        "valid_5d": valid_5d,
-        "valid_10d": valid_10d,
-        "valid_20d": valid_20d,
-    }
+    if valid_20d < total:
+
+        log(
+            "⚠️ 部分股票尚未取得20D"
+        )
+
+    else:
+
+        log(
+            "✓ 全部股票20D有效"
+        )
 
 
 # ============================================================
-# 寫入 chip.json
+# Save
 # ============================================================
 
 def save_chip(
     results,
-    stats
+    total,
+    complete,
+    partial,
+    insufficient
 ):
 
+    section(
+        "寫入 Data/chip.json"
+    )
+
+    DATA_DIR.mkdir(
+        parents=True,
+        exist_ok=True
+    )
+
+    now = datetime.now()
+
     output = {
-        "version": VERSION,
+
+        "schema_version": VERSION,
 
         "generated_at":
-            datetime.now().isoformat(),
+            now.strftime(
+                "%Y-%m-%d %H:%M:%S"
+            ),
+
+        "data_date":
+            now.strftime(
+                "%Y-%m-%d"
+            ),
 
         "source":
-            "CMoney main-force",
-
-        "periods": [
-            5,
-            10,
-            20
-        ],
+            "CMoney",
 
         "definition": {
+
             "main_force":
                 "CMoney 主力進出之買賣超",
 
             "main_force_5d":
-                "最近5個交易日每日主力買賣超加總",
+                "最近5個交易日主力買賣超加總",
 
             "main_force_10d":
-                "最近10個交易日每日主力買賣超加總",
+                "最近10個交易日主力買賣超加總",
 
             "main_force_20d":
-                "最近20個交易日每日主力買賣超加總",
-
-            "excluded": [
-                "5日集中",
-                "20日集中",
-                "家數差"
-            ],
+                "最近20個交易日主力買賣超加總",
 
             "unit":
                 "張",
@@ -1572,22 +1878,35 @@ def save_chip(
 
             "negative":
                 "主力賣超",
+
+            "excluded_fields": [
+                "家數差",
+                "5日集中",
+                "20日集中",
+            ],
         },
 
-        "statistics": stats,
+        "universe_count":
+            total,
 
-        "stocks": results,
+        "statistics": {
+
+            "complete":
+                complete,
+
+            "partial":
+                partial,
+
+            "insufficient":
+                insufficient,
+        },
+
+        "stocks":
+            results,
     }
 
-    DATA_DIR.mkdir(
-        parents=True,
-        exist_ok=True
-    )
-
-    temp_file = (
-        CHIP_FILE.with_suffix(
-            ".json.tmp"
-        )
+    temp_file = CHIP_FILE.with_suffix(
+        ".json.tmp"
     )
 
     with temp_file.open(
@@ -1603,7 +1922,7 @@ def save_chip(
         )
 
     # --------------------------------------------------------
-    # 寫入後立即重新讀取驗證 JSON
+    # 寫入後驗證
     # --------------------------------------------------------
 
     with temp_file.open(
@@ -1613,31 +1932,130 @@ def save_chip(
 
         verify = json.load(f)
 
+    verify_stocks = verify.get(
+        "stocks"
+    )
+
     if not isinstance(
-        verify.get(
-            "stocks"
-        ),
+        verify_stocks,
         dict
     ):
 
         raise RuntimeError(
-            "chip.json stocks 格式驗證失敗"
+            "chip.json stocks 格式錯誤"
         )
 
     if len(
-        verify["stocks"]
-    ) != len(results):
+        verify_stocks
+    ) != len(
+        results
+    ):
 
         raise RuntimeError(
             "chip.json 股票數量驗證失敗"
         )
+
+    for symbol, record in verify_stocks.items():
+
+        history = record.get(
+            "history",
+            []
+        )
+
+        if record.get(
+            "status"
+        ) == "complete":
+
+            if len(history) < 20:
+
+                raise RuntimeError(
+                    f"{symbol} history "
+                    "不足20筆"
+                )
+
+            if record.get(
+                "main_force_20d"
+            ) is None:
+
+                raise RuntimeError(
+                    f"{symbol} "
+                    "缺少 main_force_20d"
+                )
+
+            # ------------------------------------------------
+            # 再驗證 5D / 10D / 20D
+            # ------------------------------------------------
+
+            values = [
+                item["main_force"]
+                for item in history[:20]
+            ]
+
+            expected_5d = round(
+                sum(values[:5]),
+                2
+            )
+
+            expected_10d = round(
+                sum(values[:10]),
+                2
+            )
+
+            expected_20d = round(
+                sum(values[:20]),
+                2
+            )
+
+            if (
+                record.get(
+                    "main_force_5d"
+                )
+                != expected_5d
+            ):
+
+                raise RuntimeError(
+                    f"{symbol} "
+                    "5D 加總驗證失敗"
+                )
+
+            if (
+                record.get(
+                    "main_force_10d"
+                )
+                != expected_10d
+            ):
+
+                raise RuntimeError(
+                    f"{symbol} "
+                    "10D 加總驗證失敗"
+                )
+
+            if (
+                record.get(
+                    "main_force_20d"
+                )
+                != expected_20d
+            ):
+
+                raise RuntimeError(
+                    f"{symbol} "
+                    "20D 加總驗證失敗"
+                )
 
     temp_file.replace(
         CHIP_FILE
     )
 
     log(
-        f"✓ 已寫入：{CHIP_FILE}"
+        "✓ chip.json 建立成功"
+    )
+
+    log(
+        f"股票：{len(results)}"
+    )
+
+    log(
+        f"檔案：{CHIP_FILE}"
     )
 
 
@@ -1649,10 +2067,15 @@ def main():
 
     start_time = time.time()
 
-    section(
-        f"台股 AI 選股系統 "
+    log("")
+    log("=" * 72)
+
+    log(
+        "台股 AI 選股系統 "
         f"fetch_chip.py {VERSION}"
     )
+
+    log("=" * 72)
 
     log(
         "資料來源：CMoney 主力進出"
@@ -1694,152 +2117,102 @@ def main():
         "歷史資料：至少 20 個交易日"
     )
 
-    # --------------------------------------------------------
-    # Universe
-    # --------------------------------------------------------
-
-    stocks = load_universe()
-
-    # --------------------------------------------------------
-    # Session
-    # --------------------------------------------------------
-
-    session = requests.Session()
-
-    session.headers.update(
-        HEADERS
-    )
-
-    results = {}
-
-    # --------------------------------------------------------
-    # 逐檔抓取
-    # --------------------------------------------------------
-
-    for index, stock in enumerate(
-        stocks,
-        start=1
-    ):
-
-        log("")
-
-        log(
-            f"========== "
-            f"{index}/{len(stocks)} "
-            f"=========="
-        )
-
-        result = fetch_stock(
-            session,
-            stock
-        )
-
-        results[
-            stock["symbol"]
-        ] = result
-
-        time.sleep(
-            REQUEST_DELAY
-        )
-
-    # --------------------------------------------------------
-    # 驗證
-    # --------------------------------------------------------
-
-    stats = validate_results(
-        results
-    )
-
-    # --------------------------------------------------------
-    # 寫入
-    # --------------------------------------------------------
-
-    save_chip(
-        results,
-        stats
-    )
-
-    # --------------------------------------------------------
-    # 完成
-    # --------------------------------------------------------
-
-    elapsed = (
-        time.time()
-        - start_time
-    )
-
-    section(
-        "fetch_chip.py V5.1 完成"
-    )
-
-    log(
-        f"總股票：{len(results)}"
-    )
-
-    log(
-        f"完整：{stats['complete']}"
-    )
-
-    log(
-        f"5D：{stats['valid_5d']}"
-    )
-
-    log(
-        f"10D：{stats['valid_10d']}"
-    )
-
-    log(
-        f"20D：{stats['valid_20d']}"
-    )
-
-    log(
-        "排除："
-        "5日集中 / "
-        "20日集中 / "
-        "家數差"
-    )
-
-    log(
-        f"耗時：{elapsed:.2f} 秒"
-    )
-
-    log(
-        f"輸出：{CHIP_FILE}"
-    )
-
-    return 0
-
-
-# ============================================================
-# Entry Point
-# ============================================================
-
-if __name__ == "__main__":
-
     try:
 
-        sys.exit(
-            main()
+        stocks = load_universe()
+
+        (
+            results,
+            complete,
+            partial,
+            insufficient
+        ) = fetch_all(
+            stocks
         )
 
-    except KeyboardInterrupt:
+        validate(
+            results,
+            len(stocks),
+            complete,
+            partial,
+            insufficient
+        )
+
+        save_chip(
+            results,
+            len(stocks),
+            complete,
+            partial,
+            insufficient
+        )
+
+        elapsed = (
+            time.time()
+            - start_time
+        )
 
         log("")
+        log("=" * 72)
+
         log(
-            "使用者中止程式"
+            "✓ fetch_chip.py 執行完成"
         )
 
-        sys.exit(130)
+        log("=" * 72)
+
+        log(
+            f"完整：{complete}"
+        )
+
+        log(
+            f"部分：{partial}"
+        )
+
+        log(
+            f"不足：{insufficient}"
+        )
+
+        log(
+            f"總耗時："
+            f"{elapsed:.1f} 秒"
+        )
+
+        log(
+            f"輸出：{CHIP_FILE}"
+        )
+
+        return 0
 
     except Exception as exc:
 
         log("")
-        log(
-            "❌ fetch_chip.py 執行失敗："
-        )
+        log("=" * 72)
 
         log(
-            str(exc)
+            "❌ fetch_chip.py 執行失敗"
         )
 
-        sys.exit(1)
+        log("=" * 72)
+
+        log(
+            f"原因：{exc}"
+        )
+
+        if CHIP_FILE.exists():
+
+            log(
+                "⚠️ 保留既有 chip.json"
+            )
+
+        return 1
+
+
+# ============================================================
+# Entry
+# ============================================================
+
+if __name__ == "__main__":
+
+    sys.exit(
+        main()
+    )
