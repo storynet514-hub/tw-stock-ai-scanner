@@ -3,7 +3,7 @@
 
 """
 台股 AI 選股系統
-fetch_chip.py V5.0
+fetch_chip.py V5.0.1
 
 診斷工具
 diagnose_fetch_chip_v5.py
@@ -15,14 +15,14 @@ diagnose_fetch_chip_v5.py
 本程式：
 
 1. 不修改 fetch_chip.py
-2. 不修改 V5.0 原始函式
-3. 直接載入正式 fetch_chip.py V5.0
+2. 不修改正式 fetch_chip.py 原始函式
+3. 直接載入正式 fetch_chip.py V5.0.1
 4. 固定測試：
    2337 旺宏
    2426 鼎元
    2368 金像電
-   3081 艾訊
-5. 分析 V5.0 的：
+   3081 聯亞
+5. 分析 V5.0.1 的：
    - 首頁資料
    - discover_more_urls()
    - build_pagination_urls()
@@ -56,7 +56,6 @@ from __future__ import annotations
 
 import importlib.util
 import json
-import re
 import sys
 import time
 
@@ -64,7 +63,13 @@ from datetime import datetime
 from pathlib import Path
 
 import requests
-from bs4 import BeautifulSoup
+
+
+# ============================================================
+# 診斷版本
+# ============================================================
+
+DIAGNOSIS_VERSION = "V5.0.1"
 
 
 # ============================================================
@@ -109,7 +114,7 @@ TEST_STOCKS = [
     },
     {
         "symbol": "3081",
-        "name": "艾訊",
+        "name": "聯亞",
     },
 ]
 
@@ -164,15 +169,17 @@ def load_fetch_chip():
         f"正式版本：{version}"
     )
 
-    if version != "V5.0":
+    if version != DIAGNOSIS_VERSION:
 
         raise RuntimeError(
             "目前 Scripts/fetch_chip.py "
-            f"不是 V5.0，而是 {version}"
+            f"不是 {DIAGNOSIS_VERSION}，"
+            f"而是 {version}"
         )
 
     print(
-        "✓ 正式 fetch_chip.py V5.0 已確認"
+        f"✓ 正式 fetch_chip.py "
+        f"{DIAGNOSIS_VERSION} 已確認"
     )
 
     return module
@@ -463,7 +470,8 @@ def diagnose_stock(
     print("")
     print("=" * 72)
     print(
-        f"{symbol} {name} V5.0 資料來源診斷"
+        f"{symbol} {name} "
+        f"{DIAGNOSIS_VERSION} 資料來源診斷"
     )
     print("=" * 72)
 
@@ -496,16 +504,20 @@ def diagnose_stock(
 
     newest_date = None
 
-    if homepage_rows:
+    valid_dates = [
+        parse_date(
+            row["date"]
+        )
+        for row in homepage_rows
+        if parse_date(
+            row["date"]
+        ) is not None
+    ]
+
+    if valid_dates:
 
         newest_date = max(
-            parse_date(
-                row["date"]
-            )
-            for row in homepage_rows
-            if parse_date(
-                row["date"]
-            ) is not None
+            valid_dates
         )
 
     print_rows(
@@ -779,7 +791,7 @@ def save_results(
 
     output = {
         "schema_version":
-            "V5.0_DIAGNOSIS_1.0",
+            f"{DIAGNOSIS_VERSION}_DIAGNOSIS_1.0",
 
         "generated_at":
             datetime.now().strftime(
@@ -787,7 +799,7 @@ def save_results(
             ),
 
         "source":
-            "official fetch_chip.py V5.0",
+            f"official fetch_chip.py {DIAGNOSIS_VERSION}",
 
         "official_script":
             str(SCRIPT_FILE),
@@ -852,7 +864,7 @@ def main():
         "台股 AI 選股系統"
     )
     print(
-        "fetch_chip.py V5.0 "
+        f"fetch_chip.py {DIAGNOSIS_VERSION} "
         "資料來源診斷測試"
     )
     print("=" * 72)
@@ -891,7 +903,9 @@ def main():
 
         print("")
         print("=" * 72)
-        print("V5.0 診斷完成")
+        print(
+            f"{DIAGNOSIS_VERSION} 診斷完成"
+        )
         print("=" * 72)
 
         total_abnormal = 0
@@ -969,7 +983,8 @@ def main():
 
             print(
                 "下一步應針對異常 URL "
-                "修正 V5.0 的延伸資料取得邏輯。"
+                f"修正 {DIAGNOSIS_VERSION} "
+                "的延伸資料取得邏輯。"
             )
 
         else:
@@ -996,7 +1011,9 @@ def main():
 
         print("")
         print("=" * 72)
-        print("❌ V5.0 診斷失敗")
+        print(
+            f"❌ {DIAGNOSIS_VERSION} 診斷失敗"
+        )
         print("=" * 72)
 
         print(
