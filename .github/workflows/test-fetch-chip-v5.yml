@@ -1,102 +1,236 @@
-name: Test fetch_chip V5.0
+name: Diagnose fetch_chip V5.0
 
 on:
   workflow_dispatch:
 
 jobs:
-  test-fetch-chip-v5:
+  diagnose-fetch-chip-v5:
     runs-on: ubuntu-latest
 
     steps:
+      # ============================================================
+      # 1. Checkout
+      # ============================================================
       - name: Checkout
         uses: actions/checkout@v4
 
+      # ============================================================
+      # 2. Python
+      # ============================================================
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
 
+      # ============================================================
+      # 3. 安裝依賴
+      # ============================================================
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install requests beautifulsoup4
 
-      - name: Check files
+      # ============================================================
+      # 4. 確認正式 V5.0 與診斷程式
+      # ============================================================
+      - name: Check V5.0 diagnosis files
         run: |
           echo "========================================"
-          echo "確認 V5.0 測試檔案"
+          echo "確認 V5.0 診斷檔案"
           echo "========================================"
 
           test -f Scripts/fetch_chip.py
-          test -f Scripts/test_fetch_chip_v5.py
+          test -f Scripts/diagnose_fetch_chip_v5.py
 
-          echo "✓ fetch_chip.py 存在"
-          echo "✓ test_fetch_chip_v5.py 存在"
+          echo "✓ Scripts/fetch_chip.py 存在"
+          echo "✓ Scripts/diagnose_fetch_chip_v5.py 存在"
 
-      - name: Run V5.0 baseline test
+      # ============================================================
+      # 5. 確認 fetch_chip.py 必須是 V5.0
+      # ============================================================
+      - name: Verify official fetch_chip version
         run: |
           echo "========================================"
-          echo "開始 fetch_chip.py V5.0 基準測試"
+          echo "確認正式 fetch_chip.py 版本"
           echo "========================================"
 
-          python Scripts/test_fetch_chip_v5.py
+          python - <<'PY'
+          import importlib.util
 
-      - name: Show test result
+          path = "Scripts/fetch_chip.py"
+
+          spec = importlib.util.spec_from_file_location(
+              "fetch_chip",
+              path
+          )
+
+          if spec is None or spec.loader is None:
+              raise RuntimeError(
+                  "無法載入 Scripts/fetch_chip.py"
+              )
+
+          module = importlib.util.module_from_spec(spec)
+          spec.loader.exec_module(module)
+
+          version = getattr(module, "VERSION", None)
+
+          print("載入版本：", version)
+
+          if version != "V5.0":
+              raise RuntimeError(
+                  f"目前 fetch_chip.py 不是 V5.0，而是 {version}"
+              )
+
+          print("✓ 正式 fetch_chip.py V5.0 已確認")
+          PY
+
+      # ============================================================
+      # 6. 執行正式 V5.0 診斷
+      # ============================================================
+      - name: Run V5.0 diagnosis
+        run: |
+          echo "========================================"
+          echo "開始 fetch_chip.py V5.0 診斷"
+          echo "========================================"
+
+          python Scripts/diagnose_fetch_chip_v5.py
+
+      # ============================================================
+      # 7. 顯示診斷結果
+      # ============================================================
+      - name: Show diagnosis result
         if: always()
         run: |
           echo "========================================"
-          echo "測試結果檔案"
+          echo "V5.0 診斷結果"
           echo "========================================"
 
-          if [ -f Data/chip_test_v5.json ]; then
-            echo "✓ Data/chip_test_v5.json 已建立"
+          if [ -f Data/chip_v5_diagnosis.json ]; then
+
+            echo "✓ Data/chip_v5_diagnosis.json 已建立"
             echo ""
+
             python - <<'PY'
           import json
 
-          path = "Data/chip_test_v5.json"
+          path = "Data/chip_v5_diagnosis.json"
 
-          with open(path, "r", encoding="utf-8") as f:
+          with open(
+              path,
+              "r",
+              encoding="utf-8"
+          ) as f:
               data = json.load(f)
 
-          print("Baseline:", data.get("baseline_version"))
-          print("Test:", data.get("test_version"))
-          print("Statistics:")
-          print(json.dumps(
-              data.get("statistics", {}),
-              ensure_ascii=False,
-              indent=2
-          ))
+          print(
+              "Baseline:",
+              data.get("baseline_version")
+          )
+
+          print(
+              "Test:",
+              data.get("test_version")
+          )
 
           print("")
-          print("股票結果:")
+          print("Statistics:")
 
-          for symbol, record in data.get("stocks", {}).items():
+          print(
+              json.dumps(
+                  data.get(
+                      "statistics",
+                      {}
+                  ),
+                  ensure_ascii=False,
+                  indent=2
+              )
+          )
+
+          print("")
+          print("診斷股票:")
+
+          for symbol, record in data.get(
+              "stocks",
+              {}
+          ).items():
+
               print(
                   symbol,
                   record.get("name"),
                   "|",
-                  "1D =", record.get("main_force_1d"),
+                  "homepage =",
+                  record.get(
+                      "homepage_count"
+                  ),
                   "|",
-                  "5D =", record.get("main_force_5d"),
+                  "discovered =",
+                  record.get(
+                      "discovered_count"
+                  ),
                   "|",
-                  "10D =", record.get("main_force_10d"),
+                  "pagination =",
+                  record.get(
+                      "pagination_count"
+                  ),
                   "|",
-                  "20D =", record.get("main_force_20d"),
-                  "|",
-                  "history =", record.get("history_count"),
-                  "|",
-                  "status =", record.get("status")
+                  "abnormal =",
+                  record.get(
+                      "abnormal_count"
+                  )
               )
+
+              first_abnormal = record.get(
+                  "first_abnormal"
+              )
+
+              if first_abnormal:
+
+                  print(
+                      "   第一個異常來源："
+                  )
+
+                  print(
+                      "   類型 =",
+                      first_abnormal.get(
+                          "url_type"
+                      )
+                  )
+
+                  print(
+                      "   日期 =",
+                      first_abnormal.get(
+                          "date"
+                      )
+                  )
+
+                  print(
+                      "   數值 =",
+                      first_abnormal.get(
+                          "main_force"
+                      )
+                  )
+
+                  print(
+                      "   分類 =",
+                      first_abnormal.get(
+                          "classification"
+                      )
+                  )
           PY
+
           else
-            echo "❌ 找不到 Data/chip_test_v5.json"
+
+            echo "❌ 找不到 Data/chip_v5_diagnosis.json"
+
           fi
 
-      - name: Upload test result
+      # ============================================================
+      # 8. 上傳診斷結果
+      # ============================================================
+      - name: Upload diagnosis result
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: chip-test-v5-result
-          path: Data/chip_test_v5.json
+          name: chip-v5-diagnosis-result
+          path: Data/chip_v5_diagnosis.json
           if-no-files-found: warn
