@@ -3,94 +3,92 @@
 
 """
 台股 AI 選股系統
+fetch_chip.py V5.1
+
+============================================================
+V5.1 效能優化版
+============================================================
+
+基準版本：
 fetch_chip.py V5.0
 
-============================================================
-核心功能
-============================================================
+V5.0 已驗證：
+- 全市場約 1985 檔
+- CMoney 主力進出
+- 成功取得 1D / 5D / 10D / 20D
+- 20D 使用「買賣超」加總
+- 不使用「20日集中」
 
-取得台股 Universe：
-
-1. 每日主力買賣超
-2. 主力 5 日買賣超
-3. 主力 10 日買賣超
-4. 主力 20 日買賣超
+V5.1 只做效能優化，不改核心資料定義。
 
 ============================================================
-重要定義
+核心資料
 ============================================================
-
-本程式的「主力」：
-
-CMoney「主力進出」頁面的：
-
-「買賣超」
-
-單位：
-張
-
-正數 = 主力買超
-負數 = 主力賣超
-
-主力 5 日：
-最近 5 個交易日每日主力買賣超加總。
-
-主力 10 日：
-最近 10 個交易日每日主力買賣超加總。
-
-主力 20 日：
-最近 20 個交易日每日主力買賣超加總。
-
-注意：
-
-CMoney 頁面中的：
-
-「20日集中」
-
-不是主力 20 日買賣超。
-
-本程式絕對不使用「20日集中」計算 main_force_20d。
-
-============================================================
-V5.0 主要修正
-============================================================
-
-CMoney 主力進出頁面首屏目前通常只提供約 10 筆資料。
-
-因此：
-
-不能只抓一次 HTML。
-
-本版本：
-
-1. 先抓主頁
-2. 解析首批資料
-3. 尋找「查看更多」/ pagination / API 線索
-4. 嘗試取得下一批資料
-5. 合併歷史
-6. 去除重複日期
-7. 至少取得 20 個交易日
-8. 才計算 main_force_20d
-
-============================================================
-輸出
-============================================================
-
-Data/chip.json
-
-包含：
 
 main_force_1d
 main_force_5d
 main_force_10d
 main_force_20d
 
-history：
-至少最近 20 個交易日主力買賣超
+單位：
+張
+
+正數：
+主力買超
+
+負數：
+主力賣超
+
+============================================================
+20D 定義
+============================================================
+
+主力20日：
+
+最近20個交易日：
+
+每日「買賣超」
+
+加總。
+
+絕對不使用：
+
+CMoney「20日集中」
+
+============================================================
+V5.1 效能優化
+============================================================
+
+1. 多執行緒並行處理股票
+2. 每支股票取得20D後立即停止
+3. 優先使用頁面發現的延伸 URL
+4. 減少無效 pagination 探測
+5. 保留既有 chip.json
+6. 若既有資料已有完整20D，可直接沿用
+7. 單一股票失敗不影響其他股票
+8. 最後一次性安全寫入 chip.json
+
+============================================================
+重要
+============================================================
+
+正式模式：
+
+1985 檔全部掃描。
+
+測試模式：
+
+將 TEST_MODE 改成 True，
+並設定 TEST_LIMIT = 5。
+
+預設：
+
+TEST_MODE = False
+
+因此正式執行仍然是全市場。
 
 ============================================================
 """
-
 
 from __future__ import annotations
 
@@ -99,16 +97,16 @@ import re
 import sys
 import time
 
-from datetime import datetime
-from pathlib import Path
-from urllib.parse import (
-    urljoin,
-    urlparse,
-    parse_qs,
+from concurrent.futures import (
+    ThreadPoolExecutor,
+    as_completed,
 )
 
-import requests
+from datetime import datetime
+from pathlib import Path
+from urllib.parse import urljoin, urlparse
 
+import requests
 from bs4 import BeautifulSoup
 
 
@@ -116,7 +114,7 @@ from bs4 import BeautifulSoup
 # 基本設定
 # ============================================================
 
-VERSION = "V5.0"
+VERSION = "V5.1"
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -126,13 +124,77 @@ UNIVERSE_FILE = DATA_DIR / "universe.json"
 
 CHIP_FILE = DATA_DIR / "chip.json"
 
-REQUEST_TIMEOUT = 30
 
-REQUEST_DELAY = 0.20
+# ============================================================
+# 測試設定
+# ============================================================
+
+# ------------------------------------------------------------
+# 正式模式：
+# False = 全市場
+# ------------------------------------------------------------
+
+TEST_MODE = False
+
+# ------------------------------------------------------------
+# 測試模式只抓前5檔
+# ------------------------------------------------------------
+
+TEST_LIMIT = 5
+
+
+# ============================================================
+# 效能設定
+# ============================================================
+
+# ------------------------------------------------------------
+# 並行股票數量
+#
+# 8 是保守起始值。
+#
+# 如果 CMoney 沒有明顯限流，
+# 後續可以再測 10 / 12。
+# ------------------------------------------------------------
+
+MAX_WORKERS = 8
+
+
+# ------------------------------------------------------------
+# HTTP timeout
+# ------------------------------------------------------------
+
+REQUEST_TIMEOUT = 20
+
+
+# ------------------------------------------------------------
+# 最少需要20個交易日
+# ------------------------------------------------------------
 
 MIN_HISTORY = 20
 
-MAX_FETCH_ROUNDS = 6
+
+# ------------------------------------------------------------
+# 每支股票最多嘗試多少延伸 URL
+#
+# V5.0 的：
+# MAX_FETCH_ROUNDS * 10
+# = 最多60次
+#
+# V5.1 改成明確限制。
+# ------------------------------------------------------------
+
+MAX_EXTENSION_REQUESTS = 18
+
+
+# ------------------------------------------------------------
+# 股票之間不再使用0.20秒串行等待。
+#
+# 並行模式下：
+# WORKER_DELAY 控制同一 worker 在完成股票後
+# 的短暫間隔。
+# ------------------------------------------------------------
+
+WORKER_DELAY = 0.05
 
 
 # ============================================================
@@ -275,9 +337,7 @@ def load_universe():
         if symbol in seen:
             continue
 
-        seen.add(
-            symbol
-        )
+        seen.add(symbol)
 
         stocks.append({
             "symbol": symbol,
@@ -301,10 +361,41 @@ def load_universe():
             "Universe 沒有任何合法股票"
         )
 
+    # --------------------------------------------------------
+    # 測試模式
+    # --------------------------------------------------------
+
+    original_count = len(stocks)
+
+    if TEST_MODE:
+
+        stocks = stocks[:TEST_LIMIT]
+
+        log(
+            "⚠️ 測試模式已啟用"
+        )
+
+        log(
+            f"測試數量：{len(stocks)}"
+        )
+
+    else:
+
+        log(
+            "✓ 正式模式：全市場掃描"
+        )
+
     log(
         f"Universe 股票數量："
         f"{len(stocks)}"
     )
+
+    if TEST_MODE:
+
+        log(
+            f"原始 Universe："
+            f"{original_count}"
+        )
 
     return stocks
 
@@ -860,7 +951,7 @@ def clean_history(
 
 
 # ============================================================
-# 找「查看更多」線索
+# 找查看更多線索
 # ============================================================
 
 def discover_more_urls(
@@ -876,9 +967,7 @@ def discover_more_urls(
 
     urls = []
 
-    def add_url(
-        value
-    ):
+    def add_url(value):
 
         if not value:
             return
@@ -900,12 +989,11 @@ def discover_more_urls(
             value
         )
 
-        if (
-            "cmoney.tw"
-            not in urlparse(
-                absolute
-            ).netloc
-        ):
+        parsed = urlparse(
+            absolute
+        )
+
+        if "cmoney.tw" not in parsed.netloc:
             return
 
         if absolute not in urls:
@@ -948,7 +1036,7 @@ def discover_more_urls(
             )
 
     # --------------------------------------------------------
-    # HTML 中的 URL
+    # HTML URL
     # --------------------------------------------------------
 
     patterns = [
@@ -990,18 +1078,17 @@ def discover_more_urls(
 
 
 # ============================================================
-# 嘗試分頁 URL
+# Pagination
 # ============================================================
 
 def build_pagination_urls(
-    base_url,
-    symbol
+    base_url
 ):
 
     candidates = []
 
     # --------------------------------------------------------
-    # 常見 page / pageNo / pageIndex
+    # 常見 page
     # --------------------------------------------------------
 
     for key in [
@@ -1013,8 +1100,7 @@ def build_pagination_urls(
 
         for value in [
             2,
-            3,
-            4
+            3
         ]:
 
             separator = (
@@ -1030,15 +1116,13 @@ def build_pagination_urls(
             )
 
     # --------------------------------------------------------
-    # 常見 offset
+    # offset
     # --------------------------------------------------------
 
     for offset in [
         10,
         20,
-        30,
-        40,
-        50
+        30
     ]:
 
         separator = (
@@ -1060,8 +1144,7 @@ def build_pagination_urls(
     for limit in [
         20,
         30,
-        50,
-        100
+        50
     ]:
 
         separator = (
@@ -1076,7 +1159,6 @@ def build_pagination_urls(
             f"limit={limit}"
         )
 
-    # 去重
     return list(
         dict.fromkeys(
             candidates
@@ -1085,13 +1167,18 @@ def build_pagination_urls(
 
 
 # ============================================================
-# 取得至少 20D
+# 取得20D
 # ============================================================
 
 def fetch_20d_history(
     session,
-    symbol
+    symbol,
+    verbose=False
 ):
+
+    # --------------------------------------------------------
+    # 首頁
+    # --------------------------------------------------------
 
     html, page_url = request_page(
         session,
@@ -1102,18 +1189,23 @@ def fetch_20d_history(
         html
     )
 
-    log(
-        f"   首頁歷史筆數："
-        f"{len(history)}"
-    )
+    if verbose:
+
+        log(
+            f"   首頁歷史筆數："
+            f"{len(history)}"
+        )
+
+    # --------------------------------------------------------
+    # 首頁直接已有20D
+    # --------------------------------------------------------
 
     if len(history) >= MIN_HISTORY:
 
         return history[:MIN_HISTORY]
 
     # --------------------------------------------------------
-    # 第一階段：
-    # 從 HTML 找「查看更多」線索
+    # 發現延伸 URL
     # --------------------------------------------------------
 
     more_urls = discover_more_urls(
@@ -1122,14 +1214,15 @@ def fetch_20d_history(
         symbol
     )
 
-    log(
-        f"   發現延伸 URL："
-        f"{len(more_urls)}"
-    )
+    if verbose:
+
+        log(
+            f"   發現延伸 URL："
+            f"{len(more_urls)}"
+        )
 
     # --------------------------------------------------------
-    # 第二階段：
-    # 嘗試延伸 URL
+    # 優先使用真正發現的 URL
     # --------------------------------------------------------
 
     urls_to_test = []
@@ -1143,40 +1236,37 @@ def fetch_20d_history(
             )
 
     # --------------------------------------------------------
-    # 第三階段：
-    # 若頁面沒有暴露 URL，
-    # 嘗試常見分頁參數
+    # 不足才補常見 pagination
     # --------------------------------------------------------
 
-    urls_to_test.extend(
-        build_pagination_urls(
-            page_url,
-            symbol
-        )
-    )
+    for url in build_pagination_urls(
+        page_url
+    ):
 
-    urls_to_test = list(
-        dict.fromkeys(
-            urls_to_test
-        )
-    )
+        if url not in urls_to_test:
+
+            urls_to_test.append(
+                url
+            )
 
     # --------------------------------------------------------
-    # 逐個嘗試
+    # 限制無效探測數量
     # --------------------------------------------------------
+
+    urls_to_test = urls_to_test[
+        :MAX_EXTENSION_REQUESTS
+    ]
 
     seen_dates = {
         row["date"]
         for row in history
     }
 
-    for round_index, url in enumerate(
-        urls_to_test,
-        start=1
-    ):
+    # --------------------------------------------------------
+    # 延伸抓取
+    # --------------------------------------------------------
 
-        if round_index > MAX_FETCH_ROUNDS * 10:
-            break
+    for url in urls_to_test:
 
         try:
 
@@ -1231,7 +1321,7 @@ def fetch_20d_history(
                 - before
             )
 
-            if added > 0:
+            if verbose and added > 0:
 
                 log(
                     f"   ✓ 延伸取得 "
@@ -1243,11 +1333,17 @@ def fetch_20d_history(
                     f"{len(history)} 筆"
                 )
 
+            # ------------------------------------------------
+            # 20D 達成，立即停止
+            # ------------------------------------------------
+
             if len(history) >= MIN_HISTORY:
 
-                log(
-                    "   ✓ 已取得至少 20 個交易日"
-                )
+                if verbose:
+
+                    log(
+                        "   ✓ 已取得至少20個交易日"
+                    )
 
                 return history[
                     :MIN_HISTORY
@@ -1255,10 +1351,6 @@ def fetch_20d_history(
 
         except Exception:
             pass
-
-        time.sleep(
-            0.10
-        )
 
     # --------------------------------------------------------
     # 最終判定
@@ -1283,7 +1375,7 @@ def fetch_20d_history(
 
 
 # ============================================================
-# 計算 1 / 5 / 10 / 20
+# 計算1 / 5 / 10 / 20
 # ============================================================
 
 def calculate_periods(
@@ -1355,19 +1447,14 @@ def get_status(
     data
 ):
 
-    if (
-        data.get(
-            "main_force_1d"
-        ) is not None
-        and data.get(
-            "main_force_5d"
-        ) is not None
-        and data.get(
-            "main_force_10d"
-        ) is not None
-        and data.get(
-            "main_force_20d"
-        ) is not None
+    if all(
+        data.get(key) is not None
+        for key in [
+            "main_force_1d",
+            "main_force_5d",
+            "main_force_10d",
+            "main_force_20d",
+        ]
     ):
 
         return "complete"
@@ -1384,7 +1471,226 @@ def get_status(
 
 
 # ============================================================
-# Fetch all
+# 讀取既有完整 chip.json
+# ============================================================
+
+def load_existing_chip():
+
+    if not CHIP_FILE.exists():
+
+        return {}
+
+    try:
+
+        with CHIP_FILE.open(
+            "r",
+            encoding="utf-8"
+        ) as f:
+
+            data = json.load(f)
+
+        stocks = data.get(
+            "stocks",
+            {}
+        )
+
+        if not isinstance(
+            stocks,
+            dict
+        ):
+
+            return {}
+
+        return stocks
+
+    except Exception:
+
+        return {}
+
+
+# ============================================================
+# 判斷既有資料是否可直接使用
+# ============================================================
+
+def existing_record_is_complete(
+    record
+):
+
+    if not isinstance(
+        record,
+        dict
+    ):
+
+        return False
+
+    history = record.get(
+        "history",
+        []
+    )
+
+    if not isinstance(
+        history,
+        list
+    ):
+
+        return False
+
+    if len(history) < 20:
+
+        return False
+
+    for key in [
+        "main_force_1d",
+        "main_force_5d",
+        "main_force_10d",
+        "main_force_20d",
+    ]:
+
+        if record.get(key) is None:
+
+            return False
+
+    return True
+
+
+# ============================================================
+# 單支股票 worker
+# ============================================================
+
+def process_stock(
+    stock,
+    existing_record=None
+):
+
+    symbol = stock[
+        "symbol"
+    ]
+
+    name = stock[
+        "name"
+    ]
+
+    record = {
+        "symbol": symbol,
+        "name": name,
+        "market": stock[
+            "market"
+        ],
+        "source": "CMoney",
+
+        "main_force_1d": None,
+        "main_force_5d": None,
+        "main_force_10d": None,
+        "main_force_20d": None,
+
+        "history_count": 0,
+
+        "status": "insufficient",
+
+        "history": [],
+
+        "error": None,
+    }
+
+    # --------------------------------------------------------
+    # 如果既有 chip.json 已經有完整20D
+    # 直接沿用，不重新抓。
+    # --------------------------------------------------------
+
+    if existing_record_is_complete(
+        existing_record
+    ):
+
+        record = dict(
+            existing_record
+        )
+
+        record[
+            "symbol"
+        ] = symbol
+
+        record[
+            "name"
+        ] = name
+
+        record[
+            "market"
+        ] = stock[
+            "market"
+        ]
+
+        record[
+            "_reused"
+        ] = True
+
+        return record
+
+    # --------------------------------------------------------
+    # 新抓取
+    # --------------------------------------------------------
+
+    session = requests.Session()
+
+    session.headers.update(
+        HEADERS
+    )
+
+    try:
+
+        history = fetch_20d_history(
+            session,
+            symbol,
+            verbose=False
+        )
+
+        periods = calculate_periods(
+            history
+        )
+
+        record.update(
+            periods
+        )
+
+        record[
+            "history"
+        ] = history[:20]
+
+        record[
+            "status"
+        ] = get_status(
+            record
+        )
+
+        record[
+            "_reused"
+        ] = False
+
+    except Exception as exc:
+
+        record[
+            "error"
+        ] = str(exc)
+
+        record[
+            "_reused"
+        ] = False
+
+    finally:
+
+        try:
+            session.close()
+        except Exception:
+            pass
+
+    time.sleep(
+        WORKER_DELAY
+    )
+
+    return record
+
+
+# ============================================================
+# Fetch all - V5.1 並行版
 # ============================================================
 
 def fetch_all(
@@ -1403,86 +1709,123 @@ def fetch_all(
         f"待處理股票：{total}"
     )
 
-    session = requests.Session()
-
-    session.headers.update(
-        HEADERS
+    log(
+        f"並行 Workers：{MAX_WORKERS}"
     )
+
+    existing = load_existing_chip()
+
+    if existing:
+
+        log(
+            f"既有 chip.json："
+            f"{len(existing)} 檔"
+        )
+
+    else:
+
+        log(
+            "既有 chip.json：無可用資料"
+        )
 
     results = {}
 
     complete = 0
     partial = 0
     insufficient = 0
+    reused = 0
 
-    for index, stock in enumerate(
-        stocks,
-        start=1
-    ):
+    completed_count = 0
 
-        symbol = stock[
-            "symbol"
-        ]
+    # --------------------------------------------------------
+    # 建立工作
+    # --------------------------------------------------------
 
-        name = stock[
-            "name"
-        ]
+    with ThreadPoolExecutor(
+        max_workers=MAX_WORKERS
+    ) as executor:
 
-        log(
-            f"[{index}/{total}] "
-            f"{symbol} {name}"
-        )
+        future_map = {}
 
-        record = {
-            "symbol": symbol,
-            "name": name,
-            "market": stock[
-                "market"
-            ],
-            "source": "CMoney",
+        for stock in stocks:
 
-            "main_force_1d": None,
-            "main_force_5d": None,
-            "main_force_10d": None,
-            "main_force_20d": None,
+            symbol = stock[
+                "symbol"
+            ]
 
-            "history_count": 0,
-
-            "status": "insufficient",
-
-            "history": [],
-
-            "error": None,
-        }
-
-        try:
-
-            history = fetch_20d_history(
-                session,
+            old_record = existing.get(
                 symbol
             )
 
-            periods = calculate_periods(
-                history
+            future = executor.submit(
+                process_stock,
+                stock,
+                old_record
             )
 
-            record.update(
-                periods
-            )
+            future_map[
+                future
+            ] = stock
 
-            record[
-                "history"
-            ] = history[:20]
+        # ----------------------------------------------------
+        # 哪一支完成就立即收結果
+        # ----------------------------------------------------
 
-            record[
-                "status"
-            ] = get_status(
-                record
-            )
+        for future in as_completed(
+            future_map
+        ):
 
-            status = record[
-                "status"
+            stock = future_map[
+                future
             ]
+
+            symbol = stock[
+                "symbol"
+            ]
+
+            name = stock[
+                "name"
+            ]
+
+            completed_count += 1
+
+            try:
+
+                record = future.result()
+
+            except Exception as exc:
+
+                record = {
+                    "symbol": symbol,
+                    "name": name,
+                    "market": stock[
+                        "market"
+                    ],
+                    "source": "CMoney",
+
+                    "main_force_1d": None,
+                    "main_force_5d": None,
+                    "main_force_10d": None,
+                    "main_force_20d": None,
+
+                    "history_count": 0,
+
+                    "status": "insufficient",
+
+                    "history": [],
+
+                    "error": str(exc),
+
+                    "_reused": False,
+                }
+
+            results[
+                symbol
+            ] = record
+
+            status = record.get(
+                "status"
+            )
 
             if status == "complete":
 
@@ -1496,57 +1839,39 @@ def fetch_all(
 
                 insufficient += 1
 
-            log(
-                f"   主力1日："
-                f"{record['main_force_1d']}"
-            )
+            if record.get(
+                "_reused"
+            ):
+
+                reused += 1
+
+            # ------------------------------------------------
+            # 進度
+            # ------------------------------------------------
 
             log(
-                f"   主力5日："
-                f"{record['main_force_5d']}"
+                f"[{completed_count}/{total}] "
+                f"{symbol} {name}"
+                f" | "
+                f"1D={record.get('main_force_1d')}"
+                f" "
+                f"5D={record.get('main_force_5d')}"
+                f" "
+                f"10D={record.get('main_force_10d')}"
+                f" "
+                f"20D={record.get('main_force_20d')}"
+                f" "
+                f"歷史={record.get('history_count', 0)}"
+                f" "
+                f"{'♻️沿用' if record.get('_reused') else ''}"
             )
-
-            log(
-                f"   主力10日："
-                f"{record['main_force_10d']}"
-            )
-
-            log(
-                f"   主力20日："
-                f"{record['main_force_20d']}"
-            )
-
-            log(
-                f"   歷史筆數："
-                f"{record['history_count']}"
-            )
-
-        except Exception as exc:
-
-            insufficient += 1
-
-            record[
-                "error"
-            ] = str(exc)
-
-            log(
-                f"   ⚠️ 取得失敗："
-                f"{exc}"
-            )
-
-        results[
-            symbol
-        ] = record
-
-        time.sleep(
-            REQUEST_DELAY
-        )
 
     return (
         results,
         complete,
         partial,
-        insufficient
+        insufficient,
+        reused
     )
 
 
@@ -1559,7 +1884,8 @@ def validate(
     total,
     complete,
     partial,
-    insufficient
+    insufficient,
+    reused
 ):
 
     section(
@@ -1614,6 +1940,10 @@ def validate(
     )
 
     log(
+        f"既有完整資料沿用：{reused}"
+    )
+
+    log(
         f"主力1日有效：{valid_1d}"
     )
 
@@ -1664,7 +1994,8 @@ def save_chip(
     total,
     complete,
     partial,
-    insufficient
+    insufficient,
+    reused
 ):
 
     section(
@@ -1678,9 +2009,31 @@ def save_chip(
 
     now = datetime.now()
 
+    # --------------------------------------------------------
+    # 移除內部欄位
+    # --------------------------------------------------------
+
+    clean_results = {}
+
+    for symbol, record in results.items():
+
+        record = dict(
+            record
+        )
+
+        record.pop(
+            "_reused",
+            None
+        )
+
+        clean_results[
+            symbol
+        ] = record
+
     output = {
 
-        "schema_version": VERSION,
+        "schema_version":
+            VERSION,
 
         "generated_at":
             now.strftime(
@@ -1735,10 +2088,28 @@ def save_chip(
 
             "insufficient":
                 insufficient,
+
+            "reused_existing":
+                reused,
+        },
+
+        "performance": {
+
+            "version":
+                VERSION,
+
+            "workers":
+                MAX_WORKERS,
+
+            "test_mode":
+                TEST_MODE,
+
+            "test_limit":
+                TEST_LIMIT,
         },
 
         "stocks":
-            results,
+            clean_results,
     }
 
     temp_file = CHIP_FILE.with_suffix(
@@ -1797,10 +2168,6 @@ def save_chip(
             "history",
             []
         )
-
-        # ----------------------------------------------------
-        # 只要求「成功取得」的股票必須完整
-        # ----------------------------------------------------
 
         if record.get(
             "status"
@@ -1864,6 +2231,15 @@ def main():
         )
     )
 
+    log(
+        f"並行 Workers：{MAX_WORKERS}"
+    )
+
+    log(
+        f"測試模式："
+        f"{'ON' if TEST_MODE else 'OFF'}"
+    )
+
     try:
 
         stocks = load_universe()
@@ -1872,7 +2248,8 @@ def main():
             results,
             complete,
             partial,
-            insufficient
+            insufficient,
+            reused
         ) = fetch_all(
             stocks
         )
@@ -1882,7 +2259,8 @@ def main():
             len(stocks),
             complete,
             partial,
-            insufficient
+            insufficient,
+            reused
         )
 
         save_chip(
@@ -1890,7 +2268,8 @@ def main():
             len(stocks),
             complete,
             partial,
-            insufficient
+            insufficient,
+            reused
         )
 
         elapsed = (
@@ -1917,6 +2296,10 @@ def main():
 
         log(
             f"不足：{insufficient}"
+        )
+
+        log(
+            f"既有資料沿用：{reused}"
         )
 
         log(
