@@ -15,25 +15,24 @@ diagnose_fetch_chip_v5.py
 本程式：
 
 1. 不修改 fetch_chip.py
-2. 不修改正式 fetch_chip.py 原始函式
-3. 直接載入正式 fetch_chip.py V5.0.1
-4. 固定測試：
+2. 不執行正式 fetch_all()
+3. 不讀取 universe.json 進行全市場測試
+4. 固定測試 4 檔：
    2337 旺宏
    2426 鼎元
    2368 金像電
    3081 聯亞
-5. 分析 V5.0.1 的：
+5. 分析正式 fetch_chip.py V5.0.1 的：
    - 首頁資料
    - discover_more_urls()
    - build_pagination_urls()
-   - 每一個延伸 URL
-6. 找出哪一個 URL 開始產生錯誤歷史資料
-7. 特別標記：
-   - 非近期交易日
-   - 2024/2023/2022 等異常舊日期
-   - 小數型主力數值
-   - 重複日期
-   - 不合理日期跳躍
+   - 延伸 URL
+6. 找出異常歷史資料來源
+7. 不把正常資料逐筆輸出到 Actions Log
+8. 只輸出異常摘要
+9. 完整結果寫入：
+
+   Data/chip_v5_diagnosis.json
 
 ============================================================
 重要
@@ -45,11 +44,11 @@ diagnose_fetch_chip_v5.py
 
 Scripts/fetch_chip.py
 
-也不產生新的 chip.json。
+也不產生新的：
 
-輸出：
+Data/chip.json
 
-Data/chip_v5_diagnosis.json
+============================================================
 """
 
 from __future__ import annotations
@@ -120,6 +119,33 @@ TEST_STOCKS = [
 
 
 # ============================================================
+# HTTP Headers
+# ============================================================
+
+HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 "
+        "(Windows NT 10.0; Win64; x64) "
+        "AppleWebKit/537.36 "
+        "(KHTML, like Gecko) "
+        "Chrome/131.0 Safari/537.36"
+    ),
+    "Accept": (
+        "text/html,"
+        "application/xhtml+xml,"
+        "application/xml;q=0.9,"
+        "image/avif,"
+        "image/webp,"
+        "*/*;q=0.8"
+    ),
+    "Accept-Language": (
+        "zh-TW,zh;q=0.9,en;q=0.8"
+    ),
+    "Connection": "keep-alive",
+}
+
+
+# ============================================================
 # 載入正式 fetch_chip.py
 # ============================================================
 
@@ -127,7 +153,10 @@ def load_fetch_chip():
 
     print("")
     print("=" * 72)
-    print("載入正式 fetch_chip.py")
+    print(
+        "確認正式 fetch_chip.py "
+        f"{DIAGNOSIS_VERSION}"
+    )
     print("=" * 72)
 
     if not SCRIPT_FILE.exists():
@@ -142,18 +171,22 @@ def load_fetch_chip():
     )
 
     if spec is None:
+
         raise RuntimeError(
             "無法建立 fetch_chip module"
         )
 
-    module = importlib.util.module_from_spec(
-        spec
-    )
-
     if spec.loader is None:
+
         raise RuntimeError(
             "無法載入 fetch_chip.py"
         )
+
+    module = (
+        importlib.util.module_from_spec(
+            spec
+        )
+    )
 
     spec.loader.exec_module(
         module
@@ -186,43 +219,22 @@ def load_fetch_chip():
 
 
 # ============================================================
-# User-Agent
+# 日期解析
 # ============================================================
 
-HEADERS = {
-    "User-Agent": (
-        "Mozilla/5.0 "
-        "(Windows NT 10.0; Win64; x64) "
-        "AppleWebKit/537.36 "
-        "(KHTML, like Gecko) "
-        "Chrome/131.0 Safari/537.36"
-    ),
-    "Accept": (
-        "text/html,application/xhtml+xml,"
-        "application/xml;q=0.9,image/avif,"
-        "image/webp,*/*;q=0.8"
-    ),
-    "Accept-Language": (
-        "zh-TW,zh;q=0.9,en;q=0.8"
-    ),
-    "Connection": "keep-alive",
-}
-
-
-# ============================================================
-# 日期
-# ============================================================
-
-def parse_date(date_text):
+def parse_date(
+    date_text,
+):
 
     if not date_text:
+
         return None
 
     try:
 
         return datetime.strptime(
-            date_text,
-            "%Y/%m/%d"
+            str(date_text),
+            "%Y/%m/%d",
         )
 
     except Exception:
@@ -231,53 +243,98 @@ def parse_date(date_text):
 
 
 # ============================================================
-# 判斷日期是否合理
+# 分析單筆資料是否異常
 # ============================================================
 
-def classify_date(
-    date_text,
-    newest_date=None,
+def classify_row(
+    row,
+    newest_date,
+    seen_dates,
 ):
 
-    dt = parse_date(
+    reasons = []
+
+    date_text = row.get(
+        "date"
+    )
+
+    date_obj = parse_date(
         date_text
     )
 
-    if dt is None:
-
-        return "INVALID_DATE"
-
     # --------------------------------------------------------
-    # 明顯舊資料
+    # 日期格式錯誤
     # --------------------------------------------------------
 
-    if dt.year < 2025:
+    if date_obj is None:
 
-        return "ABNORMAL_OLD_DATE"
+        reasons.append(
+            "INVALID_DATE"
+        )
+
+    else:
+
+        # ----------------------------------------------------
+        # 明顯舊資料
+        # ----------------------------------------------------
+
+        if date_obj.year < 2025:
+
+            reasons.append(
+                "ABNORMAL_OLD_DATE"
+            )
+
+        # ----------------------------------------------------
+        # 距離首頁最新日期過遠
+        # ----------------------------------------------------
+
+        if newest_date is not None:
+
+            gap_days = (
+                newest_date
+                - date_obj
+            ).days
+
+            if gap_days > 120:
+
+                reasons.append(
+                    "ABNORMAL_DATE_GAP"
+                )
+
+        # ----------------------------------------------------
+        # 重複日期
+        # ----------------------------------------------------
+
+        if date_text in seen_dates:
+
+            reasons.append(
+                "DUPLICATE_DATE"
+            )
 
     # --------------------------------------------------------
-    # 如果有最新日期
+    # 主力數值檢查
     # --------------------------------------------------------
 
-    if newest_date is not None:
+    value = row.get(
+        "main_force"
+    )
 
-        gap = (
-            newest_date - dt
-        ).days
+    if isinstance(
+        value,
+        float,
+    ):
 
-        if gap > 120:
+        if not value.is_integer():
 
-            return "ABNORMAL_DATE_GAP"
+            reasons.append(
+                "DECIMAL_MAIN_FORCE"
+            )
 
-    # --------------------------------------------------------
-    # 正常
-    # --------------------------------------------------------
-
-    return "OK"
+    return reasons
 
 
 # ============================================================
-# 分析單頁
+# 分析頁面
 # ============================================================
 
 def analyze_page(
@@ -285,97 +342,107 @@ def analyze_page(
     html,
 ):
 
-    rows = module.parse_main_force_table(
-        html
+    rows = (
+        module.parse_main_force_table(
+            html
+        )
     )
 
-    rows = module.clean_history(
-        rows
+    rows = (
+        module.clean_history(
+            rows
+        )
     )
 
     return rows
 
 
 # ============================================================
-# 印出資料
+# 分析資料列
 # ============================================================
 
-def print_rows(
+def analyze_rows(
     rows,
-    title,
-    newest_date=None,
+    newest_date,
 ):
 
-    print("")
-    print("-" * 72)
-    print(title)
-    print("-" * 72)
+    seen_dates = set()
 
-    print(
-        f"資料筆數：{len(rows)}"
-    )
+    abnormal_rows = []
 
-    for index, row in enumerate(
-        rows,
-        start=1,
-    ):
+    for row in rows:
+
+        reasons = classify_row(
+            row,
+            newest_date,
+            seen_dates,
+        )
 
         date_text = row.get(
             "date"
         )
 
-        value = row.get(
-            "main_force"
-        )
+        if date_text:
 
-        classification = classify_date(
-            date_text,
-            newest_date,
-        )
+            seen_dates.add(
+                date_text
+            )
 
-        marker = ""
+        if reasons:
 
-        if classification != "OK":
-            marker = "  <<< 異常"
+            abnormal_rows.append(
+                {
+                    "date":
+                        date_text,
 
-        print(
-            f"{index:>3}. "
-            f"{date_text:<12} "
-            f"{str(value):>12}"
-            f"  [{classification}]"
-            f"{marker}"
-        )
+                    "main_force":
+                        row.get(
+                            "main_force"
+                        ),
+
+                    "reasons":
+                        reasons,
+                }
+            )
+
+    return abnormal_rows
 
 
 # ============================================================
-# URL 分析
+# 測試單一 URL
 # ============================================================
 
-def analyze_url(
+def inspect_url(
     module,
     session,
-    symbol,
     url,
     url_type,
+    newest_date,
 ):
 
     result = {
-        "url_type": url_type,
-        "url": url,
-        "status_code": None,
-        "success": False,
-        "rows": [],
-        "error": None,
+
+        "url_type":
+            url_type,
+
+        "url":
+            url,
+
+        "status_code":
+            None,
+
+        "row_count":
+            0,
+
+        "abnormal_count":
+            0,
+
+        "abnormal_rows":
+            [],
+
+        "error":
+            None,
     }
-
-    print("")
-    print(
-        f"URL 類型：{url_type}"
-    )
-
-    print(
-        f"URL：{url}"
-    )
 
     try:
 
@@ -389,14 +456,13 @@ def analyze_url(
             "status_code"
         ] = response.status_code
 
-        print(
-            f"HTTP：{response.status_code}"
-        )
-
         if response.status_code != 200:
 
-            print(
-                "✗ HTTP 非 200"
+            result[
+                "error"
+            ] = (
+                f"HTTP "
+                f"{response.status_code}"
             )
 
             return result
@@ -407,44 +473,33 @@ def analyze_url(
         )
 
         result[
-            "rows"
-        ] = rows
-
-        result[
-            "success"
-        ] = bool(
+            "row_count"
+        ] = len(
             rows
         )
 
-        print(
-            f"解析筆數：{len(rows)}"
+        abnormal_rows = (
+            analyze_rows(
+                rows,
+                newest_date,
+            )
         )
 
-        if rows:
+        result[
+            "abnormal_rows"
+        ] = abnormal_rows
 
-            for row in rows:
-
-                print(
-                    "   "
-                    f"{row['date']} "
-                    f"{row['main_force']}"
-                )
-
-        else:
-
-            print(
-                "   沒有解析到主力資料"
-            )
+        result[
+            "abnormal_count"
+        ] = len(
+            abnormal_rows
+        )
 
     except Exception as exc:
 
         result[
             "error"
         ] = str(exc)
-
-        print(
-            f"✗ 錯誤：{exc}"
-        )
 
     return result
 
@@ -470,49 +525,97 @@ def diagnose_stock(
     print("")
     print("=" * 72)
     print(
-        f"{symbol} {name} "
-        f"{DIAGNOSIS_VERSION} 資料來源診斷"
+        f"{symbol} {name}"
     )
     print("=" * 72)
 
-    session = requests.Session()
+    session = (
+        requests.Session()
+    )
 
     session.headers.update(
         HEADERS
     )
 
-    # --------------------------------------------------------
-    # 1. 正式 request_page()
-    # --------------------------------------------------------
+    # ========================================================
+    # 1. 首頁
+    # ========================================================
 
     print("")
-    print("[1] 正式首頁 request_page()")
-
-    html, page_url = module.request_page(
-        session,
-        symbol,
-    )
-
     print(
-        f"首頁 URL：{page_url}"
+        "[1] 首頁資料"
     )
 
-    homepage_rows = analyze_page(
-        module,
-        html,
-    )
+    try:
+
+        html, page_url = (
+            module.request_page(
+                session,
+                symbol,
+            )
+        )
+
+        homepage_rows = (
+            analyze_page(
+                module,
+                html,
+            )
+        )
+
+    except Exception as exc:
+
+        print(
+            f"❌ 首頁取得失敗：{exc}"
+        )
+
+        return {
+
+            "symbol":
+                symbol,
+
+            "name":
+                name,
+
+            "error":
+                str(exc),
+
+            "homepage_count":
+                0,
+
+            "discovered_count":
+                0,
+
+            "pagination_count":
+                0,
+
+            "abnormal_count":
+                0,
+
+            "first_abnormal":
+                None,
+        }
+
+    # ========================================================
+    # 首頁最新日期
+    # ========================================================
+
+    valid_dates = []
+
+    for row in homepage_rows:
+
+        date_obj = parse_date(
+            row.get(
+                "date"
+            )
+        )
+
+        if date_obj is not None:
+
+            valid_dates.append(
+                date_obj
+            )
 
     newest_date = None
-
-    valid_dates = [
-        parse_date(
-            row["date"]
-        )
-        for row in homepage_rows
-        if parse_date(
-            row["date"]
-        ) is not None
-    ]
 
     if valid_dates:
 
@@ -520,18 +623,44 @@ def diagnose_stock(
             valid_dates
         )
 
-    print_rows(
-        homepage_rows,
-        "首頁解析結果",
-        newest_date,
+    print(
+        f"首頁資料："
+        f"{len(homepage_rows)} 筆"
     )
 
-    # --------------------------------------------------------
+    if newest_date:
+
+        print(
+            "首頁最新日期："
+            + newest_date.strftime(
+                "%Y/%m/%d"
+            )
+        )
+
+    # ========================================================
+    # 首頁本身異常
+    # ========================================================
+
+    homepage_abnormal = (
+        analyze_rows(
+            homepage_rows,
+            newest_date,
+        )
+    )
+
+    print(
+        "首頁異常："
+        f"{len(homepage_abnormal)} 筆"
+    )
+
+    # ========================================================
     # 2. discover_more_urls()
-    # --------------------------------------------------------
+    # ========================================================
 
     print("")
-    print("[2] discover_more_urls()")
+    print(
+        "[2] discover_more_urls()"
+    )
 
     discovered_urls = (
         module.discover_more_urls(
@@ -542,25 +671,18 @@ def diagnose_stock(
     )
 
     print(
-        f"發現 URL 數量："
+        "發現 URL："
         f"{len(discovered_urls)}"
     )
 
-    for index, url in enumerate(
-        discovered_urls,
-        start=1,
-    ):
-
-        print(
-            f"{index:>3}. {url}"
-        )
-
-    # --------------------------------------------------------
+    # ========================================================
     # 3. build_pagination_urls()
-    # --------------------------------------------------------
+    # ========================================================
 
     print("")
-    print("[3] build_pagination_urls()")
+    print(
+        "[3] build_pagination_urls()"
+    )
 
     pagination_urls = (
         module.build_pagination_urls(
@@ -570,146 +692,177 @@ def diagnose_stock(
     )
 
     print(
-        f"分頁 URL 數量："
+        "Pagination URL："
         f"{len(pagination_urls)}"
     )
 
-    for index, url in enumerate(
-        pagination_urls,
-        start=1,
-    ):
-
-        print(
-            f"{index:>3}. {url}"
-        )
-
-    # --------------------------------------------------------
-    # 4. 逐一測試 discovered URL
-    # --------------------------------------------------------
-
-    discovered_results = []
+    # ========================================================
+    # 4. 測試 discovered URL
+    # ========================================================
 
     print("")
-    print("=" * 72)
-    print("逐一測試 discover_more_urls()")
-    print("=" * 72)
+    print(
+        "[4] 測試 discovered URL"
+    )
+
+    discovered_results = []
 
     for index, url in enumerate(
         discovered_urls,
         start=1,
     ):
 
-        print("")
-        print(
-            f"[DISCOVERED {index}/"
-            f"{len(discovered_urls)}]"
-        )
-
-        result = analyze_url(
+        result = inspect_url(
             module,
             session,
-            symbol,
             url,
             "discovered",
+            newest_date,
         )
 
         discovered_results.append(
             result
         )
 
+        if (
+            result[
+                "abnormal_count"
+            ]
+            > 0
+        ):
+
+            print(
+                "⚠ discovered #"
+                f"{index}："
+                f"{result['abnormal_count']}"
+                " 筆異常"
+            )
+
+        if result[
+            "error"
+        ]:
+
+            print(
+                "⚠ discovered #"
+                f"{index}："
+                f"{result['error']}"
+            )
+
         time.sleep(
             0.15
         )
 
-    # --------------------------------------------------------
-    # 5. 逐一測試 pagination URL
-    # --------------------------------------------------------
-
-    pagination_results = []
+    # ========================================================
+    # 5. 測試 pagination URL
+    # ========================================================
 
     print("")
-    print("=" * 72)
-    print("逐一測試 build_pagination_urls()")
-    print("=" * 72)
+    print(
+        "[5] 測試 pagination URL"
+    )
+
+    pagination_results = []
 
     for index, url in enumerate(
         pagination_urls,
         start=1,
     ):
 
-        print("")
-        print(
-            f"[PAGINATION {index}/"
-            f"{len(pagination_urls)}]"
-        )
-
-        result = analyze_url(
+        result = inspect_url(
             module,
             session,
-            symbol,
             url,
             "pagination",
+            newest_date,
         )
 
         pagination_results.append(
             result
         )
 
+        if (
+            result[
+                "abnormal_count"
+            ]
+            > 0
+        ):
+
+            print(
+                "⚠ pagination #"
+                f"{index}："
+                f"{result['abnormal_count']}"
+                " 筆異常"
+            )
+
+        if result[
+            "error"
+        ]:
+
+            print(
+                "⚠ pagination #"
+                f"{index}："
+                f"{result['error']}"
+            )
+
         time.sleep(
             0.15
         )
 
-    # --------------------------------------------------------
-    # 6. 建立異常摘要
-    # --------------------------------------------------------
-
-    abnormal_sources = []
+    # ========================================================
+    # 6. 統整異常來源
+    # ========================================================
 
     all_results = (
         discovered_results
         + pagination_results
     )
 
+    abnormal_sources = []
+
     for result in all_results:
 
-        rows = result.get(
-            "rows",
-            []
-        )
+        for abnormal in result[
+            "abnormal_rows"
+        ]:
 
-        for row in rows:
+            abnormal_sources.append(
+                {
 
-            classification = classify_date(
-                row.get("date"),
-                newest_date,
+                    "url_type":
+                        result[
+                            "url_type"
+                        ],
+
+                    "url":
+                        result[
+                            "url"
+                        ],
+
+                    "status_code":
+                        result[
+                            "status_code"
+                        ],
+
+                    "date":
+                        abnormal[
+                            "date"
+                        ],
+
+                    "main_force":
+                        abnormal[
+                            "main_force"
+                        ],
+
+                    "reasons":
+                        abnormal[
+                            "reasons"
+                        ],
+                }
             )
 
-            if classification != "OK":
-
-                abnormal_sources.append({
-                    "url_type":
-                        result.get(
-                            "url_type"
-                        ),
-                    "url":
-                        result.get(
-                            "url"
-                        ),
-                    "date":
-                        row.get(
-                            "date"
-                        ),
-                    "main_force":
-                        row.get(
-                            "main_force"
-                        ),
-                    "classification":
-                        classification,
-                })
-
-    # --------------------------------------------------------
-    # 7. 找出第一個異常來源
-    # --------------------------------------------------------
+    # ========================================================
+    # 第一個異常
+    # ========================================================
 
     first_abnormal = None
 
@@ -719,69 +872,128 @@ def diagnose_stock(
             abnormal_sources[0]
         )
 
-    print("")
-    print("=" * 72)
-    print("異常資料來源摘要")
-    print("=" * 72)
-
-    print(
-        f"異常資料筆數："
-        f"{len(abnormal_sources)}"
-    )
+    # ========================================================
+    # 終端摘要
+    # ========================================================
 
     if first_abnormal:
 
         print("")
         print(
-            "⚠️ 第一個異常來源："
+            "⚠ 第一個異常來源"
         )
 
         print(
-            f"類型："
-            f"{first_abnormal['url_type']}"
+            "  類型："
+            + str(
+                first_abnormal[
+                    "url_type"
+                ]
+            )
         )
 
         print(
-            f"日期："
-            f"{first_abnormal['date']}"
+            "  日期："
+            + str(
+                first_abnormal[
+                    "date"
+                ]
+            )
         )
 
         print(
-            f"數值："
-            f"{first_abnormal['main_force']}"
+            "  主力："
+            + str(
+                first_abnormal[
+                    "main_force"
+                ]
+            )
         )
 
         print(
-            f"URL："
-            f"{first_abnormal['url']}"
+            "  原因："
+            + ", ".join(
+                first_abnormal[
+                    "reasons"
+                ]
+            )
+        )
+
+        print(
+            "  URL："
+            + str(
+                first_abnormal[
+                    "url"
+                ]
+            )
         )
 
     else:
 
+        print("")
         print(
-            "✓ 沒有發現明顯異常日期"
+            "✓ 未發現異常"
         )
 
+    # ========================================================
+    # 返回
+    # ========================================================
+
     return {
-        "symbol": symbol,
-        "name": name,
-        "homepage_url": page_url,
-        "homepage_rows": homepage_rows,
-        "discovered_urls": discovered_urls,
-        "pagination_urls": pagination_urls,
-        "discovered_results": discovered_results,
-        "pagination_results": pagination_results,
-        "abnormal_sources": abnormal_sources,
-        "first_abnormal": first_abnormal,
+
+        "symbol":
+            symbol,
+
+        "name":
+            name,
+
+        "homepage_url":
+            page_url,
+
+        "homepage_count":
+            len(
+                homepage_rows
+            ),
+
+        "homepage_abnormal":
+            homepage_abnormal,
+
+        "discovered_count":
+            len(
+                discovered_urls
+            ),
+
+        "pagination_count":
+            len(
+                pagination_urls
+            ),
+
+        "discovered_results":
+            discovered_results,
+
+        "pagination_results":
+            pagination_results,
+
+        "abnormal_sources":
+            abnormal_sources,
+
+        "abnormal_count":
+            len(
+                abnormal_sources
+            ),
+
+        "first_abnormal":
+            first_abnormal,
     }
 
 
 # ============================================================
-# 儲存診斷結果
+# 儲存 JSON
 # ============================================================
 
 def save_results(
     results,
+    elapsed,
 ):
 
     DATA_DIR.mkdir(
@@ -790,8 +1002,12 @@ def save_results(
     )
 
     output = {
+
         "schema_version":
-            f"{DIAGNOSIS_VERSION}_DIAGNOSIS_1.0",
+            (
+                f"{DIAGNOSIS_VERSION}"
+                "_DIAGNOSIS_2.0"
+            ),
 
         "generated_at":
             datetime.now().strftime(
@@ -799,13 +1015,22 @@ def save_results(
             ),
 
         "source":
-            f"official fetch_chip.py {DIAGNOSIS_VERSION}",
+            (
+                "official fetch_chip.py "
+                f"{DIAGNOSIS_VERSION}"
+            ),
 
-        "official_script":
-            str(SCRIPT_FILE),
+        "test_scope":
+            "4 fixed stocks only",
 
         "test_stocks":
             TEST_STOCKS,
+
+        "elapsed_seconds":
+            round(
+                elapsed,
+                2,
+            ),
 
         "results":
             results,
@@ -829,24 +1054,30 @@ def save_results(
             indent=2,
         )
 
+    # ========================================================
+    # 驗證 JSON
+    # ========================================================
+
     with temp_file.open(
         "r",
         encoding="utf-8",
     ) as f:
 
-        json.load(f)
+        json.load(
+            f
+        )
 
     temp_file.replace(
         OUTPUT_FILE
     )
 
     print("")
-    print("=" * 72)
-    print("診斷結果寫入")
-    print("=" * 72)
+    print(
+        "✓ 診斷結果已寫入："
+    )
 
     print(
-        f"✓ {OUTPUT_FILE}"
+        OUTPUT_FILE
     )
 
 
@@ -856,7 +1087,9 @@ def save_results(
 
 def main():
 
-    start_time = time.time()
+    start_time = (
+        time.time()
+    )
 
     print("")
     print("=" * 72)
@@ -864,146 +1097,144 @@ def main():
         "台股 AI 選股系統"
     )
     print(
-        f"fetch_chip.py {DIAGNOSIS_VERSION} "
-        "資料來源診斷測試"
+        f"fetch_chip.py "
+        f"{DIAGNOSIS_VERSION}"
+    )
+    print(
+        "四檔異常來源診斷"
     )
     print("=" * 72)
 
+    print("")
     print(
-        "開始時間："
-        + datetime.now().strftime(
-            "%Y-%m-%d %H:%M:%S"
-        )
+        "固定測試："
+    )
+
+    print(
+        "2337 旺宏"
+    )
+
+    print(
+        "2426 鼎元"
+    )
+
+    print(
+        "2368 金像電"
+    )
+
+    print(
+        "3081 聯亞"
+    )
+
+    print("")
+    print(
+        "測試限制："
+    )
+
+    print(
+        "✓ 不執行 fetch_all()"
+    )
+
+    print(
+        "✓ 不測試 universe.json"
+    )
+
+    print(
+        "✓ 不修改 fetch_chip.py"
+    )
+
+    print(
+        "✓ 不輸出正常歷史明細"
+    )
+
+    print(
+        "✓ 只輸出異常摘要"
     )
 
     try:
 
-        module = load_fetch_chip()
+        # ====================================================
+        # 載入正式程式
+        # ====================================================
+
+        module = (
+            load_fetch_chip()
+        )
 
         results = []
 
+        # ====================================================
+        # 固定 4 檔
+        # ====================================================
+
         for stock in TEST_STOCKS:
 
-            result = diagnose_stock(
-                module,
-                stock,
+            result = (
+                diagnose_stock(
+                    module,
+                    stock,
+                )
             )
 
             results.append(
                 result
             )
 
-        save_results(
-            results
-        )
-
-        # ----------------------------------------------------
-        # 最終摘要
-        # ----------------------------------------------------
-
-        print("")
-        print("=" * 72)
-        print(
-            f"{DIAGNOSIS_VERSION} 診斷完成"
-        )
-        print("=" * 72)
-
-        total_abnormal = 0
-
-        for result in results:
-
-            abnormal_count = len(
-                result.get(
-                    "abnormal_sources",
-                    []
-                )
-            )
-
-            total_abnormal += (
-                abnormal_count
-            )
-
-            first = result.get(
-                "first_abnormal"
-            )
-
-            print("")
-            print(
-                f"{result['symbol']} "
-                f"{result['name']}"
-            )
-
-            print(
-                f"   首頁："
-                f"{len(result['homepage_rows'])} 筆"
-            )
-
-            print(
-                f"   異常資料："
-                f"{abnormal_count} 筆"
-            )
-
-            if first:
-
-                print(
-                    "   第一個異常："
-                    f"{first['date']} "
-                    f"{first['main_force']}"
-                )
-
-                print(
-                    "   來源："
-                    f"{first['url']}"
-                )
-
-            else:
-
-                print(
-                    "   ✓ 未發現明顯異常"
-                )
+        # ====================================================
+        # 儲存
+        # ====================================================
 
         elapsed = (
             time.time()
             - start_time
         )
 
+        save_results(
+            results,
+            elapsed,
+        )
+
+        # ====================================================
+        # 最終統計
+        # ====================================================
+
+        total_abnormal = sum(
+            result.get(
+                "abnormal_count",
+                0,
+            )
+            for result in results
+        )
+
         print("")
         print("=" * 72)
-
-        if total_abnormal > 0:
-
-            print(
-                "⚠️ 已找到異常資料來源"
-            )
-
-            print(
-                f"異常資料總數："
-                f"{total_abnormal}"
-            )
-
-            print(
-                "下一步應針對異常 URL "
-                f"修正 {DIAGNOSIS_VERSION} "
-                "的延伸資料取得邏輯。"
-            )
-
-        else:
-
-            print(
-                "✓ 未找到明顯異常來源"
-            )
-
+        print(
+            f"{DIAGNOSIS_VERSION} "
+            "診斷完成"
+        )
         print("=" * 72)
 
         print(
-            f"總耗時："
+            "固定測試股票："
+            f"{len(TEST_STOCKS)} 檔"
+        )
+
+        print(
+            "異常來源總數："
+            f"{total_abnormal}"
+        )
+
+        print(
+            "總耗時："
             f"{elapsed:.1f} 秒"
         )
 
         print(
-            f"診斷檔案："
+            "診斷檔案："
             f"{OUTPUT_FILE}"
         )
+
+        print("=" * 72)
 
         return 0
 
@@ -1012,13 +1243,16 @@ def main():
         print("")
         print("=" * 72)
         print(
-            f"❌ {DIAGNOSIS_VERSION} 診斷失敗"
+            f"❌ {DIAGNOSIS_VERSION} "
+            "診斷失敗"
         )
         print("=" * 72)
 
         print(
             f"原因：{exc}"
         )
+
+        print("=" * 72)
 
         return 1
 
