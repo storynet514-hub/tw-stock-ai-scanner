@@ -1,4 +1,4 @@
-name: Diagnose fetch_chip V5.0
+name: Diagnose fetch_chip V5.0.1
 
 on:
   workflow_dispatch:
@@ -31,12 +31,12 @@ jobs:
           pip install requests beautifulsoup4
 
       # ============================================================
-      # 4. 確認正式 V5.0 與診斷程式
+      # 4. 確認正式 V5.0.1 與診斷程式
       # ============================================================
-      - name: Check V5.0 diagnosis files
+      - name: Check V5.0.1 diagnosis files
         run: |
           echo "========================================"
-          echo "確認 V5.0 診斷檔案"
+          echo "確認 V5.0.1 診斷檔案"
           echo "========================================"
 
           test -f Scripts/fetch_chip.py
@@ -46,7 +46,7 @@ jobs:
           echo "✓ Scripts/diagnose_fetch_chip_v5.py 存在"
 
       # ============================================================
-      # 5. 確認 fetch_chip.py 必須是 V5.0
+      # 5. 確認 fetch_chip.py 必須是 V5.0.1
       # ============================================================
       - name: Verify official fetch_chip version
         run: |
@@ -76,21 +76,21 @@ jobs:
 
           print("載入版本：", version)
 
-          if version != "V5.0":
+          if version != "V5.0.1":
               raise RuntimeError(
-                  f"目前 fetch_chip.py 不是 V5.0，而是 {version}"
+                  f"目前 fetch_chip.py 不是 V5.0.1，而是 {version}"
               )
 
-          print("✓ 正式 fetch_chip.py V5.0 已確認")
+          print("✓ 正式 fetch_chip.py V5.0.1 已確認")
           PY
 
       # ============================================================
-      # 6. 執行正式 V5.0 診斷
+      # 6. 執行正式 V5.0.1 診斷
       # ============================================================
-      - name: Run V5.0 diagnosis
+      - name: Run V5.0.1 diagnosis
         run: |
           echo "========================================"
-          echo "開始 fetch_chip.py V5.0 診斷"
+          echo "開始 fetch_chip.py V5.0.1 診斷"
           echo "========================================"
 
           python Scripts/diagnose_fetch_chip_v5.py
@@ -102,7 +102,7 @@ jobs:
         if: always()
         run: |
           echo "========================================"
-          echo "V5.0 診斷結果"
+          echo "V5.0.1 診斷結果"
           echo "========================================"
 
           if [ -f Data/chip_v5_diagnosis.json ]; then
