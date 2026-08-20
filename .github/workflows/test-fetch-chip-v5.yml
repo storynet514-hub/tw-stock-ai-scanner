@@ -1,4 +1,4 @@
-name: Diagnose fetch_chip V5.0.1
+name: Diagnose fetch_chip V5.0
 
 on:
   workflow_dispatch:
