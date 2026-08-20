@@ -46,6 +46,8 @@ jobs:
 
       - name: Install dependencies
         run: |
+          set -e
+
           python -m pip install --upgrade pip
           pip install pandas requests beautifulsoup4
 
@@ -56,6 +58,8 @@ jobs:
 
       - name: Check project structure
         run: |
+          set -e
+
           echo "========================================"
           echo "Project structure"
           echo "========================================"
@@ -85,25 +89,26 @@ jobs:
         run: |
           set -e
 
+          echo "========================================"
+          echo "Verify required files"
+          echo "========================================"
+
           test -f Scripts/build_universe.py
           test -f Scripts/fetch_prices.py
           test -f Scripts/fetch_chip.py
+          test -f Scripts/analyze_stocks.py
+
           test -f Data/universe.json
 
-          echo "✓ build_universe.py"
-          echo "✓ fetch_prices.py"
-          echo "✓ fetch_chip.py"
-          echo "✓ universe.json"
+          echo "✓ Scripts/build_universe.py"
+          echo "✓ Scripts/fetch_prices.py"
+          echo "✓ Scripts/fetch_chip.py"
+          echo "✓ Scripts/analyze_stocks.py"
+          echo "✓ Data/universe.json"
 
 
       # ======================================================
       # 6. 建立全市場 Universe
-      #
-      # 重要：
-      # build_universe.py 失敗時，
-      # 此 step 直接 exit 1。
-      #
-      # GitHub Actions 不會繼續執行後續 steps。
       # ======================================================
 
       - name: Build market universe
@@ -167,10 +172,6 @@ jobs:
           print("otc_stocks:", otc)
           print("items:", len(items))
 
-          # --------------------------------------------------
-          # 基本安全門檻
-          # --------------------------------------------------
-
           if len(items) < 1200:
               raise SystemExit(
                   f"ERROR: Universe Total 不足："
@@ -205,10 +206,6 @@ jobs:
                   f"與 items ({len(items)}) 不一致"
               )
 
-          # --------------------------------------------------
-          # 股票格式驗證
-          # --------------------------------------------------
-
           valid = 0
           invalid = 0
           twse_items = 0
@@ -239,7 +236,8 @@ jobs:
 
               if market not in {
                   "TWSE",
-                  "TPEx"
+                  "TPEx",
+                  "TPEx",
               }:
                   invalid += 1
                   continue
@@ -255,7 +253,7 @@ jobs:
               if market == "TWSE":
                   twse_items += 1
 
-              elif market == "TPEx":
+              elif market in {"TPEx", "TPEx"}:
                   tpex_items += 1
 
           print("")
@@ -297,8 +295,6 @@ jobs:
 
       # ======================================================
       # 8. 取得價格資料
-      #
-      # 完全使用現有 fetch_prices.py
       # ======================================================
 
       - name: Fetch price data
@@ -409,7 +405,6 @@ jobs:
                   )
 
               if not filename:
-
                   raise SystemExit(
                       "ERROR: manifest "
                       "出現空白檔名"
@@ -420,13 +415,11 @@ jobs:
               )
 
               if not path.exists():
-
                   raise SystemExit(
                       f"ERROR: 找不到分檔：{path}"
                   )
 
               if path.stat().st_size <= 0:
-
                   raise SystemExit(
                       f"ERROR: 分檔為空：{path}"
                   )
@@ -442,7 +435,6 @@ jobs:
                   shard,
                   dict
               ):
-
                   raise SystemExit(
                       f"ERROR: {filename} "
                       "頂層不是 object"
@@ -456,7 +448,6 @@ jobs:
                   stocks,
                   dict
               ):
-
                   stocks = shard.get(
                       "prices"
                   )
@@ -465,7 +456,6 @@ jobs:
                   stocks,
                   dict
               ):
-
                   stocks = shard.get(
                       "data"
                   )
@@ -474,7 +464,6 @@ jobs:
                   stocks,
                   dict
               ):
-
                   raise SystemExit(
                       f"ERROR: {filename} "
                       "股票資料不是 object"
@@ -483,7 +472,6 @@ jobs:
               count = len(stocks)
 
               if count <= 0:
-
                   raise SystemExit(
                       f"ERROR: {filename} "
                       "沒有股票資料"
@@ -513,7 +501,6 @@ jobs:
           )
 
           if total_stocks <= 0:
-
               raise SystemExit(
                   "ERROR: 沒有任何價格資料"
               )
@@ -525,20 +512,16 @@ jobs:
           if manifest_count is not None:
 
               try:
-
                   manifest_count = int(
                       manifest_count
                   )
-
               except Exception:
-
                   raise SystemExit(
                       "ERROR: manifest "
                       "count 格式錯誤"
                   )
 
               if manifest_count != total_stocks:
-
                   raise SystemExit(
                       "ERROR: manifest count "
                       f"({manifest_count}) "
@@ -613,7 +596,6 @@ jobs:
           )
 
           if not items:
-
               raise SystemExit(
                   "ERROR: Universe "
                   "在 Fetch chip 前為空"
@@ -683,7 +665,6 @@ jobs:
               data,
               dict
           ):
-
               raise SystemExit(
                   "ERROR: chip.json "
                   "頂層不是 object"
@@ -697,7 +678,6 @@ jobs:
               stocks,
               dict
           ):
-
               raise SystemExit(
                   "ERROR: chip.json "
                   "stocks 不是 object"
@@ -728,7 +708,6 @@ jobs:
           )
 
           if not stocks:
-
               raise SystemExit(
                   "ERROR: chip.json "
                   "沒有股票資料"
@@ -768,13 +747,11 @@ jobs:
               if record.get(
                   "main_force_5d"
               ) is not None:
-
                   valid_5d += 1
 
               if record.get(
                   "main_force_10d"
               ) is not None:
-
                   valid_10d += 1
 
           print(
@@ -788,7 +765,6 @@ jobs:
           )
 
           if valid_5d <= 0:
-
               raise SystemExit(
                   "ERROR: 沒有有效主力5日資料"
               )
@@ -800,7 +776,407 @@ jobs:
 
 
       # ======================================================
-      # 13. 顯示資料檔案
+      # 13. 執行正式分析層
+      #
+      # 重要：
+      # analyze_stocks.py 只讀取：
+      #
+      # Data/universe.json
+      # Data/prices/
+      # Data/chip.json
+      #
+      # 不重新抓 API
+      # 不修改價格資料
+      # 不修改 chip.json
+      # ======================================================
+
+      - name: Run stock analysis
+        run: |
+          set -e
+
+          echo "========================================"
+          echo "Running analyze_stocks.py"
+          echo "========================================"
+
+          python Scripts/analyze_stocks.py
+
+
+      # ======================================================
+      # 14. 驗證 analysis.json
+      # ======================================================
+
+      - name: Verify analysis.json
+        run: |
+          set -e
+
+          echo "========================================"
+          echo "Verify analysis.json"
+          echo "========================================"
+
+          test -f Data/analysis.json
+
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          path = Path(
+              "Data/analysis.json"
+          )
+
+          with path.open(
+              "r",
+              encoding="utf-8"
+          ) as f:
+              data = json.load(f)
+
+          if not isinstance(data, dict):
+              raise SystemExit(
+                  "ERROR: analysis.json "
+                  "頂層不是 object"
+              )
+
+          stocks = data.get(
+              "stocks"
+          )
+
+          if not isinstance(
+              stocks,
+              dict
+          ):
+              raise SystemExit(
+                  "ERROR: analysis.json "
+                  "stocks 不是 object"
+              )
+
+          if not stocks:
+              raise SystemExit(
+                  "ERROR: analysis.json "
+                  "沒有股票分析資料"
+              )
+
+          statistics = data.get(
+              "statistics"
+          )
+
+          if not isinstance(
+              statistics,
+              dict
+          ):
+              raise SystemExit(
+                  "ERROR: analysis.json "
+                  "statistics 不是 object"
+              )
+
+          short_candidates = data.get(
+              "short_term_candidates"
+          )
+
+          dca_buy = data.get(
+              "dca_buy"
+          )
+
+          dca_observe = data.get(
+              "dca_observe"
+          )
+
+          dca_pause = data.get(
+              "dca_pause"
+          )
+
+          for name, value in {
+              "short_term_candidates":
+                  short_candidates,
+              "dca_buy":
+                  dca_buy,
+              "dca_observe":
+                  dca_observe,
+              "dca_pause":
+                  dca_pause,
+          }.items():
+
+              if not isinstance(
+                  value,
+                  list
+              ):
+                  raise SystemExit(
+                      f"ERROR: {name} "
+                      "不是 list"
+                  )
+
+          print(
+              "schema_version:",
+              data.get("schema_version")
+          )
+
+          print(
+              "generated_at:",
+              data.get("generated_at")
+          )
+
+          print(
+              "stocks:",
+              len(stocks)
+          )
+
+          print(
+              "universe:",
+              statistics.get("universe")
+          )
+
+          print(
+              "complete:",
+              statistics.get("complete")
+          )
+
+          print(
+              "partial:",
+              statistics.get("partial")
+          )
+
+          print(
+              "insufficient:",
+              statistics.get("insufficient")
+          )
+
+          print(
+              "short_term_candidates:",
+              len(short_candidates)
+          )
+
+          print(
+              "dca_buy:",
+              len(dca_buy)
+          )
+
+          print(
+              "dca_observe:",
+              len(dca_observe)
+          )
+
+          print(
+              "dca_pause:",
+              len(dca_pause)
+          )
+
+          # --------------------------------------------------
+          # 股票數量基本驗證
+          # --------------------------------------------------
+
+          universe_count = statistics.get(
+              "universe"
+          )
+
+          if universe_count is not None:
+
+              if int(universe_count) != len(stocks):
+
+                  raise SystemExit(
+                      "ERROR: analysis "
+                      "股票數量與 statistics "
+                      "不一致"
+                  )
+
+          # --------------------------------------------------
+          # 驗證分析結果至少存在
+          # --------------------------------------------------
+
+          sample_symbol = next(
+              iter(stocks)
+          )
+
+          sample = stocks[
+              sample_symbol
+          ]
+
+          if not isinstance(
+              sample,
+              dict
+          ):
+              raise SystemExit(
+                  "ERROR: 股票分析 record "
+                  "格式錯誤"
+              )
+
+          if "short_term" not in sample:
+              raise SystemExit(
+                  "ERROR: analysis 缺少 "
+                  "short_term"
+              )
+
+          if "dca" not in sample:
+              raise SystemExit(
+                  "ERROR: analysis 缺少 "
+                  "dca"
+              )
+
+          if "chip" not in sample:
+              raise SystemExit(
+                  "ERROR: analysis 缺少 "
+                  "chip"
+              )
+
+          # --------------------------------------------------
+          # 確認 10D 沒有被分析層丟掉
+          # --------------------------------------------------
+
+          chip_record = sample.get(
+              "chip",
+              {}
+          )
+
+          if "main_force_10d" not in chip_record:
+
+              raise SystemExit(
+                  "ERROR: analysis 股票資料 "
+                  "缺少 main_force_10d"
+              )
+
+          print("")
+          print(
+              "sample symbol:",
+              sample_symbol
+          )
+
+          print(
+              "sample name:",
+              sample.get("name")
+          )
+
+          print(
+              "sample latest_date:",
+              sample.get("latest_date")
+          )
+
+          print(
+              "sample main_force_1d:",
+              chip_record.get(
+                  "main_force_1d"
+              )
+          )
+
+          print(
+              "sample main_force_5d:",
+              chip_record.get(
+                  "main_force_5d"
+              )
+          )
+
+          print(
+              "sample main_force_10d:",
+              chip_record.get(
+                  "main_force_10d"
+              )
+          )
+
+          print(
+              "sample main_force_20d:",
+              chip_record.get(
+                  "main_force_20d"
+              )
+          )
+
+          print("")
+          print(
+              "✓ analysis.json validation passed"
+          )
+          PY
+
+
+      # ======================================================
+      # 15. 顯示最終分析摘要
+      # ======================================================
+
+      - name: Show analysis summary
+        run: |
+          echo "========================================"
+          echo "Stock analysis summary"
+          echo "========================================"
+
+          python - <<'PY'
+          import json
+
+          path = "Data/analysis.json"
+
+          with open(
+              path,
+              "r",
+              encoding="utf-8"
+          ) as f:
+              data = json.load(f)
+
+          statistics = data.get(
+              "statistics",
+              {}
+          )
+
+          print("")
+          print("Universe:",
+                statistics.get("universe"))
+
+          print("Complete:",
+                statistics.get("complete"))
+
+          print("Partial:",
+                statistics.get("partial"))
+
+          print("Insufficient:",
+                statistics.get("insufficient"))
+
+          print("")
+          print(
+              "短期選股符合：",
+              statistics.get(
+                  "short_term_candidates"
+              )
+          )
+
+          print(
+              "零股定投可買：",
+              statistics.get(
+                  "dca_buy"
+              )
+          )
+
+          print(
+              "零股定投觀察：",
+              statistics.get(
+                  "dca_observe"
+              )
+          )
+
+          print(
+              "零股定投暫停：",
+              statistics.get(
+                  "dca_pause"
+              )
+          )
+
+          print("")
+
+          print(
+              "短期選股：",
+              data.get(
+                  "short_term_candidates",
+                  []
+              )
+          )
+
+          print("")
+
+          print(
+              "零股定投可買：",
+              data.get(
+                  "dca_buy",
+                  []
+              )
+          )
+
+          print("")
+          PY
+
+
+      # ======================================================
+      # 16. 顯示資料檔案
       # ======================================================
 
       - name: Show generated files
@@ -823,7 +1199,7 @@ jobs:
 
 
       # ======================================================
-      # 14. Commit / Push
+      # 17. Commit / Push
       # ======================================================
 
       - name: Commit updated data
@@ -837,12 +1213,13 @@ jobs:
             "41898282+github-actions[bot]@users.noreply.github.com"
 
           # -----------------------------------------------
-          # 新正式資料
+          # 正式資料
           # -----------------------------------------------
 
           git add Data/universe.json
           git add Data/prices/
           git add Data/chip.json
+          git add Data/analysis.json
 
           # -----------------------------------------------
           # 舊架構 prices.json 移除
@@ -863,7 +1240,7 @@ jobs:
           else
 
             git commit \
-              -m "Update stock universe, price shards and chip data"
+              -m "Update stock data and analysis"
 
             git push
 
