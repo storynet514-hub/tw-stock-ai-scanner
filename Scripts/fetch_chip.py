@@ -53,63 +53,81 @@ main_force_20d
 V6.1 架構
 ============================================================
 
-本版本延續 V6.0：
-
-1. 每次 GitHub Actions 執行
-2. 抓 CMoney 最新約 10 個交易日
-3. 讀取上一版 Data/chip.json
-4. 合併歷史資料
-5. 以日期去重
-6. 依日期排序
-7. 保留最近 20 個交易日
-8. 計算 1D / 5D / 10D / 20D
-
-============================================================
-V6.1 唯一功能變更
-============================================================
-
-V6.0：
-固定 4 檔測試
-
-2337 旺宏
-2426 鼎元
-2368 金像電
-3081 聯亞
-
-V6.1：
-改為讀取：
-
-Data/universe.json
-
-掃描 Universe 中的全部台股。
-
-股票名稱直接使用 universe.json，
-不再在 fetch_chip.py 裡手動寫死股票名稱。
-
-因此：
-
-3081 → 聯亞
-3088 → 艾訊
-
-不會再發生 3081 / 3088 名稱錯置。
+1. 讀取 Data/universe.json
+2. Universe 中所有股票全部進入掃描
+3. 不因股票名稱空白而排除股票
+4. 抓取 CMoney 首頁「買賣超」
+5. 讀取上一版 Data/chip.json
+6. 合併歷史資料
+7. 以日期去重
+8. 依日期排序
+9. 保留最近 20 個交易日
+10. 計算 1D / 5D / 10D / 20D
 
 ============================================================
-重要
+V6.1 修正
 ============================================================
+
+原 V6.1 問題：
+
+universe.json：
+
+total = 1985
+listed_stocks = 1095
+otc_stocks = 890
+
+但 TPEx 890 檔股票的 name 欄位目前為空字串。
+
+原程式：
+
+if not name:
+    continue
+
+因此直接把 890 檔 TPEx 股票排除。
+
+最後只剩：
+
+1985 - 890 = 1095
+
+造成 Action 實際只掃描 1095 檔。
 
 本版本：
 
-讀取 universe.json
-掃描全市場 Universe
+不再因 name 空白排除股票。
+
+只要：
+
+code / symbol 有效
+
+就進入 Universe。
+
+股票名稱：
+
+1. Universe 有名稱 → 使用 Universe 名稱
+2. Universe 名稱空白，但上一版 chip.json 已有名稱
+   → 使用上一版已保存名稱
+3. 兩者都沒有
+   → 使用股票代號作為暫時名稱
+
+注意：
+
+名稱 fallback 只處理顯示名稱。
+
+不影響 CMoney 買賣超資料來源。
+
+============================================================
+資料來源限制
+============================================================
+
+只使用：
+
+CMoney 主力進出
+「買賣超」
 
 不探測 API
 不猜 pagination
 不使用 URL 延伸資料
 不使用其他欄位補足 20D
-
-只使用 CMoney 首頁真正的：
-
-「買賣超」
 
 ============================================================
 輸出
@@ -117,10 +135,19 @@ Data/universe.json
 
 Data/chip.json
 
-chip.json 自己保存歷史資料。
+chip.json 保存歷史資料。
 
-因此 GitHub Actions 每次成功執行並 commit
-後，歷史資料會持續累積。
+每次 GitHub Actions：
+
+本次抓到的新資料
++
+上一版歷史資料
+
+合併後保存。
+
+因此 20D 會持續累積。
+
+============================================================
 """
 
 
@@ -217,7 +244,7 @@ def section(title):
 # Universe
 # ============================================================
 
-def load_universe():
+def load_universe(previous_data=None):
 
     section("讀取台股 Universe")
 
@@ -265,9 +292,91 @@ def load_universe():
             "universe.json 的 items 不是 list"
         )
 
+    # --------------------------------------------------------
+    # Universe metadata
+    # --------------------------------------------------------
+
+    universe_total = data.get(
+        "total"
+    )
+
+    listed_count = data.get(
+        "listed_stocks"
+    )
+
+    otc_count = data.get(
+        "otc_stocks"
+    )
+
+    log(
+        f"Universe metadata total："
+        f"{universe_total}"
+    )
+
+    log(
+        f"Universe listed_stocks："
+        f"{listed_count}"
+    )
+
+    log(
+        f"Universe otc_stocks："
+        f"{otc_count}"
+    )
+
+    # --------------------------------------------------------
+    # 建立上一版名稱索引
+    # --------------------------------------------------------
+
+    previous_name_map = {}
+
+    if isinstance(
+        previous_data,
+        dict
+    ):
+
+        previous_stocks = previous_data.get(
+            "stocks",
+            {}
+        )
+
+        if isinstance(
+            previous_stocks,
+            dict
+        ):
+
+            for symbol, record in previous_stocks.items():
+
+                if not isinstance(
+                    record,
+                    dict
+                ):
+                    continue
+
+                old_name = str(
+                    record.get(
+                        "name",
+                        ""
+                    )
+                ).strip()
+
+                if old_name:
+                    previous_name_map[
+                        str(symbol).strip().upper()
+                    ] = old_name
+
     stocks = []
 
     seen = set()
+
+    skipped_invalid = 0
+
+    skipped_duplicate = 0
+
+    empty_universe_name = 0
+
+    # --------------------------------------------------------
+    # 讀取全部 items
+    # --------------------------------------------------------
 
     for item in items:
 
@@ -275,6 +384,9 @@ def load_universe():
             item,
             dict
         ):
+
+            skipped_invalid += 1
+
             continue
 
         symbol = item.get(
@@ -288,6 +400,9 @@ def load_universe():
             )
 
         if symbol is None:
+
+            skipped_invalid += 1
+
             continue
 
         symbol = str(
@@ -313,12 +428,17 @@ def load_universe():
             symbol
         ):
 
+            skipped_invalid += 1
+
             continue
 
         if symbol in seen:
+
+            skipped_duplicate += 1
+
             continue
 
-        name = str(
+        universe_name = str(
             item.get(
                 "name",
                 ""
@@ -333,11 +453,52 @@ def load_universe():
         ).strip()
 
         # ----------------------------------------------------
-        # 沒有名稱的股票不進入 Universe
+        # 重要修正
+        #
+        # 絕對不能因為 name 空白而排除股票。
+        #
+        # 原本：
+        #
+        # if not name:
+        #     continue
+        #
+        # 正是造成：
+        #
+        # 1985 -> 1095
+        #
+        # 的原因。
         # ----------------------------------------------------
 
-        if not name:
-            continue
+        if not universe_name:
+
+            empty_universe_name += 1
+
+            # ------------------------------------------------
+            # 若上一版已有正確名稱，沿用上一版名稱
+            # ------------------------------------------------
+
+            previous_name = previous_name_map.get(
+                symbol
+            )
+
+            if previous_name:
+
+                name = previous_name
+
+            else:
+
+                # --------------------------------------------
+                # 沒有名稱時不得排除股票。
+                #
+                # 使用代號作為暫時識別名稱，
+                # 不影響 CMoney 資料抓取。
+                # --------------------------------------------
+
+                name = symbol
+
+        else:
+
+            name = universe_name
 
         seen.add(
             symbol
@@ -347,6 +508,7 @@ def load_universe():
             "symbol": symbol,
             "name": name,
             "market": market,
+            "universe_name": universe_name,
         })
 
     if not stocks:
@@ -363,30 +525,81 @@ def load_universe():
         key=lambda x: x["symbol"]
     )
 
+    # --------------------------------------------------------
+    # 最終 Universe 驗證
+    # --------------------------------------------------------
+
     log(
-        f"Universe 股票數量："
+        f"Universe items："
+        f"{len(items)}"
+    )
+
+    log(
+        f"有效股票："
         f"{len(stocks)}"
     )
 
-    # --------------------------------------------------------
-    # 特別確認 3081
-    # --------------------------------------------------------
-
-    stock_3081 = next(
-        (
-            stock
-            for stock in stocks
-            if stock["symbol"] == "3081"
-        ),
-        None
+    log(
+        f"名稱空白股票："
+        f"{empty_universe_name}"
     )
 
-    if stock_3081:
+    log(
+        f"無效項目："
+        f"{skipped_invalid}"
+    )
 
-        log(
-            f"3081 Universe 名稱："
-            f"{stock_3081['name']}"
+    log(
+        f"重複股票："
+        f"{skipped_duplicate}"
+    )
+
+    # --------------------------------------------------------
+    # 如果 metadata total 存在，檢查是否一致
+    # --------------------------------------------------------
+
+    if isinstance(
+        universe_total,
+        int
+    ):
+
+        if len(stocks) != universe_total:
+
+            raise RuntimeError(
+                "Universe 股票數量與 "
+                "universe.json total 不一致："
+                f"metadata={universe_total}, "
+                f"actual={len(stocks)}"
+            )
+
+    # --------------------------------------------------------
+    # 特別確認 2337 / 2426 / 2368 / 3081 / 3088
+    # --------------------------------------------------------
+
+    for target in [
+        "2337",
+        "2426",
+        "2368",
+        "3081",
+        "3088",
+    ]:
+
+        target_stock = next(
+            (
+                stock
+                for stock in stocks
+                if stock["symbol"] == target
+            ),
+            None
         )
+
+        if target_stock:
+
+            log(
+                f"{target} Universe名稱："
+                f"{target_stock['name']} "
+                f"(market={target_stock['market']})"
+            )
 
     return stocks
 
@@ -531,10 +744,6 @@ def is_main_force_header(text):
         text
     )
 
-    # --------------------------------------------------------
-    # 只接受真正的「買賣超」
-    # --------------------------------------------------------
-
     return header == "買賣超"
 
 
@@ -661,7 +870,7 @@ def parse_cmoney_main_force(
     target_force_index = None
 
     # --------------------------------------------------------
-    # 找到真正包含
+    # 找真正包含：
     #
     # 日期
     # 買賣超
@@ -1144,8 +1353,8 @@ def fetch_stock(
         "name"
     ]
 
-    section(
-        "CMoney 主力買賣超："
+    log(
+        f"CMoney 主力買賣超："
         f"{symbol} {name}"
     )
 
@@ -1464,6 +1673,10 @@ def fetch_all(
 
     insufficient = 0
 
+    success = 0
+
+    failed = 0
+
     for index, stock in enumerate(
         stocks,
         start=1
@@ -1476,6 +1689,10 @@ def fetch_all(
         name = stock[
             "name"
         ]
+
+        log(
+            ""
+        )
 
         log(
             f"[{index}/{total}] "
@@ -1493,6 +1710,8 @@ def fetch_all(
             results[
                 symbol
             ] = record
+
+            success += 1
 
             status = record[
                 "status"
@@ -1513,6 +1732,8 @@ def fetch_all(
                 insufficient += 1
 
         except Exception as exc:
+
+            failed += 1
 
             log(
                 f"❌ {symbol} "
@@ -1556,6 +1777,22 @@ def fetch_all(
             REQUEST_DELAY
         )
 
+    log("")
+    log(
+        f"掃描完成："
+        f"{len(results)}/{total}"
+    )
+
+    log(
+        f"成功請求："
+        f"{success}"
+    )
+
+    log(
+        f"失敗請求："
+        f"{failed}"
+    )
+
     return (
         results,
         complete,
@@ -1581,12 +1818,32 @@ def validate(
         stocks
     )
 
+    # --------------------------------------------------------
+    # 最重要驗證：
+    #
+    # Universe 1985
+    # results 必須也是 1985
+    #
+    # 不允許再次出現 1095。
+    # --------------------------------------------------------
+
     if len(results) != expected_count:
+
+        missing_symbols = [
+            stock["symbol"]
+            for stock in stocks
+            if stock["symbol"] not in results
+        ]
+
+        preview = ", ".join(
+            missing_symbols[:20]
+        )
 
         raise RuntimeError(
             "輸出股票數量錯誤："
             f"expected={expected_count}, "
-            f"actual={len(results)}"
+            f"actual={len(results)}，"
+            f"缺少：{preview}"
         )
 
     valid_1d = 0
@@ -1685,23 +1942,40 @@ def validate(
                 )
 
         # ----------------------------------------------------
-        # 名稱一致性
+        # 名稱
+        #
+        # 這裡不再要求 Universe name 必須非空。
+        # 因為目前 TPEx Universe 有空白名稱。
+        #
+        # 只要求 fetch 前後名稱一致。
         # ----------------------------------------------------
 
-        if (
-            record.get("name")
-            != stock.get("name")
-        ):
+        expected_name = stock.get(
+            "name",
+            ""
+        )
+
+        actual_name = record.get(
+            "name",
+            ""
+        )
+
+        if actual_name != expected_name:
 
             raise RuntimeError(
                 f"{symbol} 股票名稱不一致："
-                f"Universe={stock.get('name')} "
-                f"chip={record.get('name')}"
+                f"Universe={expected_name} "
+                f"chip={actual_name}"
             )
 
     log(
         f"Universe 股票："
         f"{expected_count}"
+    )
+
+    log(
+        f"輸出股票："
+        f"{len(results)}"
     )
 
     log(
@@ -1753,7 +2027,8 @@ def validate(
     else:
 
         log(
-            "ℹ️ 部分股票20D尚在歷史累積階段"
+            f"ℹ️ 部分股票20D尚在歷史累積階段 "
+            f"({valid_20d}/{expected_count})"
         )
 
     # --------------------------------------------------------
@@ -1894,6 +2169,9 @@ def save_chip(
 
         "statistics": {
 
+            "universe":
+                len(stocks),
+
             "complete":
                 complete,
 
@@ -2027,6 +2305,13 @@ def save_chip(
                 f"{symbol} history 格式錯誤"
             )
 
+        if len(history) > MAX_HISTORY:
+
+            raise RuntimeError(
+                f"{symbol} history 超過 "
+                f"{MAX_HISTORY} 筆"
+            )
+
         periods = calculate_periods(
             history
         )
@@ -2047,6 +2332,16 @@ def save_chip(
                     f"{symbol} {field} "
                     "寫入後驗證失敗"
                 )
+
+    # --------------------------------------------------------
+    # 最終股票數量再次驗證
+    # --------------------------------------------------------
+
+    if len(verify_stocks) != len(stocks):
+
+        raise RuntimeError(
+            "最終輸出股票數量不一致"
+        )
 
     # --------------------------------------------------------
     # 原子替換
@@ -2124,13 +2419,10 @@ def main():
     try:
 
         # ----------------------------------------------------
-        # 讀取 Universe
-        # ----------------------------------------------------
-
-        stocks = load_universe()
-
-        # ----------------------------------------------------
-        # 讀取上一版 chip.json
+        # 先讀取上一版 chip
+        #
+        # 因為 Universe 某些股票目前沒有名稱，
+        # 可以利用上一版保存的名稱。
         # ----------------------------------------------------
 
         previous_data = (
@@ -2155,6 +2447,14 @@ def main():
                     "上一版 chip.json 股票："
                     f"{len(previous_stocks)}"
                 )
+
+        # ----------------------------------------------------
+        # 讀取完整 Universe
+        # ----------------------------------------------------
+
+        stocks = load_universe(
+            previous_data
+        )
 
         # ----------------------------------------------------
         # 全市場抓取
@@ -2217,6 +2517,11 @@ def main():
         log(
             f"Universe 股票："
             f"{len(stocks)}"
+        )
+
+        log(
+            f"輸出股票："
+            f"{len(results)}"
         )
 
         log(
