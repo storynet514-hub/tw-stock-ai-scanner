@@ -1,6 +1,6 @@
 {
   "schema_version": "V3.0",
-  "generated_at": "2026-08-20 14:14:35",
+  "generated_at": "2026-08-20 17:45:49",
   "source": {
     "universe": "Data/universe.json",
     "prices": "Data/prices/",
@@ -40587,14 +40587,14 @@
       "short_term": {},
       "dca": {},
       "chip": {
-        "main_force_1d": 1.0,
-        "main_force_5d": -8.0,
-        "main_force_10d": -25.0,
+        "main_force_1d": 0.0,
+        "main_force_5d": 0.0,
+        "main_force_10d": -8.0,
         "main_force_20d": null,
-        "positive_count": 1,
-        "negative_count": 2,
+        "positive_count": 0,
+        "negative_count": 1,
         "direction": "分歧",
-        "medium_direction": "中期偏空",
+        "medium_direction": "中期分歧",
         "ten_day_used": true
       }
     },

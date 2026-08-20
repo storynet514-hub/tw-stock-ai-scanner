@@ -1,6 +1,6 @@
 {
   "schema_version": "V6.1",
-  "generated_at": "2026-08-20 14:14:35",
+  "generated_at": "2026-08-20 17:45:48",
   "data_date": "2026-08-20",
   "source": "CMoney",
   "universe_mode": "full_market",
@@ -39106,7 +39106,7 @@
       "main_force_5d": -1341.0,
       "main_force_10d": 521.0,
       "main_force_20d": null,
-      "history_count": 10,
+      "history_count": 11,
       "status": "partial_20d",
       "history": [
         {
@@ -39148,6 +39148,10 @@
         {
           "date": "2026/08/07",
           "main_force": 2704.0
+        },
+        {
+          "date": "2026/08/06",
+          "main_force": -112.0
         }
       ],
       "error": null
@@ -54296,13 +54300,17 @@
       "source": "CMoney",
       "source_url": "https://www.cmoney.tw/forum/stock/6957?s=main-force",
       "source_field": "買賣超",
-      "main_force_1d": 1.0,
-      "main_force_5d": -8.0,
-      "main_force_10d": -25.0,
+      "main_force_1d": 0.0,
+      "main_force_5d": 0.0,
+      "main_force_10d": -8.0,
       "main_force_20d": null,
-      "history_count": 10,
+      "history_count": 11,
       "status": "partial_20d",
       "history": [
+        {
+          "date": "2026/08/20",
+          "main_force": 0.0
+        },
         {
           "date": "2026/08/19",
           "main_force": 1.0
