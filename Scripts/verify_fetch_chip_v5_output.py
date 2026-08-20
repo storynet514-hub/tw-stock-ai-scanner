@@ -3,144 +3,175 @@
 
 """
 台股 AI 選股系統
-verify_fetch_chip_v5_output.py
+fetch_chip.py V5.0
 
 ============================================================
-目的
+核心功能
 ============================================================
 
-驗證正式 fetch_chip.py V5.0.1 已產生的：
+取得台股 Universe：
 
-Data/chip.json
-
-本程式：
-
-1. 不呼叫 CMoney
-2. 不執行 fetch_chip.py
-3. 不執行 fetch_all()
-4. 不修改 fetch_chip.py
-5. 不修改 chip.json
-6. 不探測任何 API
-7. 不讀取完整 Universe
-8. 固定只驗證 4 檔股票
-
-固定測試：
-
-2337 旺宏
-2426 鼎元
-2368 金像電
-3081 聯亞
+1. 每日主力買賣超
+2. 主力 5 日買賣超
+3. 主力 10 日買賣超
+4. 主力 20 日買賣超
 
 ============================================================
-驗證內容
+重要定義
 ============================================================
 
-A. 股票是否存在
+本程式的「主力」：
 
-B. history 是否存在
+CMoney「主力進出」頁面的：
 
-C. history 是否至少 20 筆
+「買賣超」
 
-D. 日期是否：
-   - 合法
-   - 無重複
-   - 由新到舊排序
+單位：
+張
 
-E. 是否存在明顯異常舊日期
+正數 = 主力買超
+負數 = 主力賣超
 
-F. main_force 數值是否為數字
+主力 5 日：
+最近 5 個交易日每日主力買賣超加總。
 
-G. 重新計算：
+主力 10 日：
+最近 10 個交易日每日主力買賣超加總。
 
-   1D
-   5D
-   10D
-   20D
+主力 20 日：
+最近 20 個交易日每日主力買賣超加總。
 
-H. 與 chip.json：
+注意：
 
-   main_force_1d
-   main_force_5d
-   main_force_10d
-   main_force_20d
+CMoney 頁面中的：
 
-逐項比對。
+「20日集中」
 
-I. 確認：
+不是主力 20 日買賣超。
 
-main_force_20d
+本程式絕對不使用「20日集中」計算 main_force_20d。
 
-確實等於：
+============================================================
+V5.0 主要修正
+============================================================
 
-最近 20 筆 history 的
-main_force 加總
+CMoney 主力進出頁面首屏目前通常只提供約 10 筆資料。
+
+因此：
+
+不能只抓一次 HTML。
+
+本版本：
+
+1. 先抓主頁
+2. 解析首批資料
+3. 尋找「查看更多」/ pagination / API 線索
+4. 嘗試取得下一批資料
+5. 合併歷史
+6. 去除重複日期
+7. 至少取得 20 個交易日
+8. 才計算 main_force_20d
 
 ============================================================
 輸出
 ============================================================
 
-Data/chip_v5_output_verification.json
+Data/chip.json
 
-注意：
+包含：
 
-本程式只是驗證工具。
-不修改正式資料。
+main_force_1d
+main_force_5d
+main_force_10d
+main_force_20d
+
+history：
+至少最近 20 個交易日主力買賣超
+
+============================================================
 """
 
 
 from __future__ import annotations
 
 import json
+import re
 import sys
+import time
 
 from datetime import datetime
 from pathlib import Path
+from urllib.parse import (
+    urljoin,
+    urlparse,
+    parse_qs,
+)
+
+import requests
+
+from bs4 import BeautifulSoup
 
 
 # ============================================================
-# 路徑
+# 基本設定
 # ============================================================
 
-BASE_DIR = (
-    Path(__file__)
-    .resolve()
-    .parent
-    .parent
-)
+VERSION = "V5.0"
 
-DATA_DIR = (
-    BASE_DIR
-    / "Data"
-)
+BASE_DIR = Path(__file__).resolve().parent.parent
 
-CHIP_FILE = (
-    DATA_DIR
-    / "chip.json"
-)
+DATA_DIR = BASE_DIR / "Data"
 
-OUTPUT_FILE = (
-    DATA_DIR
-    / "chip_v5_output_verification.json"
-)
+UNIVERSE_FILE = DATA_DIR / "universe.json"
+
+CHIP_FILE = DATA_DIR / "chip.json"
+
+REQUEST_TIMEOUT = 30
+
+REQUEST_DELAY = 0.20
+
+MIN_HISTORY = 20
+
+MAX_FETCH_ROUNDS = 6
 
 
 # ============================================================
-# 固定測試股票
+# CMoney
 # ============================================================
 
-TEST_STOCKS = {
-    "2337": "旺宏",
-    "2426": "鼎元",
-    "2368": "金像電",
-    "3081": "聯亞",
+CMONEY_URL = (
+    "https://www.cmoney.tw/forum/stock/"
+    "{symbol}?s=main-force"
+)
+
+CMONEY_MOBILE_URL = (
+    "https://mobile.cmoney.tw/forum/stock/"
+    "{symbol}?s=main-force"
+)
+
+
+# ============================================================
+# User-Agent
+# ============================================================
+
+HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 "
+        "(Windows NT 10.0; Win64; x64) "
+        "AppleWebKit/537.36 "
+        "(KHTML, like Gecko) "
+        "Chrome/131.0 Safari/537.36"
+    ),
+    "Accept": (
+        "text/html,application/xhtml+xml,"
+        "application/xml;q=0.9,image/avif,"
+        "image/webp,*/*;q=0.8"
+    ),
+    "Accept-Language": (
+        "zh-TW,zh;q=0.9,en;q=0.8"
+    ),
+    "Connection": "keep-alive",
 }
-
-
-# ============================================================
-# 允許誤差
-# ============================================================
-
-EPSILON = 0.01
 
 
 # ============================================================
@@ -148,10 +179,7 @@ EPSILON = 0.01
 # ============================================================
 
 def log(message=""):
-    print(
-        message,
-        flush=True
-    )
+    print(message, flush=True)
 
 
 def section(title):
@@ -163,19 +191,181 @@ def section(title):
 
 
 # ============================================================
-# 日期
+# Universe
 # ============================================================
 
-def parse_date(value):
+def load_universe():
 
-    if value is None:
+    section("讀取台股 Universe")
+
+    if not UNIVERSE_FILE.exists():
+
+        raise RuntimeError(
+            f"找不到：{UNIVERSE_FILE}"
+        )
+
+    with UNIVERSE_FILE.open(
+        "r",
+        encoding="utf-8"
+    ) as f:
+
+        data = json.load(f)
+
+    if not isinstance(data, dict):
+
+        raise RuntimeError(
+            "universe.json 格式錯誤"
+        )
+
+    items = data.get(
+        "items",
+        []
+    )
+
+    if not isinstance(
+        items,
+        list
+    ):
+
+        raise RuntimeError(
+            "universe.json items 不是 list"
+        )
+
+    stocks = []
+
+    seen = set()
+
+    for item in items:
+
+        if not isinstance(
+            item,
+            dict
+        ):
+            continue
+
+        symbol = item.get(
+            "code"
+        )
+
+        if symbol is None:
+
+            symbol = item.get(
+                "symbol"
+            )
+
+        if symbol is None:
+            continue
+
+        symbol = str(
+            symbol
+        ).strip().upper()
+
+        symbol = re.sub(
+            r"\.(TW|TWO)$",
+            "",
+            symbol
+        )
+
+        if not re.fullmatch(
+            r"[A-Z0-9]{4,6}",
+            symbol
+        ):
+            continue
+
+        if symbol in seen:
+            continue
+
+        seen.add(
+            symbol
+        )
+
+        stocks.append({
+            "symbol": symbol,
+            "name": str(
+                item.get(
+                    "name",
+                    ""
+                )
+            ).strip(),
+            "market": str(
+                item.get(
+                    "market",
+                    ""
+                )
+            ).strip(),
+        })
+
+    if not stocks:
+
+        raise RuntimeError(
+            "Universe 沒有任何合法股票"
+        )
+
+    log(
+        f"Universe 股票數量："
+        f"{len(stocks)}"
+    )
+
+    return stocks
+
+
+# ============================================================
+# Number
+# ============================================================
+
+def parse_number(text):
+
+    if text is None:
+        return None
+
+    text = str(
+        text
+    ).strip()
+
+    if not text:
+        return None
+
+    text = text.replace(
+        ",",
+        ""
+    )
+
+    text = text.replace(
+        "張",
+        ""
+    )
+
+    text = text.replace(
+        "%",
+        ""
+    )
+
+    if text.upper() in {
+        "N/A",
+        "NA",
+        "NONE",
+        "NULL",
+        "-",
+        "--",
+        "－",
+        "—",
+        "無",
+    }:
+
+        return None
+
+    match = re.search(
+        r"[-+]?\d+(?:\.\d+)?",
+        text
+    )
+
+    if not match:
         return None
 
     try:
 
-        return datetime.strptime(
-            str(value),
-            "%Y/%m/%d"
+        return float(
+            match.group(0)
         )
 
     except Exception:
@@ -184,62 +374,928 @@ def parse_date(value):
 
 
 # ============================================================
-# 數值
+# Date
 # ============================================================
 
-def parse_float(value):
+DATE_PATTERNS = [
+    r"\d{4}/\d{1,2}/\d{1,2}",
+    r"\d{4}-\d{1,2}-\d{1,2}",
+]
 
-    if value is None:
+
+def normalize_date(text):
+
+    if text is None:
         return None
 
-    if isinstance(
-        value,
-        bool
+    text = str(
+        text
+    ).strip()
+
+    for pattern in DATE_PATTERNS:
+
+        if re.fullmatch(
+            pattern,
+            text
+        ):
+
+            return text.replace(
+                "-",
+                "/"
+            )
+
+    return None
+
+
+# ============================================================
+# Header
+# ============================================================
+
+def normalize_header(text):
+
+    if text is None:
+        return ""
+
+    text = str(
+        text
+    )
+
+    text = text.replace(
+        "\n",
+        ""
+    )
+
+    text = text.replace(
+        "\r",
+        ""
+    )
+
+    text = text.replace(
+        " ",
+        ""
+    )
+
+    text = text.replace(
+        "\u3000",
+        ""
+    )
+
+    return text.strip()
+
+
+def is_main_force_header(text):
+
+    header = normalize_header(
+        text
+    )
+
+    if header == "買賣超":
+        return True
+
+    if (
+        "買賣超" in header
+        and "家數" not in header
+        and "集中" not in header
     ):
-        return None
 
-    try:
+        return True
 
-        return float(value)
-
-    except Exception:
-
-        return None
+    return False
 
 
 # ============================================================
-# 比較數值
+# Request
 # ============================================================
 
-def values_equal(
-    actual,
-    expected
+def request_url(
+    session,
+    url
 ):
 
-    if actual is None:
-        return False
+    response = session.get(
+        url,
+        headers=HEADERS,
+        timeout=REQUEST_TIMEOUT
+    )
 
-    if expected is None:
-        return False
+    response.raise_for_status()
 
-    return (
-        abs(
-            float(actual)
-            - float(expected)
+    if not response.text:
+
+        raise RuntimeError(
+            "CMoney 回傳空白內容"
         )
-        <= EPSILON
+
+    return response.text
+
+
+def request_page(
+    session,
+    symbol
+):
+
+    urls = [
+        CMONEY_URL.format(
+            symbol=symbol
+        ),
+        CMONEY_MOBILE_URL.format(
+            symbol=symbol
+        ),
+    ]
+
+    last_error = None
+
+    for url in urls:
+
+        try:
+
+            html = request_url(
+                session,
+                url
+            )
+
+            return (
+                html,
+                url
+            )
+
+        except Exception as exc:
+
+            last_error = exc
+
+    if last_error:
+        raise last_error
+
+    raise RuntimeError(
+        "無法取得 CMoney 頁面"
     )
 
 
 # ============================================================
-# 重新計算
+# Table parser
 # ============================================================
 
-def calculate_periods(history):
+def parse_table_with_header(
+    soup
+):
+
+    tables = soup.find_all(
+        "table"
+    )
+
+    for table in tables:
+
+        rows = table.find_all(
+            "tr"
+        )
+
+        if not rows:
+            continue
+
+        header_cells = None
+
+        for tr in rows[:15]:
+
+            cells = tr.find_all(
+                ["th", "td"]
+            )
+
+            if not cells:
+                continue
+
+            headers = [
+                normalize_header(
+                    cell.get_text(
+                        " ",
+                        strip=True
+                    )
+                )
+                for cell in cells
+            ]
+
+            has_date = any(
+                h == "日期"
+                or "日期" in h
+                for h in headers
+            )
+
+            has_force = any(
+                is_main_force_header(
+                    h
+                )
+                for h in headers
+            )
+
+            if (
+                has_date
+                and has_force
+            ):
+
+                header_cells = cells
+
+                break
+
+        if header_cells is None:
+            continue
+
+        headers = [
+            normalize_header(
+                cell.get_text(
+                    " ",
+                    strip=True
+                )
+            )
+            for cell in header_cells
+        ]
+
+        date_index = -1
+        force_index = -1
+
+        for index, header in enumerate(
+            headers
+        ):
+
+            if (
+                date_index < 0
+                and (
+                    header == "日期"
+                    or "日期" in header
+                )
+            ):
+
+                date_index = index
+
+            if (
+                force_index < 0
+                and is_main_force_header(
+                    header
+                )
+            ):
+
+                force_index = index
+
+        if (
+            date_index < 0
+            or force_index < 0
+        ):
+            continue
+
+        result = []
+
+        for tr in rows:
+
+            cells = tr.find_all(
+                ["th", "td"]
+            )
+
+            if len(cells) <= max(
+                date_index,
+                force_index
+            ):
+                continue
+
+            values = [
+                cell.get_text(
+                    " ",
+                    strip=True
+                )
+                for cell in cells
+            ]
+
+            date_text = normalize_date(
+                values[date_index]
+            )
+
+            if not date_text:
+                continue
+
+            force_value = parse_number(
+                values[force_index]
+            )
+
+            if force_value is None:
+                continue
+
+            result.append({
+                "date": date_text,
+                "main_force": force_value
+            })
+
+        if result:
+
+            return result
+
+    return []
+
+
+# ============================================================
+# Text fallback
+# ============================================================
+
+def parse_text_fallback(
+    soup
+):
+
+    text = soup.get_text(
+        "\n",
+        strip=True
+    )
+
+    lines = [
+        line.strip()
+        for line in text.splitlines()
+        if line.strip()
+    ]
+
+    result = []
+
+    for i, line in enumerate(
+        lines
+    ):
+
+        date_text = normalize_date(
+            line
+        )
+
+        if not date_text:
+            continue
+
+        numeric_values = []
+
+        for j in range(
+            i + 1,
+            min(
+                i + 8,
+                len(lines)
+            )
+        ):
+
+            number = parse_number(
+                lines[j]
+            )
+
+            if number is not None:
+
+                numeric_values.append(
+                    number
+                )
+
+            if len(
+                numeric_values
+            ) >= 2:
+
+                break
+
+        if len(
+            numeric_values
+        ) < 2:
+
+            continue
+
+        result.append({
+            "date": date_text,
+            "main_force":
+                numeric_values[1]
+        })
+
+    return result
+
+
+# ============================================================
+# Parse history
+# ============================================================
+
+def parse_main_force_table(
+    html
+):
+
+    soup = BeautifulSoup(
+        html,
+        "html.parser"
+    )
+
+    rows = parse_table_with_header(
+        soup
+    )
+
+    if rows:
+
+        return clean_history(
+            rows
+        )
+
+    rows = parse_text_fallback(
+        soup
+    )
+
+    if rows:
+
+        return clean_history(
+            rows
+        )
+
+    return []
+
+
+# ============================================================
+# Clean history
+# ============================================================
+
+def clean_history(
+    rows
+):
+
+    unique = {}
+
+    for row in rows:
+
+        date = row.get(
+            "date"
+        )
+
+        value = row.get(
+            "main_force"
+        )
+
+        if not date:
+            continue
+
+        if value is None:
+            continue
+
+        try:
+
+            datetime.strptime(
+                date,
+                "%Y/%m/%d"
+            )
+
+        except Exception:
+
+            continue
+
+        unique[date] = float(
+            value
+        )
+
+    result = []
+
+    for date, value in unique.items():
+
+        result.append({
+            "date": date,
+            "main_force": value
+        })
+
+    result.sort(
+        key=lambda x:
+            datetime.strptime(
+                x["date"],
+                "%Y/%m/%d"
+            ),
+        reverse=True
+    )
+
+    return result
+
+
+# ============================================================
+# 找「查看更多」線索
+# ============================================================
+
+def discover_more_urls(
+    html,
+    base_url,
+    symbol
+):
+
+    soup = BeautifulSoup(
+        html,
+        "html.parser"
+    )
+
+    urls = []
+
+    def add_url(
+        value
+    ):
+
+        if not value:
+            return
+
+        value = str(
+            value
+        ).strip()
+
+        if (
+            value.startswith(
+                "javascript:"
+            )
+            or value.startswith("#")
+        ):
+            return
+
+        absolute = urljoin(
+            base_url,
+            value
+        )
+
+        if (
+            "cmoney.tw"
+            not in urlparse(
+                absolute
+            ).netloc
+        ):
+            return
+
+        if absolute not in urls:
+
+            urls.append(
+                absolute
+            )
+
+    # --------------------------------------------------------
+    # a / link
+    # --------------------------------------------------------
+
+    for tag in soup.find_all(
+        ["a", "link"]
+    ):
+
+        text = tag.get_text(
+            " ",
+            strip=True
+        )
+
+        href = tag.get(
+            "href"
+        )
+
+        if (
+            href
+            and (
+                "更多" in text
+                or "查看更多" in text
+                or "more" in href.lower()
+                or "page" in href.lower()
+                or "offset" in href.lower()
+                or "limit" in href.lower()
+            )
+        ):
+
+            add_url(
+                href
+            )
+
+    # --------------------------------------------------------
+    # HTML 中的 URL
+    # --------------------------------------------------------
+
+    patterns = [
+        r'https?://[^"\']+',
+        r'/(?:api|forum|service|stock)[^"\']+',
+    ]
+
+    for pattern in patterns:
+
+        for raw in re.findall(
+            pattern,
+            html,
+            flags=re.I
+        ):
+
+            raw = (
+                raw
+                .replace(
+                    "\\/",
+                    "/"
+                )
+                .rstrip(
+                    " )},;'\""
+                )
+            )
+
+            if (
+                symbol in raw
+                or "main-force" in raw
+                or "chip" in raw.lower()
+                or "force" in raw.lower()
+            ):
+
+                add_url(
+                    raw
+                )
+
+    return urls
+
+
+# ============================================================
+# 嘗試分頁 URL
+# ============================================================
+
+def build_pagination_urls(
+    base_url,
+    symbol
+):
+
+    candidates = []
+
+    # --------------------------------------------------------
+    # 常見 page / pageNo / pageIndex
+    # --------------------------------------------------------
+
+    for key in [
+        "page",
+        "pageNo",
+        "pageIndex",
+        "p"
+    ]:
+
+        for value in [
+            2,
+            3,
+            4
+        ]:
+
+            separator = (
+                "&"
+                if "?" in base_url
+                else "?"
+            )
+
+            candidates.append(
+                f"{base_url}"
+                f"{separator}"
+                f"{key}={value}"
+            )
+
+    # --------------------------------------------------------
+    # 常見 offset
+    # --------------------------------------------------------
+
+    for offset in [
+        10,
+        20,
+        30,
+        40,
+        50
+    ]:
+
+        separator = (
+            "&"
+            if "?" in base_url
+            else "?"
+        )
+
+        candidates.append(
+            f"{base_url}"
+            f"{separator}"
+            f"offset={offset}"
+        )
+
+    # --------------------------------------------------------
+    # limit
+    # --------------------------------------------------------
+
+    for limit in [
+        20,
+        30,
+        50,
+        100
+    ]:
+
+        separator = (
+            "&"
+            if "?" in base_url
+            else "?"
+        )
+
+        candidates.append(
+            f"{base_url}"
+            f"{separator}"
+            f"limit={limit}"
+        )
+
+    # 去重
+    return list(
+        dict.fromkeys(
+            candidates
+        )
+    )
+
+
+# ============================================================
+# 取得至少 20D
+# ============================================================
+
+def fetch_20d_history(
+    session,
+    symbol
+):
+
+    html, page_url = request_page(
+        session,
+        symbol
+    )
+
+    history = parse_main_force_table(
+        html
+    )
+
+    log(
+        f"   首頁歷史筆數："
+        f"{len(history)}"
+    )
+
+    if len(history) >= MIN_HISTORY:
+
+        return history[:MIN_HISTORY]
+
+    # --------------------------------------------------------
+    # 第一階段：
+    # 從 HTML 找「查看更多」線索
+    # --------------------------------------------------------
+
+    more_urls = discover_more_urls(
+        html,
+        page_url,
+        symbol
+    )
+
+    log(
+        f"   發現延伸 URL："
+        f"{len(more_urls)}"
+    )
+
+    # --------------------------------------------------------
+    # 第二階段：
+    # 嘗試延伸 URL
+    # --------------------------------------------------------
+
+    urls_to_test = []
+
+    for url in more_urls:
+
+        if url not in urls_to_test:
+
+            urls_to_test.append(
+                url
+            )
+
+    # --------------------------------------------------------
+    # 第三階段：
+    # 若頁面沒有暴露 URL，
+    # 嘗試常見分頁參數
+    # --------------------------------------------------------
+
+    urls_to_test.extend(
+        build_pagination_urls(
+            page_url,
+            symbol
+        )
+    )
+
+    urls_to_test = list(
+        dict.fromkeys(
+            urls_to_test
+        )
+    )
+
+    # --------------------------------------------------------
+    # 逐個嘗試
+    # --------------------------------------------------------
+
+    seen_dates = {
+        row["date"]
+        for row in history
+    }
+
+    for round_index, url in enumerate(
+        urls_to_test,
+        start=1
+    ):
+
+        if round_index > MAX_FETCH_ROUNDS * 10:
+            break
+
+        try:
+
+            response = session.get(
+                url,
+                headers=HEADERS,
+                timeout=REQUEST_TIMEOUT
+            )
+
+            if response.status_code != 200:
+                continue
+
+            page_history = (
+                parse_main_force_table(
+                    response.text
+                )
+            )
+
+            if not page_history:
+                continue
+
+            before = len(
+                history
+            )
+
+            for row in page_history:
+
+                date = row.get(
+                    "date"
+                )
+
+                if not date:
+                    continue
+
+                if date in seen_dates:
+                    continue
+
+                history.append(
+                    row
+                )
+
+                seen_dates.add(
+                    date
+                )
+
+            history = clean_history(
+                history
+            )
+
+            added = (
+                len(history)
+                - before
+            )
+
+            if added > 0:
+
+                log(
+                    f"   ✓ 延伸取得 "
+                    f"{added} 筆"
+                )
+
+                log(
+                    f"   目前歷史："
+                    f"{len(history)} 筆"
+                )
+
+            if len(history) >= MIN_HISTORY:
+
+                log(
+                    "   ✓ 已取得至少 20 個交易日"
+                )
+
+                return history[
+                    :MIN_HISTORY
+                ]
+
+        except Exception:
+            pass
+
+        time.sleep(
+            0.10
+        )
+
+    # --------------------------------------------------------
+    # 最終判定
+    # --------------------------------------------------------
+
+    history = clean_history(
+        history
+    )
+
+    if len(history) < MIN_HISTORY:
+
+        raise RuntimeError(
+            "CMoney 目前可取得的"
+            f"主力買賣超只有 "
+            f"{len(history)} 筆，"
+            f"不足 {MIN_HISTORY} 個交易日。"
+        )
+
+    return history[
+        :MIN_HISTORY
+    ]
+
+
+# ============================================================
+# 計算 1 / 5 / 10 / 20
+# ============================================================
+
+def calculate_periods(
+    history
+):
 
     values = [
-        float(row["main_force"])
+        row["main_force"]
         for row in history
+        if row.get(
+            "main_force"
+        ) is not None
     ]
 
     result = {
@@ -247,6 +1303,9 @@ def calculate_periods(history):
         "main_force_5d": None,
         "main_force_10d": None,
         "main_force_20d": None,
+        "history_count": len(
+            values
+        ),
     }
 
     if len(values) >= 1:
@@ -289,552 +1348,401 @@ def calculate_periods(history):
 
 
 # ============================================================
-# 驗證單一股票
+# Status
 # ============================================================
 
-def verify_stock(
-    symbol,
-    expected_name,
-    record
+def get_status(
+    data
 ):
 
-    result = {
-
-        "symbol": symbol,
-
-        "expected_name":
-            expected_name,
-
-        "actual_name":
-            record.get(
-                "name"
-            ),
-
-        "passed": True,
-
-        "errors": [],
-
-        "warnings": [],
-
-        "history_count":
-            0,
-
-        "unique_date_count":
-            0,
-
-        "latest_date":
-            None,
-
-        "oldest_date":
-            None,
-
-        "actual": {},
-
-        "calculated": {},
-
-        "checks": {},
-    }
-
-    # ========================================================
-    # 1. 股票名稱
-    # ========================================================
-
-    actual_name = str(
-        record.get(
-            "name",
-            ""
-        )
-    ).strip()
-
-    if actual_name != expected_name:
-
-        result["warnings"].append(
-            "股票名稱不一致："
-            f"預期={expected_name} "
-            f"實際={actual_name}"
-        )
-
-
-    # ========================================================
-    # 2. history
-    # ========================================================
-
-    history = record.get(
-        "history"
-    )
-
-    if not isinstance(
-        history,
-        list
+    if (
+        data.get(
+            "main_force_1d"
+        ) is not None
+        and data.get(
+            "main_force_5d"
+        ) is not None
+        and data.get(
+            "main_force_10d"
+        ) is not None
+        and data.get(
+            "main_force_20d"
+        ) is not None
     ):
 
-        result["passed"] = False
+        return "complete"
 
-        result["errors"].append(
-            "history 不是 list"
-        )
+    if (
+        data.get(
+            "main_force_1d"
+        ) is not None
+    ):
 
-        return result
+        return "partial"
 
-
-    result[
-        "history_count"
-    ] = len(history)
-
-
-    # ========================================================
-    # 3. history 筆數
-    # ========================================================
-
-    if len(history) < 20:
-
-        result["passed"] = False
-
-        result["errors"].append(
-            "history 少於 20 筆："
-            f"{len(history)}"
-        )
+    return "insufficient"
 
 
-    # ========================================================
-    # 4. 解析 history
-    # ========================================================
+# ============================================================
+# Fetch all
+# ============================================================
 
-    parsed_rows = []
+def fetch_all(
+    stocks
+):
 
-    invalid_rows = []
+    section(
+        "開始取得主力買賣超"
+    )
 
-    for index, row in enumerate(
-        history,
+    total = len(
+        stocks
+    )
+
+    log(
+        f"待處理股票：{total}"
+    )
+
+    session = requests.Session()
+
+    session.headers.update(
+        HEADERS
+    )
+
+    results = {}
+
+    complete = 0
+    partial = 0
+    insufficient = 0
+
+    for index, stock in enumerate(
+        stocks,
         start=1
     ):
 
-        if not isinstance(
-            row,
-            dict
-        ):
-
-            invalid_rows.append(
-                {
-                    "index": index,
-                    "reason":
-                        "不是 object",
-                }
-            )
-
-            continue
-
-        date_text = row.get(
-            "date"
-        )
-
-        force_value = row.get(
-            "main_force"
-        )
-
-        dt = parse_date(
-            date_text
-        )
-
-        number = parse_float(
-            force_value
-        )
-
-        if dt is None:
-
-            invalid_rows.append(
-                {
-                    "index": index,
-                    "date": date_text,
-                    "reason":
-                        "日期格式錯誤",
-                }
-            )
-
-            continue
-
-        if number is None:
-
-            invalid_rows.append(
-                {
-                    "index": index,
-                    "date": date_text,
-                    "main_force":
-                        force_value,
-                    "reason":
-                        "main_force 不是數字",
-                }
-            )
-
-            continue
-
-        parsed_rows.append(
-            {
-                "date": date_text,
-                "datetime": dt,
-                "main_force": number,
-            }
-        )
-
-
-    # ========================================================
-    # 5. 無效資料
-    # ========================================================
-
-    if invalid_rows:
-
-        result["passed"] = False
-
-        result["errors"].append(
-            f"存在 {len(invalid_rows)} 筆"
-            "無效 history 資料"
-        )
-
-
-    # ========================================================
-    # 6. 日期重複
-    # ========================================================
-
-    dates = [
-        row["date"]
-        for row in parsed_rows
-    ]
-
-    unique_dates = set(
-        dates
-    )
-
-    result[
-        "unique_date_count"
-    ] = len(unique_dates)
-
-    if len(unique_dates) != len(dates):
-
-        result["passed"] = False
-
-        duplicate_dates = []
-
-        seen = set()
-
-        for date in dates:
-
-            if date in seen:
-                if date not in duplicate_dates:
-                    duplicate_dates.append(
-                        date
-                    )
-            else:
-                seen.add(date)
-
-        result["errors"].append(
-            "存在重複日期："
-            + ", ".join(
-                duplicate_dates
-            )
-        )
-
-
-    # ========================================================
-    # 7. 日期排序
-    # ========================================================
-
-    for i in range(
-        len(parsed_rows) - 1
-    ):
-
-        current = (
-            parsed_rows[i]["datetime"]
-        )
-
-        next_date = (
-            parsed_rows[i + 1]["datetime"]
-        )
-
-        if current < next_date:
-
-            result["passed"] = False
-
-            result["errors"].append(
-                "history 日期不是由新到舊排序"
-            )
-
-            break
-
-
-    # ========================================================
-    # 8. 最新 / 最舊日期
-    # ========================================================
-
-    if parsed_rows:
-
-        result[
-            "latest_date"
-        ] = parsed_rows[0][
-            "date"
+        symbol = stock[
+            "symbol"
         ]
 
-        result[
-            "oldest_date"
-        ] = parsed_rows[-1][
-            "date"
+        name = stock[
+            "name"
         ]
 
-
-    # ========================================================
-    # 9. 明顯舊日期
-    # ========================================================
-
-    old_rows = []
-
-    for row in parsed_rows:
-
-        if row["datetime"].year < 2025:
-
-            old_rows.append(
-                {
-                    "date":
-                        row["date"],
-                    "main_force":
-                        row["main_force"],
-                }
-            )
-
-    if old_rows:
-
-        result["passed"] = False
-
-        result["errors"].append(
-            "發現 2025 年以前的異常舊資料："
-            f"{len(old_rows)} 筆"
+        log(
+            f"[{index}/{total}] "
+            f"{symbol} {name}"
         )
 
-        result["old_date_rows"] = (
-            old_rows
-        )
+        record = {
+            "symbol": symbol,
+            "name": name,
+            "market": stock[
+                "market"
+            ],
+            "source": "CMoney",
 
-    else:
+            "main_force_1d": None,
+            "main_force_5d": None,
+            "main_force_10d": None,
+            "main_force_20d": None,
 
-        result["old_date_rows"] = []
+            "history_count": 0,
 
+            "status": "insufficient",
 
-    # ========================================================
-    # 10. 實際 chip.json 數值
-    # ========================================================
+            "history": [],
 
-    actual_fields = [
-        "main_force_1d",
-        "main_force_5d",
-        "main_force_10d",
-        "main_force_20d",
-    ]
-
-    for field in actual_fields:
-
-        result[
-            "actual"
-        ][field] = record.get(
-            field
-        )
-
-
-    # ========================================================
-    # 11. 重新計算
-    # ========================================================
-
-    if len(parsed_rows) >= 20:
-
-        calculation_history = [
-            {
-                "date":
-                    row["date"],
-                "main_force":
-                    row["main_force"],
-            }
-            for row in parsed_rows[:20]
-        ]
-
-        calculated = calculate_periods(
-            calculation_history
-        )
-
-    else:
-
-        calculated = calculate_periods(
-            [
-                {
-                    "date":
-                        row["date"],
-                    "main_force":
-                        row["main_force"],
-                }
-                for row in parsed_rows
-            ]
-        )
-
-    result[
-        "calculated"
-    ] = calculated
-
-
-    # ========================================================
-    # 12. 逐項比對
-    # ========================================================
-
-    for field in actual_fields:
-
-        actual = result[
-            "actual"
-        ].get(
-            field
-        )
-
-        expected = result[
-            "calculated"
-        ].get(
-            field
-        )
-
-        passed = values_equal(
-            actual,
-            expected
-        )
-
-        result[
-            "checks"
-        ][field] = {
-
-            "actual":
-                actual,
-
-            "calculated":
-                expected,
-
-            "passed":
-                passed,
+            "error": None,
         }
 
-        if not passed:
+        try:
 
-            result["passed"] = False
-
-            result["errors"].append(
-                f"{field} 計算不一致："
-                f"chip.json={actual}, "
-                f"重新計算={expected}"
+            history = fetch_20d_history(
+                session,
+                symbol
             )
 
+            periods = calculate_periods(
+                history
+            )
 
-    # ========================================================
-    # 13. status
-    # ========================================================
+            record.update(
+                periods
+            )
 
-    status = record.get(
-        "status"
-    )
+            record[
+                "history"
+            ] = history[:20]
 
-    if (
-        len(parsed_rows) >= 20
-        and status != "complete"
-    ):
+            record[
+                "status"
+            ] = get_status(
+                record
+            )
 
-        result["warnings"].append(
-            "history 已有至少 20 筆，"
-            f"但 status={status}"
+            status = record[
+                "status"
+            ]
+
+            if status == "complete":
+
+                complete += 1
+
+            elif status == "partial":
+
+                partial += 1
+
+            else:
+
+                insufficient += 1
+
+            log(
+                f"   主力1日："
+                f"{record['main_force_1d']}"
+            )
+
+            log(
+                f"   主力5日："
+                f"{record['main_force_5d']}"
+            )
+
+            log(
+                f"   主力10日："
+                f"{record['main_force_10d']}"
+            )
+
+            log(
+                f"   主力20日："
+                f"{record['main_force_20d']}"
+            )
+
+            log(
+                f"   歷史筆數："
+                f"{record['history_count']}"
+            )
+
+        except Exception as exc:
+
+            insufficient += 1
+
+            record[
+                "error"
+            ] = str(exc)
+
+            log(
+                f"   ⚠️ 取得失敗："
+                f"{exc}"
+            )
+
+        results[
+            symbol
+        ] = record
+
+        time.sleep(
+            REQUEST_DELAY
         )
 
-
-    # ========================================================
-    # 14. 最終摘要
-    # ========================================================
-
-    return result
+    return (
+        results,
+        complete,
+        partial,
+        insufficient
+    )
 
 
 # ============================================================
-# 載入 chip.json
+# Validate
 # ============================================================
 
-def load_chip():
+def validate(
+    results,
+    total,
+    complete,
+    partial,
+    insufficient
+):
 
     section(
-        "載入正式 Data/chip.json"
+        "籌碼資料驗證"
     )
 
-    if not CHIP_FILE.exists():
+    valid_1d = 0
+    valid_5d = 0
+    valid_10d = 0
+    valid_20d = 0
+
+    for record in results.values():
+
+        if record.get(
+            "main_force_1d"
+        ) is not None:
+
+            valid_1d += 1
+
+        if record.get(
+            "main_force_5d"
+        ) is not None:
+
+            valid_5d += 1
+
+        if record.get(
+            "main_force_10d"
+        ) is not None:
+
+            valid_10d += 1
+
+        if record.get(
+            "main_force_20d"
+        ) is not None:
+
+            valid_20d += 1
+
+    log(
+        f"Universe：{total}"
+    )
+
+    log(
+        f"完整：{complete}"
+    )
+
+    log(
+        f"部分：{partial}"
+    )
+
+    log(
+        f"不足：{insufficient}"
+    )
+
+    log(
+        f"主力1日有效：{valid_1d}"
+    )
+
+    log(
+        f"主力5日有效：{valid_5d}"
+    )
+
+    log(
+        f"主力10日有效：{valid_10d}"
+    )
+
+    log(
+        f"主力20日有效：{valid_20d}"
+    )
+
+    if not results:
 
         raise RuntimeError(
-            f"找不到：{CHIP_FILE}"
+            "沒有任何股票資料"
         )
 
-    with CHIP_FILE.open(
-        "r",
-        encoding="utf-8"
-    ) as f:
-
-        data = json.load(f)
-
-    if not isinstance(
-        data,
-        dict
-    ):
+    if valid_20d == 0:
 
         raise RuntimeError(
-            "chip.json 不是 object"
+            "本次完全沒有取得有效"
+            "主力20日資料"
         )
 
-    stocks = data.get(
-        "stocks"
-    )
+    if valid_20d < total:
 
-    if not isinstance(
-        stocks,
-        dict
-    ):
-
-        raise RuntimeError(
-            "chip.json stocks 不是 dict"
+        log(
+            "⚠️ 部分股票尚未取得20D"
         )
 
-    log(
-        f"schema_version："
-        f"{data.get('schema_version')}"
-    )
+    else:
 
-    log(
-        f"generated_at："
-        f"{data.get('generated_at')}"
-    )
-
-    log(
-        f"universe_count："
-        f"{data.get('universe_count')}"
-    )
-
-    log(
-        f"chip.json 實際股票數："
-        f"{len(stocks)}"
-    )
-
-    return data
+        log(
+            "✓ 全部股票20D有效"
+        )
 
 
 # ============================================================
-# 儲存驗證結果
+# Save
 # ============================================================
 
-def save_result(
-    output
+def save_chip(
+    results,
+    total,
+    complete,
+    partial,
+    insufficient
 ):
+
+    section(
+        "寫入 Data/chip.json"
+    )
 
     DATA_DIR.mkdir(
         parents=True,
         exist_ok=True
     )
 
-    temp_file = (
-        OUTPUT_FILE.with_suffix(
-            ".json.tmp"
-        )
+    now = datetime.now()
+
+    output = {
+
+        "schema_version": VERSION,
+
+        "generated_at":
+            now.strftime(
+                "%Y-%m-%d %H:%M:%S"
+            ),
+
+        "data_date":
+            now.strftime(
+                "%Y-%m-%d"
+            ),
+
+        "source":
+            "CMoney",
+
+        "definition": {
+
+            "main_force":
+                "CMoney 主力進出之買賣超",
+
+            "main_force_5d":
+                "最近5個交易日主力買賣超加總",
+
+            "main_force_10d":
+                "最近10個交易日主力買賣超加總",
+
+            "main_force_20d":
+                "最近20個交易日主力買賣超加總",
+
+            "NOT_main_force_20d":
+                "CMoney 20日集中不是主力20日買賣超",
+
+            "unit":
+                "張",
+
+            "positive":
+                "主力買超",
+
+            "negative":
+                "主力賣超",
+        },
+
+        "universe_count":
+            total,
+
+        "statistics": {
+
+            "complete":
+                complete,
+
+            "partial":
+                partial,
+
+            "insufficient":
+                insufficient,
+        },
+
+        "stocks":
+            results,
+    }
+
+    temp_file = CHIP_FILE.with_suffix(
+        ".json.tmp"
     )
 
     with temp_file.open(
@@ -849,22 +1757,85 @@ def save_result(
             indent=2
         )
 
-    # 驗證 JSON 可以重新讀取
+    # --------------------------------------------------------
+    # 寫入後驗證
+    # --------------------------------------------------------
 
     with temp_file.open(
         "r",
         encoding="utf-8"
     ) as f:
 
-        json.load(f)
+        verify = json.load(f)
+
+    verify_stocks = verify.get(
+        "stocks"
+    )
+
+    if not isinstance(
+        verify_stocks,
+        dict
+    ):
+
+        raise RuntimeError(
+            "chip.json stocks 格式錯誤"
+        )
+
+    if len(
+        verify_stocks
+    ) != len(
+        results
+    ):
+
+        raise RuntimeError(
+            "chip.json 股票數量驗證失敗"
+        )
+
+    for symbol, record in verify_stocks.items():
+
+        history = record.get(
+            "history",
+            []
+        )
+
+        # ----------------------------------------------------
+        # 只要求「成功取得」的股票必須完整
+        # ----------------------------------------------------
+
+        if record.get(
+            "status"
+        ) == "complete":
+
+            if len(history) < 20:
+
+                raise RuntimeError(
+                    f"{symbol} history "
+                    "不足20筆"
+                )
+
+            if record.get(
+                "main_force_20d"
+            ) is None:
+
+                raise RuntimeError(
+                    f"{symbol} "
+                    "缺少 main_force_20d"
+                )
 
     temp_file.replace(
-        OUTPUT_FILE
+        CHIP_FILE
     )
 
     log(
-        f"✓ 驗證結果已寫入："
-        f"{OUTPUT_FILE}"
+        "✓ chip.json 建立成功"
+    )
+
+    log(
+        f"股票：{len(results)}"
+    )
+
+    log(
+        f"檔案：{CHIP_FILE}"
     )
 
 
@@ -874,425 +1845,111 @@ def save_result(
 
 def main():
 
-    section(
-        "台股 AI 選股系統"
-    )
-
-    log(
-        "fetch_chip.py V5.0.1"
-    )
-
-    log(
-        "正式輸出資料驗證"
-    )
+    start_time = time.time()
 
     log("")
+    log("=" * 72)
+
     log(
-        "固定驗證股票："
+        "台股 AI 選股系統 "
+        f"fetch_chip.py {VERSION}"
     )
 
-    for symbol, name in TEST_STOCKS.items():
+    log("=" * 72)
 
-        log(
-            f"{symbol} {name}"
+    log(
+        "開始時間："
+        + datetime.now().strftime(
+            "%Y-%m-%d %H:%M:%S"
         )
-
-    log("")
-    log(
-        "測試限制："
     )
-
-    log(
-        "✓ 不呼叫 CMoney"
-    )
-
-    log(
-        "✓ 不執行 fetch_chip.py"
-    )
-
-    log(
-        "✓ 不執行 fetch_all()"
-    )
-
-    log(
-        "✓ 不測試 Universe"
-    )
-
-    log(
-        "✓ 不修改 chip.json"
-    )
-
-    log(
-        "✓ 只驗證正式輸出"
-    )
-
 
     try:
 
-        data = load_chip()
-
-        stocks = data[
-            "stocks"
-        ]
-
-        results = {}
-
-        total_passed = 0
-        total_failed = 0
-
-
-        # ====================================================
-        # 固定四檔
-        # ====================================================
-
-        for symbol, name in TEST_STOCKS.items():
-
-            section(
-                f"{symbol} {name}"
-            )
-
-            if symbol not in stocks:
-
-                log(
-                    "❌ chip.json 找不到此股票"
-                )
-
-                results[symbol] = {
-
-                    "symbol":
-                        symbol,
-
-                    "expected_name":
-                        name,
-
-                    "passed":
-                        False,
-
-                    "errors": [
-                        "chip.json 找不到此股票"
-                    ],
-
-                    "warnings": [],
-                }
-
-                total_failed += 1
-
-                continue
-
-
-            record = stocks[
-                symbol
-            ]
-
-            verification = verify_stock(
-                symbol,
-                name,
-                record
-            )
-
-            results[symbol] = (
-                verification
-            )
-
-
-            # ------------------------------------------------
-            # 顯示結果
-            # ------------------------------------------------
-
-            log(
-                f"history："
-                f"{verification['history_count']} 筆"
-            )
-
-            log(
-                f"日期："
-                f"{verification['latest_date']} "
-                f"→ "
-                f"{verification['oldest_date']}"
-            )
-
-            log("")
-
-            log(
-                "chip.json 實際值："
-            )
-
-            for field in [
-                "main_force_1d",
-                "main_force_5d",
-                "main_force_10d",
-                "main_force_20d",
-            ]:
-
-                log(
-                    f"   {field} = "
-                    f"{verification['actual'].get(field)}"
-                )
-
-            log("")
-
-            log(
-                "重新計算值："
-            )
-
-            for field in [
-                "main_force_1d",
-                "main_force_5d",
-                "main_force_10d",
-                "main_force_20d",
-            ]:
-
-                log(
-                    f"   {field} = "
-                    f"{verification['calculated'].get(field)}"
-                )
-
-            log("")
-
-            log(
-                "計算驗證："
-            )
-
-            for field, check in (
-                verification[
-                    "checks"
-                ].items()
-            ):
-
-                if check["passed"]:
-
-                    log(
-                        f"   ✓ {field}"
-                    )
-
-                else:
-
-                    log(
-                        f"   ❌ {field}"
-                    )
-
-
-            if verification[
-                "warnings"
-            ]:
-
-                log("")
-
-                for warning in (
-                    verification[
-                        "warnings"
-                    ]
-                ):
-
-                    log(
-                        f"⚠️ {warning}"
-                    )
-
-
-            if verification[
-                "errors"
-            ]:
-
-                log("")
-
-                for error in (
-                    verification[
-                        "errors"
-                    ]
-                ):
-
-                    log(
-                        f"❌ {error}"
-                    )
-
-
-            log("")
-
-            if verification[
-                "passed"
-            ]:
-
-                log(
-                    "✓ 此股票驗證通過"
-                )
-
-                total_passed += 1
-
-            else:
-
-                log(
-                    "❌ 此股票驗證失敗"
-                )
-
-                total_failed += 1
-
-
-        # ====================================================
-        # 建立輸出
-        # ====================================================
-
-        output = {
-
-            "schema_version":
-                "V5.0_OUTPUT_VERIFICATION_1.0",
-
-            "generated_at":
-                datetime.now().strftime(
-                    "%Y-%m-%d %H:%M:%S"
-                ),
-
-            "source":
-                "Data/chip.json",
-
-            "fetch_chip_version":
-                data.get(
-                    "schema_version"
-                ),
-
-            "scope":
-                {
-                    "stocks_tested":
-                        list(
-                            TEST_STOCKS.keys()
-                        ),
-
-                    "stock_count":
-                        len(TEST_STOCKS),
-
-                    "cmoney_requests":
-                        0,
-
-                    "fetch_all_executed":
-                        False,
-                },
-
-            "summary":
-                {
-                    "passed":
-                        total_passed,
-
-                    "failed":
-                        total_failed,
-
-                    "all_passed":
-                        total_failed == 0,
-                },
-
-            "results":
-                results,
-        }
-
-
-        save_result(
-            output
+        stocks = load_universe()
+
+        (
+            results,
+            complete,
+            partial,
+            insufficient
+        ) = fetch_all(
+            stocks
         )
 
-
-        # ====================================================
-        # 最終結果
-        # ====================================================
-
-        section(
-            "V5.0.1 正式輸出驗證完成"
+        validate(
+            results,
+            len(stocks),
+            complete,
+            partial,
+            insufficient
         )
 
-        log(
-            f"固定測試股票："
-            f"{len(TEST_STOCKS)} 檔"
+        save_chip(
+            results,
+            len(stocks),
+            complete,
+            partial,
+            insufficient
         )
 
-        log(
-            f"通過："
-            f"{total_passed}"
-        )
-
-        log(
-            f"失敗："
-            f"{total_failed}"
+        elapsed = (
+            time.time()
+            - start_time
         )
 
         log("")
+        log("=" * 72)
 
-        if total_failed == 0:
+        log(
+            "✓ fetch_chip.py 執行完成"
+        )
 
-            log(
-                "========================================"
-            )
+        log("=" * 72)
 
-            log(
-                "✓ 四檔正式輸出全部驗證通過"
-            )
+        log(
+            f"完整：{complete}"
+        )
 
-            log(
-                "✓ 1D 計算正確"
-            )
+        log(
+            f"部分：{partial}"
+        )
 
-            log(
-                "✓ 5D 計算正確"
-            )
+        log(
+            f"不足：{insufficient}"
+        )
 
-            log(
-                "✓ 10D 計算正確"
-            )
+        log(
+            f"總耗時："
+            f"{elapsed:.1f} 秒"
+        )
 
-            log(
-                "✓ 20D 計算正確"
-            )
+        log(
+            f"輸出：{CHIP_FILE}"
+        )
 
-            log(
-                "✓ history 日期結構正常"
-            )
-
-            log(
-                "✓ 沒有發現 2025 年以前舊資料"
-            )
-
-            log(
-                "========================================"
-            )
-
-            return 0
-
-        else:
-
-            log(
-                "========================================"
-            )
-
-            log(
-                "❌ 正式輸出驗證未全部通過"
-            )
-
-            log(
-                "請依照上面的錯誤項目處理"
-            )
-
-            log(
-                "========================================"
-            )
-
-            return 1
-
+        return 0
 
     except Exception as exc:
 
         log("")
+        log("=" * 72)
 
         log(
-            "=" * 72
+            "❌ fetch_chip.py 執行失敗"
         )
 
-        log(
-            "❌ 正式輸出驗證失敗"
-        )
-
-        log(
-            "=" * 72
-        )
+        log("=" * 72)
 
         log(
             f"原因：{exc}"
         )
+
+        if CHIP_FILE.exists():
+
+            log(
+                "⚠️ 保留既有 chip.json"
+            )
 
         return 1
 
