@@ -1,60 +1,36 @@
-  verify-deployment:
-    needs: deploy
+name: TW Stock AI Scanner Data Sync
+
+on:
+  schedule:
+    - cron: '0 10 * * 1-5' # 股市開盤後自動執行 (可依需求調整)
+  workflow_dispatch:        # 支援手動觸發
+
+jobs:
+  build-and-sync:
     runs-on: ubuntu-latest
+
     steps:
-      - name: Verify Live Endpoints (HTML, Chip & Price Manifest)
-        env:
-          BASE_URL: "https://storynet514-hub.github.io/tw-stock-ai-scanner"
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install dependencies
         run: |
-          # 定義需要驗證的所有相對路徑清單
-          ENDPOINTS=(
-            ""                            # 代表首頁 index.html
-            "/Data/chip.json"            # 籌碼資料
-            "/Data/prices/manifest.json" # K線與價格索引
-          )
+          python -m pip install --upgrade pip
+          pip install requests pandas
 
-          MAX_RETRIES=10
-          ALL_PASSED=true
+      - name: Run Fetch Chip
+        run: |
+          python Scripts/fetch_chip.py
 
-          echo "========================================"
-          echo "Starting GitHub Pages Live Health Check"
-          echo "========================================"
-
-          for PATH_NAME in "${ENDPOINTS[@]}"; do
-            TARGET_URL="${BASE_URL}${PATH_NAME}"
-            RETRY_COUNT=0
-            SUCCESS=false
-
-            echo ""
-            echo "🔍 Testing: ${TARGET_URL}"
-
-            until [ $RETRY_COUNT -ge $MAX_RETRIES ]; do
-              # 取得 HTTP 狀態碼 (-s 靜音, -o 丟棄內容, -w 只印 status_code, -L 追蹤重導向)
-              HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" -L "$TARGET_URL")
-
-              if [ "$HTTP_STATUS" -eq 200 ]; then
-                echo "  ✓ Success: HTTP 200 OK"
-                SUCCESS=true
-                break
-              fi
-
-              RETRY_COUNT=$((RETRY_COUNT+1))
-              echo "  └ Attempt ${RETRY_COUNT}/${MAX_RETRIES}: Got HTTP ${HTTP_STATUS}, retrying in 10s..."
-              sleep 10
-            done
-
-            if [ "$SUCCESS" = false ]; then
-              echo "  ❌ Failed: Endpoint ${TARGET_URL} unreachable after ${MAX_RETRIES} attempts."
-              ALL_PASSED=false
-            fi
-          done
-
-          echo ""
-          echo "========================================"
-          if [ "$ALL_PASSED" = true ]; then
-            echo "🎉 All endpoints successfully verified (HTTP 200)!"
-            exit 0
-          else
-            echo "💥 Health check failed. Some critical static files returned non-200 status."
-            exit 1
-          fi
+      - name: Commit and Push Updated Data
+        run: |
+          git config --global user.name 'github-actions[bot]'
+          git config --global user.email 'github-actions[bot]@users.noreply.github.com'
+          git add Data/
+          git diff --quiet && git diff --staged --quiet || (git commit -m "Auto-update chip data [skip ci]" && git push)
