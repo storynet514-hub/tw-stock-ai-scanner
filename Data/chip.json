@@ -1,8 +1,8 @@
 {
-  "schema_version": "V6.2",
-  "generated_at": "2026-08-21 11:31:34",
+  "schema_version": "V7.0",
+  "generated_at": "2026-08-21 16:01:03",
   "data_date": "2026-08-21",
-  "source": "CMoney",
+  "source": "FinMind API",
   "universe_mode": "fixed_test_4",
   "universe_count": 4,
   "test_symbols": [
@@ -12,85 +12,120 @@
     "3081"
   ],
   "definition": {
-    "main_force": "CMoney 主力進出之買賣超",
-    "source_field": "買賣超",
-    "main_force_1d": "最近1個交易日主力買賣超",
-    "main_force_5d": "最近5個交易日每日主力買賣超加總",
-    "main_force_10d": "最近10個交易日每日主力買賣超加總",
-    "main_force_20d": "最近20個交易日每日主力買賣超加總",
+    "main_force": "FinMind 三大法人（外資、投信、自營商）淨買賣超加總",
+    "source_field": "買賣超張數",
+    "main_force_1d": "最近1個交易日法人買賣超",
+    "main_force_5d": "最近5個交易日每日法人買賣超加總",
+    "main_force_10d": "最近10個交易日每日法人買賣超加總",
+    "main_force_20d": "最近20個交易日每日法人買賣超加總",
     "unit": "張",
-    "positive": "主力買超",
-    "negative": "主力賣超",
-    "forbidden_fields": [
-      "5日集中",
-      "20日集中",
-      "家數差"
-    ]
+    "positive": "法人買超",
+    "negative": "法人賣超"
   },
   "history_accumulation": {
     "enabled": false,
     "target_days": 20
   },
   "statistics": {
-    "complete": 0,
-    "partial": 4,
+    "complete": 4,
+    "partial": 0,
     "insufficient": 0,
-    "valid_20d": 0
+    "valid_20d": 4
   },
   "stocks": {
     "2337": {
       "symbol": "2337",
       "name": "旺宏",
       "market": "TWSE",
-      "source": "CMoney",
-      "source_url": "https://www.cmoney.tw/forum/stock/2337?s=main-force",
-      "source_field": "買賣超",
-      "main_force_1d": -4829.0,
-      "main_force_5d": -40515.0,
-      "main_force_10d": -5629.0,
-      "main_force_20d": null,
-      "history_count": 10,
-      "status": "partial_20d",
+      "source": "FinMind API",
+      "source_url": "https://api.finmindtrade.com/api/v4/data",
+      "source_field": "三大法人買賣超加總",
+      "main_force_1d": 168.02,
+      "main_force_5d": -44549.97,
+      "main_force_10d": 1894.55,
+      "main_force_20d": -55094.41,
+      "history_count": 20,
+      "status": "complete",
       "history": [
         {
+          "date": "2026/08/21",
+          "main_force": 168.02
+        },
+        {
+          "date": "2026/08/20",
+          "main_force": -1926.12
+        },
+        {
           "date": "2026/08/19",
-          "main_force": -4829.0
+          "main_force": -6219.59
         },
         {
           "date": "2026/08/18",
-          "main_force": -20682.0
+          "main_force": -10692.36
         },
         {
           "date": "2026/08/17",
-          "main_force": -22680.0
+          "main_force": -25879.92
         },
         {
           "date": "2026/08/14",
-          "main_force": 6003.0
+          "main_force": 7546.66
         },
         {
           "date": "2026/08/13",
-          "main_force": 1673.0
+          "main_force": 3254.2
         },
         {
           "date": "2026/08/12",
-          "main_force": 7912.0
+          "main_force": 10911.78
         },
         {
           "date": "2026/08/11",
-          "main_force": -10817.0
+          "main_force": 7483.85
         },
         {
           "date": "2026/08/10",
-          "main_force": 29007.0
+          "main_force": 17248.03
         },
         {
           "date": "2026/08/07",
-          "main_force": -26690.0
+          "main_force": -10549.11
         },
         {
           "date": "2026/08/06",
-          "main_force": 35474.0
+          "main_force": 19783.43
+        },
+        {
+          "date": "2026/08/05",
+          "main_force": -26382.08
+        },
+        {
+          "date": "2026/08/04",
+          "main_force": -5678.1
+        },
+        {
+          "date": "2026/08/03",
+          "main_force": 6996.01
+        },
+        {
+          "date": "2026/07/31",
+          "main_force": -3435.42
+        },
+        {
+          "date": "2026/07/30",
+          "main_force": -9787.72
+        },
+        {
+          "date": "2026/07/29",
+          "main_force": -15367.52
+        },
+        {
+          "date": "2026/07/28",
+          "main_force": -9474.89
+        },
+        {
+          "date": "2026/07/27",
+          "main_force": -3093.56
         }
       ],
       "error": null
@@ -99,55 +134,95 @@
       "symbol": "2426",
       "name": "鼎元",
       "market": "TWSE",
-      "source": "CMoney",
-      "source_url": "https://www.cmoney.tw/forum/stock/2426?s=main-force",
-      "source_field": "買賣超",
-      "main_force_1d": -562.0,
-      "main_force_5d": -820.0,
-      "main_force_10d": -1764.0,
-      "main_force_20d": null,
-      "history_count": 10,
-      "status": "partial_20d",
+      "source": "FinMind API",
+      "source_url": "https://api.finmindtrade.com/api/v4/data",
+      "source_field": "三大法人買賣超加總",
+      "main_force_1d": 6268.16,
+      "main_force_5d": 10199.39,
+      "main_force_10d": 7410.89,
+      "main_force_20d": 9163.34,
+      "history_count": 20,
+      "status": "complete",
       "history": [
         {
+          "date": "2026/08/21",
+          "main_force": 6268.16
+        },
+        {
+          "date": "2026/08/20",
+          "main_force": 3715.09
+        },
+        {
           "date": "2026/08/19",
-          "main_force": -562.0
+          "main_force": -1179.18
         },
         {
           "date": "2026/08/18",
-          "main_force": -5897.0
+          "main_force": -7077.2
         },
         {
           "date": "2026/08/17",
-          "main_force": 7905.0
+          "main_force": 8472.52
         },
         {
           "date": "2026/08/14",
-          "main_force": -1268.0
+          "main_force": -1553.83
         },
         {
           "date": "2026/08/13",
-          "main_force": -998.0
+          "main_force": -562.8
         },
         {
           "date": "2026/08/12",
-          "main_force": 3183.0
+          "main_force": 3904.43
         },
         {
           "date": "2026/08/11",
-          "main_force": -759.0
+          "main_force": -260.98
         },
         {
           "date": "2026/08/10",
-          "main_force": -3470.0
+          "main_force": -4315.32
         },
         {
           "date": "2026/08/07",
-          "main_force": 1396.0
+          "main_force": 779.84
         },
         {
           "date": "2026/08/06",
-          "main_force": -1294.0
+          "main_force": -923.02
+        },
+        {
+          "date": "2026/08/05",
+          "main_force": 965.7
+        },
+        {
+          "date": "2026/08/04",
+          "main_force": 467.31
+        },
+        {
+          "date": "2026/08/03",
+          "main_force": 2107.47
+        },
+        {
+          "date": "2026/07/31",
+          "main_force": -3037.27
+        },
+        {
+          "date": "2026/07/30",
+          "main_force": 2341.78
+        },
+        {
+          "date": "2026/07/29",
+          "main_force": -306.03
+        },
+        {
+          "date": "2026/07/28",
+          "main_force": -339.59
+        },
+        {
+          "date": "2026/07/27",
+          "main_force": -303.74
         }
       ],
       "error": null
@@ -156,55 +231,95 @@
       "symbol": "2368",
       "name": "金像電",
       "market": "TWSE",
-      "source": "CMoney",
-      "source_url": "https://www.cmoney.tw/forum/stock/2368?s=main-force",
-      "source_field": "買賣超",
-      "main_force_1d": -787.0,
-      "main_force_5d": 781.0,
-      "main_force_10d": -2564.0,
-      "main_force_20d": null,
-      "history_count": 10,
-      "status": "partial_20d",
+      "source": "FinMind API",
+      "source_url": "https://api.finmindtrade.com/api/v4/data",
+      "source_field": "三大法人買賣超加總",
+      "main_force_1d": 736.37,
+      "main_force_5d": -2295.17,
+      "main_force_10d": -6532.93,
+      "main_force_20d": -11807.37,
+      "history_count": 20,
+      "status": "complete",
       "history": [
         {
+          "date": "2026/08/21",
+          "main_force": 736.37
+        },
+        {
+          "date": "2026/08/20",
+          "main_force": -1057.05
+        },
+        {
           "date": "2026/08/19",
-          "main_force": -787.0
+          "main_force": -1607.02
         },
         {
           "date": "2026/08/18",
-          "main_force": 1862.0
+          "main_force": -561.26
         },
         {
           "date": "2026/08/17",
-          "main_force": -177.0
+          "main_force": 193.79
         },
         {
           "date": "2026/08/14",
-          "main_force": 78.0
+          "main_force": 71.01
         },
         {
           "date": "2026/08/13",
-          "main_force": -195.0
+          "main_force": -1277.41
         },
         {
           "date": "2026/08/12",
-          "main_force": -303.0
+          "main_force": -936.26
         },
         {
           "date": "2026/08/11",
-          "main_force": 1831.0
+          "main_force": 3198.32
         },
         {
           "date": "2026/08/10",
-          "main_force": -4306.0
+          "main_force": -5293.42
         },
         {
           "date": "2026/08/07",
-          "main_force": -409.0
+          "main_force": -160.56
         },
         {
           "date": "2026/08/06",
-          "main_force": -158.0
+          "main_force": -938.85
+        },
+        {
+          "date": "2026/08/05",
+          "main_force": -2339.44
+        },
+        {
+          "date": "2026/08/04",
+          "main_force": -941.9
+        },
+        {
+          "date": "2026/08/03",
+          "main_force": -729.36
+        },
+        {
+          "date": "2026/07/31",
+          "main_force": -346.14
+        },
+        {
+          "date": "2026/07/30",
+          "main_force": -901.02
+        },
+        {
+          "date": "2026/07/29",
+          "main_force": 709.92
+        },
+        {
+          "date": "2026/07/28",
+          "main_force": 318.61
+        },
+        {
+          "date": "2026/07/27",
+          "main_force": 54.3
         }
       ],
       "error": null
@@ -213,55 +328,95 @@
       "symbol": "3081",
       "name": "聯亞",
       "market": "TPEX",
-      "source": "CMoney",
-      "source_url": "https://www.cmoney.tw/forum/stock/3081?s=main-force",
-      "source_field": "買賣超",
-      "main_force_1d": -531.0,
-      "main_force_5d": -70.0,
-      "main_force_10d": 1333.0,
-      "main_force_20d": null,
-      "history_count": 10,
-      "status": "partial_20d",
+      "source": "FinMind API",
+      "source_url": "https://api.finmindtrade.com/api/v4/data",
+      "source_field": "三大法人買賣超加總",
+      "main_force_1d": 255.89,
+      "main_force_5d": 149.49,
+      "main_force_10d": 1078.73,
+      "main_force_20d": 1350.59,
+      "history_count": 20,
+      "status": "complete",
       "history": [
         {
+          "date": "2026/08/21",
+          "main_force": 255.89
+        },
+        {
+          "date": "2026/08/20",
+          "main_force": -57.56
+        },
+        {
           "date": "2026/08/19",
-          "main_force": -531.0
+          "main_force": -565.8
         },
         {
           "date": "2026/08/18",
-          "main_force": 369.0
+          "main_force": 309.65
         },
         {
           "date": "2026/08/17",
-          "main_force": 193.0
+          "main_force": 207.31
         },
         {
           "date": "2026/08/14",
-          "main_force": -92.0
+          "main_force": -24.03
         },
         {
           "date": "2026/08/13",
-          "main_force": -9.0
+          "main_force": 266.08
         },
         {
           "date": "2026/08/12",
-          "main_force": 267.0
+          "main_force": 395.0
         },
         {
           "date": "2026/08/11",
-          "main_force": -131.0
+          "main_force": 116.87
         },
         {
           "date": "2026/08/10",
-          "main_force": 279.0
+          "main_force": 175.32
         },
         {
           "date": "2026/08/07",
-          "main_force": -130.0
+          "main_force": 63.84
         },
         {
           "date": "2026/08/06",
-          "main_force": 1118.0
+          "main_force": 1338.99
+        },
+        {
+          "date": "2026/08/05",
+          "main_force": -41.54
+        },
+        {
+          "date": "2026/08/04",
+          "main_force": -43.39
+        },
+        {
+          "date": "2026/08/03",
+          "main_force": 151.17
+        },
+        {
+          "date": "2026/07/31",
+          "main_force": -59.93
+        },
+        {
+          "date": "2026/07/30",
+          "main_force": -120.95
+        },
+        {
+          "date": "2026/07/29",
+          "main_force": -151.5
+        },
+        {
+          "date": "2026/07/28",
+          "main_force": 103.7
+        },
+        {
+          "date": "2026/07/27",
+          "main_force": -968.53
         }
       ],
       "error": null
