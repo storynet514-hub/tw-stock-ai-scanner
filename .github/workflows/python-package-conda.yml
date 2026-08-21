@@ -1,11 +1,26 @@
-name: TW Stock AI Scanner Data Sync
+name: TW Stock AI Scanner CI/CD Pipeline
 
 on:
   schedule:
-    - cron: '0 10 * * 1-5' # 股市開盤後自動執行 (可依需求調整)
-  workflow_dispatch:        # 支援手動觸發
+    # 每個交易日 15:30 (台灣時間) 自動執行數據更新 (UTC 07:30)
+    - cron: '30 7 * * 1-5'
+  workflow_dispatch: # 支援在 GitHub 介面上手動觸發執行
+
+# 賦予 GitHub Actions 自動更新程式碼與部署 Pages 的權限
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+# 避免重複部署衝突
+concurrency:
+  group: "pages"
+  cancel-in-progress: true
 
 jobs:
+  # ----------------------------------------------------
+  # Job 1: 抓取數據、更新 Data/ 並上傳部署 Artifact
+  # ----------------------------------------------------
   build-and-sync:
     runs-on: ubuntu-latest
 
@@ -17,15 +32,16 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-          cache: 'pip'
+          cache: 'pip' # 自動讀取根目錄下的 requirements.txt 並快取
 
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install requests pandas
+          pip install -r requirements.txt
 
-      - name: Run Fetch Chip
+      - name: Run Fetch Chip Data
         run: |
+          # 執行籌碼資料抓取腳本
           python Scripts/fetch_chip.py
 
       - name: Commit and Push Updated Data
@@ -33,4 +49,92 @@ jobs:
           git config --global user.name 'github-actions[bot]'
           git config --global user.email 'github-actions[bot]@users.noreply.github.com'
           git add Data/
-          git diff --quiet && git diff --staged --quiet || (git commit -m "Auto-update chip data [skip ci]" && git push)
+          # 只有當 Data/ 資料夾有變更時才執行 commit 與 push
+          git diff --quiet && git diff --staged --quiet || (git commit -m "auto: update stock data [skip ci]" && git push)
+
+      - name: Create .nojekyll
+        run: touch .nojekyll # 確保 GitHub Pages 不會被 Jekyll 阻擋 Data/ 資料夾
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v4
+
+      - name: Upload Artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: '.' # 將根目錄（含 index.html 與 Data/）打包為 artifact
+
+  # ----------------------------------------------------
+  # Job 2: 部署至 GitHub Pages
+  # ----------------------------------------------------
+  deploy:
+    needs: build-and-sync
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
+
+  # ----------------------------------------------------
+  # Job 3: 部署完成後的 curl 健康檢查
+  # ----------------------------------------------------
+  verify-deployment:
+    needs: deploy
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify Live Endpoints (HTML, Chip & Price Manifest)
+        env:
+          BASE_URL: "https://storynet514-hub.github.io/tw-stock-ai-scanner"
+        run: |
+          ENDPOINTS=(
+            ""                            # 代表首頁 index.html
+            "/Data/chip.json"            # 籌碼數據檔案
+            "/Data/prices/manifest.json" # K線價格索引檔
+          )
+
+          MAX_RETRIES=10
+          ALL_PASSED=true
+
+          echo "========================================"
+          echo "Starting GitHub Pages Live Health Check"
+          echo "========================================"
+
+          for PATH_NAME in "${ENDPOINTS[@]}"; do
+            TARGET_URL="${BASE_URL}${PATH_NAME}"
+            RETRY_COUNT=0
+            SUCCESS=false
+
+            echo ""
+            echo "🔍 Testing: ${TARGET_URL}"
+
+            until [ $RETRY_COUNT -ge $MAX_RETRIES ]; do
+              HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" -L "$TARGET_URL")
+
+              if [ "$HTTP_STATUS" -eq 200 ]; then
+                echo "  ✓ Success: HTTP 200 OK"
+                SUCCESS=true
+                break
+              fi
+
+              RETRY_COUNT=$((RETRY_COUNT+1))
+              echo "  └ Attempt ${RETRY_COUNT}/${MAX_RETRIES}: Got HTTP ${HTTP_STATUS}, retrying in 10s..."
+              sleep 10
+            done
+
+            if [ "$SUCCESS" = false ]; then
+              echo "  ❌ Failed: Endpoint ${TARGET_URL} unreachable after ${MAX_RETRIES} attempts."
+              ALL_PASSED=false
+            fi
+          done
+
+          echo ""
+          echo "========================================"
+          if [ "$ALL_PASSED" = true ]; then
+            echo "🎉 All endpoints successfully verified (HTTP 200)!"
+            exit 0
+          else
+            echo "💥 Health check failed. Some critical static files returned non-200 status."
+            exit 1
+          fi
