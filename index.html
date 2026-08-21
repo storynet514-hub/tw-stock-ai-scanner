@@ -31,7 +31,6 @@
     --blue-soft: rgba(93,140,255,.12);
 
     --shadow: 0 18px 50px rgba(0,0,0,.28);
-
     --radius: 18px;
 }
 
@@ -76,19 +75,11 @@ body {
         );
 }
 
-/* =========================================================
-   APP
-========================================================= */
-
 .app {
     width: min(1180px, calc(100% - 28px));
     margin: 0 auto;
     padding: 28px 0 60px;
 }
-
-/* =========================================================
-   HEADER
-========================================================= */
 
 .header {
     margin-bottom: 22px;
@@ -124,16 +115,11 @@ body {
     display: inline-flex;
     align-items: center;
     gap: 8px;
-
     padding: 10px 14px;
-
     border-radius: 999px;
-
     background: rgba(255,255,255,.045);
     border: 1px solid var(--border);
-
     white-space: nowrap;
-
     font-size: 13px;
     color: var(--muted);
 }
@@ -160,10 +146,6 @@ body {
     font-size: 13px;
 }
 
-/* =========================================================
-   DASHBOARD GRID
-========================================================= */
-
 .dashboard-grid {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -174,9 +156,7 @@ body {
 .info-card {
     position: relative;
     overflow: hidden;
-
     padding: 20px;
-
     min-height: 140px;
 
     background:
@@ -186,33 +166,25 @@ body {
             rgba(255,255,255,.018)
         );
 
-    border:
-        1px solid var(--border);
-
+    border: 1px solid var(--border);
     border-radius: var(--radius);
-
     box-shadow: var(--shadow);
 }
 
 .info-card::after {
     content: "";
     position: absolute;
-
     width: 120px;
     height: 120px;
-
     right: -50px;
     bottom: -50px;
-
     border-radius: 50%;
-
     background: rgba(255,255,255,.025);
 }
 
 .info-label {
     position: relative;
     z-index: 1;
-
     color: var(--muted);
     font-size: 13px;
 }
@@ -220,21 +192,16 @@ body {
 .info-value {
     position: relative;
     z-index: 1;
-
     margin-top: 12px;
-
     font-size: clamp(25px, 5vw, 34px);
     font-weight: 800;
-
     letter-spacing: -.02em;
 }
 
 .info-description {
     position: relative;
     z-index: 1;
-
     margin-top: 5px;
-
     color: var(--muted2);
     font-size: 12px;
 }
@@ -250,10 +217,6 @@ body {
 .market-neutral {
     color: var(--yellow);
 }
-
-/* =========================================================
-   SEARCH
-========================================================= */
 
 .search-section {
     margin-bottom: 22px;
@@ -272,24 +235,17 @@ body {
 
 .search-input {
     flex: 1;
-
     min-width: 0;
-
     height: 48px;
-
     padding: 0 15px;
 
-    border:
-        1px solid var(--border);
-
+    border: 1px solid var(--border);
     border-radius: 12px;
 
     background: rgba(255,255,255,.045);
-
     color: var(--text);
 
     outline: none;
-
     font-size: 14px;
 }
 
@@ -304,41 +260,21 @@ body {
 
 .search-button {
     height: 48px;
-
     padding: 0 20px;
-
     border: 0;
     border-radius: 12px;
-
     background: var(--blue);
-
     color: white;
-
     font-weight: 700;
-
     cursor: pointer;
 }
 
-.search-button:active {
-    transform: translateY(1px);
-}
-
-/* =========================================================
-   SEARCH RESULT
-========================================================= */
-
 .search-result {
     display: none;
-
     margin-top: 12px;
-
     padding: 15px;
-
-    border:
-        1px solid var(--border);
-
+    border: 1px solid var(--border);
     border-radius: 14px;
-
     background: rgba(255,255,255,.035);
 }
 
@@ -350,7 +286,6 @@ body {
     display: flex;
     align-items: center;
     justify-content: space-between;
-
     gap: 15px;
 }
 
@@ -367,55 +302,33 @@ body {
 
 .add-watch-button {
     border: 1px solid rgba(93,140,255,.35);
-
     background: var(--blue-soft);
-
     color: #9bb6ff;
-
     padding: 9px 13px;
-
     border-radius: 10px;
-
     cursor: pointer;
-
     white-space: nowrap;
 }
-
-/* =========================================================
-   TABS
-========================================================= */
 
 .tabs {
     display: grid;
     grid-template-columns: repeat(5, 1fr);
-
     gap: 6px;
-
     padding: 5px;
-
     margin-bottom: 20px;
 
     background: rgba(255,255,255,.035);
-
-    border:
-        1px solid var(--border);
-
+    border: 1px solid var(--border);
     border-radius: 14px;
 }
 
 .tab {
     border: 0;
-
     padding: 11px 8px;
-
     border-radius: 10px;
-
     background: transparent;
-
     color: var(--muted);
-
     cursor: pointer;
-
     font-size: 13px;
     font-weight: 650;
 }
@@ -425,17 +338,11 @@ body {
     color: var(--text);
 }
 
-/* =========================================================
-   CONTENT HEADER
-========================================================= */
-
 .content-header {
     display: flex;
     align-items: flex-end;
     justify-content: space-between;
-
     gap: 15px;
-
     margin-bottom: 13px;
 }
 
@@ -446,34 +353,19 @@ body {
 
 .content-description {
     margin-top: 4px;
-
     color: var(--muted);
-
     font-size: 12px;
 }
 
-/* =========================================================
-   STOCK GRID
-========================================================= */
-
 .stock-grid {
     display: grid;
-
-    grid-template-columns:
-        repeat(3, minmax(0, 1fr));
-
+    grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: 14px;
 }
 
-/* =========================================================
-   STOCK CARD
-========================================================= */
-
 .stock-card {
     position: relative;
-
     padding: 18px;
-
     min-width: 0;
 
     background:
@@ -483,9 +375,7 @@ body {
             rgba(255,255,255,.018)
         );
 
-    border:
-        1px solid var(--border);
-
+    border: 1px solid var(--border);
     border-radius: var(--radius);
 
     box-shadow:
@@ -493,28 +383,17 @@ body {
 
     transition:
         transform .18s ease,
-        border-color .18s ease,
-        background .18s ease;
+        border-color .18s ease;
 }
 
 .stock-card:hover {
     transform: translateY(-2px);
-
-    border-color:
-        rgba(255,255,255,.14);
-
-    background:
-        linear-gradient(
-            145deg,
-            rgba(255,255,255,.075),
-            rgba(255,255,255,.025)
-        );
+    border-color: rgba(255,255,255,.14);
 }
 
 .stock-top {
     display: flex;
     justify-content: space-between;
-
     gap: 12px;
 }
 
@@ -525,25 +404,20 @@ body {
 
 .stock-symbol {
     margin-top: 3px;
-
     font-size: 12px;
-
     color: var(--muted);
 }
 
 .stock-price-row {
     display: flex;
     align-items: baseline;
-
     gap: 10px;
-
     margin-top: 22px;
 }
 
 .stock-price {
     font-size: 27px;
     font-weight: 800;
-
     letter-spacing: -.03em;
 }
 
@@ -555,15 +429,10 @@ body {
 .strength {
     display: inline-flex;
     align-items: center;
-
     gap: 6px;
-
     margin-top: 16px;
-
     padding: 7px 10px;
-
     border-radius: 9px;
-
     font-size: 12px;
     font-weight: 700;
 }
@@ -585,42 +454,29 @@ body {
 
 .advice {
     margin-top: 15px;
-
     padding-top: 14px;
-
-    border-top:
-        1px solid var(--border);
-
+    border-top: 1px solid var(--border);
     color: var(--text);
-
     font-size: 13px;
-
     line-height: 1.5;
 }
 
 .advice-label {
     color: var(--muted2);
     font-size: 11px;
-
     margin-bottom: 3px;
 }
 
 .watch-button {
     width: 100%;
-
     margin-top: 15px;
-
     height: 38px;
 
-    border:
-        1px solid var(--border);
-
+    border: 1px solid var(--border);
     border-radius: 10px;
 
     background: rgba(255,255,255,.035);
-
     color: var(--muted);
-
     cursor: pointer;
 }
 
@@ -629,27 +485,17 @@ body {
     background: rgba(255,255,255,.07);
 }
 
-/* =========================================================
-   HOLDING
-========================================================= */
-
 .holding-panel {
     margin-top: 15px;
-
     padding-top: 14px;
-
-    border-top:
-        1px solid var(--border);
+    border-top: 1px solid var(--border);
 }
 
 .holding-row {
     display: flex;
     justify-content: space-between;
-
     gap: 10px;
-
     margin-bottom: 7px;
-
     font-size: 12px;
 }
 
@@ -664,27 +510,17 @@ body {
 
 .holding-input {
     width: 100%;
-
     height: 36px;
-
     padding: 0 9px;
-
     margin-top: 7px;
 
     background: rgba(255,255,255,.04);
 
-    border:
-        1px solid var(--border);
-
+    border: 1px solid var(--border);
     border-radius: 8px;
 
     color: var(--text);
-
     outline: none;
-}
-
-.profit {
-    font-weight: 800;
 }
 
 .profit-positive {
@@ -699,18 +535,11 @@ body {
     color: var(--muted);
 }
 
-/* =========================================================
-   EMPTY
-========================================================= */
-
 .empty-state {
     padding: 50px 20px;
-
     text-align: center;
 
-    border:
-        1px dashed rgba(255,255,255,.12);
-
+    border: 1px dashed rgba(255,255,255,.12);
     border-radius: var(--radius);
 
     color: var(--muted);
@@ -718,38 +547,24 @@ body {
 
 .empty-title {
     color: var(--text);
-
     font-size: 17px;
-
     font-weight: 750;
-
     margin-bottom: 7px;
 }
 
 .empty-description {
     font-size: 13px;
-
     line-height: 1.6;
 }
 
-/* =========================================================
-   ERROR
-========================================================= */
-
 .error-panel {
     display: none;
-
     margin-top: 20px;
-
     padding: 18px;
 
-    border:
-        1px solid rgba(255,77,94,.25);
-
+    border: 1px solid rgba(255,77,94,.25);
     border-radius: 14px;
-
-    background:
-        rgba(255,77,94,.07);
+    background: rgba(255,77,94,.07);
 }
 
 .error-panel.show {
@@ -758,46 +573,30 @@ body {
 
 .error-title {
     color: #ff8792;
-
     font-weight: 750;
-
     margin-bottom: 6px;
 }
 
 .error-message {
     color: var(--muted);
-
     font-size: 13px;
-
     line-height: 1.6;
-
     white-space: pre-wrap;
 }
 
-/* =========================================================
-   LOADING
-========================================================= */
-
 .loading {
     padding: 50px 20px;
-
     text-align: center;
-
     color: var(--muted);
 }
 
 .loading-dot {
     display: inline-block;
-
     width: 7px;
     height: 7px;
-
     margin: 0 3px;
-
     border-radius: 50%;
-
     background: var(--blue);
-
     animation: loading 1s infinite alternate;
 }
 
@@ -821,34 +620,18 @@ body {
     }
 }
 
-/* =========================================================
-   FOOTER
-========================================================= */
-
 .footer {
     margin-top: 40px;
-
     padding-top: 20px;
-
-    border-top:
-        1px solid var(--border);
-
+    border-top: 1px solid var(--border);
     text-align: center;
-
     color: var(--muted2);
-
     font-size: 11px;
 }
 
-/* =========================================================
-   RESPONSIVE
-========================================================= */
-
 @media (max-width: 900px) {
-
     .stock-grid {
-        grid-template-columns:
-            repeat(2, minmax(0, 1fr));
+        grid-template-columns: repeat(2, minmax(0, 1fr));
     }
 }
 
@@ -866,11 +649,6 @@ body {
 
     .dashboard-grid {
         grid-template-columns: 1fr 1fr;
-    }
-
-    .tabs {
-        grid-template-columns:
-            repeat(5, minmax(0, 1fr));
     }
 
     .tab {
@@ -905,6 +683,15 @@ body {
     .search-button {
         width: 100%;
     }
+
+    .search-result-main {
+        align-items: flex-start;
+        flex-direction: column;
+    }
+
+    .add-watch-button {
+        width: 100%;
+    }
 }
 </style>
 </head>
@@ -913,307 +700,271 @@ body {
 
 <div class="app">
 
-    <!-- =====================================================
-         HEADER
-    ====================================================== -->
+<header class="header">
 
-    <header class="header">
+    <div class="brand">
 
-        <div class="brand">
-
-            <div>
-
-                <div class="brand-title">
-                    AI MARKET INTELLIGENCE
-                </div>
-
-                <div class="brand-subtitle">
-                    台股市場
-                </div>
-
-                <div class="brand-caption">
-                    今日量化訊號
-                </div>
-
+        <div>
+            <div class="brand-title">
+                AI MARKET INTELLIGENCE
             </div>
 
-            <div
-                id="marketStatus"
-                class="market-status"
-            >
-                <span
-                    id="marketStatusDot"
-                    class="status-dot"
-                ></span>
-
-                <span id="marketStatusText">
-                    判斷市場狀態
-                </span>
+            <div class="brand-subtitle">
+                台股市場
             </div>
+
+            <div class="brand-caption">
+                今日量化訊號
+            </div>
+        </div>
+
+        <div id="marketStatus" class="market-status">
+
+            <span
+                id="marketStatusDot"
+                class="status-dot closed"
+            ></span>
+
+            <span id="marketStatusText">
+                判斷市場狀態
+            </span>
 
         </div>
 
-        <div
-            id="latestDate"
-            class="latest-date"
-        >
-            最新交易日：載入中
-        </div>
+    </div>
 
-    </header>
+    <div id="latestDate" class="latest-date">
+        最新交易日：載入中
+    </div>
 
-
-    <!-- =====================================================
-         FOUR INFORMATION CARDS
-    ====================================================== -->
-
-    <section class="dashboard-grid">
-
-        <div class="info-card">
-
-            <div class="info-label">
-                今日精選
-            </div>
-
-            <div
-                id="selectedCount"
-                class="info-value"
-            >
-                —
-            </div>
-
-            <div class="info-description">
-                最新交易日篩選結果
-            </div>
-
-        </div>
+</header>
 
 
-        <div class="info-card">
+<section class="dashboard-grid">
 
-            <div class="info-label">
-                持有個股總盈虧
-            </div>
+    <div class="info-card">
 
-            <div
-                id="totalProfit"
-                class="info-value"
-            >
-                尚未建立持倉
-            </div>
-
-            <div class="info-description">
-                目前持倉
-            </div>
-
-        </div>
-
-
-        <div class="info-card">
-
-            <div class="info-label">
-                加權指數
-            </div>
-
-            <div
-                id="marketIndex"
-                class="info-value"
-            >
-                —
-            </div>
-
-            <div
-                id="marketIndexChange"
-                class="info-description"
-            >
-                —
-            </div>
-
-        </div>
-
-
-        <div class="info-card">
-
-            <div class="info-label">
-                市場風向
-            </div>
-
-            <div
-                id="marketTrend"
-                class="info-value"
-            >
-                —
-            </div>
-
-            <div
-                id="marketTrendDescription"
-                class="info-description"
-            >
-                —
-            </div>
-
-        </div>
-
-    </section>
-
-
-    <!-- =====================================================
-         SEARCH
-    ====================================================== -->
-
-    <section class="search-section">
-
-        <div class="section-title">
-            🔍 查詢個股
-        </div>
-
-        <div class="search-box">
-
-            <input
-                id="searchInput"
-                class="search-input"
-                type="text"
-                placeholder="輸入股票名稱或代號"
-                autocomplete="off"
-            >
-
-            <button
-                id="searchButton"
-                class="search-button"
-            >
-                查詢
-            </button>
-
-        </div>
-
-        <div
-            id="searchResult"
-            class="search-result"
-        ></div>
-
-    </section>
-
-
-    <!-- =====================================================
-         TABS
-    ====================================================== -->
-
-    <nav class="tabs">
-
-        <button
-            class="tab active"
-            data-tab="selected"
-        >
+        <div class="info-label">
             今日精選
-        </button>
-
-        <button
-            class="tab"
-            data-tab="top10"
-        >
-            Top 10
-        </button>
-
-        <button
-            class="tab"
-            data-tab="etf"
-        >
-            ETF
-        </button>
-
-        <button
-            class="tab"
-            data-tab="bond"
-        >
-            債券
-        </button>
-
-        <button
-            class="tab"
-            data-tab="watchlist"
-        >
-            我的清單
-        </button>
-
-    </nav>
-
-
-    <!-- =====================================================
-         CONTENT
-    ====================================================== -->
-
-    <section>
-
-        <div class="content-header">
-
-            <div>
-
-                <div
-                    id="contentTitle"
-                    class="content-title"
-                >
-                    今日精選
-                </div>
-
-                <div
-                    id="contentDescription"
-                    class="content-description"
-                >
-                    最新交易日量化篩選結果
-                </div>
-
-            </div>
-
-        </div>
-
-
-        <div
-            id="contentArea"
-        >
-
-            <div class="loading">
-
-                資料載入中
-
-                <span class="loading-dot"></span>
-                <span class="loading-dot"></span>
-                <span class="loading-dot"></span>
-
-            </div>
-
-        </div>
-
-    </section>
-
-
-    <!-- =====================================================
-         ERROR
-    ====================================================== -->
-
-    <div
-        id="errorPanel"
-        class="error-panel"
-    >
-
-        <div class="error-title">
-            無法載入儀表板資料
         </div>
 
         <div
-            id="errorMessage"
-            class="error-message"
-        ></div>
+            id="selectedCount"
+            class="info-value"
+        >
+            —
+        </div>
+
+        <div class="info-description">
+            最新交易日篩選結果
+        </div>
 
     </div>
 
 
-    <!-- =====================================================
-         FOOTER
-    ====================================================== -->
+    <div class="info-card">
 
-    <footer class="footer">
-        AI MARKET INTELLIGENCE · 台股市場
-    </footer>
+        <div class="info-label">
+            持有個股總盈虧
+        </div>
+
+        <div
+            id="totalProfit"
+            class="info-value"
+        >
+            尚未建立持倉
+        </div>
+
+        <div class="info-description">
+            目前持倉
+        </div>
+
+    </div>
+
+
+    <div class="info-card">
+
+        <div class="info-label">
+            加權指數
+        </div>
+
+        <div
+            id="marketIndex"
+            class="info-value"
+        >
+            —
+        </div>
+
+        <div
+            id="marketIndexChange"
+            class="info-description"
+        >
+            —
+        </div>
+
+    </div>
+
+
+    <div class="info-card">
+
+        <div class="info-label">
+            市場風向
+        </div>
+
+        <div
+            id="marketTrend"
+            class="info-value"
+        >
+            —
+        </div>
+
+        <div
+            id="marketTrendDescription"
+            class="info-description"
+        >
+            —
+        </div>
+
+    </div>
+
+</section>
+
+
+<section class="search-section">
+
+    <div class="section-title">
+        🔍 查詢個股
+    </div>
+
+    <div class="search-box">
+
+        <input
+            id="searchInput"
+            class="search-input"
+            type="text"
+            placeholder="輸入股票名稱或代號"
+            autocomplete="off"
+        >
+
+        <button
+            id="searchButton"
+            class="search-button"
+        >
+            查詢
+        </button>
+
+    </div>
+
+    <div
+        id="searchResult"
+        class="search-result"
+    ></div>
+
+</section>
+
+
+<nav class="tabs">
+
+    <button
+        class="tab active"
+        data-tab="today_picks"
+    >
+        今日精選
+    </button>
+
+    <button
+        class="tab"
+        data-tab="top10"
+    >
+        Top 10
+    </button>
+
+    <button
+        class="tab"
+        data-tab="etf"
+    >
+        ETF
+    </button>
+
+    <button
+        class="tab"
+        data-tab="bond"
+    >
+        債券
+    </button>
+
+    <button
+        class="tab"
+        data-tab="watchlist"
+    >
+        我的清單
+    </button>
+
+</nav>
+
+
+<section>
+
+    <div class="content-header">
+
+        <div>
+
+            <div
+                id="contentTitle"
+                class="content-title"
+            >
+                今日精選
+            </div>
+
+            <div
+                id="contentDescription"
+                class="content-description"
+            >
+                最新交易日量化篩選結果
+            </div>
+
+        </div>
+
+    </div>
+
+
+    <div id="contentArea">
+
+        <div class="loading">
+
+            資料載入中
+
+            <span class="loading-dot"></span>
+            <span class="loading-dot"></span>
+            <span class="loading-dot"></span>
+
+        </div>
+
+    </div>
+
+</section>
+
+
+<div
+    id="errorPanel"
+    class="error-panel"
+>
+
+    <div class="error-title">
+        無法載入儀表板資料
+    </div>
+
+    <div
+        id="errorMessage"
+        class="error-message"
+    ></div>
+
+</div>
+
+
+<footer class="footer">
+    AI MARKET INTELLIGENCE · 台股市場
+</footer>
 
 </div>
 
@@ -1221,15 +972,7 @@ body {
 <script>
 
 /* ============================================================
-   CONFIGURATION
-
-   重要：
-   這裡只使用目前專案真正存在的 UI 資料入口。
-
-   禁止：
-   ./Data/stocks.json
-
-   因為目前專案沒有這個檔案。
+   正式資料入口
 ============================================================ */
 
 const DATA_URL = "./Data/ui_data.json";
@@ -1243,10 +986,8 @@ const WATCHLIST_KEY =
 ============================================================ */
 
 let dashboardData = null;
-
 let allStocks = [];
-
-let currentTab = "selected";
+let currentTab = "today_picks";
 
 
 /* ============================================================
@@ -1270,7 +1011,7 @@ const errorMessage =
 
 
 /* ============================================================
-   SAFE NUMBER
+   NUMBER
 ============================================================ */
 
 function numberValue(value) {
@@ -1296,10 +1037,6 @@ function numberValue(value) {
 }
 
 
-/* ============================================================
-   FORMAT NUMBER
-============================================================ */
-
 function formatNumber(
     value,
     digits = 0
@@ -1322,10 +1059,6 @@ function formatNumber(
 }
 
 
-/* ============================================================
-   FORMAT PERCENT
-============================================================ */
-
 function formatPercent(value) {
 
     const n =
@@ -1337,15 +1070,11 @@ function formatPercent(value) {
 
     return (
         n >= 0 ? "+" : ""
-    )
-    + n.toFixed(2)
-    + "%";
+    ) +
+    n.toFixed(2) +
+    "%";
 }
 
-
-/* ============================================================
-   MARKET COLOR
-============================================================ */
 
 function marketClass(value) {
 
@@ -1365,6 +1094,21 @@ function marketClass(value) {
     }
 
     return "market-neutral";
+}
+
+
+/* ============================================================
+   ESCAPE
+============================================================ */
+
+function escapeHtml(value) {
+
+    return String(value ?? "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
 }
 
 
@@ -1402,9 +1146,7 @@ function getWatchlist() {
 }
 
 
-function saveWatchlist(
-    data
-) {
+function saveWatchlist(data) {
 
     localStorage.setItem(
         WATCHLIST_KEY,
@@ -1413,13 +1155,7 @@ function saveWatchlist(
 }
 
 
-/* ============================================================
-   ADD WATCHLIST
-============================================================ */
-
-function addToWatchlist(
-    symbol
-) {
+function addToWatchlist(symbol) {
 
     if (!symbol) {
         return;
@@ -1441,18 +1177,11 @@ function addToWatchlist(
     }
 
     renderCurrentTab();
-
     updateTotalProfit();
 }
 
 
-/* ============================================================
-   REMOVE WATCHLIST
-============================================================ */
-
-function removeFromWatchlist(
-    symbol
-) {
+function removeFromWatchlist(symbol) {
 
     const watchlist =
         getWatchlist();
@@ -1464,14 +1193,9 @@ function removeFromWatchlist(
     );
 
     renderCurrentTab();
-
     updateTotalProfit();
 }
 
-
-/* ============================================================
-   HOLDING INPUT
-============================================================ */
 
 function updateHolding(
     symbol,
@@ -1501,7 +1225,6 @@ function updateHolding(
     );
 
     updateTotalProfit();
-
     renderCurrentTab();
 }
 
@@ -1527,6 +1250,7 @@ function normalizeStock(
             raw.symbol ??
             raw.code ??
             raw.stock_id ??
+            raw.stock_code ??
             fallbackSymbol ??
             ""
         ).trim();
@@ -1556,7 +1280,15 @@ function normalizeStock(
             raw.change_pct ??
             raw.change_percent ??
             raw.pct_change ??
-            raw.changePercent
+            raw.changePercent ??
+            raw.change
+        );
+
+    const rank =
+        numberValue(
+            raw.rank ??
+            raw.top_rank ??
+            raw.ranking
         );
 
     return {
@@ -1595,15 +1327,7 @@ function normalizeStock(
                 raw.featured
             ),
 
-        rank:
-            numberValue(
-                raw.rank ??
-                raw.top_rank
-            ),
-
-        market:
-            raw.market ??
-            "TWSE",
+        rank,
 
         raw
     };
@@ -1611,196 +1335,162 @@ function normalizeStock(
 
 
 /* ============================================================
-   EXTRACT STOCKS
-
-   ui_data.json 的實際結構可能隨後端版本不同，
-   因此只做結構容錯，不另外創造資料來源。
+   STOCK MAP
 ============================================================ */
 
-function extractStocks(
-    data
-) {
+function buildStockMap(data) {
 
-    const result = [];
+    const map = new Map();
 
-    function append(
-        value
+    if (
+        data &&
+        data.stocks &&
+        typeof data.stocks === "object"
     ) {
 
-        if (
-            Array.isArray(value)
-        ) {
+        Object.entries(
+            data.stocks
+        ).forEach(
+            ([symbol, raw]) => {
 
-            value.forEach(
-                item => {
+                const stock =
+                    normalizeStock(
+                        raw,
+                        symbol
+                    );
 
-                    const stock =
-                        normalizeStock(item);
+                if (stock) {
 
-                    if (stock) {
-                        result.push(stock);
-                    }
+                    map.set(
+                        stock.symbol,
+                        stock
+                    );
                 }
-            );
-
-            return;
-        }
-
-        if (
-            value &&
-            typeof value === "object"
-        ) {
-
-            Object.entries(value)
-                .forEach(
-                    ([symbol, item]) => {
-
-                        const stock =
-                            normalizeStock(
-                                item,
-                                symbol
-                            );
-
-                        if (stock) {
-                            result.push(stock);
-                        }
-                    }
-                );
-        }
-    }
-
-
-    if (!data) {
-        return [];
-    }
-
-
-    append(
-        data.stocks
-    );
-
-    append(
-        data.selected
-    );
-
-    append(
-        data.featured
-    );
-
-    append(
-        data.top10
-    );
-
-    append(
-        data.top_10
-    );
-
-    append(
-        data.etf
-    );
-
-    append(
-        data.bond
-    );
-
-
-    if (
-        data.data
-    ) {
-
-        append(
-            data.data.stocks
-        );
-
-        append(
-            data.data.selected
-        );
-
-        append(
-            data.data.featured
-        );
-
-        append(
-            data.data.top10
-        );
-
-        append(
-            data.data.top_10
-        );
-
-        append(
-            data.data.etf
-        );
-
-        append(
-            data.data.bond
-        );
-    }
-
-
-    if (
-        data.dashboard
-    ) {
-
-        append(
-            data.dashboard.stocks
-        );
-
-        append(
-            data.dashboard.selected
-        );
-    }
-
-
-    const unique =
-        new Map();
-
-    result.forEach(
-        stock => {
-
-            if (
-                !unique.has(
-                    stock.symbol
-                )
-            ) {
-
-                unique.set(
-                    stock.symbol,
-                    stock
-                );
             }
-        }
-    );
+        );
+    }
 
-    return Array.from(
-        unique.values()
-    );
+    return map;
 }
 
 
 /* ============================================================
-   DASHBOARD METADATA
+   TAB DATA → STOCK DATA
+
+   正式架構：
+
+   tabs.today_picks
+   tabs.top10
+   tabs.etf
+   tabs.bond
+
+   每個項目可能只有代號，
+   因此優先從 stocks 取得完整資料。
 ============================================================ */
 
-function getDashboard(
-    data
+function resolveTabStocks(
+    data,
+    tabName
 ) {
 
-    if (
-        data &&
-        data.dashboard
-    ) {
-        return data.dashboard;
+    const stockMap =
+        buildStockMap(data);
+
+    const tabData =
+        data?.tabs?.[tabName];
+
+    if (!Array.isArray(tabData)) {
+        return [];
     }
 
-    if (
-        data &&
-        data.market
-    ) {
-        return data.market;
-    }
+    const result = [];
 
-    return data || {};
+    tabData.forEach(
+        (item, index) => {
+
+            if (
+                typeof item === "string"
+            ) {
+
+                const symbol =
+                    item.trim();
+
+                const stock =
+                    stockMap.get(
+                        symbol
+                    );
+
+                if (stock) {
+                    result.push(stock);
+                }
+
+                return;
+            }
+
+
+            if (
+                item &&
+                typeof item === "object"
+            ) {
+
+                const symbol =
+                    String(
+                        item.symbol ??
+                        item.code ??
+                        item.stock_id ??
+                        item.stock_code ??
+                        ""
+                    ).trim();
+
+                const base =
+                    symbol
+                        ? stockMap.get(symbol)
+                        : null;
+
+                const merged =
+                    normalizeStock(
+                        {
+                            ...(base?.raw || {}),
+                            ...item
+                        },
+                        symbol
+                    );
+
+                if (merged) {
+                    result.push(merged);
+                }
+
+                return;
+            }
+
+            /*
+             * 如果後端 tab 直接使用索引，
+             * 仍然不假造資料。
+             */
+            if (
+                Number.isInteger(index)
+            ) {
+                return;
+            }
+        }
+    );
+
+    return result;
+}
+
+
+/* ============================================================
+   ALL STOCKS
+============================================================ */
+
+function extractAllStocks(data) {
+
+    const map =
+        buildStockMap(data);
+
+    return Array.from(
+        map.values()
+    );
 }
 
 
@@ -1808,21 +1498,10 @@ function getDashboard(
    LATEST DATE
 ============================================================ */
 
-function getLatestDate(
-    data
-) {
-
-    const dashboard =
-        getDashboard(data);
+function getLatestDate(data) {
 
     return (
-        dashboard.latest_date ??
-        dashboard.latest_trade_date ??
-        dashboard.trade_date ??
-        data.latest_date ??
-        data.latest_trade_date ??
-        data.data_date ??
-        data.generated_at ??
+        data?.status?.latest_trading_date ??
         null
     );
 }
@@ -1832,24 +1511,13 @@ function getLatestDate(
    MARKET STATUS
 ============================================================ */
 
-function updateMarketStatus(
-    data
-) {
-
-    const dashboard =
-        getDashboard(data);
+function updateMarketStatus(data) {
 
     const status =
         String(
-            dashboard.market_status ??
-            dashboard.status ??
+            data?.status?.market_status ??
             ""
         ).toLowerCase();
-
-    const isOpen =
-        status.includes("open") ||
-        status.includes("開市") ||
-        status.includes("交易中");
 
     const dot =
         document.getElementById(
@@ -1861,7 +1529,10 @@ function updateMarketStatus(
             "marketStatusText"
         );
 
-    if (isOpen) {
+    if (
+        status === "open" ||
+        status === "trading"
+    ) {
 
         dot.className =
             "status-dot open";
@@ -1875,18 +1546,16 @@ function updateMarketStatus(
             "status-dot closed";
 
         text.textContent =
-            "🔴 非交易日";
+            "🔴 市場休市";
     }
 }
 
 
 /* ============================================================
-   HEADER DATA
+   HEADER
 ============================================================ */
 
-function renderHeader(
-    data
-) {
+function renderHeader(data) {
 
     const date =
         getLatestDate(data);
@@ -1901,183 +1570,211 @@ function renderHeader(
                 : "尚無資料"
         );
 
-    updateMarketStatus(
-        data
-    );
+    updateMarketStatus(data);
 }
 
 
 /* ============================================================
-   MARKET DASHBOARD
+   DASHBOARD CARDS
+
+   完全對應：
+
+   status
+   market
+   summary
 ============================================================ */
 
-function renderDashboardCards(
-    data
-) {
+function renderDashboardCards(data) {
 
-    const dashboard =
-        getDashboard(data);
+    const summary =
+        data?.summary || {};
 
-    const selected =
-        dashboard.selected_count ??
-        dashboard.featured_count ??
-        dashboard.today_selected_count ??
-        (
-            allStocks.filter(
-                s => s.selected
-            ).length
-        );
+    const market =
+        data?.market || {};
+
+    const index =
+        market.index || {};
+
+    const sentiment =
+        market.sentiment || {};
+
+
+    /* 今日精選 */
 
     document.getElementById(
         "selectedCount"
     ).textContent =
-        formatNumber(selected);
+        formatNumber(
+            summary.today_picks
+        );
 
 
-    /* --------------------------------------------------------
-       大盤
-    -------------------------------------------------------- */
+    /* 持有總盈虧 */
 
-    const index =
-        dashboard.index ??
-        dashboard.taiwan_index ??
-        dashboard.weighted_index ??
-        dashboard.taiex ??
-        {};
+    const profitEl =
+        document.getElementById(
+            "totalProfit"
+        );
 
-    const indexValue =
-        typeof index === "object"
-            ? (
-                index.value ??
-                index.close ??
-                index.price
-            )
-            : index;
+    const holdingsProfit =
+        numberValue(
+            summary.holdings_profit
+        );
 
-    const indexChange =
-        typeof index === "object"
-            ? (
-                index.change_pct ??
-                index.change_percent ??
-                index.pct
-            )
-            : (
-                dashboard.index_change_pct ??
-                dashboard.taiwan_index_change_pct
+    if (
+        summary.has_holdings &&
+        holdingsProfit !== null
+    ) {
+
+        profitEl.textContent =
+            (
+                holdingsProfit >= 0
+                    ? "+"
+                    : ""
+            ) +
+            formatNumber(
+                holdingsProfit
+            ) +
+            " 元";
+
+        profitEl.className =
+            "info-value " +
+            marketClass(
+                holdingsProfit
             );
+
+    } else {
+
+        profitEl.textContent =
+            "尚未建立持倉";
+
+        profitEl.className =
+            "info-value";
+    }
+
+
+    /* 加權指數 */
 
     document.getElementById(
         "marketIndex"
     ).textContent =
         formatNumber(
-            indexValue,
+            index.value,
             2
         );
+
 
     const indexChangeEl =
         document.getElementById(
             "marketIndexChange"
         );
 
-    indexChangeEl.textContent =
-        indexChange !== null &&
-        indexChange !== undefined
-            ? formatPercent(
-                indexChange
-            )
-            : "尚無大盤資料";
-
-    indexChangeEl.className =
-        "info-description " +
-        marketClass(
-            indexChange
+    const indexChange =
+        numberValue(
+            index.change_pct
         );
 
+    if (
+        indexChange !== null
+    ) {
 
-    /* --------------------------------------------------------
-       市場風向
-    -------------------------------------------------------- */
+        indexChangeEl.textContent =
+            formatPercent(
+                indexChange
+            );
 
-    const trend =
-        dashboard.market_trend ??
-        dashboard.market_direction ??
-        dashboard.market_sentiment ??
-        null;
+        indexChangeEl.className =
+            "info-description " +
+            marketClass(
+                indexChange
+            );
 
-    const trendDescription =
-        dashboard.market_trend_description ??
-        dashboard.market_sentiment_description ??
-        dashboard.market_description ??
-        "";
+    } else {
+
+        indexChangeEl.textContent =
+            "尚無大盤資料";
+
+        indexChangeEl.className =
+            "info-description market-neutral";
+    }
+
+
+    /* 市場風向 */
 
     const trendEl =
         document.getElementById(
             "marketTrend"
         );
 
-    const trendDescEl =
+    const trendDescriptionEl =
         document.getElementById(
             "marketTrendDescription"
         );
 
-    if (!trend) {
+    const level =
+        sentiment.level;
+
+    const description =
+        sentiment.description;
+
+
+    if (!level) {
 
         trendEl.textContent =
             "—";
 
-        trendDescEl.textContent =
-            "尚無市場風向資料";
-
         trendEl.className =
             "info-value market-neutral";
 
-    } else {
+        trendDescriptionEl.textContent =
+            description ||
+            "尚無市場風向資料";
 
-        const text =
-            String(trend);
-
-        trendEl.textContent =
-            text;
-
-        trendDescEl.textContent =
-            trendDescription ||
-            "市場狀態";
-
-        if (
-            text.includes("偏多") ||
-            text.includes("強")
-        ) {
-
-            trendEl.className =
-                "info-value market-up";
-
-        } else if (
-            text.includes("偏弱") ||
-            text.includes("弱")
-        ) {
-
-            trendEl.className =
-                "info-value market-down";
-
-        } else {
-
-            trendEl.className =
-                "info-value market-neutral";
-        }
+        return;
     }
 
 
-    updateTotalProfit();
+    trendEl.textContent =
+        String(level);
+
+    trendDescriptionEl.textContent =
+        description ||
+        "市場狀態";
+
+
+    const levelText =
+        String(level);
+
+
+    if (
+        levelText.includes("偏多") ||
+        levelText.includes("強")
+    ) {
+
+        trendEl.className =
+            "info-value market-up";
+
+    } else if (
+        levelText.includes("偏弱") ||
+        levelText.includes("弱")
+    ) {
+
+        trendEl.className =
+            "info-value market-down";
+
+    } else {
+
+        trendEl.className =
+            "info-value market-neutral";
+    }
 }
 
 
 /* ============================================================
-   STOCK STRENGTH
+   STRENGTH
 ============================================================ */
 
-function strengthClass(
-    strength
-) {
+function strengthClass(strength) {
 
     const text =
         String(
@@ -2100,9 +1797,7 @@ function strengthClass(
 }
 
 
-function strengthText(
-    strength
-) {
+function strengthText(strength) {
 
     const text =
         String(
@@ -2142,21 +1837,8 @@ function renderStockCard(
             stock.symbol
         ];
 
-    const change =
-        stock.change;
-
-    const changeClass =
-        marketClass(change);
-
-    const changeText =
-        formatPercent(change);
-
     let holdingHtml = "";
 
-
-    /* --------------------------------------------------------
-       我的清單才顯示持倉資訊
-    -------------------------------------------------------- */
 
     if (
         options.watchlist
@@ -2188,11 +1870,7 @@ function renderStockCard(
         const returnPct =
             cost > 0 &&
             profit !== null
-                ? (
-                    profit /
-                    cost *
-                    100
-                )
+                ? profit / cost * 100
                 : null;
 
         let profitClass =
@@ -2238,11 +1916,13 @@ function renderStockCard(
                     value="${shares || ""}"
                     placeholder="輸入持有股數"
                     data-holding-field="shares"
-                    data-symbol="${stock.symbol}"
+                    data-symbol="${escapeHtml(stock.symbol)}"
                 >
 
-                <div class="holding-row"
-                     style="margin-top:12px;">
+                <div
+                    class="holding-row"
+                    style="margin-top:12px;"
+                >
                     <span class="holding-label">
                         平均成本
                     </span>
@@ -2267,12 +1947,13 @@ function renderStockCard(
                     value="${averageCost || ""}"
                     placeholder="輸入平均成本"
                     data-holding-field="averageCost"
-                    data-symbol="${stock.symbol}"
+                    data-symbol="${escapeHtml(stock.symbol)}"
                 >
 
-                <div class="holding-row"
-                     style="margin-top:12px;">
-
+                <div
+                    class="holding-row"
+                    style="margin-top:12px;"
+                >
                     <span class="holding-label">
                         目前市值
                     </span>
@@ -2286,7 +1967,6 @@ function renderStockCard(
                                 : "—"
                         }
                     </span>
-
                 </div>
 
                 <div class="holding-row">
@@ -2304,11 +1984,11 @@ function renderStockCard(
                                     profit >= 0
                                         ? "+"
                                         : ""
-                                )
-                                + formatNumber(
+                                ) +
+                                formatNumber(
                                     profit
-                                )
-                                + " 元"
+                                ) +
+                                " 元"
                                 : "—"
                         }
                     </span>
@@ -2349,15 +2029,11 @@ function renderStockCard(
                 <div>
 
                     <div class="stock-name">
-                        ${escapeHtml(
-                            stock.name
-                        )}
+                        ${escapeHtml(stock.name)}
                     </div>
 
                     <div class="stock-symbol">
-                        ${escapeHtml(
-                            stock.symbol
-                        )}
+                        ${escapeHtml(stock.symbol)}
                     </div>
 
                 </div>
@@ -2379,22 +2055,18 @@ function renderStockCard(
                 </div>
 
                 <div
-                    class="stock-change ${changeClass}"
+                    class="stock-change ${marketClass(stock.change)}"
                 >
-                    ${changeText}
+                    ${formatPercent(stock.change)}
                 </div>
 
             </div>
 
 
             <div
-                class="strength ${strengthClass(
-                    stock.strength
-                )}"
+                class="strength ${strengthClass(stock.strength)}"
             >
-                ${strengthText(
-                    stock.strength
-                )}
+                ${strengthText(stock.strength)}
             </div>
 
 
@@ -2405,9 +2077,7 @@ function renderStockCard(
                 </div>
 
                 <div>
-                    ${escapeHtml(
-                        stock.advice
-                    )}
+                    ${escapeHtml(stock.advice)}
                 </div>
 
             </div>
@@ -2421,7 +2091,7 @@ function renderStockCard(
                     ? `
                         <button
                             class="watch-button"
-                            data-remove-symbol="${stock.symbol}"
+                            data-remove-symbol="${escapeHtml(stock.symbol)}"
                         >
                             移除我的清單
                         </button>
@@ -2429,7 +2099,7 @@ function renderStockCard(
                     : `
                         <button
                             class="watch-button"
-                            data-add-symbol="${stock.symbol}"
+                            data-add-symbol="${escapeHtml(stock.symbol)}"
                         >
                             ＋ 加入我的清單
                         </button>
@@ -2442,146 +2112,14 @@ function renderStockCard(
 
 
 /* ============================================================
-   ESCAPE HTML
+   TAB META
 ============================================================ */
 
-function escapeHtml(
-    value
-) {
-
-    return String(
-        value ?? ""
-    )
-    .replace(
-        /&/g,
-        "&amp;"
-    )
-    .replace(
-        /</g,
-        "&lt;"
-    )
-    .replace(
-        />/g,
-        "&gt;"
-    )
-    .replace(
-        /"/g,
-        "&quot;"
-    )
-    .replace(
-        /'/g,
-        "&#039;"
-    );
-}
-
-
-/* ============================================================
-   GET TAB STOCKS
-============================================================ */
-
-function getTabStocks(
-    tab
-) {
-
-    const watchlist =
-        getWatchlist();
-
-    if (
-        tab === "watchlist"
-    ) {
-
-        return allStocks.filter(
-            stock =>
-                Boolean(
-                    watchlist[
-                        stock.symbol
-                    ]
-                )
-        );
-    }
-
-
-    if (
-        tab === "selected"
-    ) {
-
-        const selected =
-            allStocks.filter(
-                stock =>
-                    stock.selected
-            );
-
-        if (
-            selected.length
-        ) {
-            return selected;
-        }
-
-        /*
-         * 如果後端尚未提供 selected
-         * 標記，不假造選股結果。
-         */
-        return [];
-    }
-
-
-    if (
-        tab === "top10"
-    ) {
-
-        return allStocks
-            .filter(
-                stock =>
-                    stock.rank !== null
-            )
-            .sort(
-                (a, b) =>
-                    a.rank - b.rank
-            )
-            .slice(
-                0,
-                10
-            );
-    }
-
-
-    if (
-        tab === "etf"
-    ) {
-
-        return allStocks.filter(
-            stock =>
-                stock.category === "etf"
-        );
-    }
-
-
-    if (
-        tab === "bond"
-    ) {
-
-        return allStocks.filter(
-            stock =>
-                stock.category === "bond"
-        );
-    }
-
-
-    return [];
-}
-
-
-/* ============================================================
-   TAB TITLE
-============================================================ */
-
-function getTabMeta(
-    tab
-) {
+function getTabMeta(tab) {
 
     const map = {
 
-        selected: {
+        today_picks: {
             title: "今日精選",
             description:
                 "最新交易日量化篩選結果"
@@ -2614,13 +2152,85 @@ function getTabMeta(
 
     return (
         map[tab] ||
-        map.selected
+        map.today_picks
     );
 }
 
 
 /* ============================================================
-   RENDER TAB
+   GET TAB STOCKS
+============================================================ */
+
+function getTabStocks(tab) {
+
+    if (
+        tab === "watchlist"
+    ) {
+
+        const watchlist =
+            getWatchlist();
+
+        return allStocks.filter(
+            stock =>
+                Boolean(
+                    watchlist[
+                        stock.symbol
+                    ]
+                )
+        );
+    }
+
+
+    if (
+        tab === "today_picks"
+    ) {
+
+        return resolveTabStocks(
+            dashboardData,
+            "today_picks"
+        );
+    }
+
+
+    if (
+        tab === "top10"
+    ) {
+
+        return resolveTabStocks(
+            dashboardData,
+            "top10"
+        );
+    }
+
+
+    if (
+        tab === "etf"
+    ) {
+
+        return resolveTabStocks(
+            dashboardData,
+            "etf"
+        );
+    }
+
+
+    if (
+        tab === "bond"
+    ) {
+
+        return resolveTabStocks(
+            dashboardData,
+            "bond"
+        );
+    }
+
+
+    return [];
+}
+
+
+/* ============================================================
+   RENDER CURRENT TAB
 ============================================================ */
 
 function renderCurrentTab() {
@@ -2648,6 +2258,26 @@ function renderCurrentTab() {
     ) {
 
         if (
+            currentTab === "today_picks"
+        ) {
+
+            contentArea.innerHTML = `
+
+                <div class="empty-state">
+
+                    <div class="empty-title">
+                        今日沒有符合條件的個股
+                    </div>
+
+                    <div class="empty-description">
+                        後端目前回傳今日精選 0 檔。
+                        儀表板不會自行假造選股結果。
+                    </div>
+
+                </div>
+            `;
+
+        } else if (
             currentTab === "watchlist"
         ) {
 
@@ -2678,7 +2308,7 @@ function renderCurrentTab() {
                     </div>
 
                     <div class="empty-description">
-                        後台尚未提供此分頁的資料。
+                        後端目前尚未提供此分頁資料。
                     </div>
 
                 </div>
@@ -2713,7 +2343,6 @@ function renderCurrentTab() {
 
 
     bindStockButtons();
-
     bindHoldingInputs();
 }
 
@@ -2796,6 +2425,9 @@ function bindHoldingInputs() {
 
 /* ============================================================
    TOTAL PROFIT
+
+   前端只計算 localStorage 持倉，
+   不修改後端 summary。
 ============================================================ */
 
 function updateTotalProfit() {
@@ -2829,7 +2461,6 @@ function updateTotalProfit() {
 
 
     let total = 0;
-
     let hasHolding = false;
 
 
@@ -2875,8 +2506,7 @@ function updateTotalProfit() {
                 (
                     stock.price -
                     averageCost
-                )
-                *
+                ) *
                 shares;
         }
     );
@@ -2901,32 +2531,14 @@ function updateTotalProfit() {
             total >= 0
                 ? "+"
                 : ""
-        )
-        +
-        formatNumber(total)
-        +
+        ) +
+        formatNumber(total) +
         " 元";
 
 
-    if (
-        total > 0
-    ) {
-
-        profitEl.className =
-            "info-value market-up";
-
-    } else if (
-        total < 0
-    ) {
-
-        profitEl.className =
-            "info-value market-down";
-
-    } else {
-
-        profitEl.className =
-            "info-value market-neutral";
-    }
+    profitEl.className =
+        "info-value " +
+        marketClass(total);
 }
 
 
@@ -2945,7 +2557,6 @@ function searchStock() {
         input.value
             .trim()
             .toLowerCase();
-
 
     const result =
         document.getElementById(
@@ -2968,10 +2579,13 @@ function searchStock() {
     const matches =
         allStocks.filter(
             stock =>
+
                 stock.symbol
                     .toLowerCase()
                     .includes(keyword)
+
                 ||
+
                 stock.name
                     .toLowerCase()
                     .includes(keyword)
@@ -3013,15 +2627,13 @@ function searchStock() {
             <div>
 
                 <div class="search-result-name">
-                    ${escapeHtml(
-                        stock.name
-                    )}
+                    ${escapeHtml(stock.name)}
                 </div>
 
                 <div class="search-result-symbol">
-                    ${escapeHtml(
-                        stock.symbol
-                    )}
+
+                    ${escapeHtml(stock.symbol)}
+
                     ${
                         stock.price !== null
                             ? " · " +
@@ -3031,6 +2643,7 @@ function searchStock() {
                               )
                             : ""
                     }
+
                     ${
                         stock.change !== null
                             ? " · " +
@@ -3039,13 +2652,14 @@ function searchStock() {
                               )
                             : ""
                     }
+
                 </div>
 
             </div>
 
             <button
                 class="add-watch-button"
-                data-search-add="${stock.symbol}"
+                data-search-add="${escapeHtml(stock.symbol)}"
             >
                 ＋ 加入我的清單
             </button>
@@ -3079,9 +2693,7 @@ function searchStock() {
                             font-size:13px;
                         "
                     >
-                        ✓ ${escapeHtml(
-                            stock.name
-                        )}
+                        ✓ ${escapeHtml(stock.name)}
                         已加入我的清單
                     </div>
                 `;
@@ -3176,13 +2788,7 @@ async function loadDashboardData() {
     try {
 
         /*
-         * 唯一正式資料入口：
-         *
-         * ./Data/ui_data.json
-         *
-         * 不再請求：
-         *
-         * ./Data/stocks.json
+         * 唯一正式資料入口
          */
 
         const response =
@@ -3229,12 +2835,30 @@ async function loadDashboardData() {
         }
 
 
+        /*
+         * 驗證正式架構
+         */
+
+        if (
+            !data.status ||
+            !data.market ||
+            !data.summary ||
+            !data.tabs ||
+            !data.stocks
+        ) {
+
+            throw new Error(
+                "ui_data.json 缺少正式資料結構：status / market / summary / tabs / stocks"
+            );
+        }
+
+
         dashboardData =
             data;
 
 
         allStocks =
-            extractStocks(
+            extractAllStocks(
                 data
             );
 
