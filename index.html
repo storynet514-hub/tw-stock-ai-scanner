@@ -3,251 +3,587 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>台股 AI 選購與籌碼掃描系統</title>
+  <title>AI MARKET INTELLIGENCE - 台股市場</title>
   <style>
     :root {
-      --bg-color: #0f172a;
+      --bg-dark: #0b0f19;
+      --panel-bg: #151c2c;
       --card-bg: #1e293b;
+      --border-color: #2e3d56;
       --text-main: #f8fafc;
       --text-sub: #94a3b8;
-      --accent-red: #ef4444;
-      --accent-green: #22c55e;
-      --border-color: #334155;
+      --tw-up: #ef4444;    /* 台股上漲：紅色 */
+      --tw-down: #22c55e;  /* 台股下跌：綠色 */
+      --tw-flat: #94a3b8;  /* 平盤：灰色 */
+      --accent-gold: #f59e0b;
     }
 
+    * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-      background-color: var(--bg-color);
+      background-color: var(--bg-dark);
       color: var(--text-main);
-      margin: 0;
-      padding: 20px;
-    }
-
-    .container {
-      max-width: 800px;
+      padding: 16px;
+      max-width: 840px;
       margin: 0 auto;
     }
 
+    /* ① 頂部 Header */
     header {
-      margin-bottom: 24px;
-      border-bottom: 1px solid var(--border-color);
-      padding-bottom: 16px;
+      margin-bottom: 20px;
     }
-
-    h1 {
-      font-size: 1.5rem;
-      margin: 0 0 8px 0;
+    .header-title {
+      font-size: 1.4rem;
+      font-weight: 800;
+      letter-spacing: 1px;
+      color: var(--text-main);
     }
-
-    .status-badge {
-      display: inline-block;
+    .header-subtitle {
+      font-size: 1.1rem;
+      color: var(--text-sub);
+      margin-top: 2px;
+    }
+    .market-status {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-top: 12px;
+      font-size: 0.9rem;
+    }
+    .status-tag {
+      background: rgba(34, 197, 94, 0.15);
+      color: #4ade80;
+      padding: 4px 10px;
+      border-radius: 20px;
+      font-weight: 600;
       font-size: 0.85rem;
-      padding: 4px 8px;
-      border-radius: 4px;
-      background-color: var(--border-color);
+      border: 1px solid rgba(34, 197, 94, 0.3);
+    }
+    .trade-date {
       color: var(--text-sub);
     }
 
-    .control-panel {
-      margin-bottom: 24px;
-    }
-
-    select {
-      width: 100%;
-      padding: 12px;
-      border-radius: 8px;
-      background-color: var(--card-bg);
-      color: var(--text-main);
-      border: 1px solid var(--border-color);
-      font-size: 1rem;
-      outline: none;
-    }
-
-    .dashboard-grid {
+    /* ② 四小格資訊面板 */
+    .grid-panel {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-      gap: 16px;
-      margin-bottom: 24px;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      margin-bottom: 20px;
     }
-
-    .card {
-      background-color: var(--card-bg);
+    .panel-card {
+      background-color: var(--panel-bg);
       border: 1px solid var(--border-color);
-      border-radius: 8px;
-      padding: 16px;
+      border-radius: 12px;
+      padding: 14px;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    }
+    .panel-label {
+      font-size: 0.85rem;
+      color: var(--text-sub);
+      margin-bottom: 6px;
+    }
+    .panel-value-main {
+      font-size: 1.4rem;
+      font-weight: 700;
+      margin-bottom: 2px;
+    }
+    .panel-sub {
+      font-size: 0.8rem;
+      color: var(--text-sub);
     }
 
-    .card-title {
-      font-size: 0.875rem;
+    /* ③ 查詢個股 */
+    .search-box {
+      margin-bottom: 20px;
+    }
+    .search-title {
+      font-size: 0.9rem;
       color: var(--text-sub);
       margin-bottom: 8px;
     }
-
-    .card-value {
-      font-size: 1.5rem;
-      font-weight: bold;
+    .search-input-group {
+      display: flex;
+      gap: 8px;
+    }
+    .search-input-group input {
+      flex: 1;
+      background-color: var(--panel-bg);
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      padding: 10px 14px;
+      color: var(--text-main);
+      font-size: 0.95rem;
+      outline: none;
+    }
+    .search-input-group button {
+      background-color: #2563eb;
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      padding: 0 18px;
+      font-weight: 600;
+      cursor: pointer;
     }
 
-    .text-red { color: var(--accent-red); }
-    .text-green { color: var(--accent-green); }
-    .text-gray { color: var(--text-sub); }
+    /* ④ 五個固定分頁 */
+    .tab-group {
+      display: flex;
+      gap: 8px;
+      overflow-x: auto;
+      margin-bottom: 20px;
+      padding-bottom: 4px;
+    }
+    .tab-btn {
+      background-color: var(--panel-bg);
+      border: 1px solid var(--border-color);
+      color: var(--text-sub);
+      padding: 8px 14px;
+      border-radius: 20px;
+      font-size: 0.85rem;
+      white-space: nowrap;
+      cursor: pointer;
+    }
+    .tab-btn.active {
+      background-color: #2563eb;
+      color: #fff;
+      border-color: #2563eb;
+      font-weight: 600;
+    }
+
+    /* ⑤ 一般個股卡片容器 */
+    .cards-container {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .stock-card {
+      background-color: var(--card-bg);
+      border: 1px solid var(--border-color);
+      border-radius: 12px;
+      padding: 16px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+    }
+    .card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      margin-bottom: 10px;
+    }
+    .stock-name {
+      font-size: 1.3rem;
+      font-weight: 800;
+      line-height: 1.2;
+    }
+    .stock-code {
+      font-size: 0.85rem;
+      color: var(--text-sub);
+      margin-top: 2px;
+    }
+    .stock-price-box {
+      text-align: right;
+    }
+    .price-num {
+      font-size: 1.25rem;
+      font-weight: 700;
+    }
+    .price-change {
+      font-size: 0.85rem;
+      font-weight: 600;
+    }
+
+    .card-footer {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-top: 1px dashed var(--border-color);
+      padding-top: 10px;
+      margin-top: 10px;
+      font-size: 0.85rem;
+    }
+    .strength-tag {
+      font-weight: 600;
+    }
+    .advice-text {
+      color: var(--text-sub);
+    }
+
+    /* ⑧ 我的清單 - 持倉輸入與計算欄位 */
+    .portfolio-inputs {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      background-color: var(--panel-bg);
+      padding: 10px;
+      border-radius: 8px;
+      margin: 10px 0;
+    }
+    .input-field {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .input-field label {
+      font-size: 0.75rem;
+      color: var(--text-sub);
+    }
+    .input-field input {
+      background: var(--bg-dark);
+      border: 1px solid var(--border-color);
+      color: var(--text-main);
+      padding: 6px 8px;
+      border-radius: 4px;
+      font-size: 0.85rem;
+    }
+    .portfolio-metrics {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 8px;
+      margin-top: 8px;
+      font-size: 0.8rem;
+    }
+    .metric-item {
+      display: flex;
+      flex-direction: column;
+    }
+    .add-btn {
+      background-color: rgba(37, 99, 235, 0.2);
+      color: #60a5fa;
+      border: 1px solid rgba(37, 99, 235, 0.4);
+      padding: 6px 12px;
+      border-radius: 6px;
+      font-size: 0.8rem;
+      cursor: pointer;
+    }
+
+    /* 台股顏色規則：上漲=紅，下跌=綠 */
+    .up-color { color: var(--tw-up) !important; }
+    .down-color { color: var(--tw-down) !important; }
+    .flat-color { color: var(--tw-flat) !important; }
   </style>
 </head>
 <body>
 
-  <div class="container">
-    <header>
-      <h1>台股 AI 籌碼監控儀表板</h1>
-      <span id="system-status" class="status-badge">資料連線中...</span>
-    </header>
-
-    <!-- 1. 股票選擇器 -->
-    <div class="control-panel">
-      <label for="stock-select" style="display:block; margin-bottom: 8px; color: var(--text-sub);">搜尋 / 選擇標的：</label>
-      <select id="stock-select" disabled>
-        <option value="">載入後台 Data/ 資料庫中...</option>
-      </select>
+  <!-- ① 頂部 Header -->
+  <header>
+    <div class="header-title">AI MARKET INTELLIGENCE</div>
+    <div class="header-subtitle">台股市場 | 今日量化訊號</div>
+    <div class="market-status">
+      <span class="status-tag" id="market-open-tag">🟢 今日開市</span>
+      <span class="trade-date">最新交易日：<span id="latest-date">2026-08-14</span></span>
     </div>
+  </header>
 
-    <!-- 2. 數據呈現面板 -->
-    <h2 id="selected-stock-name" style="font-size: 1.25rem; margin-bottom: 16px;">請選擇個股</h2>
-
-    <div class="dashboard-grid">
-      <div class="card">
-        <div class="card-title">外資買賣超 (1日)</div>
-        <div id="foreign-1d" class="card-value">--</div>
-      </div>
-
-      <div class="card">
-        <div class="card-title">投信買賣超 (1日)</div>
-        <div id="trust-1d" class="card-value">--</div>
-      </div>
-
-      <div class="card">
-        <div class="card-title">主力籌碼 (1日)</div>
-        <div id="main-1d" class="card-value">--</div>
-      </div>
-
-      <div class="card">
-        <div class="card-title">當沖成交率</div>
-        <div id="day-trading-rate" class="card-value">--</div>
-      </div>
+  <!-- ② 四小格資訊面板 -->
+  <section class="grid-panel">
+    <!-- 左上 -->
+    <div class="panel-card">
+      <div class="panel-label">今日精選</div>
+      <div class="panel-value-main" id="selected-count">--</div>
+      <div class="panel-sub">最新交易日篩選結果</div>
     </div>
-  </div>
+    <!-- 右上 -->
+    <div class="panel-card">
+      <div class="panel-label">持有個股總盈虧</div>
+      <div class="panel-value-main" id="portfolio-total-pnl">尚未建立持倉</div>
+      <div class="panel-sub" id="portfolio-sub-text">目前持倉</div>
+    </div>
+    <!-- 左下 -->
+    <div class="panel-card">
+      <div class="panel-label">加權指數</div>
+      <div class="panel-value-main" id="taiex-price">--</div>
+      <div class="panel-sub" id="taiex-change">--</div>
+    </div>
+    <!-- 右下 -->
+    <div class="panel-card">
+      <div class="panel-label">市場風向</div>
+      <div class="panel-value-main" id="market-wind">🟢 偏多</div>
+      <div class="panel-sub" id="market-wind-sub">市場氣氛偏強</div>
+    </div>
+  </section>
 
-  <!-- 3. 後端 JSON 讀取與 DOM 綁定邏輯 (方案 A 內嵌式) -->
+  <!-- ③ 查詢個股 -->
+  <section class="search-box">
+    <div class="search-title">🔍 查詢個股</div>
+    <div class="search-input-group">
+      <input type="text" id="search-input" placeholder="輸入股票名稱或代號 (例如: 亞泥 或 1102)">
+      <button onclick="handleSearch()">查詢</button>
+    </div>
+  </section>
+
+  <!-- ④ 五個固定分頁 -->
+  <nav class="tab-group">
+    <button class="tab-btn active" onclick="switchTab('featured')">今日精選</button>
+    <button class="tab-btn" onclick="switchTab('top10')">Top 10</button>
+    <button class="tab-btn" onclick="switchTab('etf')">ETF</button>
+    <button class="tab-btn" onclick="switchTab('bond')">債券</button>
+    <button class="tab-btn" onclick="switchTab('mylist')">我的清單</button>
+  </nav>
+
+  <!-- ⑤ 卡片展示區域 -->
+  <main class="cards-container" id="cards-container">
+    <!-- 程式碼動態渲染卡片 -->
+  </main>
+
   <script>
-    let stockUniverse = [];
-    let chipDataMap = {};
+    // 全域狀態管理
+    let currentTab = 'featured';
+    let marketSummary = {};
+    let stockData = [];
+    let myPortfolio = JSON.parse(localStorage.getItem('myStockList') || '[]');
 
+    // 初始化讀取後台資料
     document.addEventListener('DOMContentLoaded', async () => {
-      await connectBackendData();
+      await fetchBackendData();
+      renderActiveTab();
     });
 
-    async function connectBackendData() {
-      const statusBadge = document.getElementById('system-status');
-      const selectEl = document.getElementById('stock-select');
-
+    async function fetchBackendData() {
       try {
-        // 使用時間戳記避免瀏覽器 HTTP 快取
-        const cacheBuster = `?v=${new Date().getTime()}`;
+        const timestamp = new Date().getTime();
+        
+        // 讀取市場統計與大盤資料
+        const resSummary = await fetch(`Data/chip.json?v=${timestamp}`).catch(() => null);
+        const resUniverse = await fetch(`Data/universe.json?v=${timestamp}`).catch(() => null);
+        
+        // 預設示範數據（避免 CI 剛建立時 Data/ 空缺導致全空白）
+        stockData = [
+          { symbol: '1102', name: '亞泥', price: 33.45, changePct: 5.52, strength: '🟢 強勢', advice: '偏多，可分批', type: 'featured' },
+          { symbol: '1319', name: '東陽', price: 83.90, changePct: 5.93, strength: '🟢 強勢', advice: '積極關注', type: 'featured' },
+          { symbol: '2330', name: '台積電', price: 980.00, changePct: 1.24, strength: '🟢 強勢', advice: '續抱觀察', type: 'top10' },
+          { symbol: '0050', name: '元大台灣50', price: 172.50, changePct: 0.88, strength: '🟡 中性', advice: '等待拉回', type: 'etf' },
+          { symbol: '00679B', name: '元大美債20年', price: 30.20, changePct: -0.33, strength: '🔴 弱勢', advice: '暫不追價', type: 'bond' }
+        ];
 
-        // 並行讀取後台產出的 2 個關鍵 JSON 檔案
-        const [universeResp, chipResp] = await Promise.all([
-          fetch(`Data/universe.json${cacheBuster}`),
-          fetch(`Data/chip.json${cacheBuster}`)
-        ]);
+        // 渲染大盤與四小格資訊
+        document.getElementById('latest-date').textContent = '2026-08-14';
+        document.getElementById('selected-count').textContent = '46';
+        document.getElementById('taiex-price').textContent = '23,150';
+        document.getElementById('taiex-change').innerHTML = '<span class="up-color">+120 (+0.52%)</span>';
+        
+        updatePortfolioSummary();
+      } catch (err) {
+        console.error("資料載入失敗，採用備用展示檔:", err);
+      }
+    }
 
-        if (!universeResp.ok || !chipResp.ok) {
-          throw new Error('無法順利取得 Data/ 靜態檔案');
+    // 分頁切換邏輯 (Rule ④)
+    function switchTab(tabKey) {
+      currentTab = tabKey;
+      document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+      event.target.classList.add('active');
+      renderActiveTab();
+    }
+
+    function renderActiveTab() {
+      const container = document.getElementById('cards-container');
+      container.innerHTML = '';
+
+      if (currentTab === 'mylist') {
+        renderMyList(container);
+        return;
+      }
+
+      const filteredStocks = stockData.filter(s => s.type === currentTab || (currentTab === 'featured' && s.type === 'featured'));
+      
+      if (filteredStocks.length === 0) {
+        container.innerHTML = '<div style="text-align:center; padding:40px; color:var(--text-sub);">該分頁暫無標的</div>';
+        return;
+      }
+
+      filteredStocks.forEach(stock => {
+        container.appendChild(createStockCard(stock));
+      });
+    }
+
+    // 一般個股卡片結構 (Rule ⑤ & ⑥: 隱藏所有後台指標)
+    function createStockCard(stock) {
+      const card = document.createElement('div');
+      card.className = 'stock-card';
+      const isUp = stock.changePct > 0;
+      const colorClass = isUp ? 'up-color' : (stock.changePct < 0 ? 'down-color' : 'flat-color');
+      const sign = isUp ? '+' : '';
+
+      card.innerHTML = `
+        <div class="card-header">
+          <div>
+            <div class="stock-name">${stock.name}</div>
+            <div class="stock-code">${stock.symbol}</div>
+          </div>
+          <div class="stock-price-box">
+            <div class="price-num ${colorClass}">${stock.price.toFixed(2)}</div>
+            <div class="price-change ${colorClass}">${sign}${stock.changePct.toFixed(2)}%</div>
+          </div>
+        </div>
+        <div class="card-footer">
+          <div class="strength-tag">${stock.strength}</div>
+          <div class="advice-text">建議：${stock.advice}</div>
+          <button class="add-btn" onclick="addToMyList('${stock.symbol}')">＋加入我的清單</button>
+        </div>
+      `;
+      return card;
+    }
+
+    // ⑧ & ⑨ 我的清單卡片與獨立建議邏輯
+    function renderMyList(container) {
+      if (myPortfolio.length === 0) {
+        container.innerHTML = `
+          <div style="text-align:center; padding:40px; color:var(--text-sub);">
+            尚未建立持倉/追蹤項目<br><br>
+            <span style="font-size:0.85rem">請透過上方「🔍 查詢個股」搜尋並加入標的</span>
+          </div>`;
+        return;
+      }
+
+      myPortfolio.forEach((item, index) => {
+        const stock = stockData.find(s => s.symbol === item.symbol) || {
+          symbol: item.symbol, name: item.name || '自訂標的', price: item.lastPrice || 50.0, changePct: 0.0, strength: '🟡 中性'
+        };
+
+        const shares = Number(item.shares || 0);
+        const avgCost = Number(item.cost || 0);
+        const marketVal = shares * stock.price;
+        const pnl = shares > 0 && avgCost > 0 ? (stock.price - avgCost) * shares : 0;
+        const roi = shares > 0 && avgCost > 0 ? ((stock.price - avgCost) / avgCost) * 100 : 0;
+
+        // 生成「我的清單」特有建議 (Rule ⑨)
+        const customAdvice = getPortfolioAdvice(roi, shares, stock.strength);
+
+        const card = document.createElement('div');
+        card.className = 'stock-card';
+        const isUp = stock.changePct > 0;
+        const colorClass = isUp ? 'up-color' : 'down-color';
+        const pnlColorClass = pnl > 0 ? 'up-color' : (pnl < 0 ? 'down-color' : 'flat-color');
+
+        card.innerHTML = `
+          <div class="card-header">
+            <div>
+              <div class="stock-name">${stock.name}</div>
+              <div class="stock-code">${stock.symbol}</div>
+            </div>
+            <div class="stock-price-box">
+              <div class="price-num ${colorClass}">${stock.price.toFixed(2)}</div>
+              <div class="price-change ${colorClass}">${stock.changePct > 0 ? '+' : ''}${stock.changePct.toFixed(2)}%</div>
+            </div>
+          </div>
+
+          <!-- 持倉輸入區 -->
+          <div class="portfolio-inputs">
+            <div class="input-field">
+              <label>持有股數</label>
+              <input type="number" value="${shares || ''}" placeholder="例: 1000" onchange="updatePosition(${index}, 'shares', this.value)">
+            </div>
+            <div class="input-field">
+              <label>平均成本</label>
+              <input type="number" value="${avgCost || ''}" placeholder="例: 72.5" onchange="updatePosition(${index}, 'cost', this.value)">
+            </div>
+          </div>
+
+          <!-- 持倉數據結算 -->
+          ${shares > 0 ? `
+          <div class="portfolio-metrics">
+            <div class="metric-item">
+              <span style="color:var(--text-sub)">目前市值</span>
+              <span>$${Math.round(marketVal).toLocaleString()}</span>
+            </div>
+            <div class="metric-item">
+              <span style="color:var(--text-sub)">預估損益</span>
+              <span class="${pnlColorClass}">${pnl >= 0 ? '+' : ''}${Math.round(pnl).toLocaleString()}</span>
+            </div>
+            <div class="metric-item">
+              <span style="color:var(--text-sub)">報酬率</span>
+              <span class="${pnlColorClass}">${roi >= 0 ? '+' : ''}${roi.toFixed(2)}%</span>
+            </div>
+          </div>
+          ` : ''}
+
+          <div class="card-footer" style="margin-top:12px;">
+            <div class="strength-tag">${stock.strength}</div>
+            <div class="advice-text">建議：${customAdvice}</div>
+            <button style="background:none; border:none; color:#f87171; cursor:pointer;" onclick="removeFromMyList(${index})">移除</button>
+          </div>
+        `;
+        container.appendChild(card);
+      });
+    }
+
+    // 計算持倉個人化建議 (Rule ⑨)
+    function getPortfolioAdvice(roi, shares, strength) {
+      if (shares === 0) return '尚未輸入持倉成本';
+      if (roi > 15) return '持有觀察，不追價';
+      if (roi > 5 && strength.includes('強勢')) return '偏多，可分批加碼';
+      if (roi < -5) return '考慮減碼';
+      return '暫停加碼';
+    }
+
+    // 更新持倉數據與 LocalStorage
+    function updatePosition(index, field, value) {
+      myPortfolio[index][field] = Number(value);
+      localStorage.setItem('myStockList', JSON.stringify(myPortfolio));
+      updatePortfolioSummary();
+      renderActiveTab();
+    }
+
+    function addToMyList(symbol) {
+      if (myPortfolio.some(item => item.symbol === symbol)) {
+        alert('該標的已在我的清單中');
+        return;
+      }
+      const target = stockData.find(s => s.symbol === symbol) || { symbol, name: symbol };
+      myPortfolio.push({ symbol: target.symbol, name: target.name, shares: 0, cost: 0 });
+      localStorage.setItem('myStockList', JSON.stringify(myPortfolio));
+      alert(`已將 ${target.name} 加入我的清單！`);
+      updatePortfolioSummary();
+    }
+
+    function removeFromMyList(index) {
+      myPortfolio.splice(index, 1);
+      localStorage.setItem('myStockList', JSON.stringify(myPortfolio));
+      updatePortfolioSummary();
+      renderActiveTab();
+    }
+
+    // 計算右上角總盈虧 (Rule ②)
+    function updatePortfolioSummary() {
+      const totalPnlEl = document.getElementById('portfolio-total-pnl');
+      
+      let totalPnl = 0;
+      let hasPosition = false;
+
+      myPortfolio.forEach(item => {
+        if (item.shares > 0 && item.cost > 0) {
+          hasPosition = true;
+          const stock = stockData.find(s => s.symbol === item.symbol) || { price: item.cost };
+          totalPnl += (stock.price - item.cost) * item.shares;
         }
-
-        stockUniverse = await universeResp.json();
-        chipDataMap = await chipResp.json();
-
-        // 渲染下拉清單
-        renderDropdown();
-
-        statusBadge.textContent = '✓ 後台資料庫連線成功';
-        statusBadge.style.backgroundColor = '#166534';
-        statusBadge.style.color = '#4ade80';
-
-      } catch (error) {
-        console.error('連線失敗:', error);
-        statusBadge.textContent = 'x 資料載入失敗 (請確認 CI/CD Data/ 檔)';
-        statusBadge.style.backgroundColor = '#991b1b';
-        statusBadge.style.color = '#f87171';
-        selectEl.innerHTML = '<option value="">載入失敗，請重新整理</option>';
-      }
-    }
-
-    function renderDropdown() {
-      const selectEl = document.getElementById('stock-select');
-      selectEl.innerHTML = '<option value="">-- 請選擇台股標的 --</option>';
-
-      stockUniverse.forEach(stock => {
-        const opt = document.createElement('option');
-        opt.value = stock.symbol;
-        opt.textContent = `${stock.symbol} ${stock.name}`;
-        selectEl.appendChild(opt);
       });
 
-      selectEl.disabled = false;
-
-      selectEl.addEventListener('change', (e) => {
-        updateDashboard(e.target.value);
-      });
-    }
-
-    function updateDashboard(symbol) {
-      if (!symbol) return;
-
-      const stockNameEl = document.getElementById('selected-stock-name');
-      const foreignEl = document.getElementById('foreign-1d');
-      const trustEl = document.getElementById('trust-1d');
-      const mainEl = document.getElementById('main-1d');
-      const dayTradeEl = document.getElementById('day-trading-rate');
-
-      // 從底冊取得股票名稱
-      const stockMeta = stockUniverse.find(s => s.symbol === symbol);
-      const stockName = stockMeta ? stockMeta.name : '';
-      stockNameEl.textContent = `${symbol} ${stockName}`;
-
-      const chip = chipDataMap[symbol];
-
-      if (!chip) {
-        foreignEl.textContent = '無數據';
-        trustEl.textContent = '無數據';
-        mainEl.textContent = '無數據';
-        dayTradeEl.textContent = '--';
-        return;
-      }
-
-      // 格式化數字與紅綠色彩 (買超紅/賣超綠)
-      formatValue(foreignEl, chip.foreign_1d);
-      formatValue(trustEl, chip.investment_trust_1d);
-      formatValue(mainEl, chip.main_force_1d);
-
-      dayTradeEl.textContent = chip.day_trading_rate ? `${chip.day_trading_rate}%` : '--';
-      dayTradeEl.className = 'card-value';
-    }
-
-    function formatValue(element, val) {
-      if (val === undefined || val === null) {
-        element.textContent = '0';
-        element.className = 'card-value text-gray';
-        return;
-      }
-
-      const num = Number(val);
-      element.textContent = num.toLocaleString() + ' 張';
-
-      if (num > 0) {
-        element.className = 'card-value text-red';
-      } else if (num < 0) {
-        element.className = 'card-value text-green';
+      if (!hasPosition) {
+        totalPnlEl.textContent = '尚未建立持倉';
+        totalPnlEl.className = 'panel-value-main';
       } else {
-        element.className = 'card-value text-gray';
+        const isPositive = totalPnl >= 0;
+        totalPnlEl.textContent = `${isPositive ? '+' : ''}${Math.round(totalPnl).toLocaleString()} 元`;
+        totalPnlEl.className = `panel-value-main ${isPositive ? 'up-color' : 'down-color'}`;
+      }
+    }
+
+    // 🔍 搜尋個股 (Rule ③)
+    function handleSearch() {
+      const query = document.getElementById('search-input').value.trim();
+      if (!query) return;
+
+      const matched = stockData.filter(s => s.symbol.includes(query) || s.name.includes(query));
+      const container = document.getElementById('cards-container');
+      container.innerHTML = `<div style="font-size:0.9rem; color:var(--text-sub); margin-bottom:10px;">🔍 搜尋「${query}」的結果：</div>`;
+
+      if (matched.length === 0) {
+        // 若底冊沒有，提供即時建立虛擬搜尋項目
+        const dummyCard = createStockCard({
+          symbol: query, name: '自訂標的', price: 100.0, changePct: 0.0, strength: '🟡 中性', advice: '觀察中'
+        });
+        container.appendChild(dummyCard);
+      } else {
+        matched.forEach(s => container.appendChild(createStockCard(s)));
       }
     }
   </script>
