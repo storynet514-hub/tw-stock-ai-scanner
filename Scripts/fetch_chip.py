@@ -3,7 +3,7 @@
 
 """
 台股 AI 選股系統
-fetch_chip.py V6.1 (完整優化版)
+fetch_chip.py V6.2 (完整修正版)
 
 ============================================================
 核心目的
@@ -24,8 +24,8 @@ main_force_20d : 最近 20 個交易日「每日買賣超」加總
 5日集中、20日集中、家數差、其他集中度欄位
 
 優化重點：
-1. 解析 __NEXT_DATA__ JSON 結構，解鎖 20D 完整資料並徹底避免正則誤抓「家數差」。
-2. 保持無跨日累積、無猜測 API、無全市場掃描。
+1. 採用「全動態鍵值比對」解析 __NEXT_DATA__，解決前版解析出 0 筆退回 HTML Table 的問題。
+2. 徹底解鎖 20D 完整資料。
 3. 嚴格驗證：>= 20 筆才計算 main_force_20d，否則維持 None。
 ============================================================
 """
@@ -47,7 +47,7 @@ from bs4 import BeautifulSoup
 # 基本設定
 # ============================================================
 
-VERSION = "V6.1"
+VERSION = "V6.2"
 BASE_DIR = Path(__file__).resolve().parent.parent
 DATA_DIR = BASE_DIR / "Data"
 CHIP_FILE = DATA_DIR / "chip.json"
@@ -132,13 +132,13 @@ def normalize_header(text: Any) -> str:
     return str(text).replace("\n", "").replace("\r", "").replace(" ", "").replace("\u3000", "").strip()
 
 # ============================================================
-# 解析核心：__NEXT_DATA__ JSON 精準解析
+# 解析核心：__NEXT_DATA__ 全動態鍵值比對 (解決 0 筆問題)
 # ============================================================
 
 def extract_from_next_data(html: str) -> List[Dict[str, Any]]:
     """
-    解析 CMoney 預載的 __NEXT_DATA__ JSON 結構
-    精確鎖定「買賣超」張數，排除「家數差」與「集中度」
+    強效版 __NEXT_DATA__ 解析
+    動態搜尋 JSON 樹狀結構，自動匹配日期欄位與買賣超數值，避開家數差與集中度
     """
     soup = BeautifulSoup(html, "html.parser")
     script_tag = soup.find("script", id="__NEXT_DATA__")
@@ -151,22 +151,41 @@ def extract_from_next_data(html: str) -> List[Dict[str, Any]]:
 
         def recursive_search(obj: Any):
             if isinstance(obj, dict):
-                date_val = obj.get("date") or obj.get("Date") or obj.get("dateTime")
-                force_val = (
-                    obj.get("buySellOver") if "buySellOver" in obj
-                    else obj.get("mainForceNetBuySell") if "mainForceNetBuySell" in obj
-                    else obj.get("buySell") if "buySell" in obj
-                    else None
-                )
+                norm_d = None
+                # 1. 尋找日期欄位
+                for k, v in obj.items():
+                    if any(key in k.lower() for key in ["date", "time", "day"]):
+                        norm_d = normalize_date(v)
+                        if norm_d:
+                            break
 
-                norm_d = normalize_date(date_val)
-                norm_f = parse_number(force_val)
+                if not norm_d:
+                    for v in obj.values():
+                        if isinstance(v, str):
+                            norm_d = normalize_date(v)
+                            if norm_d:
+                                break
 
-                if norm_d and norm_f is not None:
-                    results.append({"date": norm_d, "main_force": norm_f})
+                # 2. 尋找主力買賣超數值
+                if norm_d:
+                    norm_f = None
+                    for k, v in obj.items():
+                        k_low = k.lower()
+                        # 精確鎖定買賣超，排斥集中度與家數差
+                        if any(key in k_low for key in ["buysell", "force", "net", "over", "amount"]):
+                            if not any(bad in k_low for bad in ["ratio", "diff", "count", "percent", "rate"]):
+                                val = parse_number(v)
+                                if val is not None:
+                                    norm_f = val
+                                    break
+
+                    if norm_f is not None:
+                        results.append({"date": norm_d, "main_force": norm_f})
 
                 for v in obj.values():
-                    recursive_search(v)
+                    if isinstance(v, (dict, list)):
+                        recursive_search(v)
+
             elif isinstance(obj, list):
                 for item in obj:
                     recursive_search(item)
@@ -175,7 +194,12 @@ def extract_from_next_data(html: str) -> List[Dict[str, Any]]:
     except Exception:
         return []
 
-    return results
+    # 去重並保留最新
+    dedup = {}
+    for r in results:
+        dedup[r["date"]] = r["main_force"]
+
+    return [{"date": k, "main_force": v} for k, v in dedup.items()]
 
 def parse_cmoney_tables(html: str) -> List[Dict[str, Any]]:
     """傳統 HTML Table 解析 (備援機制)"""
@@ -443,7 +467,6 @@ def save_chip(results: Dict[str, Any], complete: int, partial: int, insufficient
     with temp_file.open("w", encoding="utf-8") as f:
         json.dump(output, f, ensure_ascii=False, indent=2)
 
-    # 寫入後再校驗
     with temp_file.open("r", encoding="utf-8") as f:
         verify = json.load(f)
 
