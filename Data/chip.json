@@ -1,6 +1,6 @@
 {
-  "schema_version": "V6.0",
-  "generated_at": "2026-08-21 09:49:07",
+  "schema_version": "V6.1",
+  "generated_at": "2026-08-21 10:05:36",
   "data_date": "2026-08-21",
   "source": "CMoney",
   "universe_mode": "fixed_test_4",
@@ -18,7 +18,6 @@
     "main_force_5d": "最近5個交易日每日主力買賣超加總",
     "main_force_10d": "最近10個交易日每日主力買賣超加總",
     "main_force_20d": "最近20個交易日每日主力買賣超加總",
-    "history_method": "本次執行直接取得CMoney當次20個交易日資料",
     "unit": "張",
     "positive": "主力買超",
     "negative": "主力賣超",
@@ -30,8 +29,7 @@
   },
   "history_accumulation": {
     "enabled": false,
-    "target_days": 20,
-    "note": "不使用跨執行日歷史累積"
+    "target_days": 20
   },
   "statistics": {
     "complete": 0,
