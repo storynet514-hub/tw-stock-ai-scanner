@@ -1,15 +1,15 @@
 {
   "schema_version": "V6.0",
-  "generated_at": "2026-08-21 08:27:52",
+  "generated_at": "2026-08-21 09:32:54",
   "data_date": "2026-08-21",
   "source": "CMoney",
   "universe_mode": "fixed_test_4",
   "universe_count": 4,
   "test_symbols": [
-    "3543",
-    "1583",
-    "6674",
-    "3490"
+    "2337",
+    "2426",
+    "2368",
+    "3081"
   ],
   "definition": {
     "main_force": "CMoney 主力進出之買賣超",
@@ -18,7 +18,7 @@
     "main_force_5d": "最近5個交易日每日主力買賣超加總",
     "main_force_10d": "最近10個交易日每日主力買賣超加總",
     "main_force_20d": "最近20個交易日每日主力買賣超加總",
-    "history_method": "每日更新後與上一版chip.json歷史資料合併",
+    "history_method": "每次執行直接取得CMoney當次歷史資料",
     "unit": "張",
     "positive": "主力買超",
     "negative": "主力賣超",
@@ -29,10 +29,10 @@
     ]
   },
   "history_accumulation": {
-    "enabled": true,
+    "enabled": false,
     "target_days": 20,
     "current_valid_20d_stocks": 0,
-    "note": "20D由每日抓取之買賣超歷史資料累積計算"
+    "note": "不跨執行日累積；20D必須由本次取得之CMoney買賣超資料計算"
   },
   "statistics": {
     "complete": 0,
@@ -41,230 +41,230 @@
     "valid_20d": 0
   },
   "stocks": {
-    "3543": {
-      "symbol": "3543",
-      "name": "州巧",
+    "2337": {
+      "symbol": "2337",
+      "name": "旺宏",
       "market": "TWSE",
       "source": "CMoney",
-      "source_url": "https://www.cmoney.tw/forum/stock/3543?s=main-force",
+      "source_url": "https://www.cmoney.tw/forum/stock/2337?s=main-force",
       "source_field": "買賣超",
-      "main_force_1d": 111.0,
-      "main_force_5d": 446.0,
-      "main_force_10d": 1317.0,
+      "main_force_1d": -4829.0,
+      "main_force_5d": -40515.0,
+      "main_force_10d": -5629.0,
       "main_force_20d": null,
       "history_count": 10,
       "status": "partial_20d",
       "history": [
         {
           "date": "2026/08/19",
-          "main_force": 111.0
+          "main_force": -4829.0
         },
         {
           "date": "2026/08/18",
-          "main_force": -254.0
+          "main_force": -20682.0
         },
         {
           "date": "2026/08/17",
-          "main_force": 523.0
+          "main_force": -22680.0
         },
         {
           "date": "2026/08/14",
-          "main_force": -54.0
+          "main_force": 6003.0
         },
         {
           "date": "2026/08/13",
-          "main_force": 120.0
+          "main_force": 1673.0
         },
         {
           "date": "2026/08/12",
-          "main_force": 591.0
+          "main_force": 7912.0
         },
         {
           "date": "2026/08/11",
-          "main_force": -97.0
+          "main_force": -10817.0
         },
         {
           "date": "2026/08/10",
-          "main_force": 105.0
+          "main_force": 29007.0
         },
         {
           "date": "2026/08/07",
-          "main_force": -274.0
+          "main_force": -26690.0
         },
         {
           "date": "2026/08/06",
-          "main_force": 546.0
+          "main_force": 35474.0
         }
       ],
       "error": null
     },
-    "1583": {
-      "symbol": "1583",
-      "name": "程泰",
+    "2426": {
+      "symbol": "2426",
+      "name": "鼎元",
       "market": "TWSE",
       "source": "CMoney",
-      "source_url": "https://www.cmoney.tw/forum/stock/1583?s=main-force",
+      "source_url": "https://www.cmoney.tw/forum/stock/2426?s=main-force",
       "source_field": "買賣超",
-      "main_force_1d": 0.0,
-      "main_force_5d": 0.0,
-      "main_force_10d": 0.0,
+      "main_force_1d": -562.0,
+      "main_force_5d": -820.0,
+      "main_force_10d": -1764.0,
       "main_force_20d": null,
       "history_count": 10,
       "status": "partial_20d",
       "history": [
         {
           "date": "2026/08/19",
-          "main_force": 0.0
+          "main_force": -562.0
         },
         {
           "date": "2026/08/18",
-          "main_force": 0.0
+          "main_force": -5897.0
         },
         {
           "date": "2026/08/17",
-          "main_force": 0.0
+          "main_force": 7905.0
         },
         {
           "date": "2026/08/14",
-          "main_force": 0.0
+          "main_force": -1268.0
         },
         {
           "date": "2026/08/13",
-          "main_force": 0.0
+          "main_force": -998.0
         },
         {
           "date": "2026/08/12",
-          "main_force": 0.0
+          "main_force": 3183.0
         },
         {
           "date": "2026/08/11",
-          "main_force": 0.0
+          "main_force": -759.0
         },
         {
           "date": "2026/08/10",
-          "main_force": 0.0
+          "main_force": -3470.0
         },
         {
           "date": "2026/08/07",
-          "main_force": 0.0
+          "main_force": 1396.0
         },
         {
           "date": "2026/08/06",
-          "main_force": 0.0
+          "main_force": -1294.0
         }
       ],
       "error": null
     },
-    "6674": {
-      "symbol": "6674",
-      "name": "鋐寶科技",
+    "2368": {
+      "symbol": "2368",
+      "name": "金像電",
       "market": "TWSE",
       "source": "CMoney",
-      "source_url": "https://www.cmoney.tw/forum/stock/6674?s=main-force",
+      "source_url": "https://www.cmoney.tw/forum/stock/2368?s=main-force",
       "source_field": "買賣超",
-      "main_force_1d": 0.0,
-      "main_force_5d": 0.0,
-      "main_force_10d": -1.0,
+      "main_force_1d": -787.0,
+      "main_force_5d": 781.0,
+      "main_force_10d": -2564.0,
       "main_force_20d": null,
       "history_count": 10,
       "status": "partial_20d",
       "history": [
         {
           "date": "2026/08/19",
-          "main_force": 0.0
+          "main_force": -787.0
         },
         {
           "date": "2026/08/18",
-          "main_force": 0.0
+          "main_force": 1862.0
         },
         {
           "date": "2026/08/17",
-          "main_force": 0.0
+          "main_force": -177.0
         },
         {
           "date": "2026/08/14",
-          "main_force": 0.0
+          "main_force": 78.0
         },
         {
           "date": "2026/08/13",
-          "main_force": 0.0
+          "main_force": -195.0
         },
         {
           "date": "2026/08/12",
-          "main_force": 0.0
+          "main_force": -303.0
         },
         {
           "date": "2026/08/11",
-          "main_force": 0.0
+          "main_force": 1831.0
         },
         {
           "date": "2026/08/10",
-          "main_force": -1.0
+          "main_force": -4306.0
         },
         {
           "date": "2026/08/07",
-          "main_force": 0.0
+          "main_force": -409.0
         },
         {
           "date": "2026/08/06",
-          "main_force": 0.0
+          "main_force": -158.0
         }
       ],
       "error": null
     },
-    "3490": {
-      "symbol": "3490",
-      "name": "單井",
+    "3081": {
+      "symbol": "3081",
+      "name": "聯亞",
       "market": "TPEX",
       "source": "CMoney",
-      "source_url": "https://www.cmoney.tw/forum/stock/3490?s=main-force",
+      "source_url": "https://www.cmoney.tw/forum/stock/3081?s=main-force",
       "source_field": "買賣超",
-      "main_force_1d": 572.0,
-      "main_force_5d": 5095.0,
-      "main_force_10d": 5018.0,
+      "main_force_1d": -531.0,
+      "main_force_5d": -70.0,
+      "main_force_10d": 1333.0,
       "main_force_20d": null,
       "history_count": 10,
       "status": "partial_20d",
       "history": [
         {
           "date": "2026/08/19",
-          "main_force": 572.0
+          "main_force": -531.0
         },
         {
           "date": "2026/08/18",
-          "main_force": 1731.0
+          "main_force": 369.0
         },
         {
           "date": "2026/08/17",
-          "main_force": 1778.0
+          "main_force": 193.0
         },
         {
           "date": "2026/08/14",
-          "main_force": 447.0
+          "main_force": -92.0
         },
         {
           "date": "2026/08/13",
-          "main_force": 567.0
+          "main_force": -9.0
         },
         {
           "date": "2026/08/12",
-          "main_force": 26.0
+          "main_force": 267.0
         },
         {
           "date": "2026/08/11",
-          "main_force": -7.0
+          "main_force": -131.0
         },
         {
           "date": "2026/08/10",
-          "main_force": 31.0
+          "main_force": 279.0
         },
         {
           "date": "2026/08/07",
-          "main_force": -167.0
+          "main_force": -130.0
         },
         {
           "date": "2026/08/06",
-          "main_force": 40.0
+          "main_force": 1118.0
         }
       ],
       "error": null

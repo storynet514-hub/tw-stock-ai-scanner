@@ -1,6 +1,6 @@
 {
   "schema_version": "V3.0",
-  "generated_at": "2026-08-21 08:27:52",
+  "generated_at": "2026-08-21 09:32:54",
   "source": {
     "universe": "Data/universe.json",
     "prices": "Data/prices/",
@@ -1691,14 +1691,14 @@
       "short_term": {},
       "dca": {},
       "chip": {
-        "main_force_1d": null,
-        "main_force_5d": null,
-        "main_force_10d": null,
+        "main_force_1d": -531.0,
+        "main_force_5d": -70.0,
+        "main_force_10d": 1333.0,
         "main_force_20d": null,
-        "positive_count": 0,
-        "negative_count": 0,
-        "direction": "資料不足",
-        "medium_direction": "資料不足",
+        "positive_count": 1,
+        "negative_count": 2,
+        "direction": "分歧",
+        "medium_direction": "中期分歧",
         "ten_day_used": true
       }
     },
@@ -3847,14 +3847,14 @@
       "short_term": {},
       "dca": {},
       "chip": {
-        "main_force_1d": 572.0,
-        "main_force_5d": 5095.0,
-        "main_force_10d": 5018.0,
+        "main_force_1d": null,
+        "main_force_5d": null,
+        "main_force_10d": null,
         "main_force_20d": null,
-        "positive_count": 3,
+        "positive_count": 0,
         "negative_count": 0,
-        "direction": "偏多",
-        "medium_direction": "中期偏多",
+        "direction": "資料不足",
+        "medium_direction": "資料不足",
         "ten_day_used": true
       }
     },
@@ -22613,14 +22613,14 @@
       "short_term": {},
       "dca": {},
       "chip": {
-        "main_force_1d": 0.0,
-        "main_force_5d": 0.0,
-        "main_force_10d": 0.0,
+        "main_force_1d": null,
+        "main_force_5d": null,
+        "main_force_10d": null,
         "main_force_20d": null,
         "positive_count": 0,
         "negative_count": 0,
-        "direction": "分歧",
-        "medium_direction": "中期分歧",
+        "direction": "資料不足",
+        "medium_direction": "資料不足",
         "ten_day_used": true
       }
     },
@@ -25869,14 +25869,14 @@
       "short_term": {},
       "dca": {},
       "chip": {
-        "main_force_1d": null,
-        "main_force_5d": null,
-        "main_force_10d": null,
+        "main_force_1d": -4829.0,
+        "main_force_5d": -40515.0,
+        "main_force_10d": -5629.0,
         "main_force_20d": null,
         "positive_count": 0,
-        "negative_count": 0,
-        "direction": "資料不足",
-        "medium_direction": "資料不足",
+        "negative_count": 3,
+        "direction": "偏空",
+        "medium_direction": "中期偏空",
         "ten_day_used": true
       }
     },
@@ -26375,14 +26375,14 @@
       "short_term": {},
       "dca": {},
       "chip": {
-        "main_force_1d": null,
-        "main_force_5d": null,
-        "main_force_10d": null,
+        "main_force_1d": -787.0,
+        "main_force_5d": 781.0,
+        "main_force_10d": -2564.0,
         "main_force_20d": null,
-        "positive_count": 0,
-        "negative_count": 0,
-        "direction": "資料不足",
-        "medium_direction": "資料不足",
+        "positive_count": 1,
+        "negative_count": 2,
+        "direction": "分歧",
+        "medium_direction": "中期分歧",
         "ten_day_used": true
       }
     },
@@ -27233,14 +27233,14 @@
       "short_term": {},
       "dca": {},
       "chip": {
-        "main_force_1d": null,
-        "main_force_5d": null,
-        "main_force_10d": null,
+        "main_force_1d": -562.0,
+        "main_force_5d": -820.0,
+        "main_force_10d": -1764.0,
         "main_force_20d": null,
         "positive_count": 0,
-        "negative_count": 0,
-        "direction": "資料不足",
-        "medium_direction": "資料不足",
+        "negative_count": 3,
+        "direction": "偏空",
+        "medium_direction": "中期偏空",
         "ten_day_used": true
       }
     },
@@ -33107,14 +33107,14 @@
       "short_term": {},
       "dca": {},
       "chip": {
-        "main_force_1d": 111.0,
-        "main_force_5d": 446.0,
-        "main_force_10d": 1317.0,
+        "main_force_1d": null,
+        "main_force_5d": null,
+        "main_force_10d": null,
         "main_force_20d": null,
-        "positive_count": 3,
+        "positive_count": 0,
         "negative_count": 0,
-        "direction": "偏多",
-        "medium_direction": "中期偏多",
+        "direction": "資料不足",
+        "medium_direction": "資料不足",
         "ten_day_used": true
       }
     },
@@ -39113,14 +39113,14 @@
       "short_term": {},
       "dca": {},
       "chip": {
-        "main_force_1d": 0.0,
-        "main_force_5d": 0.0,
-        "main_force_10d": -1.0,
+        "main_force_1d": null,
+        "main_force_5d": null,
+        "main_force_10d": null,
         "main_force_20d": null,
         "positive_count": 0,
-        "negative_count": 1,
-        "direction": "分歧",
-        "medium_direction": "中期分歧",
+        "negative_count": 0,
+        "direction": "資料不足",
+        "medium_direction": "資料不足",
         "ten_day_used": true
       }
     },
