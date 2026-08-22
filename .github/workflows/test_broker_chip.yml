@@ -1,0 +1,47 @@
+name: Test Broker Chip Data
+
+on:
+  workflow_dispatch:
+
+jobs:
+  test-broker-chip:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install requests pandas
+
+      - name: Run broker chip source test
+        run: |
+          set -e
+
+          echo "========================================"
+          echo "測試全券商分點主力買賣超資料源"
+          echo "========================================"
+          echo ""
+          echo "固定測試股票："
+          echo "2337 旺宏"
+          echo "2426 鼎元"
+          echo "2368 金像電"
+          echo "3081 聯亞"
+          echo ""
+
+          python Scripts/test_broker_chip.py
+
+      - name: Show test result
+        if: always()
+        run: |
+          echo ""
+          echo "========================================"
+          echo "券商分點資料源測試結束"
+          echo "========================================"
