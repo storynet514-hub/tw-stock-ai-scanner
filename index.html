@@ -23,7 +23,6 @@
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
       background-color: var(--bg-dark);
       color: var(--text-main);
-      /* 關鍵：解決 iPhone 瀏海/動態島裁切頂部問題 */
       padding-top: max(20px, env(safe-area-inset-top));
       padding-bottom: max(20px, env(safe-area-inset-bottom));
       padding-left: max(16px, env(safe-area-inset-left));
@@ -32,34 +31,21 @@
       margin: 0 auto;
     }
 
-    /* 頂部 Header */
     header { margin-bottom: 20px; }
     .header-title { font-size: 1.4rem; font-weight: 800; letter-spacing: 1px; }
     .header-subtitle { font-size: 1.1rem; color: var(--text-sub); margin-top: 2px; }
     .market-status { display: flex; align-items: center; gap: 12px; margin-top: 12px; font-size: 0.9rem; flex-wrap: wrap; }
     
-    .status-tag {
-      padding: 4px 10px; border-radius: 20px; font-weight: 600; font-size: 0.85rem;
-    }
+    .status-tag { padding: 4px 10px; border-radius: 20px; font-weight: 600; font-size: 0.85rem; }
     .status-tag.open { background: rgba(34, 197, 94, 0.15); color: #4ade80; border: 1px solid rgba(34, 197, 94, 0.3); }
     .status-tag.closed { background: rgba(239, 68, 68, 0.15); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.3); }
-    .status-tag.waiting { background: rgba(234, 179, 8, 0.15); color: #facc15; border: 1px solid rgba(234, 179, 8, 0.3); }
-    
     .trade-date { color: var(--text-sub); }
 
-    /* 休市提示條 */
     .closed-notice {
-      background: rgba(234, 179, 8, 0.1);
-      border: 1px solid rgba(234, 179, 8, 0.25);
-      color: #fde047;
-      padding: 8px 12px;
-      border-radius: 8px;
-      font-size: 0.82rem;
-      margin-top: 10px;
-      display: none;
+      background: rgba(234, 179, 8, 0.1); border: 1px solid rgba(234, 179, 8, 0.25);
+      color: #fde047; padding: 8px 12px; border-radius: 8px; font-size: 0.82rem; margin-top: 10px; display: none;
     }
 
-    /* 四小格資訊面板 */
     .grid-panel { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 20px; }
     .panel-card {
       background-color: var(--panel-bg); border: 1px solid var(--border-color);
@@ -69,29 +55,23 @@
     .panel-value-main { font-size: 1.4rem; font-weight: 700; margin-bottom: 2px; }
     .panel-sub { font-size: 0.8rem; color: var(--text-sub); }
 
-    /* 查詢個股 */
     .search-box { margin-bottom: 20px; }
-    .search-title { font-size: 0.9rem; color: var(--text-sub); margin-bottom: 8px; }
     .search-input-group { display: flex; gap: 8px; }
     .search-input-group input {
       flex: 1; background-color: var(--panel-bg); border: 1px solid var(--border-color);
       border-radius: 8px; padding: 10px 14px; color: var(--text-main); font-size: 0.95rem; outline: none;
     }
     .search-input-group button {
-      background-color: #2563eb; color: #fff; border: none; border-radius: 8px;
-      padding: 0 18px; font-weight: 600; cursor: pointer;
+      background-color: #2563eb; color: #fff; border: none; border-radius: 8px; padding: 0 18px; font-weight: 600; cursor: pointer;
     }
 
-    /* 五個固定分頁 */
     .tab-group { display: flex; gap: 8px; overflow-x: auto; margin-bottom: 20px; padding-bottom: 4px; }
     .tab-btn {
       background-color: var(--panel-bg); border: 1px solid var(--border-color);
-      color: var(--text-sub); padding: 8px 14px; border-radius: 20px; font-size: 0.85rem;
-      white-space: nowrap; cursor: pointer;
+      color: var(--text-sub); padding: 8px 14px; border-radius: 20px; font-size: 0.85rem; white-space: nowrap; cursor: pointer;
     }
     .tab-btn.active { background-color: #2563eb; color: #fff; border-color: #2563eb; font-weight: 600; }
 
-    /* 個股卡片 */
     .cards-container { display: flex; flex-direction: column; gap: 12px; }
     .stock-card {
       background-color: var(--card-bg); border: 1px solid var(--border-color);
@@ -108,13 +88,9 @@
       display: flex; justify-content: space-between; align-items: center;
       border-top: 1px dashed var(--border-color); padding-top: 10px; margin-top: 10px; font-size: 0.85rem;
     }
-    .strength-tag { font-weight: 600; }
-    .advice-text { color: var(--text-sub); }
-
     .add-btn {
       background-color: rgba(37, 99, 235, 0.2); color: #60a5fa;
-      border: 1px solid rgba(37, 99, 235, 0.4); padding: 6px 12px; border-radius: 6px;
-      font-size: 0.8rem; cursor: pointer;
+      border: 1px solid rgba(37, 99, 235, 0.4); padding: 6px 12px; border-radius: 6px; font-size: 0.8rem; cursor: pointer;
     }
 
     .up-color { color: var(--tw-up) !important; }
@@ -132,7 +108,7 @@
       <span class="trade-date">最新交易日：<span id="latest-date">載入中...</span></span>
     </div>
     <div class="closed-notice" id="closed-notice">
-      💡 目前為非開盤時間，頁面已自動呈現最新交易日（盤後）數據。
+      💡 目前為非開盤時間，頁面已自動呈現最新交易日數據。
     </div>
   </header>
 
@@ -140,7 +116,7 @@
     <div class="panel-card">
       <div class="panel-label">今日精選</div>
       <div class="panel-value-main" id="selected-count">0</div>
-      <div class="panel-sub">最新交易日篩選結果</div>
+      <div class="panel-sub">符合五大指標篩選</div>
     </div>
     <div class="panel-card">
       <div class="panel-label">持有個股總盈虧</div>
@@ -154,15 +130,15 @@
     </div>
     <div class="panel-card">
       <div class="panel-label">市場風向</div>
-      <div class="panel-value-main" id="market-wind">🟢 偏多</div>
-      <div class="panel-sub">市場氣氛偏強</div>
+      <div class="panel-value-main" id="market-wind">--</div>
+      <div class="panel-sub" id="market-wind-sub">計算中...</div>
     </div>
   </section>
 
   <section class="search-box">
     <div class="search-title">🔍 查詢個股</div>
     <div class="search-input-group">
-      <input type="text" id="search-input" placeholder="輸入股票名稱或代號 (例如: 台積電 或 2330)">
+      <input type="text" id="search-input" placeholder="輸入股票名稱或代號 (如: 南亞 或 1303)">
       <button onclick="handleSearch()">查詢</button>
     </div>
   </section>
@@ -175,198 +151,166 @@
     <button class="tab-btn" onclick="switchTab('mylist', event)">我的清單</button>
   </nav>
 
-  <main class="cards-container" id="cards-container">
-    <!-- 動態渲染卡片區域 -->
-  </main>
+  <main class="cards-container" id="cards-container"></main>
 
   <script>
     let currentTab = 'featured';
     let stockDataMap = new Map();
     let myPortfolio = JSON.parse(localStorage.getItem('myStockList') || '[]');
 
-    // 預設常見個股對照表 (確保即時檔沒讀到時，搜尋 2330、2331 絕對不會空白)
-    const fallbackDatabase = {
-      "2330": { name: "台積電", price: 955.0, changePct: 1.27, isFeatured: true, type: "featured" },
-      "2331": { name: "精英", price: 28.35, changePct: -0.52, isFeatured: false, type: "other" },
-      "2317": { name: "鴻海", price: 185.0, changePct: 0.82, isFeatured: true, type: "featured" },
-      "2454": { name: "聯發科", price: 1220.0, changePct: -1.21, isFeatured: true, type: "featured" },
-      "0050": { name: "元大台灣50", price: 172.5, changePct: 0.65, isFeatured: false, type: "etf" },
-      "0056": { name: "元大高股息", price: 38.2, changePct: 0.15, isFeatured: false, type: "etf" }
-    };
-
-    // 精準判斷交易日與開休市
+    // 計算交易日與狀態
     function getMarketStatus() {
       const now = new Date();
-      const day = now.getDay(); // 0:週日, 1:週一 ... 6:週六
+      const day = now.getDay();
       const timeNum = now.getHours() * 100 + now.getMinutes();
 
       const isWeekend = (day === 0 || day === 6);
       const isTradingHours = !isWeekend && (timeNum >= 900 && timeNum <= 1330);
 
-      let statusText = '';
-      let statusClass = '';
+      let statusText = isWeekend ? '🔴 今日休市 (週末)' : (isTradingHours ? '🟢 即時盤中' : '🔵 今日已收盤');
+      let statusClass = isTradingHours ? 'open' : 'closed';
 
-      if (isWeekend) {
-        statusText = '🔴 今日休市 (週末)';
-        statusClass = 'closed';
-      } else if (isTradingHours) {
-        statusText = '🟢 即時盤中';
-        statusClass = 'open';
-      } else if (timeNum < 900) {
-        statusText = '🟡 盤前觀望';
-        statusClass = 'waiting';
-      } else {
-        statusText = '🔵 今日已收盤';
-        statusClass = 'closed';
-      }
-
-      // 推算最新交易日 (若週末則自動推算至上週五)
       let lastTradingDate = new Date(now);
-      if (day === 6) { 
-        lastTradingDate.setDate(now.getDate() - 1); // 週六推回週五
-      } else if (day === 0) { 
-        lastTradingDate.setDate(now.getDate() - 2); // 週日推回週五
-      } else if (timeNum < 900) { 
-        lastTradingDate.setDate(now.getDate() - 1); // 盤前推回昨日
-      }
-
-      const dateStr = lastTradingDate.toISOString().split('T')[0];
+      if (day === 6) lastTradingDate.setDate(now.getDate() - 1);
+      else if (day === 0) lastTradingDate.setDate(now.getDate() - 2);
+      else if (timeNum < 900) lastTradingDate.setDate(now.getDate() - 1);
 
       return {
         isOpen: isTradingHours,
-        isWeekend: isWeekend,
         statusText: statusText,
         statusClass: statusClass,
-        dateStr: dateStr
+        dateStr: lastTradingDate.toISOString().split('T')[0]
       };
     }
 
-    document.addEventListener('DOMContentLoaded', async () => {
-      // 1. 初始化市場狀態
-      const market = getMarketStatus();
-      const tagEl = document.getElementById('market-open-tag');
-      const dateEl = document.getElementById('latest-date');
-      const noticeEl = document.getElementById('closed-notice');
-
-      if (tagEl) {
-        tagEl.textContent = market.statusText;
-        tagEl.className = `status-tag ${market.statusClass}`;
-      }
-      if (dateEl) dateEl.textContent = market.dateStr;
-      if (!market.isOpen && noticeEl) noticeEl.style.display = 'block';
-
-      // 2. 預先載入預設資料庫 (防止空資料)
-      Object.keys(fallbackDatabase).forEach(code => {
-        const item = fallbackDatabase[code];
-        stockDataMap.set(code, { symbol: code, ...item });
-      });
-
-      // 3. 嘗試從靜態 JSON 檔讀取最新資料
-      await loadAllData(market.dateStr);
-
-      // 4. 渲染預設頁面
-      renderActiveTab();
-    });
-
-    async function fetchJsonSafely(filenames) {
+    // 核心路徑嘗試機制 (避免資料夾路徑大小寫或層級錯誤導致抓不到全台股資料)
+    async function fetchJsonFromMultiplePaths(filename) {
+      const paths = [
+        `./data/${filename}`,
+        `./Data/${filename}`,
+        `./${filename}`,
+        `../data/${filename}`
+      ];
       const ts = new Date().getTime();
-      const basePaths = ['./Data/', './data/', './'];
-      
-      for (const fn of filenames) {
-        for (const base of basePaths) {
-          try {
-            const resp = await fetch(`${base}${fn}?v=${ts}`);
-            if (resp.ok) return await resp.json();
-          } catch (e) {}
-        }
+
+      for (const p of paths) {
+        try {
+          const resp = await fetch(`${p}?v=${ts}`);
+          if (resp.ok) {
+            const json = await resp.json();
+            return json;
+          }
+        } catch (e) {}
       }
       return null;
     }
 
-    async function loadAllData(defaultDate) {
-      const dateEl = document.getElementById('latest-date');
-      const countEl = document.getElementById('selected-count');
+    // 檢驗五大選股指標
+    function checkFiveIndicators(s) {
+      // 1. MACD 黃金交叉
+      const macdValid = s.macd_gc === true || s.macd_gold_cross === true;
+      // 2. RSI > 50
+      const rsiValid = Number(s.rsi || s.rsi14) > 50;
+      // 3. KD 黃金交叉
+      const kdValid = s.kd_gc === true || s.kd_gold_cross === true;
+      // 4. 成交量 > 5日均量 * 1.5倍
+      const volumeValid = Number(s.volume || s.v) > (Number(s.v_ma5 || s.ma5_volume || 0) * 1.5);
+      // 5. 股價站上20日線呈現向上勾，且股價區間 10~80
+      const price = Number(s.close || s.price || s.z || 0);
+      const ma20 = Number(s.ma20 || s.sma20 || 0);
+      const ma20Up = s.ma20_up === true || s.ma20_slope > 0;
+      const priceValid = price >= 10 && price <= 80 && price >= ma20 && ma20Up;
 
-      // 載入 Universe (名冊檔) 與 Chip (籌碼與價格檔)
-      const rawUniverse = await fetchJsonSafely(['universe.json', 'Universe.json']);
-      if (rawUniverse) parseUniverse(rawUniverse);
-
-      const rawChip = await fetchJsonSafely(['chip.json', 'Chip.json', 'stocks.json']);
-      if (rawChip) parseChip(rawChip);
-
-      // 更新加權指數預設值 (如果抓不到數據)
-      const taiexPriceEl = document.getElementById('taiex-price');
-      const taiexChangeEl = document.getElementById('taiex-change');
-      if (taiexPriceEl && taiexPriceEl.textContent === '--') {
-        taiexPriceEl.textContent = "22,429.10";
-        taiexChangeEl.textContent = "+156.40 (+0.70%)";
-        taiexChangeEl.className = "panel-sub up-color";
+      // 如果有包含明確運算標記，則回傳精準布林值
+      if (s.hasOwnProperty('macd_gc') || s.hasOwnProperty('rsi')) {
+        return macdValid && rsiValid && kdValid && volumeValid && priceValid;
       }
+      
+      // 若後端 API 已經提前算好 is_selected 欄位
+      return s.is_selected === true || s.isFeatured === true;
+    }
 
-      // 更新今日精選數量
-      const featuredList = Array.from(stockDataMap.values()).filter(s => s.isFeatured);
-      if (countEl) countEl.textContent = featuredList.length;
+    document.addEventListener('DOMContentLoaded', async () => {
+      const market = getMarketStatus();
+      document.getElementById('market-open-tag').textContent = market.statusText;
+      document.getElementById('market-open-tag').className = `status-tag ${market.statusClass}`;
+      document.getElementById('latest-date').textContent = market.dateStr;
+      if (!market.isOpen) document.getElementById('closed-notice').style.display = 'block';
+
+      await loadMarketData();
+      renderActiveTab();
+    });
+
+    async function loadMarketData() {
+      // 1. 讀取台股名冊 (Universe / 全台股)
+      const universeData = await fetchJsonFromMultiplePaths('universe.json');
+      if (universeData) parseUniverse(universeData);
+
+      // 2. 讀取最新晶片/價格/指標 (Chip / Stocks / Taiex)
+      const chipData = await fetchJsonFromMultiplePaths('chip.json') || await fetchJsonFromMultiplePaths('stocks.json');
+      if (chipData) parseChipAndTaiex(chipData);
     }
 
     function parseUniverse(data) {
       const list = Array.isArray(data) ? data : (data.stocks || data.data || []);
-      if (Array.isArray(list)) {
-        list.forEach(item => {
-          const sym = String(item.symbol || item.code || item.id || '').trim();
-          const name = String(item.name || item.stock_name || sym).trim();
-          if (sym) {
-            const existing = stockDataMap.get(sym) || {};
-            stockDataMap.set(sym, {
-              symbol: sym,
-              name: name,
-              price: existing.price || 0,
-              changePct: existing.changePct || 0,
-              isFeatured: existing.isFeatured || false,
-              type: existing.type || 'other'
-            });
-          }
-        });
-      }
+      list.forEach(item => {
+        const sym = String(item.symbol || item.code || item.id || '').trim();
+        const name = String(item.name || item.stock_name || sym).trim();
+        if (sym) {
+          stockDataMap.set(sym, {
+            symbol: sym,
+            name: name,
+            price: 0,
+            changePct: 0,
+            isFeatured: false,
+            type: sym.startsWith('00') ? 'etf' : 'other',
+            raw: item
+          });
+        }
+      });
     }
 
-    function parseChip(data) {
-      const stocksObj = data.stocks || data.data || data;
+    function parseChipAndTaiex(data) {
+      // A. 更新加權指數 (Taiex)
+      const taiex = data.taiex || data.index || data.market_index;
+      if (taiex) {
+        const p = Number(taiex.price || taiex.close).toLocaleString('en-US', { minimumFractionDigits: 2 });
+        const change = Number(taiex.change || 0);
+        const pct = Number(taiex.change_pct || taiex.pct || 0);
+        const sign = change > 0 ? '+' : '';
+        const colorClass = change > 0 ? 'up-color' : (change < 0 ? 'down-color' : 'flat-color');
 
-      const updateStock = (sym, price, changePct, isSelected) => {
-        const key = String(sym).trim();
-        let item = stockDataMap.get(key) || {
-          symbol: key,
-          name: key,
-          price: 0,
-          changePct: 0,
-          isFeatured: false,
-          type: 'other'
-        };
+        document.getElementById('taiex-price').textContent = p;
+        document.getElementById('taiex-change').textContent = `${sign}${change.toFixed(2)} (${sign}${pct.toFixed(2)}%)`;
+        document.getElementById('taiex-change').className = `panel-sub ${colorClass}`;
 
-        const parsedPrice = Number(price);
-        const parsedPct = Number(changePct);
-
-        // 有有效價格才覆蓋
-        if (!isNaN(parsedPrice) && parsedPrice > 0) item.price = parsedPrice;
-        if (!isNaN(parsedPct)) item.changePct = parsedPct;
-        
-        item.isFeatured = (isSelected === true || isSelected === "true");
-
-        if (item.isFeatured) item.type = 'featured';
-        else if (key.startsWith('00') && item.name.includes('債')) item.type = 'bond';
-        else if (key.startsWith('00')) item.type = 'etf';
-
-        stockDataMap.set(key, item);
-      };
-
-      if (Array.isArray(stocksObj)) {
-        stocksObj.forEach(s => {
-          const p = s.close_price || s.price || s.close || s.z;
-          const pct = s.change_pct || s.changePct || s.pct;
-          const sel = s.is_selected || s.selected;
-          updateStock(s.symbol || s.code, p, pct, sel);
-        });
+        document.getElementById('market-wind').textContent = pct >= 0 ? '🟢 偏多' : '🔴 偏空';
+        document.getElementById('market-wind-sub').textContent = pct >= 0 ? '市場氣氛偏強' : '市場氣氛偏弱';
       }
+
+      // B. 更新個股價格與五大指標過濾
+      const stocksObj = data.stocks || data.data || (Array.isArray(data) ? data : []);
+      let featuredCount = 0;
+
+      stocksObj.forEach(s => {
+        const sym = String(s.symbol || s.code).trim();
+        let item = stockDataMap.get(sym) || { symbol: sym, name: s.name || sym, type: 'other' };
+
+        item.price = Number(s.close || s.price || s.z || item.price || 0);
+        item.changePct = Number(s.change_pct || s.changePct || s.pct || item.changePct || 0);
+        
+        // 帶入五大指標校驗
+        item.isFeatured = checkFiveIndicators(s);
+        if (item.isFeatured) {
+          item.type = 'featured';
+          featuredCount++;
+        }
+
+        item.raw = s;
+        stockDataMap.set(sym, item);
+      });
+
+      document.getElementById('selected-count').textContent = featuredCount;
     }
 
     function switchTab(tabKey, evt) {
@@ -390,11 +334,13 @@
 
       const filtered = allList.filter(s => {
         if (currentTab === 'featured') return s.isFeatured;
-        return s.type === currentTab;
+        if (currentTab === 'etf') return s.symbol.startsWith('00') && !s.name.includes('債');
+        if (currentTab === 'bond') return s.symbol.startsWith('00') && s.name.includes('債');
+        return true;
       });
 
       if (filtered.length === 0) {
-        container.innerHTML = `<div style="text-align:center; padding:40px; color:var(--text-sub);">「${getTabName(currentTab)}」暫無標的資料</div>`;
+        container.innerHTML = `<div style="text-align:center; padding:40px; color:var(--text-sub);">「${getTabName(currentTab)}」無標的或數據載入中</div>`;
         return;
       }
 
@@ -413,9 +359,20 @@
       const colorClass = isUp ? 'up-color' : (stock.changePct < 0 ? 'down-color' : 'flat-color');
       const sign = isUp ? '+' : '';
 
-      // 防止價格為 0 或 undefined
-      const displayPrice = (stock.price && stock.price > 0) ? stock.price.toFixed(2) : '--';
-      const displayPct = (stock.changePct !== undefined) ? `${sign}${stock.changePct.toFixed(2)}%` : '0.00%';
+      const displayPrice = stock.price > 0 ? stock.price.toFixed(2) : '--';
+      const displayPct = `${sign}${stock.changePct.toFixed(2)}%`;
+
+      // 根據技術面動態生成 AI 建議（避免跌幅標的給出偏多建議）
+      let statusSignal = '🟡 中性';
+      let adviceText = '建議：觀望/順勢';
+
+      if (stock.isFeatured) {
+        statusSignal = '🟢 符合5大指標';
+        adviceText = '建議：強勢波段，可分批佈局';
+      } else if (stock.changePct < -1.0) {
+        statusSignal = '🔴 弱勢修正';
+        adviceText = '建議：短線拉回，暫不追高';
+      }
 
       card.innerHTML = `
         <div class="card-header">
@@ -429,8 +386,8 @@
           </div>
         </div>
         <div class="card-footer">
-          <div class="strength-tag">${stock.changePct > 0 ? '🟢 強勢' : (stock.changePct < 0 ? '🔴 弱勢' : '🟡 中性')}</div>
-          <div class="advice-text">建議：${stock.isFeatured ? '偏多，可分批' : '觀望/順勢'}</div>
+          <div>${statusSignal}</div>
+          <div style="color:var(--text-sub);">${adviceText}</div>
           <button class="add-btn" onclick="addToMyList('${stock.symbol}')">＋加入我的清單</button>
         </div>
       `;
