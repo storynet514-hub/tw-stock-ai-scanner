@@ -329,7 +329,6 @@
       renderActiveTab();
     });
 
-    // 具備多重自動容錯機制的資料讀取函式
     async function fetchBackendData() {
       const countEl = document.getElementById('selected-count');
       const dateEl = document.getElementById('latest-date');
@@ -337,16 +336,14 @@
       const taiexChangeEl = document.getElementById('taiex-change');
 
       const timestamp = new Date().getTime();
-      
-      // 自動嘗試各種 GitHub Pages 路徑組合與大小寫
       const pathsToTry = [
         { chip: `./Data/chip.json?v=${timestamp}`, universe: `./Data/universe.json?v=${timestamp}` },
         { chip: `./data/chip.json?v=${timestamp}`, universe: `./data/universe.json?v=${timestamp}` },
         { chip: `Data/chip.json?v=${timestamp}`, universe: `Data/universe.json?v=${timestamp}` }
       ];
 
-      let chipDataMap = null;
-      let universeList = null;
+      let rawChip = null;
+      let rawUniverse = null;
 
       for (const path of pathsToTry) {
         try {
@@ -355,116 +352,127 @@
             fetch(path.universe)
           ]);
           if (chipResp.ok && universeResp.ok) {
-            chipDataMap = await chipResp.json();
-            universeList = await universeResp.json();
-            console.log("成功連結資料路徑:", path);
+            rawChip = await chipResp.json();
+            rawUniverse = await universeResp.json();
+            console.log("成功載入數據檔：", path);
             break;
           }
-        } catch (e) {
-          // 繼續嘗試下一個備援路徑
-        }
+        } catch (e) {}
       }
 
-      if (!chipDataMap || !universeList) {
-        console.error("無法讀取 Data/ 檔案，請確認 GitHub Pages 部署狀態。");
-        if (dateEl) dateEl.textContent = "檔案讀取失敗 (404)";
-        if (countEl) countEl.textContent = "0";
-
-        const container = document.getElementById('cards-container');
-        if (container) {
-          container.innerHTML = `
-            <div style="text-align:center; padding:30px; color:#f87171; background:rgba(239,68,68,0.1); border-radius:12px; border:1px solid rgba(239,68,68,0.3);">
-              ⚠️ <b>資料鏈結失敗 (404 Not Found)</b><br>
-              <span style="font-size:0.85rem; color:#94a3b8; display:block; margin-top:6px;">請按下 F12 查看主控台，並確認 GitHub Actions 是否有成功將 Data/ 產出至主幹分支。</span>
-            </div>`;
-        }
+      if (!rawChip || !rawUniverse) {
+        if (dateEl) dateEl.textContent = "讀取失敗";
         return;
       }
 
-      const list = Array.isArray(universeList) ? universeList : (universeList.stocks || []);
+      // 標準化股票名冊 (Universe)
+      let universeList = [];
+      if (Array.isArray(rawUniverse)) {
+        universeList = rawUniverse;
+      } else if (rawUniverse.stocks && Array.isArray(rawUniverse.stocks)) {
+        universeList = rawUniverse.stocks;
+      } else if (typeof rawUniverse === 'object') {
+        universeList = Object.keys(rawUniverse).map(k => ({
+          symbol: k,
+          name: rawUniverse[k].name || rawUniverse[k].stock_name || k
+        }));
+      }
 
-      // 解析並比對名冊與籌碼股價
-      allStockData = list.map(stock => {
-        let chip = Array.isArray(chipDataMap) 
-          ? (chipDataMap.find(c => c.symbol === stock.symbol) || {})
-          : (chipDataMap[stock.symbol] || {});
+      // 標準化籌碼與價格對照 Map
+      let chipMap = {};
+      let latestDate = "未知";
 
-        // 套用五大選股核心條件 (若後台 Python 已計算 is_selected 則優先採用)
+      if (Array.isArray(rawChip)) {
+        rawChip.forEach(item => {
+          if (item.symbol) chipMap[String(item.symbol)] = item;
+        });
+      } else if (typeof rawChip === 'object') {
+        latestDate = rawChip.latest_date || rawChip.date || latestDate;
+        
+        // 處理大盤數據
+        if (rawChip.taiex && taiexPriceEl) {
+          taiexPriceEl.textContent = Number(rawChip.taiex.price || 0).toLocaleString();
+          const changeVal = rawChip.taiex.change || 0;
+          const changePctVal = rawChip.taiex.change_pct || 0;
+          const isUp = changeVal >= 0;
+          if (taiexChangeEl) {
+            taiexChangeEl.innerHTML = `<span class="${isUp ? 'up-color' : 'down-color'}">${isUp ? '+' : ''}${changeVal} (${isUp ? '+' : ''}${changePctVal}%)</span>`;
+          }
+        }
+
+        // 解析 stocks 字典或包含的物件
+        const stocksObj = rawChip.stocks || rawChip.data || rawChip;
+        Object.keys(stocksObj).forEach(key => {
+          if (key !== 'latest_date' && key !== 'taiex' && key !== 'date') {
+            const item = stocksObj[key];
+            const sym = item.symbol || key;
+            chipMap[String(sym)] = item;
+          }
+        });
+      }
+
+      if (dateEl) dateEl.textContent = latestDate !== "未知" ? latestDate : (new Date().toISOString().split('T')[0]);
+
+      // 組合整合資訊
+      allStockData = universeList.map(stock => {
+        const symStr = String(stock.symbol || stock.code);
+        const nameStr = stock.name || stock.stock_name || symStr;
+        const chip = chipMap[symStr] || {};
+
+        const price = Number(chip.close_price || chip.price || stock.price || 0);
+        const changePct = Number(chip.change_pct || chip.changePct || 0);
+
+        // 判斷五大指標條件
         const meetsStrategy = chip.is_selected !== undefined 
-          ? chip.is_selected === true 
-          : checkFiveIndicators(stock, chip);
+          ? (chip.is_selected === true || chip.is_selected === "true")
+          : checkFiveIndicators(price, chip);
 
-        // 類型判定
+        // 判定分類
         let category = 'other';
         if (meetsStrategy) {
           category = 'featured';
-        } else if (stock.symbol.startsWith('00') && (stock.name.includes('債') || stock.name.includes('美債'))) {
+        } else if (symStr.startsWith('00') && (nameStr.includes('債') || nameStr.includes('美債'))) {
           category = 'bond';
-        } else if (stock.symbol.startsWith('00')) {
+        } else if (symStr.startsWith('00')) {
           category = 'etf';
-        } else if (chip.rank && chip.rank <= 10) {
+        } else if (chip.rank && Number(chip.rank) <= 10) {
           category = 'top10';
         }
 
         return {
-          symbol: stock.symbol,
-          name: stock.name,
-          price: Number(chip.close_price || chip.price || stock.price || 0),
-          changePct: Number(chip.change_pct || chip.changePct || 0),
-          strength: (chip.change_pct || 0) > 0 ? '🟢 強勢' : ((chip.change_pct || 0) < 0 ? '🔴 弱勢' : '🟡 中性'),
-          advice: meetsStrategy ? '偏多，可分批' : '續抱觀察',
+          symbol: symStr,
+          name: nameStr,
+          price: price,
+          changePct: changePct,
+          strength: changePct > 0 ? '🟢 強勢' : (changePct < 0 ? '🔴 弱勢' : '🟡 中性'),
+          advice: meetsStrategy ? '偏多，可分批' : '觀望/順勢',
           type: category,
           isFeatured: meetsStrategy
         };
       });
 
-      // 精選標的過濾
-      const featuredStocks = allStockData.filter(s => s.isFeatured);
-      
-      if (countEl) countEl.textContent = featuredStocks.length;
-      if (dateEl) dateEl.textContent = chipDataMap.latest_date || new Date().toISOString().split('T')[0];
-
-      // 更新大盤數據
-      if (chipDataMap.taiex && taiexPriceEl) {
-        taiexPriceEl.textContent = Number(chipDataMap.taiex.price || 0).toLocaleString();
-        const changeVal = chipDataMap.taiex.change || 0;
-        const changePctVal = chipDataMap.taiex.change_pct || 0;
-        const isUp = changeVal >= 0;
-        if (taiexChangeEl) {
-          taiexChangeEl.innerHTML = `<span class="${isUp ? 'up-color' : 'down-color'}">${isUp ? '+' : ''}${changeVal} (${isUp ? '+' : ''}${changePctVal}%)</span>`;
-        }
-      }
+      // 更新今日精選數量
+      const featuredCount = allStockData.filter(s => s.isFeatured).length;
+      if (countEl) countEl.textContent = featuredCount;
 
       updatePortfolioSummary();
     }
 
-    // 驗證五大選股指標
-    function checkFiveIndicators(stock, chip) {
-      const price = Number(chip.close_price || chip.price || 0);
+    function checkFiveIndicators(price, chip) {
       const ma20 = Number(chip.ma20 || 0);
       const ma20Slope = Number(chip.ma20_slope || 0);
       const volume = Number(chip.volume || 0);
       const volMa5 = Number(chip.vol_ma5 || 0);
 
-      // 1. 股價區間 10～80 元
-      const cond_priceRange = price >= 10 && price <= 80;
+      const cond1 = price >= 10 && price <= 80;
+      const cond2 = price > ma20 && ma20Slope > 0;
+      const cond3 = volume > (volMa5 * 1.5);
+      const cond4 = (chip.kd_gold_cross === true) && (Number(chip.rsi) > 50);
+      const cond5 = (chip.macd_gold_cross === true);
 
-      // 2. 股價站上 20 日線且 20 日線呈現向上勾
-      const cond_ma20 = price > ma20 && ma20Slope > 0;
-
-      // 3. 成交量 > 5 日均量 * 1.5 倍
-      const cond_volume = volume > (volMa5 * 1.5);
-
-      // 4. KD 黃金交叉 & RSI > 50
-      const cond_kdRsi = (chip.kd_gold_cross === true) && (Number(chip.rsi) > 50);
-
-      // 5. MACD 黃金交叉
-      const cond_macd = (chip.macd_gold_cross === true);
-
-      return cond_priceRange && cond_ma20 && cond_volume && cond_kdRsi && cond_macd;
+      return cond1 && cond2 && cond3 && cond4 && cond5;
     }
 
-    // Tab 切換與渲染
     function switchTab(tabKey, evt) {
       currentTab = tabKey;
       document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
@@ -486,9 +494,9 @@
         if (currentTab === 'featured') return s.isFeatured;
         return s.type === currentTab;
       });
-      
+
       if (filteredStocks.length === 0) {
-        container.innerHTML = `<div style="text-align:center; padding:40px; color:var(--text-sub);">「${getTabName(currentTab)}」分頁暫無符合條件之標的</div>`;
+        container.innerHTML = `<div style="text-align:center; padding:40px; color:var(--text-sub);">「${getTabName(currentTab)}」分頁暫無資料</div>`;
         return;
       }
 
@@ -516,7 +524,7 @@
             <div class="stock-code">${stock.symbol}</div>
           </div>
           <div class="stock-price-box">
-            <div class="price-num ${colorClass}">${stock.price.toFixed(2)}</div>
+            <div class="price-num ${colorClass}">${stock.price ? stock.price.toFixed(2) : '--'}</div>
             <div class="price-change ${colorClass}">${sign}${stock.changePct.toFixed(2)}%</div>
           </div>
         </div>
@@ -529,7 +537,6 @@
       return card;
     }
 
-    // 持倉清單繪製與計算
     function renderMyList(container) {
       if (myPortfolio.length === 0) {
         container.innerHTML = `
@@ -564,7 +571,7 @@
               <div class="stock-code">${stock.symbol}</div>
             </div>
             <div class="stock-price-box">
-              <div class="price-num ${colorClass}">${stock.price.toFixed(2)}</div>
+              <div class="price-num ${colorClass}">${stock.price ? stock.price.toFixed(2) : '--'}</div>
               <div class="price-change ${colorClass}">${stock.changePct > 0 ? '+' : ''}${stock.changePct.toFixed(2)}%</div>
             </div>
           </div>
@@ -622,7 +629,7 @@
     function updatePortfolioSummary() {
       const totalPnlEl = document.getElementById('portfolio-total-pnl');
       if (!totalPnlEl) return;
-      
+
       let totalPnl = 0;
       let hasPosition = false;
 
