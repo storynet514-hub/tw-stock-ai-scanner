@@ -3,3843 +3,661 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="description" content="台股 AI 選股與零股定投動態分析儀表板">
-  <title>台股 AI 選股・零股定投</title>
-
+  <title>AI MARKET INTELLIGENCE - 台股市場</title>
   <style>
     :root {
-      --bg: #0b0f19;
-      --panel: #151c2c;
-      --card: #1e293b;
-      --card2: #111827;
-      --border: #2e3d56;
-      --text: #f8fafc;
-      --sub: #94a3b8;
-      --blue: #3b82f6;
-      --blue-soft: rgba(59,130,246,.15);
-      --red: #ef4444;
-      --green: #22c55e;
-      --yellow: #f59e0b;
-      --orange: #f97316;
-      --gray: #64748b;
-      --purple: #8b5cf6;
+      --bg-dark: #0b0f19;
+      --panel-bg: #151c2c;
+      --card-bg: #1e293b;
+      --border-color: #2e3d56;
+      --text-main: #f8fafc;
+      --text-sub: #94a3b8;
+      --tw-up: #ef4444;    /* 台股上漲：紅色 */
+      --tw-down: #22c55e;  /* 台股下跌：綠色 */
+      --tw-flat: #94a3b8;  /* 平盤：灰色 */
     }
 
-    * {
-      box-sizing: border-box;
-      margin: 0;
-      padding: 0;
-    }
-
+    * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
-      font-family:
-        -apple-system,
-        BlinkMacSystemFont,
-        "Segoe UI",
-        Roboto,
-        "Helvetica Neue",
-        Arial,
-        sans-serif;
-
-      background:
-        radial-gradient(
-          circle at top,
-          #111827 0%,
-          var(--bg) 45%
-        );
-
-      color: var(--text);
-      min-height: 100vh;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      background-color: var(--bg-dark);
+      color: var(--text-main);
       padding: 16px;
-    }
-
-    .app {
-      width: 100%;
-      max-width: 980px;
+      max-width: 840px;
       margin: 0 auto;
     }
 
-    /* ======================================================
-       Header
-       ====================================================== */
-
+    /* ① 頂部 Header */
     header {
-      margin-bottom: 18px;
+      margin-bottom: 20px;
     }
-
-    .brand {
-      font-size: 1.45rem;
-      font-weight: 900;
+    .header-title {
+      font-size: 1.4rem;
+      font-weight: 800;
       letter-spacing: 1px;
+      color: var(--text-main);
     }
-
-    .subtitle {
-      margin-top: 4px;
-      color: var(--sub);
-      font-size: .95rem;
+    .header-subtitle {
+      font-size: 1.1rem;
+      color: var(--text-sub);
+      margin-top: 2px;
     }
-
-    .status-row {
+    .market-status {
       display: flex;
-      flex-wrap: wrap;
-      gap: 8px;
-      margin-top: 12px;
-    }
-
-    .status-pill {
-      display: inline-flex;
       align-items: center;
-      gap: 6px;
-      padding: 5px 10px;
-      border-radius: 999px;
-      background: var(--panel);
-      border: 1px solid var(--border);
-      color: var(--sub);
-      font-size: .78rem;
+      gap: 12px;
+      margin-top: 12px;
+      font-size: 0.9rem;
+    }
+    .status-tag {
+      background: rgba(34, 197, 94, 0.15);
+      color: #4ade80;
+      padding: 4px 10px;
+      border-radius: 20px;
+      font-weight: 600;
+      font-size: 0.85rem;
+      border: 1px solid rgba(34, 197, 94, 0.3);
+    }
+    .trade-date {
+      color: var(--text-sub);
     }
 
-    .status-pill.ok {
-      color: #86efac;
-      border-color: rgba(34,197,94,.35);
-      background: rgba(34,197,94,.08);
-    }
-
-    .status-pill.warn {
-      color: #fcd34d;
-      border-color: rgba(245,158,11,.35);
-      background: rgba(245,158,11,.08);
-    }
-
-    .status-pill.error {
-      color: #fca5a5;
-      border-color: rgba(239,68,68,.35);
-      background: rgba(239,68,68,.08);
-    }
-
-    /* ======================================================
-       Top summary
-       ====================================================== */
-
-    .summary-grid {
+    /* ② 四小格資訊面板 */
+    .grid-panel {
       display: grid;
-      grid-template-columns: repeat(2, 1fr);
-      gap: 10px;
-      margin-bottom: 16px;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      margin-bottom: 20px;
     }
-
-    .summary-card {
-      background: var(--panel);
-      border: 1px solid var(--border);
-      border-radius: 14px;
+    .panel-card {
+      background-color: var(--panel-bg);
+      border: 1px solid var(--border-color);
+      border-radius: 12px;
       padding: 14px;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
     }
-
-    .summary-label {
-      color: var(--sub);
-      font-size: .78rem;
+    .panel-label {
+      font-size: 0.85rem;
+      color: var(--text-sub);
       margin-bottom: 6px;
     }
-
-    .summary-value {
-      font-size: 1.45rem;
-      font-weight: 800;
+    .panel-value-main {
+      font-size: 1.4rem;
+      font-weight: 700;
+      margin-bottom: 2px;
+    }
+    .panel-sub {
+      font-size: 0.8rem;
+      color: var(--text-sub);
     }
 
-    .summary-sub {
-      margin-top: 4px;
-      color: var(--sub);
-      font-size: .72rem;
+    /* ③ 查詢個股 */
+    .search-box {
+      margin-bottom: 20px;
     }
-
-    /* ======================================================
-       Search
-       ====================================================== */
-
-    .search-section {
-      margin-bottom: 16px;
-    }
-
     .search-title {
-      color: var(--sub);
-      font-size: .82rem;
-      margin-bottom: 7px;
+      font-size: 0.9rem;
+      color: var(--text-sub);
+      margin-bottom: 8px;
     }
-
-    .search-row {
+    .search-input-group {
       display: flex;
       gap: 8px;
     }
-
-    .search-row input {
+    .search-input-group input {
       flex: 1;
-      min-width: 0;
-      background: var(--panel);
-      border: 1px solid var(--border);
-      border-radius: 9px;
-      padding: 11px 13px;
-      color: var(--text);
+      background-color: var(--panel-bg);
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      padding: 10px 14px;
+      color: var(--text-main);
+      font-size: 0.95rem;
       outline: none;
-      font-size: .9rem;
     }
-
-    .search-row input:focus {
-      border-color: var(--blue);
-    }
-
-    .search-row button {
-      border: 0;
-      border-radius: 9px;
+    .search-input-group button {
+      background-color: #2563eb;
+      color: #fff;
+      border: none;
+      border-radius: 8px;
       padding: 0 18px;
-      background: var(--blue);
-      color: white;
-      font-weight: 700;
+      font-weight: 600;
       cursor: pointer;
     }
 
-    /* ======================================================
-       Tabs
-       ====================================================== */
-
-    .tabs {
+    /* ④ 五個固定分頁 */
+    .tab-group {
       display: flex;
-      gap: 7px;
+      gap: 8px;
       overflow-x: auto;
-      margin-bottom: 16px;
+      margin-bottom: 20px;
       padding-bottom: 4px;
     }
-
-    .tab {
-      flex: 0 0 auto;
-      padding: 9px 14px;
-      border-radius: 999px;
-      border: 1px solid var(--border);
-      background: var(--panel);
-      color: var(--sub);
+    .tab-btn {
+      background-color: var(--panel-bg);
+      border: 1px solid var(--border-color);
+      color: var(--text-sub);
+      padding: 8px 14px;
+      border-radius: 20px;
+      font-size: 0.85rem;
+      white-space: nowrap;
       cursor: pointer;
-      font-size: .82rem;
+    }
+    .tab-btn.active {
+      background-color: #2563eb;
+      color: #fff;
+      border-color: #2563eb;
       font-weight: 600;
     }
 
-    .tab.active {
-      background: var(--blue);
-      color: white;
-      border-color: var(--blue);
-    }
-
-    /* ======================================================
-       Common
-       ====================================================== */
-
-    .section {
-      margin-bottom: 16px;
-    }
-
-    .section-title {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      margin-bottom: 9px;
-      font-weight: 800;
-    }
-
-    .section-title small {
-      color: var(--sub);
-      font-size: .72rem;
-      font-weight: 400;
-    }
-
-    .panel {
-      background: var(--panel);
-      border: 1px solid var(--border);
-      border-radius: 14px;
-      padding: 14px;
-    }
-
-    .grid-2 {
-      display: grid;
-      grid-template-columns: repeat(2, 1fr);
-      gap: 10px;
-    }
-
-    .grid-3 {
-      display: grid;
-      grid-template-columns: repeat(3, 1fr);
-      gap: 8px;
-    }
-
-    .mini-card {
-      background: var(--card2);
-      border: 1px solid var(--border);
-      border-radius: 10px;
-      padding: 10px;
-    }
-
-    .mini-label {
-      color: var(--sub);
-      font-size: .7rem;
-      margin-bottom: 5px;
-    }
-
-    .mini-value {
-      font-size: 1rem;
-      font-weight: 800;
-    }
-
-    .muted {
-      color: var(--sub);
-    }
-
-    .empty {
-      text-align: center;
-      padding: 30px 16px;
-      color: var(--sub);
-      border: 1px dashed var(--border);
-      border-radius: 12px;
-    }
-
-    .error-box {
-      padding: 18px;
-      border-radius: 12px;
-      background: rgba(239,68,68,.08);
-      border: 1px solid rgba(239,68,68,.3);
-      color: #fca5a5;
-      line-height: 1.7;
-    }
-
-    .notice-box {
-      padding: 12px;
-      border-radius: 10px;
-      background: rgba(59,130,246,.08);
-      border: 1px solid rgba(59,130,246,.25);
-      color: #bfdbfe;
-      font-size: .78rem;
-      line-height: 1.6;
-    }
-
-    /* ======================================================
-       Stock cards
-       ====================================================== */
-
-    .stock-list {
+    /* ⑤ 一般個股卡片容器 */
+    .cards-container {
       display: flex;
       flex-direction: column;
-      gap: 10px;
+      gap: 12px;
     }
-
     .stock-card {
-      background: var(--card);
-      border: 1px solid var(--border);
-      border-radius: 13px;
-      padding: 13px;
+      background-color: var(--card-bg);
+      border: 1px solid var(--border-color);
+      border-radius: 12px;
+      padding: 16px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.2);
     }
-
-    .stock-head {
-      display: flex;
-      justify-content: space-between;
-      gap: 10px;
-    }
-
-    .stock-title {
-      font-size: 1.05rem;
-      font-weight: 800;
-    }
-
-    .stock-code {
-      color: var(--sub);
-      font-size: .75rem;
-      margin-top: 2px;
-    }
-
-    .price-area {
-      text-align: right;
-      flex: 0 0 auto;
-    }
-
-    .price {
-      font-size: 1.1rem;
-      font-weight: 800;
-    }
-
-    .change {
-      font-size: .75rem;
-      margin-top: 2px;
-    }
-
-    .metric-grid {
-      display: grid;
-      grid-template-columns: repeat(3, 1fr);
-      gap: 7px;
-      margin-top: 10px;
-    }
-
-    .metric {
-      background: rgba(15,23,42,.65);
-      border-radius: 8px;
-      padding: 8px;
-    }
-
-    .metric-label {
-      color: var(--sub);
-      font-size: .66rem;
-    }
-
-    .metric-value {
-      margin-top: 3px;
-      font-size: .82rem;
-      font-weight: 700;
-    }
-
-    .signal-row {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 5px;
-      margin-top: 10px;
-    }
-
-    .signal {
-      border-radius: 999px;
-      padding: 4px 7px;
-      font-size: .66rem;
-      border: 1px solid var(--border);
-      color: var(--sub);
-      background: rgba(15,23,42,.7);
-    }
-
-    .signal.pass {
-      color: #86efac;
-      border-color: rgba(34,197,94,.3);
-      background: rgba(34,197,94,.08);
-    }
-
-    .signal.fail {
-      color: #fca5a5;
-      border-color: rgba(239,68,68,.3);
-      background: rgba(239,68,68,.08);
-    }
-
-    .signal.neutral {
-      color: #cbd5e1;
-    }
-
-    /* ======================================================
-       DCA action
-       ====================================================== */
-
-    .action {
-      display: inline-block;
-      padding: 5px 9px;
-      border-radius: 999px;
-      font-size: .72rem;
-      font-weight: 800;
-    }
-
-    .action-buy {
-      color: #86efac;
-      background: rgba(34,197,94,.12);
-      border: 1px solid rgba(34,197,94,.3);
-    }
-
-    .action-observe {
-      color: #fde68a;
-      background: rgba(245,158,11,.12);
-      border: 1px solid rgba(245,158,11,.3);
-    }
-
-    .action-pause {
-      color: #fca5a5;
-      background: rgba(239,68,68,.12);
-      border: 1px solid rgba(239,68,68,.3);
-    }
-
-    .action-extreme {
-      color: #c4b5fd;
-      background: rgba(139,92,246,.12);
-      border: 1px solid rgba(139,92,246,.3);
-    }
-
-    /* ======================================================
-       Historical stats
-       ====================================================== */
-
-    .history-card {
-      background: var(--card2);
-      border: 1px solid var(--border);
-      border-radius: 10px;
-      padding: 11px;
-    }
-
-    .history-period {
-      font-weight: 800;
-      font-size: .82rem;
-      margin-bottom: 7px;
-    }
-
-    .history-value {
-      font-size: .9rem;
-      font-weight: 700;
-    }
-
-    /* ======================================================
-       Stock detail
-       ====================================================== */
-
-    .detail-header {
+    .card-header {
       display: flex;
       justify-content: space-between;
       align-items: flex-start;
-      gap: 10px;
-      margin-bottom: 12px;
+      margin-bottom: 10px;
+    }
+    .stock-name {
+      font-size: 1.3rem;
+      font-weight: 800;
+      line-height: 1.2;
+    }
+    .stock-code {
+      font-size: 0.85rem;
+      color: var(--text-sub);
+      margin-top: 2px;
+    }
+    .stock-price-box {
+      text-align: right;
+    }
+    .price-num {
+      font-size: 1.25rem;
+      font-weight: 700;
+    }
+    .price-change {
+      font-size: 0.85rem;
+      font-weight: 600;
     }
 
-    .detail-name {
-      font-size: 1.35rem;
-      font-weight: 900;
+    .card-footer {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-top: 1px dashed var(--border-color);
+      padding-top: 10px;
+      margin-top: 10px;
+      font-size: 0.85rem;
+    }
+    .strength-tag {
+      font-weight: 600;
+    }
+    .advice-text {
+      color: var(--text-sub);
     }
 
-    .detail-code {
-      color: var(--sub);
-      font-size: .78rem;
-      margin-top: 3px;
-    }
-
-    .back-btn {
-      border: 1px solid var(--border);
-      background: var(--panel);
-      color: var(--sub);
+    /* 持倉與試算欄位 */
+    .portfolio-inputs {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      background-color: var(--panel-bg);
+      padding: 10px;
       border-radius: 8px;
-      padding: 7px 10px;
+      margin: 10px 0;
+    }
+    .input-field {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .input-field label {
+      font-size: 0.75rem;
+      color: var(--text-sub);
+    }
+    .input-field input {
+      background: var(--bg-dark);
+      border: 1px solid var(--border-color);
+      color: var(--text-main);
+      padding: 6px 8px;
+      border-radius: 4px;
+      font-size: 0.85rem;
+    }
+    .portfolio-metrics {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 8px;
+      margin-top: 8px;
+      font-size: 0.8rem;
+    }
+    .metric-item {
+      display: flex;
+      flex-direction: column;
+    }
+    .add-btn {
+      background-color: rgba(37, 99, 235, 0.2);
+      color: #60a5fa;
+      border: 1px solid rgba(37, 99, 235, 0.4);
+      padding: 6px 12px;
+      border-radius: 6px;
+      font-size: 0.8rem;
       cursor: pointer;
     }
 
-    /* ======================================================
-       Responsive
-       ====================================================== */
-
-    @media (min-width: 700px) {
-      body {
-        padding: 28px;
-      }
-
-      .summary-grid {
-        grid-template-columns: repeat(4, 1fr);
-      }
-
-      .metric-grid {
-        grid-template-columns: repeat(6, 1fr);
-      }
-    }
-
-    @media (max-width: 520px) {
-      .grid-3 {
-        grid-template-columns: repeat(2, 1fr);
-      }
-
-      .metric-grid {
-        grid-template-columns: repeat(2, 1fr);
-      }
-    }
-
-    /* 台股：上漲紅、下跌綠 */
-    .up {
-      color: var(--red) !important;
-    }
-
-    .down {
-      color: var(--green) !important;
-    }
-
-    .flat {
-      color: var(--sub) !important;
-    }
+    /* 台股顏色規則：上漲=紅，下跌=綠 */
+    .up-color { color: var(--tw-up) !important; }
+    .down-color { color: var(--tw-down) !important; }
+    .flat-color { color: var(--tw-flat) !important; }
   </style>
 </head>
-
 <body>
 
-<div class="app">
-
-  <!-- ====================================================
-       Header
-       ==================================================== -->
-
+  <!-- ① 頂部 Header -->
   <header>
-
-    <div class="brand">
-      台股 AI 選股・零股定投
+    <div class="header-title">AI MARKET INTELLIGENCE</div>
+    <div class="header-subtitle">台股市場 | 今日量化訊號</div>
+    <div class="market-status">
+      <span class="status-tag" id="market-open-tag">🟢 今日開市</span>
+      <span class="trade-date">最新交易日：<span id="latest-date">載入中...</span></span>
     </div>
-
-    <div class="subtitle">
-      AI MARKET INTELLIGENCE
-    </div>
-
-    <div class="status-row">
-
-      <span
-        class="status-pill"
-        id="system-status"
-      >
-        ⏳ 資料載入中
-      </span>
-
-      <span
-        class="status-pill"
-        id="latest-date"
-      >
-        最新交易日：--
-      </span>
-
-      <span
-        class="status-pill"
-        id="analysis-version"
-      >
-        分析版本：--
-      </span>
-
-    </div>
-
   </header>
 
-
-  <!-- ====================================================
-       Summary
-       ==================================================== -->
-
-  <section class="summary-grid">
-
-    <div class="summary-card">
-
-      <div class="summary-label">
-        Universe
-      </div>
-
-      <div
-        class="summary-value"
-        id="summary-universe"
-      >
-        --
-      </div>
-
-      <div
-        class="summary-sub"
-        id="summary-universe-sub"
-      >
-        股票名冊
-      </div>
-
+  <!-- ② 四小格資訊面板 -->
+  <section class="grid-panel">
+    <div class="panel-card">
+      <div class="panel-label">今日精選</div>
+      <div class="panel-value-main" id="selected-count">--</div>
+      <div class="panel-sub">最新交易日篩選結果</div>
     </div>
-
-
-    <div class="summary-card">
-
-      <div class="summary-label">
-        價格成功對接
-      </div>
-
-      <div
-        class="summary-value"
-        id="summary-price"
-      >
-        --
-      </div>
-
-      <div
-        class="summary-sub"
-        id="summary-price-sub"
-      >
-        Universe ↔ Prices
-      </div>
-
+    <div class="panel-card">
+      <div class="panel-label">持有個股總盈虧</div>
+      <div class="panel-value-main" id="portfolio-total-pnl">尚未建立持倉</div>
+      <div class="panel-sub" id="portfolio-sub-text">目前持倉</div>
     </div>
-
-
-    <div class="summary-card">
-
-      <div class="summary-label">
-        短期選股
-      </div>
-
-      <div
-        class="summary-value"
-        id="summary-short"
-      >
-        --
-      </div>
-
-      <div class="summary-sub">
-        六項核心全部符合
-      </div>
-
+    <div class="panel-card">
+      <div class="panel-label">加權指數</div>
+      <div class="panel-value-main" id="taiex-price">--</div>
+      <div class="panel-sub" id="taiex-change">--</div>
     </div>
-
-
-    <div class="summary-card">
-
-      <div class="summary-label">
-        零股定投可買
-      </div>
-
-      <div
-        class="summary-value"
-        id="summary-dca"
-      >
-        --
-      </div>
-
-      <div class="summary-sub">
-        目前分析分類
-      </div>
-
+    <div class="panel-card">
+      <div class="panel-label">市場風向</div>
+      <div class="panel-value-main" id="market-wind">🟢 偏多</div>
+      <div class="panel-sub" id="market-wind-sub">市場氣氛偏強</div>
     </div>
-
   </section>
 
-
-  <!-- ====================================================
-       Search
-       ==================================================== -->
-
-  <section class="search-section">
-
-    <div class="search-title">
-      🔍 查詢個股
+  <!-- ③ 查詢個股 -->
+  <section class="search-box">
+    <div class="search-title">🔍 查詢個股</div>
+    <div class="search-input-group">
+      <input type="text" id="search-input" placeholder="輸入股票名稱或代號 (例如: 聯電 或 2303)">
+      <button onclick="handleSearch()">查詢</button>
     </div>
-
-    <div class="search-row">
-
-      <input
-        id="search-input"
-        type="text"
-        autocomplete="off"
-        placeholder="輸入股票代號或名稱，例如 2337 / 旺宏"
-      >
-
-      <button
-        onclick="searchStock()"
-      >
-        查詢
-      </button>
-
-    </div>
-
   </section>
 
-
-  <!-- ====================================================
-       Tabs
-       ==================================================== -->
-
-  <nav class="tabs">
-
-    <button
-      class="tab active"
-      data-tab="overview"
-      onclick="switchTab('overview')"
-    >
-      總覽
-    </button>
-
-    <button
-      class="tab"
-      data-tab="short"
-      onclick="switchTab('short')"
-    >
-      短期選股
-    </button>
-
-    <button
-      class="tab"
-      data-tab="dca"
-      onclick="switchTab('dca')"
-    >
-      零股定投
-    </button>
-
-    <button
-      class="tab"
-      data-tab="stocks"
-      onclick="switchTab('stocks')"
-    >
-      股票清單
-    </button>
-
+  <!-- ④ 五個固定分頁 -->
+  <nav class="tab-group">
+    <button class="tab-btn active" onclick="switchTab('featured', event)">今日精選</button>
+    <button class="tab-btn" onclick="switchTab('top10', event)">Top 10</button>
+    <button class="tab-btn" onclick="switchTab('etf', event)">ETF</button>
+    <button class="tab-btn" onclick="switchTab('bond', event)">債券</button>
+    <button class="tab-btn" onclick="switchTab('mylist', event)">我的清單</button>
   </nav>
 
-
-  <!-- ====================================================
-       Main
-       ==================================================== -->
-
-  <main id="main-content">
-
-    <div class="empty">
-      ⏳ 正在載入資料...
-    </div>
-
+  <!-- ⑤ 卡片展示區域 -->
+  <main class="cards-container" id="cards-container">
+    <!-- 動態渲染卡片區域 -->
   </main>
 
-</div>
-
-
-<script>
-"use strict";
-
-/* =========================================================
-   Data Sources
-   ========================================================= */
-
-const DATA_PATHS = {
-
-  analysis:
-    "./Data/analysis.json",
-
-  universe:
-    "./Data/universe.json",
-
-  chip:
-    "./Data/chip.json",
-
-  priceManifest:
-    "./Data/prices/manifest.json"
-
-};
-
-
-/* =========================================================
-   Global State
-   ========================================================= */
-
-const APP = {
-
-  analysis: null,
-
-  universe: null,
-
-  chip: null,
-
-  priceManifest: null,
-
-  stocks: {},
-
-  universeStocks: [],
-
-  currentTab: "overview",
-
-  searchResult: null,
-
-  loaded: {
-
-    analysis: false,
-
-    universe: false,
-
-    chip: false,
-
-    priceManifest: false
-
-  }
-
-};
-
-
-/* =========================================================
-   Utility
-   ========================================================= */
-
-function byId(id) {
-  return document.getElementById(id);
-}
-
-
-function number(value, fallback = null) {
-
-  if (
-    value === null ||
-    value === undefined ||
-    value === ""
-  ) {
-    return fallback;
-  }
-
-  const n = Number(value);
-
-  return Number.isFinite(n)
-    ? n
-    : fallback;
-}
-
-
-function formatNumber(value, digits = 0) {
-
-  const n = number(value);
-
-  if (n === null) {
-    return "--";
-  }
-
-  return n.toLocaleString(
-    "zh-TW",
-    {
-      minimumFractionDigits: digits,
-      maximumFractionDigits: digits
-    }
-  );
-}
-
-
-function formatPct(value, digits = 2) {
-
-  const n = number(value);
-
-  if (n === null) {
-    return "--";
-  }
-
-  const sign = n > 0
-    ? "+"
-    : "";
-
-  return sign +
-    n.toFixed(digits) +
-    "%";
-}
-
-
-function escapeHTML(value) {
-
-  if (
-    value === null ||
-    value === undefined
-  ) {
-    return "";
-  }
-
-  return String(value)
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#039;");
-}
-
-
-function normalizeSymbol(value) {
-
-  if (
-    value === null ||
-    value === undefined
-  ) {
-    return "";
-  }
-
-  return String(value)
-    .trim()
-    .toUpperCase()
-    .replace(/\.TW$/, "")
-    .replace(/\.TWO$/, "");
-}
-
-
-function getStock(symbol) {
-
-  return APP.stocks[
-    normalizeSymbol(symbol)
-  ] || null;
-}
-
-
-function getMetric(stock, key) {
-
-  return stock?.metrics?.[key]
-    ?? null;
-}
-
-
-function latestDateFromStock(stock) {
-
-  return (
-    stock?.latest_date
-    ||
-    stock?.metrics?.date
-    ||
-    null
-  );
-}
-
-
-function priceColorClass(change) {
-
-  const n = number(change);
-
-  if (n === null) {
-    return "flat";
-  }
-
-  if (n > 0) {
-    return "up";
-  }
-
-  if (n < 0) {
-    return "down";
-  }
-
-  return "flat";
-}
-
-
-/* =========================================================
-   Fetch JSON
-   ========================================================= */
-
-async function fetchJSON(path) {
-
-  const separator =
-    path.includes("?")
-      ? "&"
-      : "?";
-
-  const url =
-    path +
-    separator +
-    "_=" +
-    Date.now();
-
-  const response =
-    await fetch(
-      url,
-      {
-        cache: "no-store"
-      }
-    );
-
-  if (!response.ok) {
-
-    throw new Error(
-      `${response.status} ${response.statusText}: ${path}`
-    );
-
-  }
-
-  return await response.json();
-}
-
-
-/* =========================================================
-   Load Data
-   ========================================================= */
-
-async function loadAllData() {
-
-  setSystemStatus(
-    "⏳ 正在讀取分析資料",
-    "warn"
-  );
-
-  /*
-   * analysis.json 是核心資料。
-   * 如果 analysis.json 失敗，儀表板不能假裝正常。
-   */
-
-  try {
-
-    APP.analysis =
-      await fetchJSON(
-        DATA_PATHS.analysis
-      );
-
-    APP.loaded.analysis = true;
-
-  } catch (error) {
-
-    console.error(
-      "analysis.json 讀取失敗",
-      error
-    );
-
-    renderFatalError(
-      "無法載入核心分析資料",
-      error.message
-    );
-
-    setSystemStatus(
-      "❌ analysis.json 讀取失敗",
-      "error"
-    );
-
-    return false;
-  }
-
-
-  /*
-   * universe.json
-   */
-
-  try {
-
-    APP.universe =
-      await fetchJSON(
-        DATA_PATHS.universe
-      );
-
-    APP.loaded.universe = true;
-
-  } catch (error) {
-
-    console.warn(
-      "universe.json 讀取失敗",
-      error
-    );
-
-  }
-
-
-  /*
-   * chip.json
-   *
-   * 不是核心依賴。
-   * analysis.json 已經包含主要籌碼分析結果。
-   */
-
-  try {
-
-    APP.chip =
-      await fetchJSON(
-        DATA_PATHS.chip
-      );
-
-    APP.loaded.chip = true;
-
-  } catch (error) {
-
-    console.warn(
-      "chip.json 尚未載入",
-      error
-    );
-
-  }
-
-
-  /*
-   * prices/manifest.json
-   *
-   * 主要用於確認價格資料層。
-   * 個股主要分析結果直接使用 analysis.json。
-   */
-
-  try {
-
-    APP.priceManifest =
-      await fetchJSON(
-        DATA_PATHS.priceManifest
-      );
-
-    APP.loaded.priceManifest = true;
-
-  } catch (error) {
-
-    console.warn(
-      "prices/manifest.json 尚未載入",
-      error
-    );
-
-  }
-
-
-  buildStockIndex();
-
-  updateSummary();
-
-  updateDataStatus();
-
-  return true;
-}
-
-
-/* =========================================================
-   Build Stock Index
-   ========================================================= */
-
-function buildStockIndex() {
-
-  APP.stocks = {};
-
-  /*
-   * 主要來源：
-   *
-   * analysis.json
-   * └── stocks
-   *      └── 2337
-   */
-
-  const analysisStocks =
-    APP.analysis?.stocks;
-
-  if (
-    analysisStocks &&
-    typeof analysisStocks === "object" &&
-    !Array.isArray(analysisStocks)
-  ) {
-
-    for (
-      const [symbol, stock]
-      of Object.entries(
-        analysisStocks
-      )
-    ) {
-
-      const normalized =
-        normalizeSymbol(symbol);
-
-      if (!normalized) {
-        continue;
+  <script>
+    let currentTab = 'featured';
+    let allStockData = [];
+    let myPortfolio = JSON.parse(localStorage.getItem('myStockList') || '[]');
+
+    document.addEventListener('DOMContentLoaded', async () => {
+      await fetchBackendData();
+      renderActiveTab();
+    });
+
+    // 具備多重自動容錯機制的資料讀取函式
+    async function fetchBackendData() {
+      const countEl = document.getElementById('selected-count');
+      const dateEl = document.getElementById('latest-date');
+      const taiexPriceEl = document.getElementById('taiex-price');
+      const taiexChangeEl = document.getElementById('taiex-change');
+
+      const timestamp = new Date().getTime();
+      
+      // 自動嘗試各種 GitHub Pages 路徑組合與大小寫
+      const pathsToTry = [
+        { chip: `./Data/chip.json?v=${timestamp}`, universe: `./Data/universe.json?v=${timestamp}` },
+        { chip: `./data/chip.json?v=${timestamp}`, universe: `./data/universe.json?v=${timestamp}` },
+        { chip: `Data/chip.json?v=${timestamp}`, universe: `Data/universe.json?v=${timestamp}` }
+      ];
+
+      let chipDataMap = null;
+      let universeList = null;
+
+      for (const path of pathsToTry) {
+        try {
+          const [chipResp, universeResp] = await Promise.all([
+            fetch(path.chip),
+            fetch(path.universe)
+          ]);
+          if (chipResp.ok && universeResp.ok) {
+            chipDataMap = await chipResp.json();
+            universeList = await universeResp.json();
+            console.log("成功連結資料路徑:", path);
+            break;
+          }
+        } catch (e) {
+          // 繼續嘗試下一個備援路徑
+        }
       }
 
-      APP.stocks[normalized] = {
-
-        ...stock,
-
-        symbol:
-          stock.symbol ||
-          normalized
-
-      };
-
-    }
-
-  }
-
-
-  /*
-   * Universe 名冊
-   *
-   * 用來補名稱、代號、Market。
-   */
-
-  const universeItems =
-    Array.isArray(
-      APP.universe
-    )
-      ? APP.universe
-      : Array.isArray(
-          APP.universe?.items
-        )
-        ? APP.universe.items
-        : Array.isArray(
-            APP.universe?.stocks
-          )
-          ? APP.universe.stocks
-          : [];
-
-  APP.universeStocks =
-    universeItems;
-
-
-  for (
-    const item
-    of universeItems
-  ) {
-
-    const symbol =
-      normalizeSymbol(
-        item.code ||
-        item.symbol ||
-        item.ticker
-      );
-
-    if (!symbol) {
-      continue;
-    }
-
-    if (!APP.stocks[symbol]) {
-
-      APP.stocks[symbol] = {
-
-        symbol,
-
-        name:
-          item.name || "",
-
-        market:
-          item.market || "",
-
-        status:
-          "no_analysis"
-
-      };
-
-    } else {
-
-      APP.stocks[symbol].name =
-        APP.stocks[symbol].name ||
-        item.name ||
-        "";
-
-      APP.stocks[symbol].market =
-        APP.stocks[symbol].market ||
-        item.market ||
-        "";
-
-    }
-
-  }
-
-}
-
-
-/* =========================================================
-   Status
-   ========================================================= */
-
-function setSystemStatus(
-  text,
-  type = ""
-) {
-
-  const el =
-    byId("system-status");
-
-  if (!el) {
-    return;
-  }
-
-  el.textContent = text;
-
-  el.className =
-    "status-pill " +
-    type;
-}
-
-
-function updateDataStatus() {
-
-  const stats =
-    APP.analysis?.statistics ||
-    {};
-
-  const universe =
-    number(
-      stats.universe
-    );
-
-  const matched =
-    number(
-      stats.universe_price_matched
-    );
-
-  if (
-    universe !== null &&
-    matched !== null &&
-    universe > 0 &&
-    matched > 0
-  ) {
-
-    setSystemStatus(
-      "🟢 分析資料正常",
-      "ok"
-    );
-
-  } else {
-
-    setSystemStatus(
-      "⚠️ 資料尚未完整對接",
-      "warn"
-    );
-
-  }
-
-  const version =
-    APP.analysis?.schema_version;
-
-  if (version) {
-
-    byId(
-      "analysis-version"
-    ).textContent =
-      "分析版本：" +
-      version;
-
-  }
-
-  const latest =
-    findLatestDate();
-
-  if (latest) {
-
-    byId(
-      "latest-date"
-    ).textContent =
-      "最新交易日：" +
-      latest;
-
-  }
-
-}
-
-
-function findLatestDate() {
-
-  const stocks =
-    Object.values(
-      APP.stocks
-    );
-
-  const dates =
-    stocks
-      .map(
-        stock =>
-          latestDateFromStock(stock)
-      )
-      .filter(Boolean)
-      .sort();
-
-  if (!dates.length) {
-    return null;
-  }
-
-  return dates[
-    dates.length - 1
-  ];
-
-}
-
-
-/* =========================================================
-   Summary
-   ========================================================= */
-
-function updateSummary() {
-
-  const stats =
-    APP.analysis?.statistics ||
-    {};
-
-  const universe =
-    number(
-      stats.universe
-    );
-
-  const matched =
-    number(
-      stats.universe_price_matched
-    );
-
-  const shortCount =
-    number(
-      stats.short_term_candidates
-    );
-
-  const dcaCount =
-    number(
-      stats.dca_buy
-    );
-
-
-  byId(
-    "summary-universe"
-  ).textContent =
-    formatNumber(
-      universe
-    );
-
-
-  byId(
-    "summary-price"
-  ).textContent =
-    formatNumber(
-      matched
-    );
-
-
-  byId(
-    "summary-price-sub"
-  ).textContent =
-    universe !== null &&
-    matched !== null
-      ? `成功率 ${(
-          matched /
-          universe *
-          100
-        ).toFixed(1)}%`
-      : "Universe ↔ Prices";
-
-
-  byId(
-    "summary-short"
-  ).textContent =
-    formatNumber(
-      shortCount
-    );
-
-
-  byId(
-    "summary-dca"
-  ).textContent =
-    formatNumber(
-      dcaCount
-    );
-
-}
-
-
-/* =========================================================
-   Tab
-   ========================================================= */
-
-function switchTab(tab) {
-
-  APP.currentTab =
-    tab;
-
-  document
-    .querySelectorAll(
-      ".tab"
-    )
-    .forEach(
-      button => {
-
-        button.classList.toggle(
-          "active",
-          button.dataset.tab === tab
-        );
-
-      }
-    );
-
-  APP.searchResult =
-    null;
-
-  renderActiveTab();
-
-}
-
-
-function renderActiveTab() {
-
-  const container =
-    byId(
-      "main-content"
-    );
-
-  if (!container) {
-    return;
-  }
-
-  if (
-    APP.searchResult
-  ) {
-
-    renderStockDetail(
-      APP.searchResult
-    );
-
-    return;
-
-  }
-
-  switch (
-    APP.currentTab
-  ) {
-
-    case "short":
-      renderShortTerm(container);
-      break;
-
-    case "dca":
-      renderDCA(container);
-      break;
-
-    case "stocks":
-      renderStockList(container);
-      break;
-
-    case "overview":
-    default:
-      renderOverview(container);
-      break;
-
-  }
-
-}
-
-
-/* =========================================================
-   Overview
-   ========================================================= */
-
-function renderOverview(container) {
-
-  const stats =
-    APP.analysis?.statistics ||
-    {};
-
-  const priceInfo =
-    APP.analysis?.price_info ||
-    {};
-
-  const dataPipeline =
-    APP.analysis?.data_pipeline ||
-    {};
-
-  const shortCandidates =
-    APP.analysis?.short_term_candidates ||
-    [];
-
-  const dcaBuy =
-    APP.analysis?.dca_buy ||
-    [];
-
-  const dcaObserve =
-    APP.analysis?.dca_observe ||
-    [];
-
-  const dcaPause =
-    APP.analysis?.dca_pause ||
-    [];
-
-
-  const topShort =
-    shortCandidates
-      .slice(0, 10)
-      .map(
-        symbol =>
-          getStock(symbol)
-      )
-      .filter(Boolean);
-
-
-  container.innerHTML = `
-
-    <section class="section">
-
-      <div class="section-title">
-        <span>系統資料狀態</span>
-        <small>
-          analysis.json
-        </small>
-      </div>
-
-      <div class="grid-3">
-
-        ${mini(
-          "Universe",
-          formatNumber(
-            stats.universe
-          )
-        )}
-
-        ${mini(
-          "價格索引",
-          formatNumber(
-            stats.price_index
-          )
-        )}
-
-        ${mini(
-          "成功對接",
-          formatNumber(
-            stats.universe_price_matched
-          )
-        )}
-
-        ${mini(
-          "完整分析",
-          formatNumber(
-            stats.complete
-          )
-        )}
-
-        ${mini(
-          "部分分析",
-          formatNumber(
-            stats.partial
-          )
-        )}
-
-        ${mini(
-          "價格缺失",
-          formatNumber(
-            stats.price_missing
-          )
-        )}
-
-      </div>
-
-    </section>
-
-
-    <section class="section">
-
-      <div class="section-title">
-        <span>今日核心結果</span>
-        <small>
-          ${escapeHTML(
-            APP.analysis?.schema_version || ""
-          )}
-        </small>
-      </div>
-
-      <div class="grid-3">
-
-        ${mini(
-          "短期全部符合",
-          formatNumber(
-            stats.short_term_candidates
-          )
-        )}
-
-        ${mini(
-          "定投可買",
-          formatNumber(
-            stats.dca_buy
-          )
-        )}
-
-        ${mini(
-          "定投觀察",
-          formatNumber(
-            stats.dca_observe
-          )
-        )}
-
-        ${mini(
-          "定投暫停",
-          formatNumber(
-            stats.dca_pause
-          )
-        )}
-
-        ${mini(
-          "籌碼資料",
-          APP.loaded.chip
-            ? "已載入"
-            : "分析檔內建"
-        )}
-
-        ${mini(
-          "價格 Manifest",
-          APP.loaded.priceManifest
-            ? "已載入"
-            : "尚未載入"
-        )}
-
-      </div>
-
-    </section>
-
-
-    <section class="section">
-
-      <div class="section-title">
-        <span>短期選股候選</span>
-        <small>
-          六項核心全部符合
-        </small>
-      </div>
-
-      ${
-        topShort.length
-          ? `
-            <div class="stock-list">
-              ${topShort
-                .map(
-                  stock =>
-                    renderShortCard(
-                      stock
-                    )
-                )
-                .join("")}
-            </div>
-          `
-          : `
-            <div class="empty">
-              今日沒有符合六項核心條件的股票。
-            </div>
-          `
+      if (!chipDataMap || !universeList) {
+        console.error("無法讀取 Data/ 檔案，請確認 GitHub Pages 部署狀態。");
+        if (dateEl) dateEl.textContent = "檔案讀取失敗 (404)";
+        if (countEl) countEl.textContent = "0";
+
+        const container = document.getElementById('cards-container');
+        if (container) {
+          container.innerHTML = `
+            <div style="text-align:center; padding:30px; color:#f87171; background:rgba(239,68,68,0.1); border-radius:12px; border:1px solid rgba(239,68,68,0.3);">
+              ⚠️ <b>資料鏈結失敗 (404 Not Found)</b><br>
+              <span style="font-size:0.85rem; color:#94a3b8; display:block; margin-top:6px;">請按下 F12 查看主控台，並確認 GitHub Actions 是否有成功將 Data/ 產出至主幹分支。</span>
+            </div>`;
+        }
+        return;
       }
 
-    </section>
-
-
-    <section class="section">
-
-      <div class="section-title">
-        <span>資料管線</span>
-        <small>
-          ${formatNumber(
-            priceInfo.shard_count
-          )} 個價格分檔
-        </small>
-      </div>
-
-      <div class="panel">
-
-        <div class="notice-box">
-
-          Universe → Prices → Chip → Analysis
-
-          <br><br>
-
-          價格成功對接：
-          <strong>
-            ${formatNumber(
-              dataPipeline.universe_price_matched
-            )}
-          </strong>
-
-          /
-
-          ${formatNumber(
-            dataPipeline.price_index_count
-          )}
-
-          <br>
-
-          價格缺失：
-          <strong>
-            ${formatNumber(
-              dataPipeline.price_missing
-            )}
-          </strong>
-
-        </div>
-
-      </div>
-
-    </section>
-
-
-    ${renderHistoricalSummary()}
-
-  `;
-
-}
-
-
-/* =========================================================
-   Historical Summary
-   ========================================================= */
-
-function renderHistoricalSummary() {
-
-  /*
-   * 不虛構歷史績效。
-   *
-   * 未來若 analysis.json 提供：
-   *
-   * historical
-   * ├── 30d
-   * ├── 60d
-   * └── 90d
-   *
-   * 就自動顯示。
-   */
-
-  const historical =
-    APP.analysis?.historical ||
-    APP.analysis?.historical_stats ||
-    null;
-
-
-  if (
-    !historical ||
-    typeof historical !== "object"
-  ) {
-
-    return `
-
-      <section class="section">
-
-        <div class="section-title">
-          <span>歷史訊號統計</span>
-          <small>
-            30 / 60 / 90 日
-          </small>
-        </div>
-
-        <div class="panel">
-
-          <div class="empty">
-
-            目前 analysis.json 尚未提供
-            30 / 60 / 90 日歷史績效統計。
-
-            <br><br>
-
-            目前只顯示即時分析結果，
-            不會虛構歷史勝率或報酬率。
-
-          </div>
-
-        </div>
-
-      </section>
-
-    `;
-
-  }
-
-
-  const periods = [
-    ["30d", "30 日"],
-    ["60d", "60 日"],
-    ["90d", "90 日"]
-  ];
-
-
-  return `
-
-    <section class="section">
-
-      <div class="section-title">
-        <span>歷史訊號統計</span>
-        <small>
-          歷史樣本
-        </small>
-      </div>
-
-      <div class="grid-3">
-
-        ${periods
-          .map(
-            ([key, label]) => {
-
-              const data =
-                historical[key] ||
-                {};
-
-              return `
-
-                <div class="history-card">
-
-                  <div class="history-period">
-                    ${label}
-                  </div>
-
-                  <div class="mini-label">
-                    勝率
-                  </div>
-
-                  <div class="history-value">
-                    ${formatPct(
-                      data.win_rate
-                    )}
-                  </div>
-
-                  <div class="mini-label" style="margin-top:7px">
-                    樣本數
-                  </div>
-
-                  <div class="history-value">
-                    ${formatNumber(
-                      data.sample_count
-                    )}
-                  </div>
-
-                  <div class="mini-label" style="margin-top:7px">
-                    平均報酬
-                  </div>
-
-                  <div class="history-value">
-                    ${formatPct(
-                      data.average_return
-                    )}
-                  </div>
-
-                  <div class="mini-label" style="margin-top:7px">
-                    中位數報酬
-                  </div>
-
-                  <div class="history-value">
-                    ${formatPct(
-                      data.median_return
-                    )}
-                  </div>
-
-                </div>
-
-              `;
-
-            }
-          )
-          .join("")}
-
-      </div>
-
-    </section>
-
-  `;
-
-}
-
-
-/* =========================================================
-   Short Term
-   ========================================================= */
-
-function renderShortTerm(container) {
-
-  const candidates =
-    APP.analysis?.short_term_candidates ||
-    [];
-
-  const stocks =
-    candidates
-      .map(
-        symbol =>
-          getStock(symbol)
-      )
-      .filter(Boolean);
-
-
-  container.innerHTML = `
-
-    <section class="section">
-
-      <div class="section-title">
-
-        <span>
-          短期選股
-        </span>
-
-        <small>
-          六項核心條件
-        </small>
-
-      </div>
-
-
-      <div class="panel">
-
-        <div class="grid-3">
-
-          ${mini(
-            "候選數",
-            formatNumber(
-              candidates.length
-            )
-          )}
-
-          ${mini(
-            "MACD",
-            "黃金交叉"
-          )}
-
-          ${mini(
-            "KD",
-            "黃金交叉"
-          )}
-
-          ${mini(
-            "RSI",
-            "> 50"
-          )}
-
-          ${mini(
-            "成交量",
-            "≥ 1.5× 前5日"
-          )}
-
-          ${mini(
-            "MA20",
-            "站上＋向上"
-          )}
-
-        </div>
-
-      </div>
-
-    </section>
-
-
-    <section class="section">
-
-      ${
-        stocks.length
-          ? `
-            <div class="stock-list">
-
-              ${stocks
-                .map(
-                  stock =>
-                    renderShortCard(
-                      stock
-                    )
-                )
-                .join("")}
-
-            </div>
-          `
-          : `
-            <div class="empty">
-              今日沒有符合六項核心條件的股票。
-            </div>
-          `
-      }
-
-    </section>
-
-  `;
-
-}
-
-
-/* =========================================================
-   Short Card
-   ========================================================= */
-
-function renderShortCard(stock) {
-
-  const metrics =
-    stock.metrics ||
-    {};
-
-  const short =
-    stock.short_term ||
-    {};
-
-  const conditions =
-    short.conditions ||
-    {};
-
-  const price =
-    number(
-      metrics.price
-    );
-
-  const change =
-    number(
-      metrics.change1_pct
-    );
-
-  const rsi =
-    number(
-      short.rsi
-    );
-
-  const volumeRatio =
-    number(
-      short.volume_ratio
-    );
-
-  const chip =
-    short.chip ||
-    stock.chip ||
-    {};
-
-  return `
-
-    <article
-      class="stock-card"
-      onclick="openStock('${escapeHTML(
-        stock.symbol
-      )}')"
-      style="cursor:pointer"
-    >
-
-      <div class="stock-head">
-
-        <div>
-
-          <div class="stock-title">
-            ${escapeHTML(
-              stock.name ||
-              stock.symbol
-            )}
-          </div>
-
-          <div class="stock-code">
-            ${escapeHTML(
-              stock.symbol
-            )}
-            ${stock.market
-              ? " · " +
-                escapeHTML(
-                  stock.market
-                )
-              : ""}
-          </div>
-
-        </div>
-
-
-        <div class="price-area">
-
-          <div class="price">
-            ${price !== null
-              ? price.toFixed(2)
-              : "--"}
-          </div>
-
-          <div
-            class="change ${priceColorClass(
-              change
-            )}"
-          >
-            ${formatPct(
-              change
-            )}
-          </div>
-
-        </div>
-
-      </div>
-
-
-      <div class="metric-grid">
-
-        ${metricBox(
-          "RSI",
-          rsi !== null
-            ? rsi.toFixed(2)
-            : "--"
-        )}
-
-        ${metricBox(
-          "成交量倍率",
-          volumeRatio !== null
-            ? volumeRatio.toFixed(2) + "×"
-            : "--"
-        )}
-
-        ${metricBox(
-          "MA20",
-          number(
-            metrics.ma20
-          ) !== null
-            ? Number(
-                metrics.ma20
-              ).toFixed(2)
-            : "--"
-        )}
-
-        ${metricBox(
-          "MA20方向",
-          metrics.ma20_up
-            ? "向上"
-            : "非向上"
-        )}
-
-        ${metricBox(
-          "MACD",
-          short.macd?.golden_cross
-            ? "黃金交叉"
-            : "未交叉"
-        )}
-
-        ${metricBox(
-          "KD",
-          short.kd?.golden_cross
-            ? "黃金交叉"
-            : "未交叉"
-        )}
-
-      </div>
-
-
-      <div class="signal-row">
-
-        ${signal(
-          "MACD",
-          conditions.macd_golden_cross
-        )}
-
-        ${signal(
-          "KD",
-          conditions.kd_golden_cross
-        )}
-
-        ${signal(
-          "RSI > 50",
-          conditions.rsi_above_50
-        )}
-
-        ${signal(
-          "量 ≥ 1.5×",
-          conditions.volume_ratio_ge_1_5
-        )}
-
-        ${signal(
-          "站上 MA20",
-          conditions.price_above_ma20
-        )}
-
-        ${signal(
-          "MA20 向上",
-          conditions.ma20_up
-        )}
-
-      </div>
-
-
-      <div class="signal-row">
-
-        ${chipSignal(
-          "主力1D",
-          chip.main_force_1d
-        )}
-
-        ${chipSignal(
-          "主力5D",
-          chip.main_force_5d
-        )}
-
-        ${chipSignal(
-          "主力10D",
-          chip.main_force_10d
-        )}
-
-        ${chipSignal(
-          "主力20D",
-          chip.main_force_20d
-        )}
-
-      </div>
-
-    </article>
-
-  `;
-
-}
-
-
-/* =========================================================
-   DCA
-   ========================================================= */
-
-function renderDCA(container) {
-
-  const buy =
-    APP.analysis?.dca_buy ||
-    [];
-
-  const observe =
-    APP.analysis?.dca_observe ||
-    [];
-
-  const pause =
-    APP.analysis?.dca_pause ||
-    [];
-
-
-  const all =
-    [
-      ...buy,
-      ...observe,
-      ...pause
-    ];
-
-
-  container.innerHTML = `
-
-    <section class="section">
-
-      <div class="section-title">
-
-        <span>
-          零股定投
-        </span>
-
-        <small>
-          動態風控
-        </small>
-
-      </div>
-
-
-      <div class="grid-3">
-
-        ${mini(
-          "可買",
-          formatNumber(
-            buy.length
-          )
-        )}
-
-        ${mini(
-          "觀察",
-          formatNumber(
-            observe.length
-          )
-        )}
-
-        ${mini(
-          "暫停",
-          formatNumber(
-            pause.length
-          )
-        )}
-
-      </div>
-
-    </section>
-
-
-    <section class="section">
-
-      <div class="panel">
-
-        <div class="notice-box">
-
-          MA20 ≤ 0.97：
-          積極買進
-
-          <br>
-
-          MA20 ≤ 1.02：
-          正常買進
-
-          <br>
-
-          MA20 ≤ 1.05：
-          觀察
-
-          <br>
-
-          MA20 > 1.05：
-          暫停加碼
-
-          <br><br>
-
-          60 日高檔、
-          極端負乖離、
-          成交量、
-          1D / 5D / 10D / 20D 籌碼
-          會同步顯示。
-
-        </div>
-
-      </div>
-
-    </section>
-
-
-    <section class="section">
-
-      <div class="section-title">
-
-        <span>
-          定投標的
-        </span>
-
-        <small>
-          ${formatNumber(
-            all.length
-          )} 檔
-        </small>
-
-      </div>
-
-
-      <div class="stock-list">
-
-        ${
-          all.length
-            ? all
-                .map(
-                  symbol =>
-                    renderDCACard(
-                      getStock(symbol)
-                    )
-                )
-                .filter(Boolean)
-                .join("")
-            : `
-              <div class="empty">
-                目前沒有可顯示的定投資料。
-              </div>
-            `
+      const list = Array.isArray(universeList) ? universeList : (universeList.stocks || []);
+
+      // 解析並比對名冊與籌碼股價
+      allStockData = list.map(stock => {
+        let chip = Array.isArray(chipDataMap) 
+          ? (chipDataMap.find(c => c.symbol === stock.symbol) || {})
+          : (chipDataMap[stock.symbol] || {});
+
+        // 套用五大選股核心條件 (若後台 Python 已計算 is_selected 則優先採用)
+        const meetsStrategy = chip.is_selected !== undefined 
+          ? chip.is_selected === true 
+          : checkFiveIndicators(stock, chip);
+
+        // 類型判定
+        let category = 'other';
+        if (meetsStrategy) {
+          category = 'featured';
+        } else if (stock.symbol.startsWith('00') && (stock.name.includes('債') || stock.name.includes('美債'))) {
+          category = 'bond';
+        } else if (stock.symbol.startsWith('00')) {
+          category = 'etf';
+        } else if (chip.rank && chip.rank <= 10) {
+          category = 'top10';
         }
 
-      </div>
+        return {
+          symbol: stock.symbol,
+          name: stock.name,
+          price: Number(chip.close_price || chip.price || stock.price || 0),
+          changePct: Number(chip.change_pct || chip.changePct || 0),
+          strength: (chip.change_pct || 0) > 0 ? '🟢 強勢' : ((chip.change_pct || 0) < 0 ? '🔴 弱勢' : '🟡 中性'),
+          advice: meetsStrategy ? '偏多，可分批' : '續抱觀察',
+          type: category,
+          isFeatured: meetsStrategy
+        };
+      });
 
-    </section>
+      // 精選標的過濾
+      const featuredStocks = allStockData.filter(s => s.isFeatured);
+      
+      if (countEl) countEl.textContent = featuredStocks.length;
+      if (dateEl) dateEl.textContent = chipDataMap.latest_date || new Date().toISOString().split('T')[0];
 
-  `;
-
-}
-
-
-/* =========================================================
-   DCA Card
-   ========================================================= */
-
-function renderDCACard(stock) {
-
-  if (!stock) {
-    return "";
-  }
-
-  const metrics =
-    stock.metrics ||
-    {};
-
-  const dca =
-    stock.dca ||
-    {};
-
-  const price =
-    number(
-      metrics.price
-    );
-
-  const action =
-    dca.action ||
-    "資料不足";
-
-
-  let actionClass =
-    "action-observe";
-
-  if (
-    action === "積極買進" ||
-    action === "正常買進"
-  ) {
-
-    actionClass =
-      "action-buy";
-
-  } else if (
-    action === "暫停加碼"
-  ) {
-
-    actionClass =
-      "action-pause";
-
-  } else if (
-    action === "極端負乖離"
-  ) {
-
-    actionClass =
-      "action-extreme";
-
-  }
-
-
-  const riskFlags =
-    Array.isArray(
-      dca.risk_flags
-    )
-      ? dca.risk_flags
-      : [];
-
-
-  return `
-
-    <article
-      class="stock-card"
-      onclick="openStock('${escapeHTML(
-        stock.symbol
-      )}')"
-      style="cursor:pointer"
-    >
-
-      <div class="stock-head">
-
-        <div>
-
-          <div class="stock-title">
-            ${escapeHTML(
-              stock.name ||
-              stock.symbol
-            )}
-          </div>
-
-          <div class="stock-code">
-            ${escapeHTML(
-              stock.symbol
-            )}
-          </div>
-
-        </div>
-
-
-        <div class="price-area">
-
-          <div class="price">
-            ${
-              price !== null
-                ? price.toFixed(2)
-                : "--"
-            }
-          </div>
-
-          <div class="change ${
-            priceColorClass(
-              metrics.change1_pct
-            )
-          }">
-            ${formatPct(
-              metrics.change1_pct
-            )}
-          </div>
-
-        </div>
-
-      </div>
-
-
-      <div style="margin-top:9px">
-
-        <span
-          class="action ${actionClass}"
-        >
-          ${escapeHTML(
-            action
-          )}
-        </span>
-
-      </div>
-
-
-      <div class="metric-grid">
-
-        ${metricBox(
-          "MA20相對",
-          number(
-            dca.ma20_ratio
-          ) !== null
-            ? Number(
-                dca.ma20_ratio
-              ).toFixed(4)
-            : "--"
-        )}
-
-        ${metricBox(
-          "20MA乖離",
-          formatPct(
-            dca.bias20_pct
-          )
-        )}
-
-        ${metricBox(
-          "60日位置",
-          number(
-            dca.position60_pct
-          ) !== null
-            ? Number(
-                dca.position60_pct
-              ).toFixed(1) + "%"
-            : "--"
-        )}
-
-        ${metricBox(
-          "60日低點比",
-          number(
-            dca.low60_ratio
-          ) !== null
-            ? Number(
-                dca.low60_ratio
-              ).toFixed(4)
-            : "--"
-        )}
-
-        ${metricBox(
-          "成交量",
-          dca.volume_signal ||
-            "--"
-        )}
-
-        ${metricBox(
-          "籌碼",
-          dca.medium_chip_direction ||
-            dca.chip_direction ||
-            "--"
-        )}
-
-      </div>
-
-
-      <div class="signal-row">
-
-        ${chipSignal(
-          "1D",
-          dca.main_force_1d
-        )}
-
-        ${chipSignal(
-          "5D",
-          dca.main_force_5d
-        )}
-
-        ${chipSignal(
-          "10D",
-          dca.main_force_10d
-        )}
-
-        ${chipSignal(
-          "20D",
-          dca.main_force_20d
-        )}
-
-      </div>
-
-
-      ${
-        riskFlags.length
-          ? `
-            <div class="signal-row">
-
-              ${riskFlags
-                .map(
-                  flag =>
-                    `<span class="signal fail">
-                      ⚠ ${escapeHTML(flag)}
-                    </span>`
-                )
-                .join("")}
-
-            </div>
-          `
-          : ""
+      // 更新大盤數據
+      if (chipDataMap.taiex && taiexPriceEl) {
+        taiexPriceEl.textContent = Number(chipDataMap.taiex.price || 0).toLocaleString();
+        const changeVal = chipDataMap.taiex.change || 0;
+        const changePctVal = chipDataMap.taiex.change_pct || 0;
+        const isUp = changeVal >= 0;
+        if (taiexChangeEl) {
+          taiexChangeEl.innerHTML = `<span class="${isUp ? 'up-color' : 'down-color'}">${isUp ? '+' : ''}${changeVal} (${isUp ? '+' : ''}${changePctVal}%)</span>`;
+        }
       }
 
-    </article>
+      updatePortfolioSummary();
+    }
 
-  `;
+    // 驗證五大選股指標
+    function checkFiveIndicators(stock, chip) {
+      const price = Number(chip.close_price || chip.price || 0);
+      const ma20 = Number(chip.ma20 || 0);
+      const ma20Slope = Number(chip.ma20_slope || 0);
+      const volume = Number(chip.volume || 0);
+      const volMa5 = Number(chip.vol_ma5 || 0);
 
-}
+      // 1. 股價區間 10～80 元
+      const cond_priceRange = price >= 10 && price <= 80;
 
+      // 2. 股價站上 20 日線且 20 日線呈現向上勾
+      const cond_ma20 = price > ma20 && ma20Slope > 0;
 
-/* =========================================================
-   Stock List
-   ========================================================= */
+      // 3. 成交量 > 5 日均量 * 1.5 倍
+      const cond_volume = volume > (volMa5 * 1.5);
 
-function renderStockList(container) {
+      // 4. KD 黃金交叉 & RSI > 50
+      const cond_kdRsi = (chip.kd_gold_cross === true) && (Number(chip.rsi) > 50);
 
-  const stocks =
-    Object.values(
-      APP.stocks
-    )
-    .sort(
-      (a, b) =>
-        String(
-          a.symbol
-        ).localeCompare(
-          String(
-            b.symbol
-          )
-        )
-    );
+      // 5. MACD 黃金交叉
+      const cond_macd = (chip.macd_gold_cross === true);
 
+      return cond_priceRange && cond_ma20 && cond_volume && cond_kdRsi && cond_macd;
+    }
 
-  container.innerHTML = `
+    // Tab 切換與渲染
+    function switchTab(tabKey, evt) {
+      currentTab = tabKey;
+      document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+      if (evt && evt.target) evt.target.classList.add('active');
+      renderActiveTab();
+    }
 
-    <section class="section">
+    function renderActiveTab() {
+      const container = document.getElementById('cards-container');
+      if (!container) return;
+      container.innerHTML = '';
 
-      <div class="section-title">
-
-        <span>
-          股票清單
-        </span>
-
-        <small>
-          ${formatNumber(
-            stocks.length
-          )} 檔
-        </small>
-
-      </div>
-
-
-      ${
-        stocks.length
-          ? `
-            <div class="stock-list">
-
-              ${stocks
-                .map(
-                  stock =>
-                    renderListCard(
-                      stock
-                    )
-                )
-                .join("")}
-
-            </div>
-          `
-          : `
-            <div class="empty">
-              Universe 沒有股票資料。
-            </div>
-          `
+      if (currentTab === 'mylist') {
+        renderMyList(container);
+        return;
       }
 
-    </section>
-
-  `;
-
-}
-
-
-/* =========================================================
-   Stock List Card
-   ========================================================= */
-
-function renderListCard(stock) {
-
-  const metrics =
-    stock.metrics ||
-    {};
-
-  const status =
-    stock.status ||
-    "--";
-
-  const price =
-    number(
-      metrics.price
-    );
-
-
-  return `
-
-    <article
-      class="stock-card"
-      onclick="openStock('${escapeHTML(
-        stock.symbol
-      )}')"
-      style="cursor:pointer"
-    >
-
-      <div class="stock-head">
-
-        <div>
-
-          <div class="stock-title">
-            ${escapeHTML(
-              stock.name ||
-              "未命名"
-            )}
-          </div>
-
-          <div class="stock-code">
-            ${escapeHTML(
-              stock.symbol
-            )}
-            ${
-              stock.market
-                ? " · " +
-                  escapeHTML(
-                    stock.market
-                  )
-                : ""
-            }
-          </div>
-
-        </div>
-
-
-        <div class="price-area">
-
-          <div class="price">
-            ${
-              price !== null
-                ? price.toFixed(2)
-                : "--"
-            }
-          </div>
-
-          <div class="change ${
-            priceColorClass(
-              metrics.change1_pct
-            )
-          }">
-            ${formatPct(
-              metrics.change1_pct
-            )}
-          </div>
-
-        </div>
-
-      </div>
-
-
-      <div class="metric-grid">
-
-        ${metricBox(
-          "分析狀態",
-          statusText(
-            status
-          )
-        )}
-
-        ${metricBox(
-          "MA20",
-          number(
-            metrics.ma20
-          ) !== null
-            ? Number(
-                metrics.ma20
-              ).toFixed(2)
-            : "--"
-        )}
-
-        ${metricBox(
-          "RSI",
-          stock.short_term?.rsi !== undefined
-            ? Number(
-                stock.short_term.rsi
-              ).toFixed(2)
-            : "--"
-        )}
-
-        ${metricBox(
-          "20MA乖離",
-          formatPct(
-            metrics.bias20_pct
-          )
-        )}
-
-        ${metricBox(
-          "60日位置",
-          number(
-            metrics.position60_pct
-          ) !== null
-            ? Number(
-                metrics.position60_pct
-              ).toFixed(1) + "%"
-            : "--"
-        )}
-
-        ${metricBox(
-          "成交量",
-          metrics.volume_signal ||
-            "--"
-        )}
-
-      </div>
-
-    </article>
-
-  `;
-
-}
-
-
-/* =========================================================
-   Stock Detail
-   ========================================================= */
-
-function openStock(symbol) {
-
-  const stock =
-    getStock(symbol);
-
-  if (!stock) {
-
-    alert(
-      "找不到股票資料：" +
-      symbol
-    );
-
-    return;
-  }
-
-  APP.searchResult =
-    stock;
-
-  renderActiveTab();
-
-}
-
-
-function closeStockDetail() {
-
-  APP.searchResult =
-    null;
-
-  renderActiveTab();
-
-}
-
-
-function renderStockDetail(stock) {
-
-  const container =
-    byId(
-      "main-content"
-    );
-
-  const metrics =
-    stock.metrics ||
-    {};
-
-  const short =
-    stock.short_term ||
-    {};
-
-  const dca =
-    stock.dca ||
-    {};
-
-  const chip =
-    stock.chip ||
-    short.chip ||
-    {};
-
-
-  container.innerHTML = `
-
-    <section class="section">
-
-      <div class="detail-header">
-
-        <div>
-
-          <div class="detail-name">
-            ${escapeHTML(
-              stock.name ||
-              stock.symbol
-            )}
-          </div>
-
-          <div class="detail-code">
-            ${escapeHTML(
-              stock.symbol
-            )}
-            ${
-              stock.market
-                ? " · " +
-                  escapeHTML(
-                    stock.market
-                  )
-                : ""
-            }
-          </div>
-
-        </div>
-
-
-        <button
-          class="back-btn"
-          onclick="closeStockDetail()"
-        >
-          返回
-        </button>
-
-      </div>
-
-
-      <div class="panel">
-
-        <div class="grid-3">
-
-          ${mini(
-            "最新價格",
-            number(
-              metrics.price
-            ) !== null
-              ? Number(
-                  metrics.price
-                ).toFixed(2)
-              : "--"
-          )}
-
-          ${mini(
-            "今日漲跌",
-            formatPct(
-              metrics.change1_pct
-            )
-          )}
-
-          ${mini(
-            "最新交易日",
-            stock.latest_date ||
-              "--"
-          )}
-
-          ${mini(
-            "MA20",
-            number(
-              metrics.ma20
-            ) !== null
-              ? Number(
-                  metrics.ma20
-                ).toFixed(2)
-              : "--"
-          )}
-
-          ${mini(
-            "MA60",
-            number(
-              metrics.ma60
-            ) !== null
-              ? Number(
-                  metrics.ma60
-                ).toFixed(2)
-              : "--"
-          )}
-
-          ${mini(
-            "20MA乖離",
-            formatPct(
-              metrics.bias20_pct
-            )
-          )}
-
-        </div>
-
-      </div>
-
-    </section>
-
-
-    <section class="section">
-
-      <div class="section-title">
-        <span>
-          短期選股
-        </span>
-      </div>
-
-      <div class="panel">
-
-        <div class="metric-grid">
-
-          ${metricBox(
-            "MACD",
-            short.macd?.golden_cross
-              ? "黃金交叉"
-              : "未交叉"
-          )}
-
-          ${metricBox(
-            "KD",
-            short.kd?.golden_cross
-              ? "黃金交叉"
-              : "未交叉"
-          )}
-
-          ${metricBox(
-            "RSI",
-            short.rsi !== undefined &&
-            short.rsi !== null
-              ? Number(
-                  short.rsi
-                ).toFixed(2)
-              : "--"
-          )}
-
-          ${metricBox(
-            "成交量倍率",
-            number(
-              short.volume_ratio
-            ) !== null
-              ? Number(
-                  short.volume_ratio
-                ).toFixed(2) + "×"
-              : "--"
-          )}
-
-          ${metricBox(
-            "核心得分",
-            short.score !== undefined
-              ? `${short.score}/${short.core_total || 6}`
-              : "--"
-          )}
-
-          ${metricBox(
-            "是否符合",
-            short.qualified
-              ? "符合"
-              : "不符合"
-          )}
-
-        </div>
-
-
-        <div class="signal-row">
-
-          ${signal(
-            "MACD",
-            short.conditions?.macd_golden_cross
-          )}
-
-          ${signal(
-            "KD",
-            short.conditions?.kd_golden_cross
-          )}
-
-          ${signal(
-            "RSI > 50",
-            short.conditions?.rsi_above_50
-          )}
-
-          ${signal(
-            "量 ≥ 1.5×",
-            short.conditions?.volume_ratio_ge_1_5
-          )}
-
-          ${signal(
-            "站上 MA20",
-            short.conditions?.price_above_ma20
-          )}
-
-          ${signal(
-            "MA20 向上",
-            short.conditions?.ma20_up
-          )}
-
-        </div>
-
-      </div>
-
-    </section>
-
-
-    <section class="section">
-
-      <div class="section-title">
-        <span>
-          零股定投
-        </span>
-      </div>
-
-      <div class="panel">
-
-        <div class="grid-3">
-
-          ${mini(
-            "操作",
-            dca.action || "--"
-          )}
-
-          ${mini(
-            "MA20相對",
-            number(
-              dca.ma20_ratio
-            ) !== null
-              ? Number(
-                  dca.ma20_ratio
-                ).toFixed(4)
-              : "--"
-          )}
-
-          ${mini(
-            "60日位置",
-            number(
-              dca.position60_pct
-            ) !== null
-              ? Number(
-                  dca.position60_pct
-                ).toFixed(1) + "%"
-              : "--"
-          )}
-
-          ${mini(
-            "20MA乖離",
-            formatPct(
-              dca.bias20_pct
-            )
-          )}
-
-          ${mini(
-            "成交量",
-            dca.volume_signal || "--"
-          )}
-
-          ${mini(
-            "籌碼",
-            dca.medium_chip_direction ||
-              dca.chip_direction ||
-              "--"
-          )}
-
-        </div>
-
-      </div>
-
-    </section>
-
-
-    <section class="section">
-
-      <div class="section-title">
-        <span>
-          主力籌碼
-        </span>
-
-        <small>
-          10D 保留並實際使用
-        </small>
-
-      </div>
-
-      <div class="panel">
-
-        <div class="grid-2">
-
-          ${mini(
-            "主力 1D",
-            formatChip(
-              chip.main_force_1d
-            )
-          )}
-
-          ${mini(
-            "主力 5D",
-            formatChip(
-              chip.main_force_5d
-            )
-          )}
-
-          ${mini(
-            "主力 10D",
-            formatChip(
-              chip.main_force_10d
-            )
-          )}
-
-          ${mini(
-            "主力 20D",
-            formatChip(
-              chip.main_force_20d
-            )
-          )}
-
-        </div>
-
-
-        <div
-          class="notice-box"
-          style="margin-top:10px"
-        >
-
-          籌碼方向：
-          ${
-            chip.direction ||
-            dca.chip_direction ||
-            "資料不足"
-          }
-
-          <br>
-
-          中期方向：
-          ${
-            chip.medium_direction ||
-            dca.medium_chip_direction ||
-            "資料不足"
-          }
-
-        </div>
-
-      </div>
-
-    </section>
-
-
-    ${renderStockHistorical(stock)}
-
-  `;
-
-}
-
-
-/* =========================================================
-   Stock Historical
-   ========================================================= */
-
-function renderStockHistorical(stock) {
-
-  const historical =
-    stock.historical ||
-    stock.historical_stats ||
-    null;
-
-
-  if (
-    !historical ||
-    typeof historical !== "object"
-  ) {
-
-    return `
-
-      <section class="section">
-
-        <div class="section-title">
-          <span>
-            歷史訊號績效
-          </span>
-
-          <small>
-            30 / 60 / 90 日
-          </small>
-        </div>
-
-        <div class="panel">
-
-          <div class="empty">
-
-            此股票目前沒有
-            30 / 60 / 90 日歷史績效資料。
-
-            <br><br>
-
-            不虛構勝率、平均報酬、
-            最大獲利或最大虧損。
-
-          </div>
-
-        </div>
-
-      </section>
-
-    `;
-
-  }
-
-
-  const periods = [
-    ["30d", "30 日"],
-    ["60d", "60 日"],
-    ["90d", "90 日"]
-  ];
-
-
-  return `
-
-    <section class="section">
-
-      <div class="section-title">
-        <span>
-          歷史訊號績效
-        </span>
-
-        <small>
-          實際樣本
-        </small>
-      </div>
-
-      <div class="grid-3">
-
-        ${periods
-          .map(
-            ([key, label]) => {
-
-              const h =
-                historical[key] ||
-                {};
-
-              return `
-
-                <div class="history-card">
-
-                  <div class="history-period">
-                    ${label}
-                  </div>
-
-                  <div class="mini-label">
-                    勝率
-                  </div>
-
-                  <div class="history-value">
-                    ${formatPct(
-                      h.win_rate
-                    )}
-                  </div>
-
-                  <div class="mini-label" style="margin-top:7px">
-                    樣本
-                  </div>
-
-                  <div class="history-value">
-                    ${formatNumber(
-                      h.sample_count
-                    )}
-                  </div>
-
-                  <div class="mini-label" style="margin-top:7px">
-                    平均報酬
-                  </div>
-
-                  <div class="history-value">
-                    ${formatPct(
-                      h.average_return
-                    )}
-                  </div>
-
-                  <div class="mini-label" style="margin-top:7px">
-                    最大獲利
-                  </div>
-
-                  <div class="history-value">
-                    ${formatPct(
-                      h.max_gain
-                    )}
-                  </div>
-
-                  <div class="mini-label" style="margin-top:7px">
-                    最大虧損
-                  </div>
-
-                  <div class="history-value">
-                    ${formatPct(
-                      h.max_loss
-                    )}
-                  </div>
-
-                </div>
-
-              `;
-
-            }
-          )
-          .join("")}
-
-      </div>
-
-    </section>
-
-  `;
-
-}
-
-
-/* =========================================================
-   Search
-   ========================================================= */
-
-function searchStock() {
-
-  const input =
-    byId(
-      "search-input"
-    );
-
-  const keyword =
-    normalizeSymbol(
-      input?.value
-    );
-
-  if (!keyword) {
-
-    alert(
-      "請輸入股票代號或名稱"
-    );
-
-    return;
-
-  }
-
-
-  /*
-   * 先用代號完全匹配
-   */
-
-  if (
-    APP.stocks[keyword]
-  ) {
-
-    openStock(
-      keyword
-    );
-
-    return;
-
-  }
-
-
-  /*
-   * 再搜尋股票名稱
-   */
-
-  const found =
-    Object.values(
-      APP.stocks
-    )
-    .find(
-      stock =>
-        String(
-          stock.name || ""
-        )
-        .toUpperCase()
-        .includes(
-          keyword
-        )
-    );
-
-
-  if (found) {
-
-    openStock(
-      found.symbol
-    );
-
-    return;
-
-  }
-
-
-  alert(
-    "找不到股票：" +
-    input.value
-  );
-
-}
-
-
-/* =========================================================
-   UI Helpers
-   ========================================================= */
-
-function mini(
-  label,
-  value
-) {
-
-  return `
-
-    <div class="mini-card">
-
-      <div class="mini-label">
-        ${escapeHTML(label)}
-      </div>
-
-      <div class="mini-value">
-        ${escapeHTML(value)}
-      </div>
-
-    </div>
-
-  `;
-
-}
-
-
-function metricBox(
-  label,
-  value
-) {
-
-  return `
-
-    <div class="metric">
-
-      <div class="metric-label">
-        ${escapeHTML(label)}
-      </div>
-
-      <div class="metric-value">
-        ${escapeHTML(value)}
-      </div>
-
-    </div>
-
-  `;
-
-}
-
-
-function signal(
-  label,
-  passed
-) {
-
-  const cls =
-    passed
-      ? "pass"
-      : "fail";
-
-  return `
-
-    <span
-      class="signal ${cls}"
-    >
-
-      ${passed ? "✓" : "✕"}
-
-      ${escapeHTML(label)}
-
-    </span>
-
-  `;
-
-}
-
-
-function chipSignal(
-  label,
-  value
-) {
-
-  const n =
-    number(value);
-
-  let cls =
-    "neutral";
-
-  let text =
-    "--";
-
-  if (n !== null) {
-
-    text =
-      (
-        n > 0
-          ? "+"
-          : ""
-      ) +
-      n.toFixed(2);
-
-    cls =
-      n > 0
-        ? "pass"
-        : n < 0
-          ? "fail"
-          : "neutral";
-
-  }
-
-  return `
-
-    <span
-      class="signal ${cls}"
-    >
-      ${escapeHTML(label)}：
-      ${escapeHTML(text)}
-    </span>
-
-  `;
-
-}
-
-
-function formatChip(value) {
-
-  const n =
-    number(value);
-
-  if (n === null) {
-    return "--";
-  }
-
-  return (
-    n > 0
-      ? "+"
-      : ""
-  ) +
-  n.toFixed(2);
-
-}
-
-
-function statusText(status) {
-
-  switch (status) {
-
-    case "complete":
-      return "完整";
-
-    case "partial":
-      return "部分";
-
-    case "insufficient":
-      return "不足";
-
-    case "no_analysis":
-      return "無分析";
-
-    default:
-      return status || "--";
-
-  }
-
-}
-
-
-/* =========================================================
-   Fatal Error
-   ========================================================= */
-
-function renderFatalError(
-  title,
-  detail
-) {
-
-  const container =
-    byId(
-      "main-content"
-    );
-
-  if (!container) {
-    return;
-  }
-
-  container.innerHTML = `
-
-    <div class="error-box">
-
-      <strong>
-        ⚠️ ${escapeHTML(title)}
-      </strong>
-
-      <br><br>
-
-      ${escapeHTML(detail)}
-
-      <br><br>
-
-      儀表板核心資料：
-      <br>
-      <code>
-        ./Data/analysis.json
-      </code>
-
-      <br><br>
-
-      請確認 GitHub Actions
-      已經成功產生並提交
-      Data/analysis.json。
-
-    </div>
-
-  `;
-
-}
-
-
-/* =========================================================
-   Keyboard
-   ========================================================= */
-
-document.addEventListener(
-  "keydown",
-  event => {
-
-    if (
-      event.key === "Enter" &&
-      document.activeElement?.id ===
-        "search-input"
-    ) {
-
-      searchStock();
-
+      const filteredStocks = allStockData.filter(s => {
+        if (currentTab === 'featured') return s.isFeatured;
+        return s.type === currentTab;
+      });
+      
+      if (filteredStocks.length === 0) {
+        container.innerHTML = `<div style="text-align:center; padding:40px; color:var(--text-sub);">「${getTabName(currentTab)}」分頁暫無符合條件之標的</div>`;
+        return;
+      }
+
+      filteredStocks.forEach(stock => {
+        container.appendChild(createStockCard(stock));
+      });
     }
 
-  }
-);
-
-
-/* =========================================================
-   Start
-   ========================================================= */
-
-document.addEventListener(
-  "DOMContentLoaded",
-  async () => {
-
-    const success =
-      await loadAllData();
-
-    if (!success) {
-      return;
+    function getTabName(key) {
+      const names = { featured: '今日精選', top10: 'Top 10', etf: 'ETF', bond: '債券', mylist: '我的清單' };
+      return names[key] || '';
     }
 
-    renderActiveTab();
+    function createStockCard(stock) {
+      const card = document.createElement('div');
+      card.className = 'stock-card';
+      const isUp = stock.changePct > 0;
+      const colorClass = isUp ? 'up-color' : (stock.changePct < 0 ? 'down-color' : 'flat-color');
+      const sign = isUp ? '+' : '';
 
-  }
-);
+      card.innerHTML = `
+        <div class="card-header">
+          <div>
+            <div class="stock-name">${stock.name}</div>
+            <div class="stock-code">${stock.symbol}</div>
+          </div>
+          <div class="stock-price-box">
+            <div class="price-num ${colorClass}">${stock.price.toFixed(2)}</div>
+            <div class="price-change ${colorClass}">${sign}${stock.changePct.toFixed(2)}%</div>
+          </div>
+        </div>
+        <div class="card-footer">
+          <div class="strength-tag">${stock.strength}</div>
+          <div class="advice-text">建議：${stock.advice}</div>
+          <button class="add-btn" onclick="addToMyList('${stock.symbol}')">＋加入我的清單</button>
+        </div>
+      `;
+      return card;
+    }
 
-</script>
+    // 持倉清單繪製與計算
+    function renderMyList(container) {
+      if (myPortfolio.length === 0) {
+        container.innerHTML = `
+          <div style="text-align:center; padding:40px; color:var(--text-sub);">
+            尚未建立持倉/追蹤項目<br><br>
+            <span style="font-size:0.85rem">請透過上方「🔍 查詢個股」搜尋並加入標的</span>
+          </div>`;
+        return;
+      }
 
+      myPortfolio.forEach((item, index) => {
+        const stock = allStockData.find(s => s.symbol === item.symbol) || {
+          symbol: item.symbol, name: item.name || item.symbol, price: 0, changePct: 0, strength: '🟡 中性'
+        };
+
+        const shares = Number(item.shares || 0);
+        const avgCost = Number(item.cost || 0);
+        const marketVal = shares * stock.price;
+        const pnl = shares > 0 && avgCost > 0 ? (stock.price - avgCost) * shares : 0;
+        const roi = shares > 0 && avgCost > 0 ? ((stock.price - avgCost) / avgCost) * 100 : 0;
+
+        const card = document.createElement('div');
+        card.className = 'stock-card';
+        const isUp = stock.changePct > 0;
+        const colorClass = isUp ? 'up-color' : (stock.changePct < 0 ? 'down-color' : 'flat-color');
+        const pnlColorClass = pnl > 0 ? 'up-color' : (pnl < 0 ? 'down-color' : 'flat-color');
+
+        card.innerHTML = `
+          <div class="card-header">
+            <div>
+              <div class="stock-name">${stock.name}</div>
+              <div class="stock-code">${stock.symbol}</div>
+            </div>
+            <div class="stock-price-box">
+              <div class="price-num ${colorClass}">${stock.price.toFixed(2)}</div>
+              <div class="price-change ${colorClass}">${stock.changePct > 0 ? '+' : ''}${stock.changePct.toFixed(2)}%</div>
+            </div>
+          </div>
+          <div class="portfolio-inputs">
+            <div class="input-field">
+              <label>持有股數</label>
+              <input type="number" value="${shares || ''}" placeholder="例: 1000" onchange="updatePosition(${index}, 'shares', this.value)">
+            </div>
+            <div class="input-field">
+              <label>平均成本</label>
+              <input type="number" value="${avgCost || ''}" placeholder="例: 50.5" onchange="updatePosition(${index}, 'cost', this.value)">
+            </div>
+          </div>
+          ${shares > 0 ? `
+          <div class="portfolio-metrics">
+            <div class="metric-item"><span style="color:var(--text-sub)">目前市值</span><span>$${Math.round(marketVal).toLocaleString()}</span></div>
+            <div class="metric-item"><span style="color:var(--text-sub)">預估損益</span><span class="${pnlColorClass}">${pnl >= 0 ? '+' : ''}${Math.round(pnl).toLocaleString()}</span></div>
+            <div class="metric-item"><span style="color:var(--text-sub)">報酬率</span><span class="${pnlColorClass}">${roi >= 0 ? '+' : ''}${roi.toFixed(2)}%</span></div>
+          </div>` : ''}
+          <div class="card-footer" style="margin-top:12px;">
+            <div class="strength-tag">${stock.strength}</div>
+            <button style="background:none; border:none; color:#f87171; cursor:pointer;" onclick="removeFromMyList(${index})">移除</button>
+          </div>
+        `;
+        container.appendChild(card);
+      });
+    }
+
+    function updatePosition(index, field, value) {
+      myPortfolio[index][field] = Number(value);
+      localStorage.setItem('myStockList', JSON.stringify(myPortfolio));
+      updatePortfolioSummary();
+      renderActiveTab();
+    }
+
+    function addToMyList(symbol) {
+      if (myPortfolio.some(item => item.symbol === symbol)) {
+        alert('該標的已在我的清單中');
+        return;
+      }
+      const target = allStockData.find(s => s.symbol === symbol) || { symbol, name: symbol };
+      myPortfolio.push({ symbol: target.symbol, name: target.name, shares: 0, cost: 0 });
+      localStorage.setItem('myStockList', JSON.stringify(myPortfolio));
+      alert(`已將 ${target.name} (${target.symbol}) 加入我的清單！`);
+      updatePortfolioSummary();
+    }
+
+    function removeFromMyList(index) {
+      myPortfolio.splice(index, 1);
+      localStorage.setItem('myStockList', JSON.stringify(myPortfolio));
+      updatePortfolioSummary();
+      renderActiveTab();
+    }
+
+    function updatePortfolioSummary() {
+      const totalPnlEl = document.getElementById('portfolio-total-pnl');
+      if (!totalPnlEl) return;
+      
+      let totalPnl = 0;
+      let hasPosition = false;
+
+      myPortfolio.forEach(item => {
+        if (item.shares > 0 && item.cost > 0) {
+          hasPosition = true;
+          const stock = allStockData.find(s => s.symbol === item.symbol) || { price: item.cost };
+          totalPnl += (stock.price - item.cost) * item.shares;
+        }
+      });
+
+      if (!hasPosition) {
+        totalPnlEl.textContent = '尚未建立持倉';
+        totalPnlEl.className = 'panel-value-main';
+      } else {
+        const isPositive = totalPnl >= 0;
+        totalPnlEl.textContent = `${isPositive ? '+' : ''}${Math.round(totalPnl).toLocaleString()} 元`;
+        totalPnlEl.className = `panel-value-main ${isPositive ? 'up-color' : 'down-color'}`;
+      }
+    }
+
+    function handleSearch() {
+      const query = document.getElementById('search-input').value.trim();
+      if (!query) return;
+
+      const matched = allStockData.filter(s => s.symbol.includes(query) || s.name.includes(query));
+      const container = document.getElementById('cards-container');
+      container.innerHTML = `<div style="font-size:0.9rem; color:var(--text-sub); margin-bottom:10px;">🔍 搜尋「${query}」的結果：</div>`;
+
+      if (matched.length === 0) {
+        container.innerHTML += `<div style="color:var(--text-sub); padding:20px 0;">未找到符合「${query}」的股票標的。</div>`;
+      } else {
+        matched.forEach(s => container.appendChild(createStockCard(s)));
+      }
+    }
+  </script>
 </body>
 </html>
