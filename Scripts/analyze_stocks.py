@@ -4,7 +4,7 @@
 """
 台股 AI 選股系統
 Scripts/analyze_stocks.py
-正式版 V3.1
+正式版 V3.2
 
 ============================================================
 分析層責任
@@ -24,135 +24,119 @@ Scripts/analyze_stocks.py
     Data/analysis.json
 
 ============================================================
-重要架構邊界
+V3.2 核心修正
 ============================================================
 
-本程式：
-
-    不抓 CMoney API
-    不執行 fetch_chip.py
-    不執行 fetch_prices.py
-    不修改 chip.json
-    不修改 prices
-    不修改 universe.json
-
-只使用既有資料進行分析。
-
-============================================================
-V3.1 重要修正
-============================================================
-
-V3.0 原本假設：
-
-    Data/prices/
-        2337.json
-        2426.json
-        ...
-
-但目前實際價格架構為：
-
-    Data/prices/
-        manifest.json
-        prices_001.json
-        prices_002.json
-        ...
-        prices_020.json
-
-因此 V3.1 改為：
-
-    1. 讀取 manifest
-    2. 找出所有價格 shard
-    3. 一次載入 shard
-    4. 建立 price_index
-    5. 依股票代號取得歷史資料
-
-支援多種 shard JSON 結構：
-
-    {
-        "2337": [...]
-    }
-
-或：
-
-    {
-        "stocks": {
-            "2337": [...]
-        }
-    }
-
-或：
-
-    {
-        "data": {
-            "2337": [...]
-        }
-    }
-
-或：
-
-    [
-        {
-            "symbol": "2337",
-            "prices": [...]
-        }
-    ]
-
-或股票代號帶：
-
-    2337.TW
-    2337.TWO
-
-都會正規化成：
-
-    2337
-
-============================================================
-短期選股核心
-============================================================
+【一】短期選股由 6 項核心改為正式 5 項
 
 1. MACD 黃金交叉
 2. KD 黃金交叉
 3. RSI > 50
-4. 今日成交量 / 前5個交易日平均成交量 >= 1.5
-5. 股價站上20日線
-6. 20日線向上
+4. 量比 >= 1.5
+5. 股價 > MA20 且 MA20 向上
 
-前5日平均：
+原本：
 
-    不包含今日
+    5. 股價 > MA20
+    6. MA20 向上
 
-============================================================
-短期籌碼
-============================================================
+現在正式合併成：
 
-保留：
+    5. 股價 > MA20 且 MA20 向上
 
-    主力1D
-    主力5D
-    主力10D
-    主力20D
+因此：
 
-10D 不可移除。
-
-10D 實際參與籌碼方向判斷。
+    core_total = 5
 
 ============================================================
-零股定投
+
+【二】核心條件與籌碼分析分層
+
+五項核心條件負責：
+
+    技術面選股過濾
+
+籌碼負責：
+
+    主力 1D
+    主力 5D
+    主力 10D
+    主力 20D
+
+    短期籌碼方向
+    中期籌碼方向
+
+10D：
+
+    保留
+    實際參與籌碼方向分析
+
+注意：
+
+    主力籌碼不是第六項核心條件。
+
 ============================================================
 
-1. MA20 相對位置
-2. 60日高低位置
-3. 20MA 乖離
-4. 近期漲跌幅
-5. 成交量狀態
-6. 主力籌碼
-7. 高檔再平衡
-8. 極端負乖離
-9. 最大虧損警戒
+【三】資券／當沖
+
+若 chip.json 已存在相關欄位：
+
+    融資
+    融券
+    當沖
+    當沖率
+
+則進行解析。
+
+若沒有：
+
+    不自行虛構
+    不以 0 代替
+    明確輸出 null / 資料不足
 
 ============================================================
-資料管線硬性驗證
+
+【四】前端一致性
+
+analysis.json 將明確輸出：
+
+    core_total = 5
+
+以及：
+
+    score = 0 ~ 5
+
+並提供：
+
+    conditions
+
+條件名稱固定為：
+
+    macd_golden_cross
+    kd_golden_cross
+    rsi_above_50
+    volume_ratio_ge_1_5
+    price_above_ma20_and_ma20_up
+
+避免前端再自行拆成 6 項。
+
 ============================================================
+
+【五】價格架構
+
+支援：
+
+    Data/prices/
+        manifest.json
+        prices_001.json
+        ...
+        prices_020.json
+
+支援多種 JSON 結構。
+
+============================================================
+
+【六】資料管線硬性驗證
 
 如果：
 
@@ -160,18 +144,6 @@ V3.0 原本假設：
     但價格成功股票 = 0
 
 直接失敗。
-
-如果：
-
-    Universe > 0
-    價格成功股票 > 0
-
-正常產生 analysis.json。
-
-這是為了避免：
-
-    Action 顯示成功
-    但儀表板全部 null / []
 
 ============================================================
 """
@@ -192,7 +164,7 @@ from typing import Any, Dict, List, Optional, Tuple
 # 基本設定
 # ============================================================
 
-VERSION = "V3.1"
+VERSION = "V3.2"
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 DATA_DIR = BASE_DIR / "Data"
@@ -208,10 +180,12 @@ OUTPUT_FILE = DATA_DIR / "analysis.json"
 
 
 # ============================================================
-# 短期選股設定
+# 五項短期核心
 # ============================================================
 
 SHORT_TERM_CONFIG = {
+
+    "core_total": 5,
 
     "rsi_period": 14,
     "rsi_min": 50.0,
@@ -326,7 +300,6 @@ def parse_date(value: Any) -> Optional[datetime]:
 
         try:
             return datetime.strptime(text, fmt)
-
         except Exception:
             pass
 
@@ -440,14 +413,6 @@ def get_price_shard_files(
 
     files: List[str] = []
 
-    # --------------------------------------------------------
-    # 目前 V4.1 manifest
-    #
-    # {
-    #     "files": [...]
-    # }
-    # --------------------------------------------------------
-
     manifest_files = manifest.get("files")
 
     if isinstance(manifest_files, list):
@@ -455,6 +420,7 @@ def get_price_shard_files(
         for item in manifest_files:
 
             if isinstance(item, str):
+
                 files.append(item)
 
             elif isinstance(item, dict):
@@ -471,10 +437,6 @@ def get_price_shard_files(
                     if value:
                         files.append(str(value))
                         break
-
-    # --------------------------------------------------------
-    # 舊格式相容
-    # --------------------------------------------------------
 
     stocks = manifest.get("stocks")
 
@@ -500,12 +462,6 @@ def get_price_shard_files(
                         files.append(str(value))
                         break
 
-    # --------------------------------------------------------
-    # 如果 manifest 沒有 files
-    #
-    # 直接掃描 prices/
-    # --------------------------------------------------------
-
     if not files and PRICES_DIR.exists():
 
         for path in sorted(
@@ -513,10 +469,6 @@ def get_price_shard_files(
         ):
 
             files.append(path.name)
-
-    # --------------------------------------------------------
-    # 去重 + 路徑解析
-    # --------------------------------------------------------
 
     result: List[Path] = []
     seen = set()
@@ -531,11 +483,8 @@ def get_price_shard_files(
         seen.add(filename)
 
         candidates = [
-
             PRICES_DIR / filename,
-
             DATA_DIR / filename,
-
             BASE_DIR / filename,
         ]
 
@@ -551,9 +500,7 @@ def get_price_shard_files(
         if found is not None:
             result.append(found)
 
-    result.sort(
-        key=lambda p: p.name
-    )
+    result.sort(key=lambda p: p.name)
 
     return result
 
@@ -587,7 +534,7 @@ def looks_like_price_row(
 
 
 # ============================================================
-# Extract History From Stock Object
+# Extract History
 # ============================================================
 
 def extract_history_candidate(
@@ -630,14 +577,6 @@ def extract_stocks_from_shard(
 
     result: Dict[str, Any] = {}
 
-    # --------------------------------------------------------
-    # 情況 A：
-    #
-    # {
-    #     "2337": [...]
-    # }
-    # --------------------------------------------------------
-
     if isinstance(data, dict):
 
         for container_key in (
@@ -655,9 +594,7 @@ def extract_stocks_from_shard(
 
                 for symbol, value in container.items():
 
-                    normalized = normalize_symbol(
-                        symbol
-                    )
+                    normalized = normalize_symbol(symbol)
 
                     history = extract_history_candidate(
                         value
@@ -671,10 +608,6 @@ def extract_stocks_from_shard(
 
                 if result:
                     return result
-
-        # ----------------------------------------------------
-        # 直接 symbol -> history
-        # ----------------------------------------------------
 
         for key, value in data.items():
 
@@ -696,10 +629,6 @@ def extract_stocks_from_shard(
         if result:
             return result
 
-        # ----------------------------------------------------
-        # 單一股票物件
-        # ----------------------------------------------------
-
         symbol = normalize_symbol(
             data.get("symbol")
             or data.get("code")
@@ -713,23 +642,9 @@ def extract_stocks_from_shard(
             )
 
             if history is not None:
-
-                result[
-                    symbol
-                ] = history
+                result[symbol] = history
 
             return result
-
-    # --------------------------------------------------------
-    # 情況 B：
-    #
-    # [
-    #   {
-    #       "symbol": "2337",
-    #       "prices": [...]
-    #   }
-    # ]
-    # --------------------------------------------------------
 
     if isinstance(data, list):
 
@@ -753,13 +668,7 @@ def extract_stocks_from_shard(
             )
 
             if history is not None:
-
-                result[
-                    symbol
-                ] = history
-
-        if result:
-            return result
+                result[symbol] = history
 
     return result
 
@@ -794,11 +703,7 @@ def parse_price_history(
                 if isinstance(item, dict):
 
                     row = dict(item)
-
-                    row.setdefault(
-                        "date",
-                        date
-                    )
+                    row.setdefault("date", date)
 
                     converted.append(row)
 
@@ -899,14 +804,9 @@ def parse_price_history(
     unique = {}
 
     for row in rows:
+        unique[row["date"]] = row
 
-        unique[
-            row["date"]
-        ] = row
-
-    rows = list(
-        unique.values()
-    )
+    rows = list(unique.values())
 
     rows.sort(
         key=lambda x:
@@ -918,12 +818,15 @@ def parse_price_history(
 
 
 # ============================================================
-# Load All Price Shards
+# Load Price Index
 # ============================================================
 
 def load_price_index(
     manifest: Dict[str, Any]
-) -> Tuple[Dict[str, List[Dict[str, Any]]], Dict[str, Any]]:
+) -> Tuple[
+    Dict[str, List[Dict[str, Any]]],
+    Dict[str, Any]
+]:
 
     section("載入價格分檔")
 
@@ -941,10 +844,7 @@ def load_price_index(
         f"價格分檔：{len(shard_files)} 個"
     )
 
-    price_index: Dict[
-        str,
-        List[Dict[str, Any]]
-    ] = {}
+    price_index = {}
 
     shard_statistics = []
 
@@ -971,10 +871,7 @@ def load_price_index(
 
                 if rows:
 
-                    price_index[
-                        symbol
-                    ] = rows
-
+                    price_index[symbol] = rows
                     loaded_count += 1
 
             shard_statistics.append(
@@ -992,8 +889,7 @@ def load_price_index(
 
             log(
                 f"[{index:02d}/{len(shard_files):02d}] "
-                f"{path.name} "
-                f"→ "
+                f"{path.name} → "
                 f"{len(stocks)} 檔 / "
                 f"{loaded_count} 檔有效"
             )
@@ -1091,16 +987,11 @@ def ema_series(
     if len(values) < period:
         return []
 
-    multiplier = 2.0 / (
-        period + 1
-    )
+    multiplier = 2.0 / (period + 1)
 
     result = []
 
-    ema = (
-        sum(values[:period])
-        / period
-    )
+    ema = sum(values[:period]) / period
 
     result.append(ema)
 
@@ -1123,21 +1014,11 @@ def calculate_macd(
     closes: List[float]
 ) -> Dict[str, Any]:
 
-    fast = SHORT_TERM_CONFIG[
-        "macd_fast"
-    ]
+    fast = SHORT_TERM_CONFIG["macd_fast"]
+    slow = SHORT_TERM_CONFIG["macd_slow"]
+    signal_period = SHORT_TERM_CONFIG["macd_signal"]
 
-    slow = SHORT_TERM_CONFIG[
-        "macd_slow"
-    ]
-
-    signal_period = SHORT_TERM_CONFIG[
-        "macd_signal"
-    ]
-
-    if len(closes) < (
-        slow + signal_period
-    ):
+    if len(closes) < slow + signal_period:
 
         return {
             "macd": None,
@@ -1147,15 +1028,8 @@ def calculate_macd(
             "status": "insufficient",
         }
 
-    ema_fast = ema_series(
-        closes,
-        fast
-    )
-
-    ema_slow = ema_series(
-        closes,
-        slow
-    )
+    ema_fast = ema_series(closes, fast)
+    ema_slow = ema_series(closes, slow)
 
     if not ema_fast or not ema_slow:
 
@@ -1167,20 +1041,13 @@ def calculate_macd(
             "status": "insufficient",
         }
 
-    offset = (
-        len(ema_fast)
-        - len(ema_slow)
-    )
+    offset = len(ema_fast) - len(ema_slow)
 
     macd_series = []
 
-    for i, slow_value in enumerate(
-        ema_slow
-    ):
+    for i, slow_value in enumerate(ema_slow):
 
-        fast_value = ema_fast[
-            i + offset
-        ]
+        fast_value = ema_fast[i + offset]
 
         macd_series.append(
             fast_value - slow_value
@@ -1195,17 +1062,11 @@ def calculate_macd(
 
         return {
             "macd":
-                round(
-                    macd_series[-1],
-                    4
-                ),
+                round(macd_series[-1], 4),
 
             "signal": None,
-
             "histogram": None,
-
             "golden_cross": False,
-
             "status": "partial",
         }
 
@@ -1224,16 +1085,10 @@ def calculate_macd(
     return {
 
         "macd":
-            round(
-                current_macd,
-                4
-            ),
+            round(current_macd, 4),
 
         "signal":
-            round(
-                current_signal,
-                4
-            ),
+            round(current_signal, 4),
 
         "histogram":
             round(
@@ -1264,10 +1119,7 @@ def calculate_rsi(
     gains = []
     losses = []
 
-    for i in range(
-        1,
-        len(closes)
-    ):
+    for i in range(1, len(closes)):
 
         change = (
             closes[i]
@@ -1284,20 +1136,10 @@ def calculate_rsi(
             gains.append(0.0)
             losses.append(abs(change))
 
-    avg_gain = (
-        sum(gains[:period])
-        / period
-    )
+    avg_gain = sum(gains[:period]) / period
+    avg_loss = sum(losses[:period]) / period
 
-    avg_loss = (
-        sum(losses[:period])
-        / period
-    )
-
-    for i in range(
-        period,
-        len(gains)
-    ):
+    for i in range(period, len(gains)):
 
         avg_gain = (
             avg_gain * (period - 1)
@@ -1312,16 +1154,11 @@ def calculate_rsi(
     if avg_loss == 0:
         return 100.0
 
-    rs = (
-        avg_gain
-        / avg_loss
-    )
+    rs = avg_gain / avg_loss
 
     return round(
-        100.0
-        - (
-            100.0
-            / (1.0 + rs)
+        100.0 - (
+            100.0 / (1.0 + rs)
         ),
         2
     )
@@ -1351,31 +1188,20 @@ def calculate_kd(
 
     for row in rows:
 
-        close = safe_float(
-            row.get("close")
-        )
+        close = safe_float(row.get("close"))
 
         if close is None:
             continue
 
-        high = safe_float(
-            row.get("high")
-        )
-
-        low = safe_float(
-            row.get("low")
-        )
+        high = safe_float(row.get("high"))
+        low = safe_float(row.get("low"))
 
         highs.append(
-            high
-            if high is not None
-            else close
+            high if high is not None else close
         )
 
         lows.append(
-            low
-            if low is not None
-            else close
+            low if low is not None else close
         )
 
         closes.append(close)
@@ -1401,15 +1227,11 @@ def calculate_kd(
     ):
 
         window_high = max(
-            highs[
-                i - period + 1:i + 1
-            ]
+            highs[i - period + 1:i + 1]
         )
 
         window_low = min(
-            lows[
-                i - period + 1:i + 1
-            ]
+            lows[i - period + 1:i + 1]
         )
 
         denominator = (
@@ -1458,16 +1280,10 @@ def calculate_kd(
     return {
 
         "k":
-            round(
-                k_values[-1],
-                2
-            ),
+            round(k_values[-1], 2),
 
         "d":
-            round(
-                d_values[-1],
-                2
-            ),
+            round(d_values[-1], 2),
 
         "golden_cross":
             golden_cross,
@@ -1496,38 +1312,23 @@ def calculate_price_metrics(
 
     current_price = closes[-1]
 
-    ma5 = moving_average(
-        closes,
-        5
-    )
+    ma5 = moving_average(closes, 5)
 
-    ma20 = moving_average(
-        closes,
-        20
-    )
+    ma20 = moving_average(closes, 20)
 
     previous_ma20 = previous_moving_average(
         closes,
         20
     )
 
-    ma60 = moving_average(
-        closes,
-        60
-    )
+    ma60 = moving_average(closes, 60)
 
     volumes = [
-        safe_float(
-            row.get("volume")
-        )
+        safe_float(row.get("volume"))
         for row in rows
     ]
 
-    today_volume = (
-        volumes[-1]
-        if volumes
-        else None
-    )
+    today_volume = volumes[-1]
 
     previous_5_volume_avg = None
 
@@ -1542,11 +1343,10 @@ def calculate_price_metrics(
         if len(previous_5) == 5:
 
             previous_5_volume_avg = (
-                sum(previous_5)
-                / 5.0
+                sum(previous_5) / 5.0
             )
 
-    volume_ratio_vs_previous_5 = None
+    volume_ratio = None
 
     if (
         today_volume is not None
@@ -1554,7 +1354,7 @@ def calculate_price_metrics(
         and previous_5_volume_avg > 0
     ):
 
-        volume_ratio_vs_previous_5 = (
+        volume_ratio = (
             today_volume
             / previous_5_volume_avg
         )
@@ -1570,10 +1370,7 @@ def calculate_price_metrics(
     if len(available_volumes) >= 5:
 
         volume5_including_today = (
-            sum(
-                available_volumes[-5:]
-            )
-            / 5.0
+            sum(available_volumes[-5:]) / 5.0
         )
 
     volume20 = None
@@ -1581,10 +1378,7 @@ def calculate_price_metrics(
     if len(available_volumes) >= 20:
 
         volume20 = (
-            sum(
-                available_volumes[-20:]
-            )
-            / 20.0
+            sum(available_volumes[-20:]) / 20.0
         )
 
     high60 = None
@@ -1602,45 +1396,32 @@ def calculate_price_metrics(
 
     bias20_pct = None
 
-    if (
-        ma20 is not None
-        and ma20 != 0
-    ):
+    if ma20 is not None and ma20 != 0:
 
         bias20_pct = (
-            current_price
-            / ma20
-            - 1.0
+            current_price / ma20 - 1.0
         ) * 100.0
 
     change1_pct = None
+    change5_pct = None
+    change20_pct = None
 
     if len(closes) >= 2:
 
         change1_pct = (
-            current_price
-            / closes[-2]
-            - 1.0
+            current_price / closes[-2] - 1.0
         ) * 100.0
-
-    change5_pct = None
 
     if len(closes) >= 6:
 
         change5_pct = (
-            current_price
-            / closes[-6]
-            - 1.0
+            current_price / closes[-6] - 1.0
         ) * 100.0
-
-    change20_pct = None
 
     if len(closes) >= 21:
 
         change20_pct = (
-            current_price
-            / closes[-21]
-            - 1.0
+            current_price / closes[-21] - 1.0
         ) * 100.0
 
     position60_pct = None
@@ -1653,57 +1434,49 @@ def calculate_price_metrics(
 
         position60_pct = (
             (
-                current_price
-                - low60
+                current_price - low60
             )
             / (
-                high60
-                - low60
+                high60 - low60
             )
             * 100.0
         )
 
     ma20_ratio = None
 
-    if (
-        ma20 is not None
-        and ma20 != 0
-    ):
+    if ma20 is not None and ma20 != 0:
 
         ma20_ratio = (
-            current_price
-            / ma20
+            current_price / ma20
         )
 
     low60_ratio = None
 
-    if (
-        low60 is not None
-        and low60 != 0
-    ):
+    if low60 is not None and low60 != 0:
 
         low60_ratio = (
-            current_price
-            / low60
+            current_price / low60
         )
 
-    volume_signal = "資料不足"
+    if volume_ratio is None:
 
-    if volume_ratio_vs_previous_5 is not None:
+        volume_signal = "資料不足"
 
-        ratio = volume_ratio_vs_previous_5
+    elif volume_ratio >= 1.5:
 
-        if ratio >= 1.5:
-            volume_signal = "放量"
+        volume_signal = "放量"
 
-        elif ratio >= 1.0:
-            volume_signal = "正常"
+    elif volume_ratio >= 1.0:
 
-        elif ratio >= 0.5:
-            volume_signal = "量縮"
+        volume_signal = "正常"
 
-        else:
-            volume_signal = "明顯量縮"
+    elif volume_ratio >= 0.5:
+
+        volume_signal = "量縮"
+
+    else:
+
+        volume_signal = "明顯量縮"
 
     return {
 
@@ -1712,18 +1485,15 @@ def calculate_price_metrics(
 
         "ma5":
             round(ma5, 2)
-            if ma5 is not None
-            else None,
+            if ma5 is not None else None,
 
         "ma20":
             round(ma20, 2)
-            if ma20 is not None
-            else None,
+            if ma20 is not None else None,
 
         "ma60":
             round(ma60, 2)
-            if ma60 is not None
-            else None,
+            if ma60 is not None else None,
 
         "ma20_up":
             (
@@ -1734,48 +1504,39 @@ def calculate_price_metrics(
 
         "ma20_ratio":
             round(ma20_ratio, 4)
-            if ma20_ratio is not None
-            else None,
+            if ma20_ratio is not None else None,
 
         "bias20_pct":
             round(bias20_pct, 2)
-            if bias20_pct is not None
-            else None,
+            if bias20_pct is not None else None,
 
         "change1_pct":
             round(change1_pct, 2)
-            if change1_pct is not None
-            else None,
+            if change1_pct is not None else None,
 
         "change5_pct":
             round(change5_pct, 2)
-            if change5_pct is not None
-            else None,
+            if change5_pct is not None else None,
 
         "change20_pct":
             round(change20_pct, 2)
-            if change20_pct is not None
-            else None,
+            if change20_pct is not None else None,
 
         "high60":
             round(high60, 2)
-            if high60 is not None
-            else None,
+            if high60 is not None else None,
 
         "low60":
             round(low60, 2)
-            if low60 is not None
-            else None,
+            if low60 is not None else None,
 
         "position60_pct":
             round(position60_pct, 2)
-            if position60_pct is not None
-            else None,
+            if position60_pct is not None else None,
 
         "low60_ratio":
             round(low60_ratio, 4)
-            if low60_ratio is not None
-            else None,
+            if low60_ratio is not None else None,
 
         "volume":
             today_volume,
@@ -1797,20 +1558,12 @@ def calculate_price_metrics(
             else None,
 
         "volume20":
-            round(
-                volume20,
-                2
-            )
-            if volume20 is not None
-            else None,
+            round(volume20, 2)
+            if volume20 is not None else None,
 
         "volume_ratio_vs_previous_5":
-            round(
-                volume_ratio_vs_previous_5,
-                4
-            )
-            if volume_ratio_vs_previous_5 is not None
-            else None,
+            round(volume_ratio, 4)
+            if volume_ratio is not None else None,
 
         "volume_signal":
             volume_signal,
@@ -1818,64 +1571,230 @@ def calculate_price_metrics(
 
 
 # ============================================================
-# Chip Helpers
+# Chip Field Helpers
 # ============================================================
+
+def get_first_value(
+    data: Dict[str, Any],
+    keys: Tuple[str, ...]
+) -> Any:
+
+    for key in keys:
+
+        if key in data:
+
+            value = data.get(key)
+
+            if value is not None:
+                return value
+
+    return None
+
 
 def chip_value(
     chip: Dict[str, Any],
     key: str
 ) -> Optional[float]:
 
-    value = chip.get(key)
+    aliases = {
 
-    if value is None:
+        "main_force_1d": (
+            "main_force_1D",
+            "main_force_1d",
+            "main_force_1D_pct",
+            "main_force_1d_pct",
+            "mf1",
+            "1d",
+        ),
 
-        aliases = {
+        "main_force_5d": (
+            "main_force_5D",
+            "main_force_5d",
+            "main_force_5D_pct",
+            "main_force_5d_pct",
+            "mf5",
+            "5d",
+        ),
 
-            "main_force_1d": (
-                "main_force_1D",
-                "main_force_1D_pct",
-                "main_force_1d_pct",
-                "mf1",
-                "1d",
-            ),
+        "main_force_10d": (
+            "main_force_10D",
+            "main_force_10d",
+            "main_force_10D_pct",
+            "main_force_10d_pct",
+            "mf10",
+            "10d",
+        ),
 
-            "main_force_5d": (
-                "main_force_5D",
-                "main_force_5D_pct",
-                "main_force_5d_pct",
-                "mf5",
-                "5d",
-            ),
+        "main_force_20d": (
+            "main_force_20D",
+            "main_force_20d",
+            "main_force_20D_pct",
+            "main_force_20d_pct",
+            "mf20",
+            "20d",
+        ),
+    }
 
-            "main_force_10d": (
-                "main_force_10D",
-                "main_force_10D_pct",
-                "main_force_10d_pct",
-                "mf10",
-                "10d",
-            ),
-
-            "main_force_20d": (
-                "main_force_20D",
-                "main_force_20D_pct",
-                "main_force_20d_pct",
-                "mf20",
-                "20d",
-            ),
-        }
-
-        for alias in aliases.get(
-            key,
-            ()
-        ):
-
-            if alias in chip:
-
-                value = chip.get(alias)
-                break
+    value = get_first_value(
+        chip,
+        aliases.get(key, ())
+    )
 
     return safe_float(value)
+
+
+# ============================================================
+# Financing / Short / Day Trade
+# ============================================================
+
+def find_numeric_field(
+    chip: Dict[str, Any],
+    aliases: Tuple[str, ...]
+) -> Optional[float]:
+
+    value = get_first_value(
+        chip,
+        aliases
+    )
+
+    if value is not None:
+        return safe_float(value)
+
+    # 支援巢狀結構
+    for container_key in (
+        "margin",
+        "credit",
+        "financing",
+        "short",
+        "day_trade",
+        "daytrade",
+        "securities",
+    ):
+
+        container = chip.get(
+            container_key
+        )
+
+        if isinstance(container, dict):
+
+            value = get_first_value(
+                container,
+                aliases
+            )
+
+            if value is not None:
+
+                return safe_float(value)
+
+    return None
+
+
+def calculate_credit_analysis(
+    chip: Dict[str, Any]
+) -> Dict[str, Any]:
+
+    financing = find_numeric_field(
+        chip,
+        (
+            "financing",
+            "financing_balance",
+            "margin_balance",
+            "margin_buy",
+            "融資",
+            "融資餘額",
+            "融資餘額張數",
+        )
+    )
+
+    short = find_numeric_field(
+        chip,
+        (
+            "short",
+            "short_balance",
+            "short_selling",
+            "securities_lending",
+            "融券",
+            "融券餘額",
+            "融券餘額張數",
+        )
+    )
+
+    day_trade_rate = find_numeric_field(
+        chip,
+        (
+            "day_trade_rate",
+            "daytrade_rate",
+            "day_trade_pct",
+            "daytrade_pct",
+            "當沖率",
+            "當沖比率",
+            "當沖比例",
+        )
+    )
+
+    day_trade_volume = find_numeric_field(
+        chip,
+        (
+            "day_trade_volume",
+            "daytrade_volume",
+            "day_trade",
+            "當沖量",
+        )
+    )
+
+    available = any(
+        value is not None
+        for value in (
+            financing,
+            short,
+            day_trade_rate,
+            day_trade_volume,
+        )
+    )
+
+    warnings = []
+
+    if day_trade_rate is not None:
+
+        if day_trade_rate >= 50:
+
+            warnings.append(
+                "當沖比率偏高"
+            )
+
+        elif day_trade_rate >= 30:
+
+            warnings.append(
+                "當沖比率偏高"
+            )
+
+    return {
+
+        "available":
+            available,
+
+        "financing":
+            financing,
+
+        "short":
+            short,
+
+        "day_trade_rate":
+            day_trade_rate,
+
+        "day_trade_volume":
+            day_trade_volume,
+
+        "warnings":
+            warnings,
+
+        "status":
+            (
+                "complete"
+                if available
+                else "insufficient"
+            ),
+    }
 
 
 # ============================================================
@@ -1929,7 +1848,7 @@ def calculate_chip_analysis(
         if value < 0
     )
 
-    if len(values) == 0:
+    if not values:
 
         direction = "資料不足"
 
@@ -1983,6 +1902,10 @@ def calculate_chip_analysis(
 
         medium_direction = "中期分歧"
 
+    credit = calculate_credit_analysis(
+        chip
+    )
+
     return {
 
         "main_force_1d":
@@ -2011,6 +1934,9 @@ def calculate_chip_analysis(
 
         "ten_day_used":
             True,
+
+        "credit":
+            credit,
     }
 
 
@@ -2025,6 +1951,25 @@ def evaluate_short_term(
     rsi: Optional[float],
     chip: Dict[str, Any]
 ) -> Dict[str, Any]:
+
+    # ========================================================
+    # 正式五項核心
+    # ========================================================
+
+    price_ma20_and_direction = (
+        metrics.get("price") is not None
+        and
+        metrics.get("ma20") is not None
+        and
+        metrics["price"] > metrics["ma20"]
+        and
+        bool(
+            metrics.get(
+                "ma20_up",
+                False
+            )
+        )
+    )
 
     conditions = {
 
@@ -2047,7 +1992,10 @@ def evaluate_short_term(
         "rsi_above_50":
             (
                 rsi is not None
-                and rsi > 50.0
+                and
+                rsi > SHORT_TERM_CONFIG[
+                    "rsi_min"
+                ]
             ),
 
         "volume_ratio_ge_1_5":
@@ -2062,37 +2010,59 @@ def evaluate_short_term(
                 metrics.get(
                     "volume_ratio_vs_previous_5"
                 )
-                >= 1.5
+                >= SHORT_TERM_CONFIG[
+                    "volume_multiplier"
+                ]
             ),
 
-        "price_above_ma20":
-            (
-                metrics.get("price") is not None
-                and
-                metrics.get("ma20") is not None
-                and
-                metrics["price"]
-                > metrics["ma20"]
-            ),
-
-        "ma20_up":
-            bool(
-                metrics.get(
-                    "ma20_up",
-                    False
-                )
-            ),
+        "price_above_ma20_and_ma20_up":
+            price_ma20_and_direction,
     }
-
-    qualified = all(
-        conditions.values()
-    )
 
     score = sum(
         1
         for value in conditions.values()
         if value
     )
+
+    qualified = (
+        score
+        == SHORT_TERM_CONFIG["core_total"]
+    )
+
+    chip_analysis = calculate_chip_analysis(
+        chip
+    )
+
+    # ========================================================
+    # 籌碼不是第六核心
+    #
+    # 但是正式分析層
+    # ========================================================
+
+    chip_direction = chip_analysis.get(
+        "direction"
+    )
+
+    medium_direction = chip_analysis.get(
+        "medium_direction"
+    )
+
+    if chip_direction == "偏多":
+
+        chip_signal = "偏多"
+
+    elif chip_direction == "偏空":
+
+        chip_signal = "偏空"
+
+    elif chip_direction == "分歧":
+
+        chip_signal = "分歧"
+
+    else:
+
+        chip_signal = "資料不足"
 
     return {
 
@@ -2103,10 +2073,32 @@ def evaluate_short_term(
             score,
 
         "core_total":
-            len(conditions),
+            5,
+
+        "core_version":
+            "5項",
 
         "conditions":
             conditions,
+
+        "condition_labels":
+            {
+
+                "macd_golden_cross":
+                    "MACD 黃金交叉",
+
+                "kd_golden_cross":
+                    "KD 黃金交叉",
+
+                "rsi_above_50":
+                    "RSI > 50",
+
+                "volume_ratio_ge_1_5":
+                    "量比 ≥ 1.5",
+
+                "price_above_ma20_and_ma20_up":
+                    "股價 > MA20 且 MA20 向上",
+            },
 
         "rsi":
             rsi,
@@ -2119,8 +2111,8 @@ def evaluate_short_term(
 
         "volume_rule":
             (
-                "今日成交量 ÷ 前5個交易日"
-                "平均成交量 >= 1.5"
+                "今日成交量 ÷ "
+                "前5個交易日平均成交量 >= 1.5"
             ),
 
         "volume_ratio":
@@ -2129,8 +2121,24 @@ def evaluate_short_term(
             ),
 
         "chip":
-            calculate_chip_analysis(
-                chip
+            chip_analysis,
+
+        "chip_signal":
+            chip_signal,
+
+        "medium_chip_signal":
+            medium_direction,
+
+        "chip_is_filter":
+            False,
+
+        "chip_is_analysis":
+            True,
+
+        "credit_analysis":
+            chip_analysis.get(
+                "credit",
+                {}
             ),
     }
 
@@ -2187,8 +2195,7 @@ def calculate_loss_warning(
 
     loss_pct = (
         (
-            current_price
-            - cost
+            current_price - cost
         )
         / cost
         * 100.0
@@ -2265,34 +2272,22 @@ def evaluate_dca(
         level = 0
 
     elif (
-        ma20_ratio
-        <= DCA_CONFIG["ma20_aggressive"]
-
+        ma20_ratio <= DCA_CONFIG["ma20_aggressive"]
         and
-
         low60_ratio is not None
-
         and
-
-        low60_ratio
-        <= DCA_CONFIG["low60_aggressive"]
+        low60_ratio <= DCA_CONFIG["low60_aggressive"]
     ):
 
         action = "積極買進"
         level = 3
 
-    elif (
-        ma20_ratio
-        <= DCA_CONFIG["ma20_normal"]
-    ):
+    elif ma20_ratio <= DCA_CONFIG["ma20_normal"]:
 
         action = "正常買進"
         level = 2
 
-    elif (
-        ma20_ratio
-        <= DCA_CONFIG["ma20_pause"]
-    ):
+    elif ma20_ratio <= DCA_CONFIG["ma20_pause"]:
 
         action = "觀察"
         level = 1
@@ -2345,7 +2340,7 @@ def evaluate_dca(
     extreme_discount = (
         bias20 is not None
         and
-        bias20 <= -20.0
+        bias20 <= DCA_CONFIG["extreme_bias"]
     )
 
     if extreme_discount:
@@ -2427,19 +2422,13 @@ def evaluate_dca(
             position60,
 
         "change1_pct":
-            metrics.get(
-                "change1_pct"
-            ),
+            metrics.get("change1_pct"),
 
         "change5_pct":
-            metrics.get(
-                "change5_pct"
-            ),
+            metrics.get("change5_pct"),
 
         "change20_pct":
-            metrics.get(
-                "change20_pct"
-            ),
+            metrics.get("change20_pct"),
 
         "volume_ratio":
             volume_ratio,
@@ -2493,6 +2482,12 @@ def evaluate_dca(
 
         "ten_day_used":
             True,
+
+        "credit_analysis":
+            chip_analysis.get(
+                "credit",
+                {}
+            ),
     }
 
 
@@ -2508,15 +2503,8 @@ def analyze_stock(
 
     symbol = stock["symbol"]
 
-    name = stock.get(
-        "name",
-        ""
-    )
-
-    market = stock.get(
-        "market",
-        ""
-    )
+    name = stock.get("name", "")
+    market = stock.get("market", "")
 
     minimum_history = SHORT_TERM_CONFIG[
         "minimum_history"
@@ -2548,7 +2536,19 @@ def analyze_stock(
                 {},
 
             "short_term":
-                {},
+                {
+                    "qualified":
+                        False,
+
+                    "score":
+                        0,
+
+                    "core_total":
+                        5,
+
+                    "conditions":
+                        {},
+                },
 
             "dca":
                 {},
@@ -2575,16 +2575,12 @@ def analyze_stock(
 
     rsi = calculate_rsi(
         closes,
-        SHORT_TERM_CONFIG[
-            "rsi_period"
-        ]
+        SHORT_TERM_CONFIG["rsi_period"]
     )
 
     kd = calculate_kd(
         rows,
-        SHORT_TERM_CONFIG[
-            "kd_period"
-        ]
+        SHORT_TERM_CONFIG["kd_period"]
     )
 
     short_term = evaluate_short_term(
@@ -2606,15 +2602,12 @@ def analyze_stock(
             len(rows),
 
         "passed":
-            len(rows)
-            >= minimum_history,
+            len(rows) >= minimum_history,
     }
 
     if len(rows) < minimum_history:
 
-        short_term[
-            "qualified"
-        ] = False
+        short_term["qualified"] = False
 
     dca = evaluate_dca(
         metrics,
@@ -2635,8 +2628,7 @@ def analyze_stock(
         "status":
             (
                 "complete"
-                if len(rows)
-                >= minimum_history
+                if len(rows) >= minimum_history
                 else "partial"
             ),
 
@@ -2669,7 +2661,7 @@ def analyze_stock(
 def run_analysis() -> Dict[str, Any]:
 
     section(
-        f"台股 AI 選股分析 V{VERSION}"
+        f"台股 AI 選股分析 {VERSION}"
     )
 
     universe = load_universe()
@@ -2708,19 +2700,9 @@ def run_analysis() -> Dict[str, Any]:
         f"{len(chip_stocks)}"
     )
 
-    # --------------------------------------------------------
-    # 核心修正：
-    #
-    # 一次載入所有價格 shard
-    # --------------------------------------------------------
-
     price_index, price_info = load_price_index(
         manifest
     )
-
-    # --------------------------------------------------------
-    # 硬性驗證
-    # --------------------------------------------------------
 
     universe_symbols = set(
         universe.keys()
@@ -2741,9 +2723,7 @@ def run_analysis() -> Dict[str, Any]:
     )
 
     log("")
-    log(
-        "價格資料驗證："
-    )
+    log("價格資料驗證：")
 
     log(
         f"Universe："
@@ -2787,9 +2767,7 @@ def run_analysis() -> Dict[str, Any]:
     price_loaded = 0
     price_missing = 0
 
-    total = len(
-        universe
-    )
+    total = len(universe)
 
     for index, (
         symbol,
@@ -2827,13 +2805,9 @@ def run_analysis() -> Dict[str, Any]:
             chip
         )
 
-        results[
-            symbol
-        ] = record
+        results[symbol] = record
 
-        status = record.get(
-            "status"
-        )
+        status = record.get("status")
 
         if status == "complete":
 
@@ -2847,12 +2821,14 @@ def run_analysis() -> Dict[str, Any]:
 
             insufficient += 1
 
-        if record.get(
-            "short_term",
-            {}
-        ).get(
-            "qualified",
-            False
+        if (
+            record.get(
+                "short_term",
+                {}
+            ).get(
+                "qualified",
+                False
+            )
         ):
 
             short_candidates.append(
@@ -2930,6 +2906,9 @@ def run_analysis() -> Dict[str, Any]:
                 "insufficient":
                     insufficient,
 
+                "short_term_core_total":
+                    5,
+
                 "short_term_candidates":
                     len(short_candidates),
 
@@ -2947,9 +2926,7 @@ def run_analysis() -> Dict[str, Any]:
             price_info,
 
         "missing_price_symbols":
-            sorted(
-                missing_symbols
-            ),
+            sorted(missing_symbols),
 
         "short_term_candidates":
             short_candidates,
@@ -3003,13 +2980,83 @@ def save_analysis(
                     "Data/chip.json",
             },
 
+        "analysis_rules":
+            {
+
+                "short_term":
+                    {
+
+                        "core_total":
+                            5,
+
+                        "macd":
+                            "MACD 黃金交叉",
+
+                        "kd":
+                            "KD 黃金交叉",
+
+                        "rsi":
+                            "RSI > 50",
+
+                        "volume":
+                            (
+                                "今日成交量 ÷ "
+                                "前5個交易日平均成交量 "
+                                ">= 1.5"
+                            ),
+
+                        "price_ma20":
+                            (
+                                "股價 > MA20 "
+                                "且 MA20 向上"
+                            ),
+
+                        "minimum_history":
+                            SHORT_TERM_CONFIG[
+                                "minimum_history"
+                            ],
+
+                        "chip_filter":
+                            False,
+
+                        "chip_analysis":
+                            True,
+                    },
+
+                "chip":
+                    {
+
+                        "1d":
+                            "保留並分析",
+
+                        "5d":
+                            "保留並分析",
+
+                        "10d":
+                            "保留並實際參與籌碼方向分析",
+
+                        "20d":
+                            "保留並分析",
+
+                        "financing":
+                            "若 chip.json 有資料則分析",
+
+                        "short":
+                            "若 chip.json 有資料則分析",
+
+                        "day_trade":
+                            "若 chip.json 有資料則分析",
+                    },
+
+                "dca":
+                    DCA_CONFIG,
+            },
+
         "data_pipeline":
             {
 
                 "price_shards":
-                    analysis[
-                        "price_info"
-                    ],
+                    analysis["price_info"],
 
                 "price_index_count":
                     analysis[
@@ -3038,64 +3085,8 @@ def save_analysis(
                     ],
             },
 
-        "analysis_rules":
-            {
-
-                "short_term":
-                    {
-
-                        "macd":
-                            "MACD 黃金交叉",
-
-                        "kd":
-                            "KD 黃金交叉",
-
-                        "rsi":
-                            "RSI > 50",
-
-                        "volume":
-                            (
-                                "今日成交量 ÷ "
-                                "前5個交易日平均成交量 "
-                                ">= 1.5"
-                            ),
-
-                        "price_ma20":
-                            "股價站上20日線",
-
-                        "ma20_direction":
-                            "20日線向上",
-
-                        "minimum_history":
-                            SHORT_TERM_CONFIG[
-                                "minimum_history"
-                            ],
-                    },
-
-                "chip":
-                    {
-
-                        "1d":
-                            "保留並分析",
-
-                        "5d":
-                            "保留並分析",
-
-                        "10d":
-                            "保留並實際參與分析",
-
-                        "20d":
-                            "保留並分析",
-                    },
-
-                "dca":
-                    DCA_CONFIG,
-            },
-
         "statistics":
-            analysis[
-                "statistics"
-            ],
+            analysis["statistics"],
 
         "short_term_candidates":
             analysis[
@@ -3103,24 +3094,16 @@ def save_analysis(
             ],
 
         "dca_buy":
-            analysis[
-                "dca_buy"
-            ],
+            analysis["dca_buy"],
 
         "dca_observe":
-            analysis[
-                "dca_observe"
-            ],
+            analysis["dca_observe"],
 
         "dca_pause":
-            analysis[
-                "dca_pause"
-            ],
+            analysis["dca_pause"],
 
         "stocks":
-            analysis[
-                "results"
-            ],
+            analysis["results"],
     }
 
     temp_file = OUTPUT_FILE.with_suffix(
@@ -3179,8 +3162,8 @@ def save_analysis(
         "schema_version",
         "generated_at",
         "source",
-        "data_pipeline",
         "analysis_rules",
+        "data_pipeline",
         "statistics",
         "short_term_candidates",
         "dca_buy",
@@ -3191,9 +3174,7 @@ def save_analysis(
 
     missing_keys = (
         required_top_keys
-        - set(
-            verify.keys()
-        )
+        - set(verify.keys())
     )
 
     if missing_keys:
@@ -3201,19 +3182,11 @@ def save_analysis(
         raise RuntimeError(
             "analysis.json 缺少欄位："
             + ", ".join(
-                sorted(
-                    missing_keys
-                )
+                sorted(missing_keys)
             )
         )
 
-    # --------------------------------------------------------
-    # 最重要的輸出驗證
-    # --------------------------------------------------------
-
-    stats = verify[
-        "statistics"
-    ]
+    stats = verify["statistics"]
 
     universe_count = stats.get(
         "universe",
@@ -3235,6 +3208,71 @@ def save_analysis(
             "Universe 有股票，但沒有任何價格資料成功對接"
         )
 
+    # --------------------------------------------------------
+    # 五項核心硬性驗證
+    # --------------------------------------------------------
+
+    if stats.get(
+        "short_term_core_total"
+    ) != 5:
+
+        raise RuntimeError(
+            "❌ 五項核心驗證失敗："
+            "short_term_core_total 必須為 5"
+        )
+
+    for symbol, stock in verify[
+        "stocks"
+    ].items():
+
+        short_term = stock.get(
+            "short_term",
+            {}
+        )
+
+        core_total = short_term.get(
+            "core_total"
+        )
+
+        if (
+            core_total is not None
+            and core_total != 5
+        ):
+
+            raise RuntimeError(
+                f"❌ {symbol} 核心條件數錯誤："
+                f"{core_total}"
+            )
+
+        conditions = short_term.get(
+            "conditions",
+            {}
+        )
+
+        if conditions:
+
+            if len(conditions) != 5:
+
+                raise RuntimeError(
+                    f"❌ {symbol} 條件數錯誤："
+                    f"{len(conditions)}"
+                )
+
+            calculated_score = sum(
+                1
+                for value in conditions.values()
+                if value is True
+            )
+
+            if (
+                short_term.get("score")
+                != calculated_score
+            ):
+
+                raise RuntimeError(
+                    f"❌ {symbol} score 與 conditions 不一致"
+                )
+
     temp_file.replace(
         OUTPUT_FILE
     )
@@ -3253,13 +3291,9 @@ def print_summary(
     elapsed: float
 ) -> None:
 
-    stats = analysis[
-        "statistics"
-    ]
+    stats = analysis["statistics"]
 
-    section(
-        "分析完成"
-    )
+    section("分析完成")
 
     log(
         f"Universe："
@@ -3299,7 +3333,33 @@ def print_summary(
     log("")
 
     log(
-        "短期六項核心全部符合："
+        "短期核心條件：5 項"
+    )
+
+    log(
+        "1. MACD 黃金交叉"
+    )
+
+    log(
+        "2. KD 黃金交叉"
+    )
+
+    log(
+        "3. RSI > 50"
+    )
+
+    log(
+        "4. 量比 >= 1.5"
+    )
+
+    log(
+        "5. 股價 > MA20 且 MA20 向上"
+    )
+
+    log("")
+
+    log(
+        "五項核心全部符合："
         f"{stats['short_term_candidates']}"
     )
 
@@ -3321,23 +3381,19 @@ def print_summary(
     log("")
 
     log(
-        "短期成交量規則："
+        "籌碼：1D / 5D / 10D / 20D"
     )
 
     log(
-        "今日成交量 ÷ "
-        "前5個交易日平均成交量 >= 1.5"
-    )
-
-    log("")
-
-    log(
-        "籌碼："
-        "1D / 5D / 10D / 20D"
+        "10D：已實際參與中期籌碼方向分析"
     )
 
     log(
-        "10D：已實際參與籌碼方向分析"
+        "主力籌碼：分析層，不計入五項核心"
+    )
+
+    log(
+        "資券／當沖：依 chip.json 實際資料分析"
     )
 
     log("")
