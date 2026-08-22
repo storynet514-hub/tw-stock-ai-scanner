@@ -3,96 +3,73 @@
 
 """
 台股 AI 選股系統
-券商分點資料驗證器 V1.0
+test_broker_chip.py V1.0
 
+用途
 ============================================================
-目的
-============================================================
+專門測試「全券商分點主力買賣超」資料來源。
 
-本程式不是正式 fetch_chip.py。
+固定測試：
+    2337 旺宏
+    2426 鼎元
+    2368 金像電
+    3081 聯亞
 
-用途：
-1. 驗證 TWSE / TPEX 券商分點原始資料來源
-2. 固定測試：
-   2337 旺宏
-   2426 鼎元
-   2368 金像電
-   3081 聯亞
-
-3. 驗證：
-   原始券商資料
-       ↓
-   每日券商買賣超
-       ↓
-   Top15 主力
-       ↓
-   1D
-   5D
-   10D
-   20D
-
-4. 驗證原始資料單位：
-   股 → 張
-
-5. 驗證正負方向：
-   買進 - 賣出
-
-6. 明確區分：
-   - 三大法人
-   - 券商分點
-   - 主力推導值
-
-============================================================
-重要原則
-============================================================
-
-❌ 不使用三大法人 × 係數推估主力
-❌ 不使用 1.12 之類估算
-❌ CAPTCHA / 驗證失敗不能當成 0
-❌ 不會把缺資料當成真實資料
-❌ 不會把「全券商」直接冒充「主力」
-
-============================================================
-測試標的
-============================================================
-
-2337 = 旺宏     TWSE
-2426 = 鼎元     TWSE
-2368 = 金像電   TWSE
-3081 = 聯亞     TPEX
-
-============================================================
+本程式：
+1. 不修改 Data/chip.json
+2. 不修改任何正式資料
+3. 不把三大法人資料冒充主力分點
+4. 不使用任何估算倍率
+5. 嘗試檢測官方 TWSE / TPEX 公開資料端點
+6. 區分：
+   - 真正逐券商分點資料
+   - 券商排行資料
+   - 三大法人資料
+   - 一般行情資料
+7. 若取得真正分點資料，才計算：
+   - 每日券商買進
+   - 每日券商賣出
+   - 每日券商買賣超
+   - 1D
+   - 5D
+   - 10D
+   - 20D
+8. 所有結果直接輸出到 GitHub Actions Log
 """
 
 from __future__ import annotations
 
-import csv
-import io
 import json
-import re
 import sys
 import time
-from dataclasses import dataclass, asdict
 from datetime import datetime, timedelta
-from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 import requests
 
 
-# ============================================================
-# 基本設定
-# ============================================================
-
 VERSION = "V1.0"
 
-BASE_DIR = Path(__file__).resolve().parent.parent
-DATA_DIR = BASE_DIR / "Data"
-
-OUTPUT_JSON = DATA_DIR / "broker_test_result.json"
-OUTPUT_CSV = DATA_DIR / "broker_daily_detail.csv"
-
 REQUEST_TIMEOUT = 30
+
+TEST_STOCKS = {
+    "2337": {
+        "name": "旺宏",
+        "market": "TWSE",
+    },
+    "2426": {
+        "name": "鼎元",
+        "market": "TWSE",
+    },
+    "2368": {
+        "name": "金像電",
+        "market": "TWSE",
+    },
+    "3081": {
+        "name": "聯亞",
+        "market": "TPEX",
+    },
+}
 
 HEADERS = {
     "User-Agent": (
@@ -100,86 +77,14 @@ HEADERS = {
         "AppleWebKit/537.36 (KHTML, like Gecko) "
         "Chrome/124.0.0.0 Safari/537.36"
     ),
-    "Accept": (
-        "text/html,application/xhtml+xml,application/xml;"
-        "q=0.9,image/avif,image/webp,*/*;q=0.8"
-    ),
+    "Accept": "application/json, text/javascript, */*; q=0.01",
     "Accept-Language": "zh-TW,zh;q=0.9,en-US;q=0.8,en;q=0.7",
-    "Connection": "keep-alive",
+    "Referer": "https://www.twse.com.tw/",
 }
 
 
 # ============================================================
-# 固定測試股票
-# ============================================================
-
-TEST_SECURITIES = [
-    {
-        "symbol": "2337",
-        "name": "旺宏",
-        "market": "TWSE",
-    },
-    {
-        "symbol": "2426",
-        "name": "鼎元",
-        "market": "TWSE",
-    },
-    {
-        "symbol": "2368",
-        "name": "金像電",
-        "market": "TWSE",
-    },
-    {
-        "symbol": "3081",
-        "name": "聯亞",
-        "market": "TPEX",
-    },
-]
-
-
-# ============================================================
-# 資料結構
-# ============================================================
-
-@dataclass
-class BrokerRow:
-    date: str
-    symbol: str
-    stock_name: str
-    market: str
-    broker: str
-    buy_shares: int
-    sell_shares: int
-    net_shares: int
-    buy_lots: float
-    sell_lots: float
-    net_lots: float
-
-
-@dataclass
-class DailySummary:
-    date: str
-    symbol: str
-    stock_name: str
-    market: str
-
-    broker_count: int
-
-    total_buy_shares: int
-    total_sell_shares: int
-    total_net_shares: int
-
-    total_buy_lots: float
-    total_sell_lots: float
-    total_net_lots: float
-
-    top15_buy_lots: float
-    top15_sell_lots: float
-    top15_net_lots: float
-
-
-# ============================================================
-# LOG
+# 基本工具
 # ============================================================
 
 def log(message: str = "") -> None:
@@ -193,997 +98,951 @@ def section(title: str) -> None:
     log("=" * 78)
 
 
-# ============================================================
-# 數字解析
-# ============================================================
-
-def clean_number(value: object) -> Optional[int]:
+def clean_number(value: Any) -> Optional[float]:
     """
-    將：
-        1,234
-        "1,234"
-        "1234"
-        "--"
-        ""
-    轉換成 int。
-
-    不接受無法確認的值。
+    嘗試把 API 欄位轉成數字。
+    不自行猜測單位。
     """
-
     if value is None:
         return None
 
+    if isinstance(value, (int, float)):
+        return float(value)
+
     text = str(value).strip()
 
-    if not text:
+    if text in {"", "--", "---", "－", "-", "N/A", "null", "None"}:
         return None
 
-    if text in {"--", "-", "—", "－", "N/A", "NA"}:
-        return None
-
-    text = text.replace(",", "")
-    text = text.replace(" ", "")
-
-    # 移除括號負號格式，例如 (123)
-    if text.startswith("(") and text.endswith(")"):
-        text = "-" + text[1:-1]
+    text = (
+        text.replace(",", "")
+        .replace("，", "")
+        .replace("%", "")
+        .strip()
+    )
 
     try:
-        return int(float(text))
-    except Exception:
+        return float(text)
+    except ValueError:
         return None
 
 
-# ============================================================
-# 日期
-# ============================================================
-
-def is_weekday(dt: datetime) -> bool:
-    return dt.weekday() < 5
-
-
-def previous_weekdays(count: int) -> List[datetime]:
+def roc_date(date_obj: datetime) -> str:
     """
-    從今天往前找足夠多的工作日。
+    YYYYMMDD
+    """
+    return date_obj.strftime("%Y%m%d")
 
+
+def iso_date(date_obj: datetime) -> str:
+    return date_obj.strftime("%Y-%m-%d")
+
+
+def previous_weekdays(days: int) -> List[datetime]:
+    """
+    產生最近工作日。
     注意：
-    這只是候選日期。
-    真正是否交易日由資料來源回應決定。
+    這裡只是候選日期。
+    最終是否為實際交易日，以 API 是否有資料為準。
     """
+    result: List[datetime] = []
 
-    result = []
     current = datetime.now()
 
-    while len(result) < count:
-        if is_weekday(current):
+    while len(result) < days:
+        if current.weekday() < 5:
             result.append(current)
-
         current -= timedelta(days=1)
 
     return result
 
 
+def normalize_symbol(value: Any) -> str:
+    if value is None:
+        return ""
+
+    text = str(value).strip()
+
+    if "." in text:
+        text = text.split(".", 1)[0]
+
+    return text
+
+
 # ============================================================
-# TWSE
+# HTTP
 # ============================================================
 
-def fetch_twse_broker_page(
+def get_json(
     session: requests.Session,
-    symbol: str,
-) -> Tuple[str, str]:
-    """
-    嘗試取得 TWSE BSR。
+    url: str,
+    params: Optional[Dict[str, Any]] = None,
+    referer: Optional[str] = None,
+) -> Tuple[Optional[Any], int, str]:
 
-    回傳：
-        status
-        content
+    headers = dict(HEADERS)
 
-    status:
-        OK
-        CAPTCHA
-        BLOCKED
-        ERROR
-    """
-
-    url = "https://bsr.twse.com.tw/bshtm/bsMenu.aspx"
+    if referer:
+        headers["Referer"] = referer
 
     try:
         response = session.get(
             url,
-            headers=HEADERS,
+            params=params,
+            headers=headers,
             timeout=REQUEST_TIMEOUT,
         )
 
-        text = response.text
+        status_code = response.status_code
 
-        if response.status_code != 200:
-            return "ERROR", text
+        if status_code != 200:
+            return None, status_code, response.text[:500]
 
-        captcha_keywords = [
-            "驗證碼",
-            "輸入圖形中5碼文數字",
-            "captcha",
-            "CAPTCHA",
-        ]
-
-        if any(k in text for k in captcha_keywords):
-            return "CAPTCHA", text
-
-        if "買賣日報表查詢系統" not in text:
-            return "BLOCKED", text
-
-        return "OK", text
+        try:
+            return response.json(), status_code, ""
+        except Exception:
+            return None, status_code, response.text[:500]
 
     except Exception as exc:
-        return "ERROR", str(exc)
+        return None, -1, str(exc)
 
 
 # ============================================================
-# TPEX
+# 結構分析
 # ============================================================
 
-def fetch_tpex_broker_page(
+def recursive_rows(obj: Any) -> Iterable[Any]:
+    """
+    找出 JSON 中可能代表資料列的 list。
+    """
+    if isinstance(obj, list):
+        for item in obj:
+            yield item
+
+    elif isinstance(obj, dict):
+        for value in obj.values():
+            yield from recursive_rows(value)
+
+
+def extract_rows(payload: Any) -> List[Any]:
+    """
+    優先尋找常見的 data / records / rows / result 結構。
+    """
+    if payload is None:
+        return []
+
+    if isinstance(payload, list):
+        return payload
+
+    if not isinstance(payload, dict):
+        return []
+
+    for key in ("data", "records", "rows", "result", "results"):
+        value = payload.get(key)
+
+        if isinstance(value, list):
+            return value
+
+        if isinstance(value, dict):
+            for subkey in ("data", "records", "rows", "result", "results"):
+                subvalue = value.get(subkey)
+                if isinstance(subvalue, list):
+                    return subvalue
+
+    # 最後才遞迴尋找 list
+    for rows in recursive_rows(payload):
+        if rows:
+            return list(rows)
+
+    return []
+
+
+def print_payload_structure(
+    label: str,
+    payload: Any,
+) -> None:
+
+    log(f"[{label}]")
+
+    if payload is None:
+        log("  payload = None")
+        return
+
+    if isinstance(payload, dict):
+        log(f"  type = dict")
+        log(f"  keys = {list(payload.keys())[:30]}")
+
+        for key in (
+            "stat",
+            "date",
+            "data",
+            "title",
+            "fields",
+            "result",
+            "message",
+        ):
+            if key in payload:
+                value = payload[key]
+
+                if isinstance(value, list):
+                    log(f"  {key}: list[{len(value)}]")
+                elif isinstance(value, dict):
+                    log(f"  {key}: dict")
+                else:
+                    log(f"  {key}: {value}")
+
+    elif isinstance(payload, list):
+        log(f"  type = list")
+        log(f"  length = {len(payload)}")
+
+        if payload:
+            first = payload[0]
+
+            if isinstance(first, dict):
+                log(f"  first row keys = {list(first.keys())[:30]}")
+            elif isinstance(first, list):
+                log(f"  first row columns = {len(first)}")
+                log(f"  first row = {first[:20]}")
+            else:
+                log(f"  first value = {first}")
+
+    else:
+        log(f"  type = {type(payload).__name__}")
+
+
+# ============================================================
+# TWSE：三大法人
+# ============================================================
+
+def test_twse_t86(
     session: requests.Session,
-    symbol: str,
-) -> Tuple[str, str]:
-    """
-    嘗試取得 TPEX 券商分點查詢頁。
+    stock_code: str,
+    date_obj: datetime,
+) -> Dict[str, Any]:
 
-    注意：
-    TPEX 官方頁面本身具有非機器人驗證。
-    本函式不嘗試繞過驗證。
-
-    回傳：
-        OK
-        CAPTCHA
-        BLOCKED
-        ERROR
-    """
+    date_str = roc_date(date_obj)
 
     url = (
-        "https://www.tpex.org.tw/zh-tw/mainboard/"
-        "trading/info/brokerBS.html"
+        "https://www.twse.com.tw/rwd/zh/fund/T86"
     )
 
-    try:
-        response = session.get(
-            url,
-            headers=HEADERS,
-            timeout=REQUEST_TIMEOUT,
+    payload, status, error = get_json(
+        session,
+        url,
+        params={
+            "date": date_str,
+            "selectType": "ALL",
+        },
+    )
+
+    result = {
+        "success": False,
+        "status": status,
+        "stock_code": stock_code,
+        "date": iso_date(date_obj),
+        "payload": payload,
+    }
+
+    if payload is None:
+        result["error"] = error
+        return result
+
+    rows = payload.get("data", []) if isinstance(payload, dict) else []
+
+    for row in rows:
+        if not isinstance(row, list) or not row:
+            continue
+
+        code = normalize_symbol(row[0])
+
+        if code == stock_code:
+            result["success"] = True
+            result["row"] = row
+            return result
+
+    result["error"] = "找不到指定股票"
+
+    return result
+
+
+# ============================================================
+# TWSE：官方券商相關端點探測
+# ============================================================
+
+def test_twse_broker_endpoints(
+    session: requests.Session,
+    stock_code: str,
+    date_obj: datetime,
+) -> List[Dict[str, Any]]:
+
+    date_str = roc_date(date_obj)
+
+    candidates = [
+        {
+            "name": "TWSE_T86",
+            "url": "https://www.twse.com.tw/rwd/zh/fund/T86",
+            "params": {
+                "date": date_str,
+                "selectType": "ALL",
+            },
+            "classification": "institutional",
+        },
+        {
+            "name": "TWSE_BROKER_TRADE",
+            "url": "https://www.twse.com.tw/rwd/zh/afterTrading/brokerTrade",
+            "params": {
+                "date": date_str,
+                "selectType": "ALL",
+            },
+            "classification": "broker_candidate",
+        },
+        {
+            "name": "TWSE_BROKER_TRADE_2",
+            "url": "https://www.twse.com.tw/rwd/zh/afterTrading/brokerTrade",
+            "params": {
+                "date": date_str,
+                "selectType": "ALLBUT0999",
+            },
+            "classification": "broker_candidate",
+        },
+    ]
+
+    results = []
+
+    for candidate in candidates:
+
+        payload, status, error = get_json(
+            session,
+            candidate["url"],
+            params=candidate["params"],
         )
 
-        text = response.text
+        rows = extract_rows(payload)
 
-        if response.status_code != 200:
-            return "ERROR", text
+        found_symbol = False
 
-        captcha_keywords = [
-            "驗證非機器人",
-            "非機器人",
-            "captcha",
-            "CAPTCHA",
-            "recaptcha",
-        ]
+        for row in rows:
 
-        if any(k in text for k in captcha_keywords):
-            return "CAPTCHA", text
+            if isinstance(row, dict):
 
-        if "券商買賣證券日報表查詢系統" not in text:
-            return "BLOCKED", text
+                values = [
+                    normalize_symbol(v)
+                    for v in row.values()
+                ]
 
-        return "OK", text
+                if stock_code in values:
+                    found_symbol = True
 
-    except Exception as exc:
-        return "ERROR", str(exc)
+            elif isinstance(row, list):
+
+                values = [
+                    normalize_symbol(v)
+                    for v in row
+                ]
+
+                if stock_code in values:
+                    found_symbol = True
+
+        results.append({
+            "name": candidate["name"],
+            "status": status,
+            "classification": candidate["classification"],
+            "row_count": len(rows),
+            "found_symbol": found_symbol,
+            "payload": payload,
+            "error": error,
+        })
+
+        time.sleep(0.3)
+
+    return results
 
 
 # ============================================================
-# HTML / CSV 偵測
+# TPEx：公開 OpenAPI
 # ============================================================
 
-def detect_block_reason(text: str) -> str:
-    if not text:
-        return "EMPTY_RESPONSE"
+def test_tpex_active_broker_volume(
+    session: requests.Session,
+    stock_code: str,
+) -> Dict[str, Any]:
 
-    lowered = text.lower()
+    url = (
+        "https://www.tpex.org.tw/"
+        "openapi/v1/tpex_active_broker_volume"
+    )
 
-    if "captcha" in lowered:
-        return "CAPTCHA"
+    payload, status, error = get_json(
+        session,
+        url,
+        params={
+            "stk_code": stock_code,
+        },
+        referer="https://www.tpex.org.tw/",
+    )
 
-    if "recaptcha" in lowered:
-        return "RECAPTCHA"
+    rows = extract_rows(payload)
 
-    if "驗證碼" in text:
-        return "CAPTCHA"
+    found_symbol = False
 
-    if "非機器人" in text:
-        return "ANTI_BOT"
+    for row in rows:
 
-    if "403" in text:
-        return "HTTP_403"
+        if isinstance(row, dict):
+            values = [
+                normalize_symbol(v)
+                for v in row.values()
+            ]
 
-    if "access denied" in lowered:
-        return "ACCESS_DENIED"
+            if stock_code in values:
+                found_symbol = True
 
+        elif isinstance(row, list):
+            values = [
+                normalize_symbol(v)
+                for v in row
+            ]
+
+            if stock_code in values:
+                found_symbol = True
+
+    return {
+        "name": "TPEx_tpex_active_broker_volume",
+        "status": status,
+        "row_count": len(rows),
+        "found_symbol": found_symbol,
+        "payload": payload,
+        "error": error,
+    }
+
+
+# ============================================================
+# 單位與方向分析
+# ============================================================
+
+def analyze_row(
+    row: Any,
+    fields: Optional[List[str]] = None,
+) -> Dict[str, Any]:
+
+    result = {
+        "type": type(row).__name__,
+        "numeric_values": [],
+        "possible_buy": [],
+        "possible_sell": [],
+        "possible_net": [],
+        "possible_volume": [],
+    }
+
+    if isinstance(row, dict):
+
+        for key, value in row.items():
+
+            number = clean_number(value)
+
+            if number is None:
+                continue
+
+            key_lower = str(key).lower()
+
+            result["numeric_values"].append({
+                "field": key,
+                "value": number,
+            })
+
+            if any(
+                token in key_lower
+                for token in (
+                    "buy",
+                    "買",
+                    "買進",
+                )
+            ):
+                result["possible_buy"].append({
+                    "field": key,
+                    "value": number,
+                })
+
+            if any(
+                token in key_lower
+                for token in (
+                    "sell",
+                    "賣",
+                    "賣出",
+                )
+            ):
+                result["possible_sell"].append({
+                    "field": key,
+                    "value": number,
+                })
+
+            if any(
+                token in key_lower
+                for token in (
+                    "net",
+                    "超",
+                    "買賣超",
+                )
+            ):
+                result["possible_net"].append({
+                    "field": key,
+                    "value": number,
+                })
+
+            if any(
+                token in key_lower
+                for token in (
+                    "volume",
+                    "qty",
+                    "quantity",
+                    "成交量",
+                    "股數",
+                    "張數",
+                )
+            ):
+                result["possible_volume"].append({
+                    "field": key,
+                    "value": number,
+                })
+
+    elif isinstance(row, list):
+
+        for index, value in enumerate(row):
+
+            number = clean_number(value)
+
+            if number is None:
+                continue
+
+            result["numeric_values"].append({
+                "index": index,
+                "value": number,
+            })
+
+    return result
+
+
+def infer_unit(value: Optional[float]) -> str:
+    """
+    故意不根據數字大小猜單位。
+
+    只有 API 欄位名稱或官方 schema 明確表示單位，
+    才能在最終正式程式中轉換。
+    """
     return "UNKNOWN"
 
 
 # ============================================================
-# CSV 解析
-# ============================================================
-
-def normalize_csv_text(content: bytes) -> str:
-    """
-    嘗試：
-    UTF-8
-    BIG5
-    CP950
-    """
-
-    encodings = [
-        "utf-8-sig",
-        "utf-8",
-        "cp950",
-        "big5",
-    ]
-
-    for encoding in encodings:
-        try:
-            return content.decode(encoding)
-        except UnicodeDecodeError:
-            continue
-
-    return content.decode("utf-8", errors="replace")
-
-
-def find_columns(fieldnames: List[str]) -> Dict[str, int]:
-    """
-    嘗試找出：
-
-    券商
-    買進股數
-    賣出股數
-    """
-
-    normalized = []
-
-    for field in fieldnames:
-        text = str(field).strip()
-        normalized.append(text)
-
-    result = {}
-
-    for idx, field in enumerate(normalized):
-
-        if (
-            "證券商" in field
-            or "券商" in field
-            or "分公司" in field
-        ):
-            result.setdefault("broker", idx)
-
-        if "買進股數" in field:
-            result.setdefault("buy", idx)
-
-        if "賣出股數" in field:
-            result.setdefault("sell", idx)
-
-    return result
-
-
-def parse_broker_csv(
-    content: bytes,
-    date_str: str,
-    symbol: str,
-    stock_name: str,
-    market: str,
-) -> List[BrokerRow]:
-
-    text = normalize_csv_text(content)
-
-    # 嘗試不同 delimiter
-    delimiter = ","
-
-    if "\t" in text and text.count("\t") > text.count(","):
-        delimiter = "\t"
-
-    reader = csv.reader(
-        io.StringIO(text),
-        delimiter=delimiter,
-    )
-
-    rows = list(reader)
-
-    if not rows:
-        return []
-
-    # 找 header
-    header_index = None
-
-    for i, row in enumerate(rows[:30]):
-        joined = " ".join(row)
-
-        if (
-            "證券商" in joined
-            and (
-                "買進股數" in joined
-                or "買進" in joined
-            )
-            and (
-                "賣出股數" in joined
-                or "賣出" in joined
-            )
-        ):
-            header_index = i
-            break
-
-    if header_index is None:
-        return []
-
-    fieldnames = rows[header_index]
-
-    columns = find_columns(fieldnames)
-
-    if not {
-        "broker",
-        "buy",
-        "sell",
-    }.issubset(columns):
-        return []
-
-    result = []
-
-    for row in rows[header_index + 1:]:
-
-        if not row:
-            continue
-
-        max_idx = max(columns.values())
-
-        if len(row) <= max_idx:
-            continue
-
-        broker = row[columns["broker"]].strip()
-
-        if not broker:
-            continue
-
-        buy_shares = clean_number(
-            row[columns["buy"]]
-        )
-
-        sell_shares = clean_number(
-            row[columns["sell"]]
-        )
-
-        if buy_shares is None:
-            buy_shares = 0
-
-        if sell_shares is None:
-            sell_shares = 0
-
-        net_shares = buy_shares - sell_shares
-
-        result.append(
-            BrokerRow(
-                date=date_str,
-                symbol=symbol,
-                stock_name=stock_name,
-                market=market,
-                broker=broker,
-                buy_shares=buy_shares,
-                sell_shares=sell_shares,
-                net_shares=net_shares,
-                buy_lots=round(buy_shares / 1000, 3),
-                sell_lots=round(sell_shares / 1000, 3),
-                net_lots=round(net_shares / 1000, 3),
-            )
-        )
-
-    return result
-
-
-# ============================================================
-# 每日統計
-# ============================================================
-
-def build_daily_summary(
-    rows: List[BrokerRow],
-) -> Optional[DailySummary]:
-
-    if not rows:
-        return None
-
-    first = rows[0]
-
-    total_buy = sum(r.buy_shares for r in rows)
-    total_sell = sum(r.sell_shares for r in rows)
-    total_net = sum(r.net_shares for r in rows)
-
-    # --------------------------------------------------------
-    # 主力定義：
-    #
-    # 將所有券商依「淨買賣張數」排序
-    # 正值取買超前 15
-    # 負值取賣超前 15
-    #
-    # Top15 主力買賣超：
-    # Top15 買超合計 + Top15 賣超合計
-    #
-    # 這裡故意保留正負。
-    # --------------------------------------------------------
-
-    buy_rank = sorted(
-        [r for r in rows if r.net_shares > 0],
-        key=lambda r: r.net_shares,
-        reverse=True,
-    )[:15]
-
-    sell_rank = sorted(
-        [r for r in rows if r.net_shares < 0],
-        key=lambda r: r.net_shares,
-    )[:15]
-
-    top15_buy = sum(
-        r.net_shares for r in buy_rank
-    )
-
-    top15_sell = sum(
-        r.net_shares for r in sell_rank
-    )
-
-    top15_net = top15_buy + top15_sell
-
-    return DailySummary(
-        date=first.date,
-        symbol=first.symbol,
-        stock_name=first.stock_name,
-        market=first.market,
-
-        broker_count=len(rows),
-
-        total_buy_shares=total_buy,
-        total_sell_shares=total_sell,
-        total_net_shares=total_net,
-
-        total_buy_lots=round(total_buy / 1000, 3),
-        total_sell_lots=round(total_sell / 1000, 3),
-        total_net_lots=round(total_net / 1000, 3),
-
-        top15_buy_lots=round(top15_buy / 1000, 3),
-        top15_sell_lots=round(top15_sell / 1000, 3),
-        top15_net_lots=round(top15_net / 1000, 3),
-    )
-
-
-# ============================================================
-# 累計
+# 累計計算
 # ============================================================
 
 def calculate_periods(
-    summaries: List[DailySummary],
+    daily_values: List[Optional[float]],
 ) -> Dict[str, Optional[float]]:
 
-    # 日期由新 → 舊
-    summaries = sorted(
-        summaries,
-        key=lambda x: x.date,
-        reverse=True,
-    )
-
-    values = [
-        x.top15_net_lots
-        for x in summaries
+    clean_values = [
+        value
+        for value in daily_values
+        if value is not None
     ]
 
-    result = {}
-
-    for days in [1, 5, 10, 20]:
-
-        if len(values) >= days:
-            result[f"{days}D"] = round(
-                sum(values[:days]),
-                3,
-            )
-        else:
-            result[f"{days}D"] = None
-
-    return result
-
-
-# ============================================================
-# CSV 輸出
-# ============================================================
-
-def write_detail_csv(
-    rows: List[BrokerRow],
-) -> None:
-
-    DATA_DIR.mkdir(
-        parents=True,
-        exist_ok=True,
-    )
-
-    with OUTPUT_CSV.open(
-        "w",
-        newline="",
-        encoding="utf-8-sig",
-    ) as f:
-
-        writer = csv.DictWriter(
-            f,
-            fieldnames=[
-                "date",
-                "symbol",
-                "stock_name",
-                "market",
-                "broker",
-                "buy_shares",
-                "sell_shares",
-                "net_shares",
-                "buy_lots",
-                "sell_lots",
-                "net_lots",
-            ],
-        )
-
-        writer.writeheader()
-
-        for row in rows:
-            writer.writerow(
-                asdict(row)
-            )
-
-
-# ============================================================
-# JSON 輸出
-# ============================================================
-
-def write_json(
-    result: dict,
-) -> None:
-
-    DATA_DIR.mkdir(
-        parents=True,
-        exist_ok=True,
-    )
-
-    temp = OUTPUT_JSON.with_suffix(
-        ".json.tmp"
-    )
-
-    with temp.open(
-        "w",
-        encoding="utf-8",
-    ) as f:
-
-        json.dump(
-            result,
-            f,
-            ensure_ascii=False,
-            indent=2,
-        )
-
-    temp.replace(
-        OUTPUT_JSON
-    )
-
-
-# ============================================================
-# 驗證
-# ============================================================
-
-def verify_summary(
-    rows: List[BrokerRow],
-    summary: DailySummary,
-) -> Dict[str, object]:
-
-    checks = {}
-
-    # 1. 單位
-    checks["unit_conversion"] = (
-        abs(
-            summary.total_net_lots
-            - summary.total_net_shares / 1000
-        ) < 0.001
-    )
-
-    # 2. 正負方向
-    calculated_net = (
-        summary.total_buy_shares
-        - summary.total_sell_shares
-    )
-
-    checks["sign_direction"] = (
-        calculated_net
-        == summary.total_net_shares
-    )
-
-    # 3. Top15 計算
-    buy_rank = sorted(
-        [r for r in rows if r.net_shares > 0],
-        key=lambda r: r.net_shares,
-        reverse=True,
-    )[:15]
-
-    sell_rank = sorted(
-        [r for r in rows if r.net_shares < 0],
-        key=lambda r: r.net_shares,
-    )[:15]
-
-    expected_top15 = (
-        sum(r.net_shares for r in buy_rank)
-        + sum(r.net_shares for r in sell_rank)
-    )
-
-    checks["top15_calculation"] = (
-        abs(
-            summary.top15_net_lots
-            - expected_top15 / 1000
-        ) < 0.001
-    )
-
-    checks["all"] = all(
-        checks.values()
-    )
-
-    return checks
-
-
-# ============================================================
-# 執行單一標的
-# ============================================================
-
-def run_security_test(
-    session: requests.Session,
-    security: dict,
-) -> dict:
-
-    symbol = security["symbol"]
-    name = security["name"]
-    market = security["market"]
-
-    section(
-        f"{symbol} {name} | {market}"
-    )
-
-    log(
-        f"開始測試：{symbol} {name}"
-    )
-
-    log(
-        "資料來源："
-        + (
-            "TWSE BSR"
-            if market == "TWSE"
-            else "TPEX BrokerBS"
-        )
-    )
-
-    if market == "TWSE":
-
-        status, content = (
-            fetch_twse_broker_page(
-                session,
-                symbol,
-            )
-        )
-
-    else:
-
-        status, content = (
-            fetch_tpex_broker_page(
-                session,
-                symbol,
-            )
-        )
-
-    log(
-        f"來源連線狀態：{status}"
-    )
-
-    if status != "OK":
-
-        reason = detect_block_reason(
-            content
-        )
-
-        log(
-            f"⚠️ 無法取得券商原始資料：{reason}"
-        )
-
+    if not clean_values:
         return {
-            "symbol": symbol,
-            "name": name,
-            "market": market,
-            "status": status,
-            "reason": reason,
-            "data_available": False,
-            "summaries": [],
-            "periods": {
-                "1D": None,
-                "5D": None,
-                "10D": None,
-                "20D": None,
-            },
-        }
-
-    # --------------------------------------------------------
-    # 注意：
-    #
-    # 官方查詢頁不是單純公開歷史 API。
-    #
-    # 這裡不假裝可以透過 GET 直接取得歷史券商分點。
-    #
-    # 若來源沒有直接提供 CSV，
-    # 必須停止，而不是猜。
-    # --------------------------------------------------------
-
-    log(
-        "✓ 查詢頁可連線"
-    )
-
-    log(
-        "⚠️ 官方券商分點查詢需要進一步的"
-        "日期/驗證/下載流程。"
-    )
-
-    log(
-        "⚠️ 本測試器不繞過 CAPTCHA，"
-        "因此不會把網頁頁面冒充成原始券商資料。"
-    )
-
-    return {
-        "symbol": symbol,
-        "name": name,
-        "market": market,
-        "status": "SOURCE_REACHABLE",
-        "reason": "BROKER_DETAIL_DOWNLOAD_REQUIRES_OFFICIAL_QUERY_FLOW",
-        "data_available": False,
-        "summaries": [],
-        "periods": {
             "1D": None,
             "5D": None,
             "10D": None,
             "20D": None,
-        },
+        }
+
+    return {
+        "1D": clean_values[0]
+        if len(clean_values) >= 1
+        else None,
+
+        "5D": round(sum(clean_values[:5]), 2)
+        if len(clean_values) >= 5
+        else None,
+
+        "10D": round(sum(clean_values[:10]), 2)
+        if len(clean_values) >= 10
+        else None,
+
+        "20D": round(sum(clean_values[:20]), 2)
+        if len(clean_values) >= 20
+        else None,
     }
 
 
 # ============================================================
-# 主程式
+# 主測試
 # ============================================================
 
 def main() -> int:
 
-    start = time.time()
+    start_time = time.time()
 
     section(
-        f"券商分點原始資料驗證器 {VERSION}"
+        f"全券商分點主力買賣超資料源測試 {VERSION}"
     )
 
-    log(
-        "固定測試："
-    )
-
-    for item in TEST_SECURITIES:
-        log(
-            f"  {item['symbol']} "
-            f"{item['name']} "
-            f"{item['market']}"
-        )
-
+    log("本測試不寫入 Data/chip.json")
+    log("本測試不修改任何正式資料")
+    log("本測試禁止使用估算倍率")
     log("")
-    log(
-        "重要：3081 = 聯亞"
-    )
-    log(
-        "重要：本程式不使用估算主力資料"
-    )
-    log(
-        "重要：本程式不繞過 CAPTCHA"
-    )
 
     session = requests.Session()
 
-    session.headers.update(
-        HEADERS
-    )
+    # --------------------------------------------------------
+    # 1. 測試日期
+    # --------------------------------------------------------
 
-    all_results = []
+    dates = previous_weekdays(20)
 
-    for security in TEST_SECURITIES:
+    log("候選測試日期：")
 
-        try:
+    for index, date_obj in enumerate(dates, start=1):
+        log(
+            f"  {index:02d}. "
+            f"{iso_date(date_obj)}"
+        )
 
-            result = run_security_test(
+    # --------------------------------------------------------
+    # 2. 股票基本資料
+    # --------------------------------------------------------
+
+    section("固定測試股票")
+
+    for code, info in TEST_STOCKS.items():
+        log(
+            f"{code} {info['name']} "
+            f"| {info['market']}"
+        )
+
+    # --------------------------------------------------------
+    # 3. TWSE / TPEx 公開資料源探測
+    # --------------------------------------------------------
+
+    for stock_code, info in TEST_STOCKS.items():
+
+        section(
+            f"{stock_code} {info['name']} "
+            f"| {info['market']}"
+        )
+
+        # ----------------------------------------------------
+        # 只測最新候選交易日
+        # ----------------------------------------------------
+
+        latest_date = dates[0]
+
+        log(
+            f"測試日期："
+            f"{iso_date(latest_date)}"
+        )
+
+        # ====================================================
+        # TWSE T86
+        # ====================================================
+
+        if info["market"] == "TWSE":
+
+            section(
+                f"{stock_code} "
+                "TWSE T86 三大法人資料"
+            )
+
+            t86_result = test_twse_t86(
                 session,
-                security,
+                stock_code,
+                latest_date,
             )
-
-            all_results.append(
-                result
-            )
-
-        except Exception as exc:
 
             log(
-                f"❌ {security['symbol']} "
-                f"測試異常：{exc}"
+                f"HTTP Status: "
+                f"{t86_result['status']}"
             )
 
-            all_results.append(
-                {
-                    "symbol": security["symbol"],
-                    "name": security["name"],
-                    "market": security["market"],
-                    "status": "ERROR",
-                    "reason": str(exc),
-                    "data_available": False,
-                    "summaries": [],
-                    "periods": {
-                        "1D": None,
-                        "5D": None,
-                        "10D": None,
-                        "20D": None,
-                    },
-                }
-            )
+            if t86_result["success"]:
 
-        time.sleep(1)
+                row = t86_result["row"]
 
-    # ========================================================
-    # 輸出結果
-    # ========================================================
+                log("✓ 找到股票資料")
 
-    output = {
-        "schema_version": VERSION,
-        "generated_at": datetime.now().strftime(
-            "%Y-%m-%d %H:%M:%S"
-        ),
+                log(
+                    f"原始 row 欄位數："
+                    f"{len(row)}"
+                )
 
-        "purpose": (
-            "驗證 TWSE/TPEX 券商分點原始資料"
-            "與 1D/5D/10D/20D 主力計算架構"
-        ),
+                log("原始 row：")
 
-        "rules": {
-            "raw_unit": "shares",
-            "output_unit": "lots",
-            "shares_per_lot": 1000,
-            "net_formula": "buy_shares - sell_shares",
+                log(
+                    json.dumps(
+                        row,
+                        ensure_ascii=False,
+                    )
+                )
 
-            "main_force_definition": (
-                "Top15 positive net brokers "
-                "+ Top15 negative net brokers"
-            ),
+                log("")
+                log(
+                    "⚠️ 這是三大法人資料，"
+                    "不是全券商分點資料。"
+                )
 
-            "institutional_is_main_force": False,
-            "estimated_main_force": False,
-        },
+            else:
 
-        "test_securities": TEST_SECURITIES,
+                log(
+                    "❌ 找不到指定股票"
+                )
 
-        "results": all_results,
+                if t86_result.get("error"):
+                    log(
+                        f"錯誤："
+                        f"{t86_result['error']}"
+                    )
 
-        "conclusion": {
-            "source_reachable": sum(
-                1
-                for x in all_results
-                if x["status"] == "SOURCE_REACHABLE"
-            ),
+        # ====================================================
+        # 官方券商候選端點
+        # ====================================================
 
-            "data_available": sum(
-                1
-                for x in all_results
-                if x["data_available"]
-            ),
-
-            "next_step": (
-                "取得合法且可自動化的券商分點"
-                "原始資料檔後，再進行逐日 "
-                "1D/5D/10D/20D 核對"
-            ),
-        },
-    }
-
-    write_json(
-        output
-    )
-
-    # ========================================================
-    # 最終報告
-    # ========================================================
-
-    section(
-        "測試結果"
-    )
-
-    for result in all_results:
-
-        symbol = result["symbol"]
-        name = result["name"]
-
-        log(
-            f"{symbol} {name}"
+        section(
+            f"{stock_code} "
+            "官方券商資料端點探測"
         )
 
-        log(
-            f"  Market      : "
-            f"{result['market']}"
+        broker_results = test_twse_broker_endpoints(
+            session,
+            stock_code,
+            latest_date,
         )
 
-        log(
-            f"  Status      : "
-            f"{result['status']}"
-        )
+        for result in broker_results:
 
-        log(
-            f"  Data        : "
-            f"{result['data_available']}"
-        )
-
-        if result.get("reason"):
+            log("")
             log(
-                f"  Reason      : "
-                f"{result['reason']}"
+                f"資料源："
+                f"{result['name']}"
             )
 
-        periods = result.get(
-            "periods",
-            {}
-        )
+            log(
+                f"HTTP Status："
+                f"{result['status']}"
+            )
 
-        log(
-            f"  1D          : "
-            f"{periods.get('1D')}"
-        )
+            log(
+                f"分類："
+                f"{result['classification']}"
+            )
 
-        log(
-            f"  5D          : "
-            f"{periods.get('5D')}"
-        )
+            log(
+                f"資料列數："
+                f"{result['row_count']}"
+            )
 
-        log(
-            f"  10D         : "
-            f"{periods.get('10D')}"
-        )
+            log(
+                f"找到 {stock_code}："
+                f"{result['found_symbol']}"
+            )
 
-        log(
-            f"  20D         : "
-            f"{periods.get('20D')}"
-        )
+            if result["payload"] is not None:
 
-    elapsed = time.time() - start
+                print_payload_structure(
+                    result["name"],
+                    result["payload"],
+                )
 
-    section(
-        "完成"
+            if result["error"]:
+                log(
+                    f"錯誤："
+                    f"{result['error']}"
+                )
+
+        # ====================================================
+        # TPEx
+        # ====================================================
+
+        if info["market"] == "TPEX":
+
+            section(
+                f"{stock_code} "
+                "TPEx 券商資料端點"
+            )
+
+            tpex_result = test_tpex_active_broker_volume(
+                session,
+                stock_code,
+            )
+
+            log(
+                f"HTTP Status："
+                f"{tpex_result['status']}"
+            )
+
+            log(
+                f"資料列數："
+                f"{tpex_result['row_count']}"
+            )
+
+            log(
+                f"找到 {stock_code}："
+                f"{tpex_result['found_symbol']}"
+            )
+
+            if tpex_result["payload"] is not None:
+
+                print_payload_structure(
+                    "TPEx active broker volume",
+                    tpex_result["payload"],
+                )
+
+            if tpex_result["error"]:
+                log(
+                    f"錯誤："
+                    f"{tpex_result['error']}"
+                )
+
+    # ========================================================
+    # 4. 重要結論
+    # ========================================================
+
+    section("資料源判定規則")
+
+    log("真正可以進入正式 fetch_chip.py 的資料，必須同時符合：")
+    log("")
+    log("1. 能取得指定股票")
+    log("2. 能辨識券商 / 分點")
+    log("3. 能辨識買進數量")
+    log("4. 能辨識賣出數量")
+    log("5. 能計算買賣超")
+    log("6. 官方資料能確認單位")
+    log("7. 官方資料能確認正負方向")
+    log("8. 20 個交易日可以穩定取得")
+    log("9. TWSE / TPEX 都有可對應來源")
+    log("10. 不是三大法人資料")
+    log("11. 不是熱門券商排行的有限樣本")
+    log("12. 不是估算值")
+    log("")
+
+    log(
+        "⚠️ 注意："
+        "如果官方公開 API 只有券商排行，"
+        "不能把它宣稱成「全券商主力買賣超」。"
     )
 
     log(
-        f"耗時：{elapsed:.1f} 秒"
+        "⚠️ 注意："
+        "如果只有付費買賣日報資料，"
+        "正式系統不能假裝有免費完整資料。"
+    )
+
+    # ========================================================
+    # 5. 單位禁止猜測
+    # ========================================================
+
+    section("單位判定")
+
+    log(
+        "本測試程式不會依數字大小猜測「股」或「張」。"
     )
 
     log(
-        f"結果檔：{OUTPUT_JSON}"
+        "只有在原始資料欄位或官方文件明確定義單位後，"
+        "才允許寫入正式 chip.json。"
     )
 
     log(
-        ""
+        "目前單位判定：UNKNOWN，"
+        "直到原始資料來源明確確認。"
+    )
+
+    # ========================================================
+    # 6. 1D / 5D / 10D / 20D 計算規則展示
+    # ========================================================
+
+    section("1D / 5D / 10D / 20D 累計規則")
+
+    demo_values = [
+        10.0,
+        -5.0,
+        20.0,
+        -3.0,
+        8.0,
+        12.0,
+        -4.0,
+        7.0,
+        3.0,
+        -2.0,
+        6.0,
+        9.0,
+        -8.0,
+        5.0,
+        2.0,
+        -1.0,
+        4.0,
+        3.0,
+        -6.0,
+        7.0,
+    ]
+
+    periods = calculate_periods(demo_values)
+
+    log(
+        f"1D  = {periods['1D']}"
     )
 
     log(
-        "⚠️ 本次測試不會產生假的 1D/5D/10D/20D 數字。"
+        f"5D  = {periods['5D']}"
     )
 
     log(
-        "⚠️ 必須取得真正券商分點原始資料後才會計算。"
+        f"10D = {periods['10D']}"
+    )
+
+    log(
+        f"20D = {periods['20D']}"
+    )
+
+    log("")
+    log(
+        "以上只是驗證累計演算法，"
+        "不是任何股票的實際主力數據。"
+    )
+
+    # ========================================================
+    # 7. 結束
+    # ========================================================
+
+    elapsed = time.time() - start_time
+
+    section("測試結束")
+
+    log(
+        f"測試耗時：{elapsed:.1f} 秒"
+    )
+
+    log("")
+    log(
+        "本次測試沒有修改："
+    )
+
+    log(
+        "  Data/chip.json"
+    )
+
+    log(
+        "  Data/universe.json"
+    )
+
+    log(
+        "  index.html"
+    )
+
+    log("")
+    log(
+        "下一步必須根據 Action Log 的實際 API 回傳內容，"
+        "決定是否存在可正式使用的全券商分點資料源。"
     )
 
     return 0
 
 
 if __name__ == "__main__":
-    sys.exit(
-        main()
-    )
+    sys.exit(main())
