@@ -100,12 +100,6 @@
     .up-color { color: var(--tw-up) !important; }
     .down-color { color: var(--tw-down) !important; }
     .flat-color { color: var(--tw-flat) !important; }
-
-    /* 除錯日誌區域 */
-    #debug-panel {
-      margin-top: 30px; background: #000; color: #00ff00; font-family: monospace;
-      padding: 12px; border-radius: 8px; font-size: 0.75rem; display: none; max-height: 200px; overflow-y: auto;
-    }
   </style>
 </head>
 <body>
@@ -115,7 +109,7 @@
     <div class="header-subtitle">台股市場 | 今日量化訊號</div>
     <div class="market-status">
       <span class="status-tag" id="market-open-tag">🟢 今日開市</span>
-      <span class="trade-date">最新交易日：<span id="latest-date">載入中...</span></span>
+      <span class="trade-date">最新交易日：<span id="latest-date">更新中...</span></span>
     </div>
   </header>
 
@@ -145,7 +139,7 @@
   <section class="search-box">
     <div class="search-title">🔍 查詢個股</div>
     <div class="search-input-group">
-      <input type="text" id="search-input" placeholder="輸入股票名稱或代號 (例如: 台積電 或 2330)">
+      <input type="text" id="search-input" placeholder="輸入股票名稱或代號 (例如: 精英 或 2331)">
       <button onclick="handleSearch()">查詢</button>
     </div>
   </section>
@@ -162,161 +156,144 @@
     <!-- 動態渲染卡片區域 -->
   </main>
 
-  <div style="text-align: center; margin-top: 30px;">
-    <button onclick="toggleDebug()" style="background:none; border:none; color:var(--text-sub); font-size:0.75rem; text-decoration:underline; cursor:pointer;">[除錯助手：查看數據讀取狀態]</button>
-  </div>
-  <div id="debug-panel"></div>
-
   <script>
     let currentTab = 'featured';
-    let allStockData = [];
+    let stockDataMap = new Map();
     let myPortfolio = JSON.parse(localStorage.getItem('myStockList') || '[]');
 
-    function logDebug(msg) {
-      const p = document.getElementById('debug-panel');
-      if(p) p.innerHTML += msg + '<br>';
-      console.log(msg);
-    }
-
-    function toggleDebug() {
-      const p = document.getElementById('debug-panel');
-      if(p) p.style.display = p.style.display === 'block' ? 'none' : 'block';
-    }
-
     document.addEventListener('DOMContentLoaded', async () => {
-      await autoLoadData();
+      await loadAllData();
       renderActiveTab();
     });
 
-    // 萬用個股屬性解析器：自動捕捉代號與名稱
-    function extractStockInfo(key, val) {
-      let sym = key;
-      let name = key;
-      let price = 0;
-      let changePct = 0;
-      let rawObj = {};
-
-      if (typeof val === 'object' && val !== null) {
-        rawObj = val;
-        sym = val.symbol || val.stock_id || val.code || val.id || key;
-        name = val.name || val.stock_name || val.title || sym;
-        price = Number(val.close_price || val.price || val.close || 0);
-        changePct = Number(val.change_pct || val.changePct || val.change_percentage || 0);
-      } else {
-        sym = String(key);
-        name = String(val);
+    async function fetchJsonSafely(filenames) {
+      const ts = new Date().getTime();
+      const basePaths = ['./Data/', './data/', './'];
+      
+      for (const fn of filenames) {
+        for (const base of basePaths) {
+          try {
+            const resp = await fetch(`${base}${fn}?v=${ts}`);
+            if (resp.ok) {
+              return await resp.json();
+            }
+          } catch (e) {}
+        }
       }
-
-      return { symbol: String(sym).trim(), name: String(name).trim(), price, changePct, rawObj };
+      return null;
     }
 
-    async function autoLoadData() {
-      const countEl = document.getElementById('selected-count');
+    async function loadAllData() {
       const dateEl = document.getElementById('latest-date');
-      const ts = new Date().getTime();
+      const countEl = document.getElementById('selected-count');
 
-      const possiblePaths = [
-        { chip: `./Data/chip.json?v=${ts}`, universe: `./Data/universe.json?v=${ts}` },
-        { chip: `./data/chip.json?v=${ts}`, universe: `./data/universe.json?v=${ts}` },
-        { chip: `chip.json?v=${ts}`, universe: `universe.json?v=${ts}` }
-      ];
-
-      let rawChip = null;
-      let rawUniverse = null;
-
-      for (const p of possiblePaths) {
-        try {
-          const [cResp, uResp] = await Promise.all([fetch(p.chip), fetch(p.universe)]);
-          if (cResp.ok) rawChip = await cResp.json();
-          if (uResp.ok) rawUniverse = await uResp.json();
-          if (rawChip || rawUniverse) {
-            logDebug(`成功讀取檔案路徑: ${p.chip}`);
-            break;
-          }
-        } catch (e) {}
-      }
-
-      if (!rawChip && !rawUniverse) {
-        logDebug("❌ 讀取失敗：找不到 JSON 檔案，請確認 Data 資料夾結構");
-        if (dateEl) dateEl.textContent = "檔案讀取失敗";
-        return;
-      }
-
-      let stockMap = new Map();
-
-      // 解析 Universe (股票名冊)
+      // 1. 先抓 Universe (名冊檔)
+      const rawUniverse = await fetchJsonSafely(['universe.json', 'Universe.json']);
       if (rawUniverse) {
-        const uData = rawUniverse.stocks || rawUniverse.data || rawUniverse;
-        if (Array.isArray(uData)) {
-          uData.forEach(item => {
-            const info = extractStockInfo(item.symbol || item.code, item);
-            stockMap.set(info.symbol, info);
-          });
-        } else if (typeof uData === 'object') {
-          Object.keys(uData).forEach(k => {
-            const info = extractStockInfo(k, uData[k]);
-            stockMap.set(info.symbol, info);
-          });
-        }
+        parseUniverse(rawUniverse);
       }
 
-      // 解析 Chip (籌碼與價格)
+      // 2. 獨立抓 Chip (籌碼與價格檔)
+      const rawChip = await fetchJsonSafely(['chip.json', 'Chip.json', 'stocks.json']);
       if (rawChip) {
-        const dateVal = rawChip.latest_date || rawChip.date;
-        if (dateVal && dateEl) dateEl.textContent = dateVal;
-
-        const cData = rawChip.stocks || rawChip.data || rawChip;
-        if (Array.isArray(cData)) {
-          cData.forEach(item => {
-            const info = extractStockInfo(item.symbol || item.code, item);
-            if (stockMap.has(info.symbol)) {
-              Object.assign(stockMap.get(info.symbol), info);
-            } else {
-              stockMap.set(info.symbol, info);
-            }
-          });
-        } else if (typeof cData === 'object') {
-          Object.keys(cData).forEach(k => {
-            if (k !== 'latest_date' && k !== 'taiex' && k !== 'date') {
-              const info = extractStockInfo(k, cData[k]);
-              if (stockMap.has(info.symbol)) {
-                const existing = stockMap.get(info.symbol);
-                if (!existing.price) existing.price = info.price;
-                if (!existing.changePct) existing.changePct = info.changePct;
-                existing.rawObj = { ...existing.rawObj, ...info.rawObj };
-              } else {
-                stockMap.set(info.symbol, info);
-              }
-            }
-          });
-        }
+        parseChip(rawChip);
       }
 
-      // 轉換成前端統一陣列
-      allStockData = Array.from(stockMap.values()).map(item => {
-        const raw = item.rawObj || {};
-        const isFeatured = raw.is_selected === true || raw.is_selected === "true" || raw.selected === true;
-        
-        let type = 'other';
-        if (isFeatured) type = 'featured';
-        else if (item.symbol.startsWith('00') && item.name.includes('債')) type = 'bond';
-        else if (item.symbol.startsWith('00')) type = 'etf';
+      // 如果都沒有抓到最新日期，帶入預設日
+      if (dateEl && (dateEl.textContent === '更新中...' || dateEl.textContent === '載入中...')) {
+        const today = new Date();
+        dateEl.textContent = today.toISOString().split('T')[0];
+      }
 
-        return {
-          symbol: item.symbol,
-          name: item.name,
-          price: item.price,
-          changePct: item.changePct,
-          strength: item.changePct > 0 ? '🟢 強勢' : (item.changePct < 0 ? '🔴 弱勢' : '🟡 中性'),
-          advice: isFeatured ? '偏多，可分批' : '觀望/順勢',
-          type: type,
-          isFeatured: isFeatured
+      // 更新今日精選數量
+      const featuredList = Array.from(stockDataMap.values()).filter(s => s.isFeatured);
+      if (countEl) countEl.textContent = featuredList.length;
+    }
+
+    function parseUniverse(data) {
+      const list = Array.isArray(data) ? data : (data.stocks || data.data || []);
+      if (Array.isArray(list)) {
+        list.forEach(item => {
+          const sym = String(item.symbol || item.code || item.id || '').trim();
+          const name = String(item.name || item.stock_name || sym).trim();
+          if (sym) {
+            stockDataMap.set(sym, {
+              symbol: sym,
+              name: name,
+              price: 0,
+              changePct: 0,
+              isFeatured: false,
+              type: 'other'
+            });
+          }
+        });
+      } else if (typeof data === 'object') {
+        Object.keys(data).forEach(key => {
+          const val = data[key];
+          const sym = String(val.symbol || key).trim();
+          const name = String(val.name || val.stock_name || key).trim();
+          stockDataMap.set(sym, {
+            symbol: sym,
+            name: name,
+            price: 0,
+            changePct: 0,
+            isFeatured: false,
+            type: 'other'
+          });
+        });
+      }
+    }
+
+    function parseChip(data) {
+      const dateEl = document.getElementById('latest-date');
+      if (data.latest_date || data.date) {
+        if (dateEl) dateEl.textContent = data.latest_date || data.date;
+      }
+
+      const stocksObj = data.stocks || data.data || data;
+
+      const updateStock = (sym, price, changePct, isSelected) => {
+        const key = String(sym).trim();
+        let item = stockDataMap.get(key) || {
+          symbol: key,
+          name: key,
+          price: 0,
+          changePct: 0,
+          isFeatured: false,
+          type: 'other'
         };
-      });
 
-      logDebug(`共解析得出 ${allStockData.length} 檔股票數據`);
-      const featuredCount = allStockData.filter(s => s.isFeatured).length;
-      if (countEl) countEl.textContent = featuredCount;
+        item.price = Number(price || item.price || 0);
+        item.changePct = Number(changePct || item.changePct || 0);
+        item.isFeatured = isSelected === true || isSelected === "true";
+
+        if (item.isFeatured) item.type = 'featured';
+        else if (key.startsWith('00') && item.name.includes('債')) item.type = 'bond';
+        else if (key.startsWith('00')) item.type = 'etf';
+
+        stockDataMap.set(key, item);
+      };
+
+      if (Array.isArray(stocksObj)) {
+        stocksObj.forEach(s => {
+          const p = s.close_price || s.price || s.close || s.z || 0;
+          const pct = s.change_pct || s.changePct || s.pct || 0;
+          const sel = s.is_selected || s.selected || false;
+          updateStock(s.symbol || s.code, p, pct, sel);
+        });
+      } else if (typeof stocksObj === 'object') {
+        Object.keys(stocksObj).forEach(k => {
+          if (k !== 'latest_date' && k !== 'taiex' && k !== 'date') {
+            const s = stocksObj[k];
+            if (typeof s === 'object' && s !== null) {
+              const p = s.close_price || s.price || s.close || s.z || 0;
+              const pct = s.change_pct || s.changePct || s.pct || 0;
+              const sel = s.is_selected || s.selected || false;
+              updateStock(s.symbol || k, p, pct, sel);
+            }
+          }
+        });
+      }
     }
 
     function switchTab(tabKey, evt) {
@@ -331,22 +308,29 @@
       if (!container) return;
       container.innerHTML = '';
 
+      const allList = Array.from(stockDataMap.values());
+
       if (currentTab === 'mylist') {
         renderMyList(container);
         return;
       }
 
-      const filtered = allStockData.filter(s => {
+      const filtered = allList.filter(s => {
         if (currentTab === 'featured') return s.isFeatured;
         return s.type === currentTab;
       });
 
       if (filtered.length === 0) {
-        container.innerHTML = `<div style="text-align:center; padding:40px; color:var(--text-sub);">分頁暫無標的資料</div>`;
+        container.innerHTML = `<div style="text-align:center; padding:40px; color:var(--text-sub);">「${getTabName(currentTab)}」暫無標的資料</div>`;
         return;
       }
 
       filtered.forEach(stock => container.appendChild(createStockCard(stock)));
+    }
+
+    function getTabName(key) {
+      const names = { featured: '今日精選', top10: 'Top 10', etf: 'ETF', bond: '債券', mylist: '我的清單' };
+      return names[key] || '';
     }
 
     function createStockCard(stock) {
@@ -368,8 +352,8 @@
           </div>
         </div>
         <div class="card-footer">
-          <div class="strength-tag">${stock.strength}</div>
-          <div class="advice-text">建議：${stock.advice}</div>
+          <div class="strength-tag">${stock.changePct > 0 ? '🟢 強勢' : (stock.changePct < 0 ? '🔴 弱勢' : '🟡 中性')}</div>
+          <div class="advice-text">建議：${stock.isFeatured ? '偏多，可分批' : '觀望/順勢'}</div>
           <button class="add-btn" onclick="addToMyList('${stock.symbol}')">＋加入我的清單</button>
         </div>
       `;
@@ -380,7 +364,8 @@
       const query = document.getElementById('search-input').value.trim().toLowerCase();
       if (!query) return;
 
-      const matched = allStockData.filter(s => 
+      const allList = Array.from(stockDataMap.values());
+      const matched = allList.filter(s => 
         s.symbol.toLowerCase().includes(query) || s.name.toLowerCase().includes(query)
       );
 
@@ -396,19 +381,18 @@
 
     function renderMyList(container) {
       if (myPortfolio.length === 0) {
-        container.innerHTML = `<div style="text-align:center; padding:40px; color:var(--text-sub);">尚未建立持倉，請至查詢頁加入標的</div>`;
+        container.innerHTML = `<div style="text-align:center; padding:40px; color:var(--text-sub);">尚未建立持倉，請透過查詢頁新增標的</div>`;
         return;
       }
-      myPortfolio.forEach((item, index) => {
-        const stock = allStockData.find(s => s.symbol === item.symbol) || { symbol: item.symbol, name: item.name, price: 0, changePct: 0, strength: '🟡 中性' };
-        const card = createStockCard(stock);
-        container.appendChild(card);
+      myPortfolio.forEach(item => {
+        const stock = stockDataMap.get(item.symbol) || { symbol: item.symbol, name: item.name || item.symbol, price: 0, changePct: 0 };
+        container.appendChild(createStockCard(stock));
       });
     }
 
     function addToMyList(symbol) {
       if (myPortfolio.some(i => i.symbol === symbol)) return alert('已在清單中');
-      const target = allStockData.find(s => s.symbol === symbol) || { symbol, name: symbol };
+      const target = stockDataMap.get(symbol) || { symbol, name: symbol };
       myPortfolio.push({ symbol: target.symbol, name: target.name });
       localStorage.setItem('myStockList', JSON.stringify(myPortfolio));
       alert(`已加入 ${target.name}`);
