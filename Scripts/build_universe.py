@@ -4,132 +4,133 @@
 """
 台股 AI 選股系統
 Scripts/build_universe.py
-正式版 V10.3
+正式版 UNIVERSE-V10.3
 
 ============================================================
-V10.3 核心定位
+定位
 ============================================================
 
-本程式只負責建立：
+本程式只負責：
 
-    Data/universe.json
-
-Universe = 系統可分析的「完整標的宇宙」
-
-本程式不負責：
-
-    ❌ 今日選股
-    ❌ 六項核心選股
-    ❌ RSI
-    ❌ MACD
-    ❌ KD
-    ❌ 成交量條件
-    ❌ 主力籌碼
-    ❌ DCA
-    ❌ Top 10
-    ❌ 今日精選
-    ❌ UI
+    建立「完整台股標的 Universe」
 
 資料流：
 
-    原始標的資料
+    Universe Source
           ↓
     build_universe.py
           ↓
     Data/universe.json
           ↓
-    analysis.py / 分析層
-          ↓
-    Data/analysis.json
-          ↓
-    build_ui_data.py
-          ↓
-    Data/ui_data.json
-          ↓
-    index.html
-
+    analysis / UI
 
 ============================================================
-V10.3 重要架構原則
+架構邊界
 ============================================================
 
-1. Universe 是完整標的清單。
+本程式絕對不：
 
-2. Universe 不等於今日選股結果。
+    - 抓股價
+    - 計算 RSI
+    - 計算 MACD
+    - 計算 KD
+    - 計算成交量
+    - 計算技術指標
+    - 計算 DCA
+    - 執行短線選股
+    - 執行六項核心條件
+    - 計算主力籌碼
+    - API 探測
+    - 建立今日精選
+    - 建立 Top 10
 
-3. Universe 數量不得被短線條件縮減。
+Universe 的工作只有：
 
-4. 不存在：
-
-       六項核心
-       RSI > 50
-       MACD 黃金交叉
-       KD 黃金交叉
-       成交量 > 5 日均量
-       站上 20MA
-
-   等任何選股邏輯。
-
-5. analysis.json 才負責分析。
-
-6. build_ui_data.py 只負責：
-
-       analysis
-           ↓
-       UI schema
-
-7. 本程式不讀取：
-
-       analysis.json
-       ui_data.json
-       prices.json
-       chip.json
-
-   避免形成反向依賴。
-
-8. 不硬編碼 1985、2143 等固定股票數量。
-
-9. universe_count 永遠由實際輸出的 stocks 數量產生。
-
-10. symbol 必須是乾淨的台股代號：
-
-       2330
-       2337
-       3081
-
-   不輸出：
-
-       2330.TW
-       2337.TW
-       3081.TWO
-
-11. ETF 與一般股票均可存在於 Universe。
-
-12. 債券 ETF / ETN 等商品若原始資料提供，
-    依 instrument_type 正確分類。
-
-13. 不因為商品不是普通股票就從 Universe
-    任意刪除。
-
-14. 不建立任何預設持倉。
-
-15. 輸出的 JSON 必須可被後續分析層直接使用。
-
+    「完整標的清單建立與正規化」
 
 ============================================================
-輸入資料
+Universe Source 優先順序
 ============================================================
 
-優先使用：
+1. Data/raw_universe.json
+2. Data/universe_source.json
+3. Data/stock_universe.json
+4. Data/universe.json
 
-    Data/raw_universe.json
+第 4 項非常重要：
 
-若不存在，依序嘗試：
+    如果前三個原始來源不存在，
+    但 repository 已經存在一份有效的
+    Data/universe.json，
 
-    Data/universe_source.json
-    Data/stock_universe.json
+    則使用現有 universe.json 作為 bootstrap source。
 
-本程式不會自行探測 API。
+這是為了避免：
+
+    GitHub Actions 第一次執行時
+    因為沒有 raw source
+    導致整個 workflow 直接失敗。
+
+============================================================
+輸出
+============================================================
+
+Data/universe.json
+
+schema：
+
+{
+    "schema_version": "V10.3",
+    "generated_at": "...",
+
+    "source": {...},
+
+    "universe_count": 2143,
+
+    "stock_count": 1993,
+
+    "etf_count": 150,
+
+    "market_count": {
+        "TWSE": ...,
+        "TPEX": ...,
+        "EMERGING": ...
+    },
+
+    "source_count": {...},
+
+    "stocks": {
+        "2337": {
+            "symbol": "2337",
+            "full_symbol": "2337.TW",
+            "name": "...",
+            "market": "TWSE",
+            "type": "Stock",
+            "instrument_type": "stock",
+            "source": "..."
+        }
+    }
+}
+
+============================================================
+重要原則
+============================================================
+
+Universe 不篩選。
+
+Universe 不選股。
+
+Universe 不縮減。
+
+Universe 只是標的宇宙。
+
+因此：
+
+    2143 檔 Universe
+        ≠
+    2143 檔今日精選
+
+後續 analysis.json 才負責分析與選股。
 
 ============================================================
 """
@@ -141,19 +142,14 @@ import math
 import sys
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional
+from typing import Any, Dict, List, Optional
 
 
 # ============================================================
-# Version
+# 基本設定
 # ============================================================
 
 VERSION = "UNIVERSE-V10.3"
-
-
-# ============================================================
-# Path
-# ============================================================
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 DATA_DIR = BASE_DIR / "Data"
@@ -164,6 +160,7 @@ SOURCE_CANDIDATES = [
     DATA_DIR / "raw_universe.json",
     DATA_DIR / "universe_source.json",
     DATA_DIR / "stock_universe.json",
+    DATA_DIR / "universe.json",
 ]
 
 
@@ -187,19 +184,23 @@ def section(title: str) -> None:
 # ============================================================
 
 def load_json(path: Path) -> Any:
+
     if not path.exists():
         raise RuntimeError(
-            f"找不到輸入檔案：{path}"
+            f"找不到檔案：{path}"
         )
 
     try:
+
         with path.open(
             "r",
             encoding="utf-8-sig",
         ) as f:
+
             return json.load(f)
 
     except Exception as exc:
+
         raise RuntimeError(
             f"JSON 讀取失敗：{path}：{exc}"
         ) from exc
@@ -209,7 +210,7 @@ def load_json(path: Path) -> Any:
 # Number
 # ============================================================
 
-def number(value: Any) -> Optional[float]:
+def safe_int(value: Any) -> Optional[int]:
 
     if value is None:
         return None
@@ -218,51 +219,19 @@ def number(value: Any) -> Optional[float]:
         return None
 
     try:
-        value = float(
-            str(value)
-            .replace(",", "")
-            .strip()
+
+        number = int(
+            float(
+                str(value)
+                .replace(",", "")
+                .strip()
+            )
         )
 
-        if not math.isfinite(value):
-            return None
-
-        return value
+        return number
 
     except Exception:
         return None
-
-
-# ============================================================
-# Text
-# ============================================================
-
-def clean_text(value: Any) -> str:
-
-    if value is None:
-        return ""
-
-    return str(value).strip()
-
-
-# ============================================================
-# First Value
-# ============================================================
-
-def first_value(
-    record: Dict[str, Any],
-    keys: Iterable[str],
-) -> Any:
-
-    for key in keys:
-
-        if (
-            key in record
-            and record[key] is not None
-        ):
-            return record[key]
-
-    return None
 
 
 # ============================================================
@@ -279,15 +248,9 @@ def normalize_symbol(value: Any) -> str:
     if not text:
         return ""
 
-    # --------------------------------------------------------
-    # 移除常見市場 suffix
-    # --------------------------------------------------------
-
     for suffix in (
         ".TW",
         ".TWO",
-        ".TSE",
-        ".OTC",
     ):
 
         if text.endswith(suffix):
@@ -298,34 +261,146 @@ def normalize_symbol(value: Any) -> str:
 
             break
 
-    # --------------------------------------------------------
-    # 移除前後空白
-    # --------------------------------------------------------
+    return text.strip()
 
-    text = text.strip()
 
-    # --------------------------------------------------------
-    # 台股代號基本驗證
-    #
-    # 一般股票：
-    #   4 碼
-    #
-    # 特殊商品：
-    #   4~6 碼亦允許
-    #
-    # 不允許空白。
-    # --------------------------------------------------------
+# ============================================================
+# Full Symbol
+# ============================================================
 
-    if not text:
+def build_full_symbol(
+    symbol: str,
+    market: str,
+    original: Any = None,
+) -> str:
+
+    if original:
+
+        text = str(
+            original
+        ).strip().upper()
+
+        if text.endswith(
+            ".TW"
+        ) or text.endswith(
+            ".TWO"
+        ):
+
+            return text
+
+    market_upper = str(
+        market or ""
+    ).upper()
+
+    if market_upper in {
+        "TPEX",
+        "TWO",
+        "OTC",
+    }:
+
+        return f"{symbol}.TWO"
+
+    return f"{symbol}.TW"
+
+
+# ============================================================
+# Text
+# ============================================================
+
+def first_value(
+    record: Dict[str, Any],
+    keys: List[str],
+) -> Any:
+
+    for key in keys:
+
+        if (
+            key in record
+            and record[key] is not None
+            and str(record[key]).strip() != ""
+        ):
+
+            return record[key]
+
+    return None
+
+
+def clean_text(value: Any) -> str:
+
+    if value is None:
         return ""
+
+    return str(
+        value
+    ).strip()
+
+
+# ============================================================
+# Instrument Type
+# ============================================================
+
+def normalize_instrument_type(
+    record: Dict[str, Any],
+) -> str:
+
+    value = first_value(
+        record,
+        [
+            "instrument_type",
+            "security_type",
+            "product_type",
+            "type",
+            "category",
+        ],
+    )
+
+    if value is None:
+        return "stock"
+
+    text = clean_text(
+        value
+    ).lower()
 
     if any(
-        char.isspace()
-        for char in text
+        token in text
+        for token in (
+            "etf",
+            "基金",
+            "index fund",
+            "index_fund",
+        )
     ):
-        return ""
 
-    return text
+        return "etf"
+
+    if any(
+        token in text
+        for token in (
+            "bond",
+            "債券",
+        )
+    ):
+
+        return "bond"
+
+    return "stock"
+
+
+# ============================================================
+# Type Label
+# ============================================================
+
+def normalize_type_label(
+    instrument_type: str,
+) -> str:
+
+    if instrument_type == "etf":
+        return "ETF"
+
+    if instrument_type == "bond":
+        return "Bond"
+
+    return "Stock"
 
 
 # ============================================================
@@ -342,127 +417,43 @@ def normalize_market(
             "market",
             "exchange",
             "market_type",
-            "市場",
-            "市場別",
-            "交易所",
+            "market_code",
         ],
     )
 
+    if value is None:
+        return ""
+
     text = clean_text(
         value
-    ).lower()
-
-    if not text:
-        return ""
+    ).upper()
 
     mapping = {
 
-        "twse": "TWSE",
-        "tse": "TWSE",
+        "TWSE": "TWSE",
+        "TSE": "TWSE",
         "上市": "TWSE",
 
-        "otc": "TPEx",
-        "tpex": "TPEx",
-        "上櫃": "TPEx",
+        "TPEX": "TPEX",
+        "TWO": "TPEX",
+        "OTC": "TPEX",
+        "上櫃": "TPEX",
 
-        "emerging": "ESB",
-        "esb": "ESB",
-        "興櫃": "ESB",
-
-        "rotc": "ROTC",
-
-        "taiwan": "TWSE",
-        "tw": "TWSE",
+        "EMERGING": "EMERGING",
+        "興櫃": "EMERGING",
     }
 
     return mapping.get(
         text,
-        clean_text(value),
+        text,
     )
-
-
-# ============================================================
-# Instrument Type
-# ============================================================
-
-def normalize_instrument_type(
-    record: Dict[str, Any],
-) -> str:
-
-    value = first_value(
-        record,
-        [
-            "instrument_type",
-            "security_type",
-            "type",
-            "product_type",
-            "category",
-            "商品類型",
-            "證券類型",
-            "類型",
-        ],
-    )
-
-    text = clean_text(
-        value
-    ).lower()
-
-    # --------------------------------------------------------
-    # ETF
-    # --------------------------------------------------------
-
-    if any(
-        token in text
-        for token in (
-            "etf",
-            "exchange traded fund",
-            "指數型基金",
-            "指數基金",
-            "基金",
-        )
-    ):
-        return "etf"
-
-    # --------------------------------------------------------
-    # Bond
-    # --------------------------------------------------------
-
-    if any(
-        token in text
-        for token in (
-            "bond",
-            "債券",
-            "公司債",
-            "政府債",
-        )
-    ):
-        return "bond"
-
-    # --------------------------------------------------------
-    # ETN
-    # --------------------------------------------------------
-
-    if any(
-        token in text
-        for token in (
-            "etn",
-            "指數投資證券",
-        )
-    ):
-        return "etn"
-
-    # --------------------------------------------------------
-    # Default
-    # --------------------------------------------------------
-
-    return "stock"
 
 
 # ============================================================
 # Name
 # ============================================================
 
-def get_name(
+def normalize_name(
     record: Dict[str, Any],
     symbol: str,
 ) -> str:
@@ -472,203 +463,156 @@ def get_name(
         [
             "name",
             "stock_name",
-            "security_name",
             "company_name",
+            "security_name",
             "名稱",
-            "股票名稱",
-            "證券名稱",
         ],
     )
 
-    name = clean_text(
+    if value is None:
+        return symbol
+
+    text = clean_text(
         value
     )
 
-    return name or symbol
+    if not text:
+        return symbol
+
+    return text
 
 
 # ============================================================
-# Source Record Extraction
+# Source
 # ============================================================
 
-def extract_records(
-    data: Any,
-) -> List[Dict[str, Any]]:
+def normalize_source(
+    record: Dict[str, Any],
+    fallback: str,
+) -> str:
 
-    # --------------------------------------------------------
-    # Case 1
-    #
-    # {
-    #     "stocks": {
-    #         "2330": {...}
-    #     }
-    # }
-    # --------------------------------------------------------
+    value = first_value(
+        record,
+        [
+            "source",
+            "data_source",
+            "origin",
+        ],
+    )
 
-    if isinstance(
-        data,
+    if value is None:
+        return fallback
+
+    text = clean_text(
+        value
+    )
+
+    return text or fallback
+
+
+# ============================================================
+# Record Normalization
+# ============================================================
+
+def normalize_record(
+    raw_symbol: Any,
+    raw_record: Any,
+    fallback_source: str,
+) -> Optional[Dict[str, Any]]:
+
+    if not isinstance(
+        raw_record,
         dict,
     ):
 
-        stocks = data.get(
-            "stocks"
-        )
-
-        if isinstance(
-            stocks,
-            dict,
-        ):
-
-            result = []
-
-            for raw_symbol, value in stocks.items():
-
-                if not isinstance(
-                    value,
-                    dict,
-                ):
-                    continue
-
-                record = dict(
-                    value
-                )
-
-                if not record.get(
-                    "symbol"
-                ):
-                    record[
-                        "symbol"
-                    ] = raw_symbol
-
-                result.append(
-                    record
-                )
-
-            return result
-
-        # ----------------------------------------------------
-        # Case 2
-        #
-        # {
-        #     "2330": {...},
-        #     "2337": {...}
-        # }
-        # ----------------------------------------------------
-
-        result = []
-
-        for raw_symbol, value in data.items():
-
-            if raw_symbol in {
-                "schema_version",
-                "generated_at",
-                "updated_at",
-                "universe_count",
-                "metadata",
-            }:
-                continue
-
-            if not isinstance(
-                value,
-                dict,
-            ):
-                continue
-
-            record = dict(
-                value
-            )
-
-            if not record.get(
-                "symbol"
-            ):
-                record[
-                    "symbol"
-                ] = raw_symbol
-
-            result.append(
-                record
-            )
-
-        if result:
-            return result
+        return None
 
     # --------------------------------------------------------
-    # Case 3
-    #
-    # [
-    #   {...},
-    #   {...}
-    # ]
+    # Symbol
     # --------------------------------------------------------
-
-    if isinstance(
-        data,
-        list,
-    ):
-
-        return [
-            dict(item)
-            for item in data
-            if isinstance(
-                item,
-                dict,
-            )
-        ]
-
-    raise RuntimeError(
-        "Universe source 格式無法辨識"
-    )
-
-
-# ============================================================
-# Build Record
-# ============================================================
-
-def build_record(
-    source: Dict[str, Any],
-) -> Optional[Dict[str, Any]]:
 
     symbol = normalize_symbol(
         first_value(
-            source,
+            raw_record,
             [
                 "symbol",
                 "code",
-                "stock_id",
                 "ticker",
-                "證券代號",
-                "股票代號",
-                "代號",
+                "stock_id",
             ],
         )
+        or raw_symbol
     )
 
     if not symbol:
         return None
 
-    name = get_name(
-        source,
+    # --------------------------------------------------------
+    # Market
+    # --------------------------------------------------------
+
+    market = normalize_market(
+        raw_record
+    )
+
+    # --------------------------------------------------------
+    # Instrument Type
+    # --------------------------------------------------------
+
+    instrument_type = (
+        normalize_instrument_type(
+            raw_record
+        )
+    )
+
+    type_label = normalize_type_label(
+        instrument_type
+    )
+
+    # --------------------------------------------------------
+    # Full Symbol
+    # --------------------------------------------------------
+
+    original_full_symbol = first_value(
+        raw_record,
+        [
+            "full_symbol",
+            "yf_symbol",
+            "yahoo_symbol",
+        ],
+    )
+
+    full_symbol = build_full_symbol(
+        symbol,
+        market,
+        original_full_symbol,
+    )
+
+    # --------------------------------------------------------
+    # Name
+    # --------------------------------------------------------
+
+    name = normalize_name(
+        raw_record,
         symbol,
     )
 
-    market = normalize_market(
-        source
-    )
-
-    instrument_type = normalize_instrument_type(
-        source
-    )
-
     # --------------------------------------------------------
-    # 建立乾淨 schema
-    #
-    # 不把來源中的分析欄位全部複製進 Universe。
+    # Source
     # --------------------------------------------------------
 
-    record: Dict[str, Any] = {
+    source = normalize_source(
+        raw_record,
+        fallback_source,
+    )
+
+    return {
 
         "symbol":
             symbol,
+
+        "full_symbol":
+            full_symbol,
 
         "name":
             name,
@@ -676,123 +620,216 @@ def build_record(
         "market":
             market,
 
+        "type":
+            type_label,
+
         "instrument_type":
             instrument_type,
+
+        "source":
+            source,
     }
 
-    # --------------------------------------------------------
-    # 保留必要的來源識別資訊
-    # --------------------------------------------------------
 
-    industry = first_value(
-        source,
-        [
-            "industry",
-            "industry_name",
-            "產業",
-            "產業名稱",
-        ],
-    )
+# ============================================================
+# Locate Stocks Object
+# ============================================================
 
-    if industry is not None:
+def extract_stock_mapping(
+    data: Any,
+) -> Dict[str, Any]:
 
-        industry = clean_text(
-            industry
+    if not isinstance(
+        data,
+        dict,
+    ):
+
+        raise RuntimeError(
+            "Universe source 根節點必須是 object"
         )
 
-        if industry:
-            record[
-                "industry"
-            ] = industry
-
     # --------------------------------------------------------
-    # ISIN
+    # 標準格式
     # --------------------------------------------------------
 
-    isin = first_value(
-        source,
-        [
-            "isin",
-            "ISIN",
-        ],
-    )
-
-    if isin is not None:
-
-        isin = clean_text(
-            isin
-        )
-
-        if isin:
-            record[
-                "isin"
-            ] = isin
-
-    # --------------------------------------------------------
-    # Active
-    # --------------------------------------------------------
-
-    active = first_value(
-        source,
-        [
-            "active",
-            "is_active",
-            "enabled",
-            "status",
-        ],
+    stocks = data.get(
+        "stocks"
     )
 
     if isinstance(
-        active,
-        bool,
+        stocks,
+        dict,
     ):
 
-        record[
-            "active"
-        ] = active
-
-    elif active is not None:
-
-        text = clean_text(
-            active
-        ).lower()
-
-        if text in {
-            "true",
-            "1",
-            "yes",
-            "active",
-            "上市",
-            "上櫃",
-            "興櫃",
-        }:
-
-            record[
-                "active"
-            ] = True
-
-        elif text in {
-            "false",
-            "0",
-            "no",
-            "inactive",
-        }:
-
-            record[
-                "active"
-            ] = False
+        return stocks
 
     # --------------------------------------------------------
-    # Default active
+    # 常見 alternatives
     # --------------------------------------------------------
 
-    if "active" not in record:
+    for key in (
+        "symbols",
+        "securities",
+        "universe",
+        "data",
+        "items",
+    ):
 
-        record[
-            "active"
-        ] = True
+        value = data.get(
+            key
+        )
 
-    return record
+        if isinstance(
+            value,
+            dict,
+        ):
+
+            return value
+
+        if isinstance(
+            value,
+            list,
+        ):
+
+            result = {}
+
+            for item in value:
+
+                if not isinstance(
+                    item,
+                    dict,
+                ):
+                    continue
+
+                symbol = first_value(
+                    item,
+                    [
+                        "symbol",
+                        "code",
+                        "ticker",
+                        "stock_id",
+                    ],
+                )
+
+                if symbol:
+
+                    result[
+                        str(symbol)
+                    ] = item
+
+            if result:
+                return result
+
+    # --------------------------------------------------------
+    # 如果 root 本身就是：
+    #
+    # {
+    #   "2337": {...},
+    #   "2451": {...}
+    # }
+    # --------------------------------------------------------
+
+    probable_records = {}
+
+    for key, value in data.items():
+
+        if not isinstance(
+            value,
+            dict,
+        ):
+            continue
+
+        symbol = normalize_symbol(
+            first_value(
+                value,
+                [
+                    "symbol",
+                    "code",
+                    "ticker",
+                ],
+            )
+            or key
+        )
+
+        if symbol:
+            probable_records[
+                symbol
+            ] = value
+
+    if probable_records:
+        return probable_records
+
+    raise RuntimeError(
+        "找不到 Universe 股票資料集合"
+    )
+
+
+# ============================================================
+# Find Source
+# ============================================================
+
+def find_universe_source() -> Path:
+
+    section(
+        "尋找 Universe Source"
+    )
+
+    for path in SOURCE_CANDIDATES:
+
+        if not path.exists():
+            continue
+
+        try:
+
+            data = load_json(
+                path
+            )
+
+            mapping = extract_stock_mapping(
+                data
+            )
+
+            if not mapping:
+
+                log(
+                    f"跳過空來源：{path}"
+                )
+
+                continue
+
+            if path == OUTPUT_FILE:
+
+                log(
+                    "✓ 使用現有 Data/universe.json "
+                    "作為 bootstrap source"
+                )
+
+            else:
+
+                log(
+                    f"✓ 找到 Universe source：{path}"
+                )
+
+            log(
+                f"來源資料筆數：{len(mapping)}"
+            )
+
+            return path
+
+        except Exception as exc:
+
+            log(
+                f"⚠ 無法使用：{path}"
+            )
+
+            log(
+                f"  原因：{exc}"
+            )
+
+    raise RuntimeError(
+        "找不到有效 Universe source。"
+        "目前也不存在可用的 Data/universe.json。"
+    )
 
 
 # ============================================================
@@ -800,26 +837,114 @@ def build_record(
 # ============================================================
 
 def build_universe(
-    records: List[Dict[str, Any]],
-) -> Dict[str, Dict[str, Any]]:
+    source_path: Path,
+) -> Dict[str, Any]:
 
-    universe: Dict[
+    section(
+        "建立完整 Universe"
+    )
+
+    source_data = load_json(
+        source_path
+    )
+
+    raw_stocks = extract_stock_mapping(
+        source_data
+    )
+
+    if not raw_stocks:
+
+        raise RuntimeError(
+            "Universe source 為空"
+        )
+
+    source_name = (
+        source_data.get(
+            "source"
+        )
+        if isinstance(
+            source_data,
+            dict,
+        )
+        else None
+    )
+
+    if not isinstance(
+        source_name,
+        dict,
+    ):
+
+        source_name = {}
+
+    source_primary = source_name.get(
+        "primary"
+    )
+
+    source_secondary = source_name.get(
+        "secondary"
+    )
+
+    source_fallback = source_name.get(
+        "fallback"
+    )
+
+    if not isinstance(
+        source_primary,
+        list,
+    ):
+        source_primary = []
+
+    if not isinstance(
+        source_secondary,
+        list,
+    ):
+        source_secondary = []
+
+    if not isinstance(
+        source_fallback,
+        list,
+    ):
+        source_fallback = []
+
+    # --------------------------------------------------------
+    # Bootstrap 標記
+    # --------------------------------------------------------
+
+    if source_path == OUTPUT_FILE:
+
+        fallback_source = (
+            "EXISTING_UNIVERSE_BOOTSTRAP"
+        )
+
+    else:
+
+        fallback_source = (
+            source_path.stem.upper()
+        )
+
+    normalized: Dict[
         str,
         Dict[str, Any]
     ] = {}
 
-    duplicate_count = 0
-    invalid_count = 0
+    duplicates = 0
+    invalid = 0
 
-    for source in records:
+    # --------------------------------------------------------
+    # 正規化
+    # --------------------------------------------------------
 
-        record = build_record(
-            source
+    for raw_symbol, raw_record in raw_stocks.items():
+
+        record = normalize_record(
+            raw_symbol,
+            raw_record,
+            fallback_source,
         )
 
         if record is None:
 
-            invalid_count += 1
+            invalid += 1
 
             continue
 
@@ -827,332 +952,127 @@ def build_universe(
             "symbol"
         ]
 
-        if symbol in universe:
+        if symbol in normalized:
 
-            duplicate_count += 1
-
-            # ------------------------------------------------
-            # 優先保留資訊較完整的 record
-            # ------------------------------------------------
-
-            current = universe[
-                symbol
-            ]
-
-            current_score = len(
-                [
-                    key
-                    for key, value
-                    in current.items()
-                    if value not in (
-                        None,
-                        "",
-                    )
-                ]
-            )
-
-            new_score = len(
-                [
-                    key
-                    for key, value
-                    in record.items()
-                    if value not in (
-                        None,
-                        "",
-                    )
-                ]
-            )
-
-            if new_score > current_score:
-
-                universe[
-                    symbol
-                ] = record
+            duplicates += 1
 
             continue
 
-        universe[
+        normalized[
             symbol
         ] = record
 
-    log(
-        f"來源 records：{len(records)}"
-    )
-
-    log(
-        f"有效標的：{len(universe)}"
-    )
-
-    log(
-        f"無效 records：{invalid_count}"
-    )
-
-    log(
-        f"重複 symbol：{duplicate_count}"
-    )
-
-    return universe
-
-
-# ============================================================
-# Validate Universe
-# ============================================================
-
-def validate_universe(
-    universe: Dict[str, Dict[str, Any]],
-) -> None:
-
-    section(
-        "Universe V10.3 Validation"
-    )
-
-    if not universe:
+    if not normalized:
 
         raise RuntimeError(
-            "❌ Universe 為空，拒絕輸出"
+            "Universe 正規化後沒有任何有效標的"
         )
 
     # --------------------------------------------------------
-    # Symbol
+    # 排序
     # --------------------------------------------------------
 
-    for symbol, record in universe.items():
+    normalized = dict(
+        sorted(
+            normalized.items(),
+            key=lambda item:
+                item[0],
+        )
+    )
 
-        if not symbol:
+    # --------------------------------------------------------
+    # Count
+    # --------------------------------------------------------
 
-            raise RuntimeError(
-                "❌ 發現空白 symbol"
-            )
+    universe_count = len(
+        normalized
+    )
 
-        if not isinstance(
-            record,
-            dict,
-        ):
-
-            raise RuntimeError(
-                f"❌ {symbol} record 不是 object"
-            )
-
+    stock_count = sum(
+        1
+        for record in normalized.values()
         if record.get(
-            "symbol"
-        ) != symbol:
-
-            raise RuntimeError(
-                f"❌ {symbol} symbol 欄位不一致"
-            )
-
-        if not record.get(
-            "name"
-        ):
-
-            raise RuntimeError(
-                f"❌ {symbol} 缺少 name"
-            )
-
-        if not record.get(
             "instrument_type"
-        ):
-
-            raise RuntimeError(
-                f"❌ {symbol} 缺少 instrument_type"
-            )
-
-    # --------------------------------------------------------
-    # duplicate
-    # --------------------------------------------------------
-
-    symbols = list(
-        universe.keys()
+        ) == "stock"
     )
 
-    if len(symbols) != len(
-        set(symbols)
-    ):
+    etf_count = sum(
+        1
+        for record in normalized.values()
+        if record.get(
+            "instrument_type"
+        ) == "etf"
+    )
 
-        raise RuntimeError(
-            "❌ Universe 存在重複 symbol"
-        )
-
-    # --------------------------------------------------------
-    # 不允許 suffix
-    # --------------------------------------------------------
-
-    for symbol in symbols:
-
-        if symbol.endswith(
-            ".TW"
-        ) or symbol.endswith(
-            ".TWO"
-        ):
-
-            raise RuntimeError(
-                f"❌ Universe symbol 不應包含市場 suffix：{symbol}"
-            )
+    bond_count = sum(
+        1
+        for record in normalized.values()
+        if record.get(
+            "instrument_type"
+        ) == "bond"
+    )
 
     # --------------------------------------------------------
-    # 不允許選股邏輯欄位
-    #
-    # Universe 不應出現今日選股結果。
+    # Market count
     # --------------------------------------------------------
 
-    forbidden_selection_keys = {
+    market_count = {
 
-        "qualified",
-        "score",
-        "short_term",
-        "short_term_candidates",
-        "today_picks",
-        "recommendation",
-        "strength",
-        "rsi",
-        "macd",
-        "kd",
-        "volume_ratio",
-        "main_force",
-        "dca",
+        "TWSE":
+            0,
+
+        "TPEX":
+            0,
+
+        "EMERGING":
+            0,
     }
 
-    for symbol, record in universe.items():
-
-        lower_keys = {
-            str(key).lower()
-            for key in record.keys()
-        }
-
-        overlap = (
-            forbidden_selection_keys
-            & lower_keys
-        )
-
-        if overlap:
-
-            raise RuntimeError(
-                f"❌ {symbol} Universe 混入分析/選股欄位："
-                + ", ".join(
-                    sorted(overlap)
-                )
-            )
-
-    # --------------------------------------------------------
-    # 分類統計
-    # --------------------------------------------------------
-
-    type_counts: Dict[
-        str,
-        int
-    ] = {}
-
-    market_counts: Dict[
-        str,
-        int
-    ] = {}
-
-    for record in universe.values():
-
-        instrument_type = record.get(
-            "instrument_type",
-            "unknown",
-        )
+    for record in normalized.values():
 
         market = record.get(
-            "market",
-            "",
-        ) or "unknown"
-
-        type_counts[
-            instrument_type
-        ] = (
-            type_counts.get(
-                instrument_type,
-                0,
-            )
-            + 1
+            "market"
         )
 
-        market_counts[
-            market
-        ] = (
-            market_counts.get(
-                market,
-                0,
-            )
-            + 1
-        )
+        if market in market_count:
 
-    log(
-        f"Universe 總數：{len(universe)}"
-    )
+            market_count[
+                market
+            ] += 1
 
-    log("")
+    # --------------------------------------------------------
+    # Source count
+    # --------------------------------------------------------
 
-    log("商品分類：")
-
-    for key in sorted(
-        type_counts
-    ):
-
-        log(
-            f"  {key}: "
-            f"{type_counts[key]}"
-        )
-
-    log("")
-
-    log("市場分類：")
-
-    for key in sorted(
-        market_counts
-    ):
-
-        log(
-            f"  {key}: "
-            f"{market_counts[key]}"
-        )
-
-    log("")
-
-    log(
-        "✓ Universe schema：PASS"
-    )
-
-    log(
-        "✓ Symbol uniqueness：PASS"
-    )
-
-    log(
-        "✓ No selection logic：PASS"
-    )
-
-    log(
-        "✓ No legacy six-core fields：PASS"
-    )
-
-
-# ============================================================
-# Output
-# ============================================================
-
-def build_output(
-    universe: Dict[str, Dict[str, Any]],
-    source_file: Path,
-) -> Dict[str, Any]:
-
-    ordered_stocks: Dict[
+    source_count: Dict[
         str,
-        Dict[str, Any]
+        int
     ] = {}
 
-    for symbol in sorted(
-        universe.keys()
-    ):
+    for record in normalized.values():
 
-        ordered_stocks[
-            symbol
-        ] = universe[
-            symbol
-        ]
+        source = record.get(
+            "source"
+        )
 
-    return {
+        if not source:
+            source = "UNKNOWN"
+
+        source_count[
+            source
+        ] = (
+            source_count.get(
+                source,
+                0
+            )
+            + 1
+        )
+
+    # --------------------------------------------------------
+    # Output
+    # --------------------------------------------------------
+
+    output = {
 
         "schema_version":
             VERSION,
@@ -1163,21 +1083,435 @@ def build_output(
             ),
 
         "source":
-            source_file.name,
+            {
+
+                "primary":
+                    source_primary,
+
+                "secondary":
+                    source_secondary,
+
+                "fallback":
+                    source_fallback,
+
+                "actual":
+                    str(
+                        source_path.relative_to(
+                            BASE_DIR
+                        )
+                    ),
+
+                "description":
+                    (
+                        "完整台股 Universe。"
+                        "本程式只建立標的宇宙，"
+                        "不執行任何選股或技術分析。"
+                    ),
+            },
 
         "universe_count":
-            len(ordered_stocks),
+            universe_count,
+
+        "stock_count":
+            stock_count,
+
+        "etf_count":
+            etf_count,
+
+        "bond_count":
+            bond_count,
+
+        "market_count":
+            market_count,
+
+        "source_count":
+            source_count,
 
         "stocks":
-            ordered_stocks,
+            normalized,
     }
+
+    # --------------------------------------------------------
+    # Summary
+    # --------------------------------------------------------
+
+    log(
+        f"來源：{source_path}"
+    )
+
+    log(
+        f"有效標的：{universe_count}"
+    )
+
+    log(
+        f"普通股票：{stock_count}"
+    )
+
+    log(
+        f"ETF：{etf_count}"
+    )
+
+    log(
+        f"債券：{bond_count}"
+    )
+
+    log(
+        f"無效資料：{invalid}"
+    )
+
+    log(
+        f"重複 Symbol：{duplicates}"
+    )
+
+    log(
+        f"TWSE：{market_count['TWSE']}"
+    )
+
+    log(
+        f"TPEX：{market_count['TPEX']}"
+    )
+
+    log(
+        f"EMERGING：{market_count['EMERGING']}"
+    )
+
+    return output
+
+
+# ============================================================
+# Validation
+# ============================================================
+
+def validate_universe(
+    output: Dict[str, Any],
+) -> None:
+
+    section(
+        "Universe V10.3 Validation"
+    )
+
+    if not isinstance(
+        output,
+        dict,
+    ):
+
+        raise RuntimeError(
+            "Universe root 必須是 object"
+        )
+
+    # --------------------------------------------------------
+    # Schema
+    # --------------------------------------------------------
+
+    if output.get(
+        "schema_version"
+    ) != VERSION:
+
+        raise RuntimeError(
+            "schema_version 錯誤："
+            f"{output.get('schema_version')}"
+        )
+
+    # --------------------------------------------------------
+    # Stocks
+    # --------------------------------------------------------
+
+    stocks = output.get(
+        "stocks"
+    )
+
+    if not isinstance(
+        stocks,
+        dict,
+    ):
+
+        raise RuntimeError(
+            "stocks 必須是 object"
+        )
+
+    if not stocks:
+
+        raise RuntimeError(
+            "stocks 不得為空"
+        )
+
+    # --------------------------------------------------------
+    # Count
+    # --------------------------------------------------------
+
+    universe_count = output.get(
+        "universe_count"
+    )
+
+    if universe_count != len(
+        stocks
+    ):
+
+        raise RuntimeError(
+            "universe_count 不一致："
+            f"header={universe_count}, "
+            f"actual={len(stocks)}"
+        )
+
+    # --------------------------------------------------------
+    # Required record fields
+    # --------------------------------------------------------
+
+    required_fields = {
+
+        "symbol",
+        "full_symbol",
+        "name",
+        "market",
+        "type",
+        "instrument_type",
+        "source",
+    }
+
+    for symbol, record in stocks.items():
+
+        if not isinstance(
+            record,
+            dict,
+        ):
+
+            raise RuntimeError(
+                f"{symbol} record 必須是 object"
+            )
+
+        missing = (
+            required_fields
+            - set(record.keys())
+        )
+
+        if missing:
+
+            raise RuntimeError(
+                f"{symbol} 缺少欄位："
+                + ", ".join(
+                    sorted(missing)
+                )
+            )
+
+        if record.get(
+            "symbol"
+        ) != symbol:
+
+            raise RuntimeError(
+                f"{symbol} symbol 欄位不一致"
+            )
+
+        instrument_type = record.get(
+            "instrument_type"
+        )
+
+        if instrument_type not in {
+            "stock",
+            "etf",
+            "bond",
+        }:
+
+            raise RuntimeError(
+                f"{symbol} instrument_type 無效："
+                f"{instrument_type}"
+            )
+
+    # --------------------------------------------------------
+    # Count validation
+    # --------------------------------------------------------
+
+    actual_stock_count = sum(
+        1
+        for record in stocks.values()
+        if record.get(
+            "instrument_type"
+        ) == "stock"
+    )
+
+    actual_etf_count = sum(
+        1
+        for record in stocks.values()
+        if record.get(
+            "instrument_type"
+        ) == "etf"
+    )
+
+    actual_bond_count = sum(
+        1
+        for record in stocks.values()
+        if record.get(
+            "instrument_type"
+        ) == "bond"
+    )
+
+    if output.get(
+        "stock_count"
+    ) != actual_stock_count:
+
+        raise RuntimeError(
+            "stock_count 不一致"
+        )
+
+    if output.get(
+        "etf_count"
+    ) != actual_etf_count:
+
+        raise RuntimeError(
+            "etf_count 不一致"
+        )
+
+    if output.get(
+        "bond_count"
+    ) != actual_bond_count:
+
+        raise RuntimeError(
+            "bond_count 不一致"
+        )
+
+    # --------------------------------------------------------
+    # Market validation
+    # --------------------------------------------------------
+
+    market_count = output.get(
+        "market_count"
+    )
+
+    if not isinstance(
+        market_count,
+        dict,
+    ):
+
+        raise RuntimeError(
+            "market_count 必須是 object"
+        )
+
+    actual_market_count = {
+
+        "TWSE": 0,
+        "TPEX": 0,
+        "EMERGING": 0,
+    }
+
+    for record in stocks.values():
+
+        market = record.get(
+            "market"
+        )
+
+        if market in actual_market_count:
+
+            actual_market_count[
+                market
+            ] += 1
+
+    for market in actual_market_count:
+
+        if market_count.get(
+            market,
+            0,
+        ) != actual_market_count[
+            market
+        ]:
+
+            raise RuntimeError(
+                f"{market} 數量不一致："
+                f"header={market_count.get(market)}, "
+                f"actual={actual_market_count[market]}"
+            )
+
+    # --------------------------------------------------------
+    # Source count validation
+    # --------------------------------------------------------
+
+    source_count = output.get(
+        "source_count"
+    )
+
+    if not isinstance(
+        source_count,
+        dict,
+    ):
+
+        raise RuntimeError(
+            "source_count 必須是 object"
+        )
+
+    actual_source_count: Dict[
+        str,
+        int
+    ] = {}
+
+    for record in stocks.values():
+
+        source = record.get(
+            "source"
+        ) or "UNKNOWN"
+
+        actual_source_count[
+            source
+        ] = (
+            actual_source_count.get(
+                source,
+                0
+            )
+            + 1
+        )
+
+    if source_count != actual_source_count:
+
+        raise RuntimeError(
+            "source_count 與實際資料不一致"
+        )
+
+    # --------------------------------------------------------
+    # Critical universe sanity check
+    # --------------------------------------------------------
+
+    if len(stocks) < 1000:
+
+        raise RuntimeError(
+            "❌ Universe 異常縮小："
+            f"{len(stocks)} 檔"
+        )
+
+    log(
+        "✓ schema_version：PASS"
+    )
+
+    log(
+        f"✓ Universe：{len(stocks)} 檔"
+    )
+
+    log(
+        f"✓ Stock：{actual_stock_count} 檔"
+    )
+
+    log(
+        f"✓ ETF：{actual_etf_count} 檔"
+    )
+
+    log(
+        f"✓ Bond：{actual_bond_count} 檔"
+    )
+
+    log(
+        "✓ Market count：PASS"
+    )
+
+    log(
+        "✓ Source count：PASS"
+    )
+
+    log(
+        "✓ Universe 完整性：PASS"
+    )
 
 
 # ============================================================
 # Save
 # ============================================================
 
-def save_output(
+def save_universe(
     output: Dict[str, Any],
 ) -> None:
 
@@ -1205,7 +1539,7 @@ def save_output(
             )
 
         # ----------------------------------------------------
-        # 寫入後重新讀取
+        # Write verification
         # ----------------------------------------------------
 
         with temp_file.open(
@@ -1223,38 +1557,25 @@ def save_output(
         ):
 
             raise RuntimeError(
-                "寫入驗證失敗：root 不是 object"
+                "寫入後 JSON root 不是 object"
             )
 
-        stocks = verify.get(
+        if not verify.get(
             "stocks"
-        )
-
-        if not isinstance(
-            stocks,
-            dict,
         ):
 
             raise RuntimeError(
-                "寫入驗證失敗：stocks 不是 object"
+                "❌ 拒絕寫入空 Universe"
             )
 
-        count = verify.get(
+        if verify.get(
             "universe_count"
-        )
-
-        if count != len(stocks):
-
-            raise RuntimeError(
-                "寫入驗證失敗："
-                f"universe_count={count}, "
-                f"actual={len(stocks)}"
-            )
-
-        if not stocks:
+        ) != len(
+            verify["stocks"]
+        ):
 
             raise RuntimeError(
-                "寫入驗證失敗：stocks 為空"
+                "❌ 寫入後 Universe count 不一致"
             )
 
         temp_file.replace(
@@ -1272,6 +1593,106 @@ def save_output(
 
     log(
         f"✓ 已寫入：{OUTPUT_FILE}"
+    )
+
+
+# ============================================================
+# Final Summary
+# ============================================================
+
+def print_summary(
+    output: Dict[str, Any],
+) -> None:
+
+    section(
+        "Universe 建置完成"
+    )
+
+    log(
+        f"版本：{VERSION}"
+    )
+
+    log(
+        f"Universe："
+        f"{output.get('universe_count')}"
+    )
+
+    log(
+        f"普通股票："
+        f"{output.get('stock_count')}"
+    )
+
+    log(
+        f"ETF："
+        f"{output.get('etf_count')}"
+    )
+
+    log(
+        f"債券："
+        f"{output.get('bond_count')}"
+    )
+
+    market_count = output.get(
+        "market_count",
+        {},
+    )
+
+    log(
+        f"TWSE："
+        f"{market_count.get('TWSE', 0)}"
+    )
+
+    log(
+        f"TPEX："
+        f"{market_count.get('TPEX', 0)}"
+    )
+
+    log(
+        f"EMERGING："
+        f"{market_count.get('EMERGING', 0)}"
+    )
+
+    log("")
+
+    log(
+        "架構："
+    )
+
+    log(
+        "Universe"
+        " → "
+        "analysis"
+        " → "
+        "UI"
+    )
+
+    log("")
+
+    log(
+        "選股邏輯：無"
+    )
+
+    log(
+        "六項核心：無"
+    )
+
+    log(
+        "RSI / MACD / KD：不計算"
+    )
+
+    log(
+        "DCA：不計算"
+    )
+
+    log(
+        "API 探測：無"
+    )
+
+    log("")
+
+    log(
+        "✓ build_universe.py "
+        "UNIVERSE-V10.3 完成"
     )
 
 
@@ -1313,161 +1734,43 @@ def main() -> int:
     try:
 
         # ----------------------------------------------------
-        # 1. 找來源
+        # 1. Locate source
         # ----------------------------------------------------
 
-        section(
-            "尋找 Universe Source"
-        )
-
-        source_file: Optional[
-            Path
-        ] = None
-
-        for candidate in SOURCE_CANDIDATES:
-
-            if candidate.exists():
-
-                source_file = candidate
-
-                break
-
-        if source_file is None:
-
-            raise RuntimeError(
-                "找不到 Universe source。\n"
-                "請提供：\n"
-                + "\n".join(
-                    str(path)
-                    for path
-                    in SOURCE_CANDIDATES
-                )
-            )
-
-        log(
-            f"來源：{source_file}"
+        source_path = (
+            find_universe_source()
         )
 
         # ----------------------------------------------------
-        # 2. Load
+        # 2. Build
         # ----------------------------------------------------
 
-        data = load_json(
-            source_file
+        output = build_universe(
+            source_path
         )
 
         # ----------------------------------------------------
-        # 3. Extract
-        # ----------------------------------------------------
-
-        records = extract_records(
-            data
-        )
-
-        if not records:
-
-            raise RuntimeError(
-                "Universe source 沒有任何 records"
-            )
-
-        # ----------------------------------------------------
-        # 4. Build
-        # ----------------------------------------------------
-
-        universe = build_universe(
-            records
-        )
-
-        # ----------------------------------------------------
-        # 5. Validate
+        # 3. Validate
         # ----------------------------------------------------
 
         validate_universe(
-            universe
-        )
-
-        # ----------------------------------------------------
-        # 6. Output
-        # ----------------------------------------------------
-
-        output = build_output(
-            universe,
-            source_file,
-        )
-
-        # ----------------------------------------------------
-        # 7. Final validation
-        # ----------------------------------------------------
-
-        if output[
-            "universe_count"
-        ] != len(
-            output["stocks"]
-        ):
-
-            raise RuntimeError(
-                "最終 universe_count 不一致"
-            )
-
-        if output[
-            "universe_count"
-        ] <= 0:
-
-            raise RuntimeError(
-                "最終 Universe 為空"
-            )
-
-        # ----------------------------------------------------
-        # 8. Save
-        # ----------------------------------------------------
-
-        save_output(
             output
         )
 
         # ----------------------------------------------------
-        # 9. Summary
+        # 4. Save
         # ----------------------------------------------------
 
-        section(
-            "Universe V10.3 建置完成"
+        save_universe(
+            output
         )
 
-        log(
-            f"版本：{VERSION}"
-        )
+        # ----------------------------------------------------
+        # 5. Final summary
+        # ----------------------------------------------------
 
-        log(
-            f"來源：{source_file.name}"
-        )
-
-        log(
-            f"Universe："
-            f"{output['universe_count']} 檔"
-        )
-
-        log(
-            f"輸出：{OUTPUT_FILE}"
-        )
-
-        log("")
-
-        log(
-            "資料鏈："
-        )
-
-        log(
-            "Universe Source"
-            " → "
-            "build_universe.py"
-            " → "
-            "universe.json"
-        )
-
-        log("")
-
-        log(
-            "✓ Universe 建置成功"
+        print_summary(
+            output
         )
 
         return 0
@@ -1476,11 +1779,14 @@ def main() -> int:
 
         log("")
         log("=" * 72)
+
         log(
             f"❌ build_universe.py "
             f"{VERSION} 執行失敗"
         )
+
         log("=" * 72)
+
         log(
             f"原因：{exc}"
         )
@@ -1489,6 +1795,7 @@ def main() -> int:
 
 
 if __name__ == "__main__":
+
     sys.exit(
         main()
     )
