@@ -2590,7 +2590,7 @@ def evaluate_short_term(
                 metrics.get(
                     "volume_ratio_vs_previous_5"
                 )
-                >= SHORT_TERM_CONFIG[
+                > SHORT_TERM_CONFIG[
                     "volume_multiplier"
                 ]
             ),
