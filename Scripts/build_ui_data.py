@@ -7,55 +7,50 @@ Scripts/build_ui_data.py
 正式版 UI-DATA-2.0
 
 ============================================================
-資料流
+核心資料鏈
 ============================================================
 
-Data/universe.json
+universe.json
         +
-Data/analysis.json
+analysis.json
         |
         v
-Scripts/build_ui_data.py
+build_ui_data.py
         |
         v
-Data/ui_data.json
+ui_data.json
         |
         v
 index.html
 
 
 ============================================================
-架構定位
+本程式責任邊界
 ============================================================
 
-本程式是「UI DATA 建構器」。
+本程式只負責：
 
-唯一責任：
-
-    analysis.json
-    +
-    universe.json
+    analysis / universe
         ↓
     UI schema transformation
         ↓
     ui_data.json
 
-本程式絕對不負責：
+本程式絕對不：
 
-    - API 抓取
-    - 股價抓取
-    - RSI 計算
-    - MACD 計算
-    - KD 計算
-    - 成交量計算
-    - 主力籌碼計算
-    - 選股條件計算
-    - 重新評分
-    - 重新判斷買進條件
-    - 修改 analysis.json
-    - 修改 universe.json
-    - 修改 prices shards
-    - 修改 chip.json
+    ❌ 抓 API
+    ❌ 抓股價
+    ❌ 計算 RSI
+    ❌ 計算 MACD
+    ❌ 計算 KD
+    ❌ 計算成交量
+    ❌ 計算主力籌碼
+    ❌ 計算 DCA
+    ❌ 建立新的選股條件
+    ❌ 修改 analysis.json
+    ❌ 修改 universe.json
+    ❌ 修改 prices shards
+    ❌ 修改 chip.json
 
 
 ============================================================
@@ -63,46 +58,84 @@ index.html
 ============================================================
 
 analysis.json
-    ↓
-唯一分析結果來源
+    = 分析結果唯一來源
 
 universe.json
-    ↓
-只補充：
-    - 名稱
-    - 市場
-    - 商品分類
+    = 完整標的宇宙 + 名稱/市場/商品類型補充
 
-build_ui_data.py
-    ↓
-只做 schema transformation
+analysis.json 不存在的股票：
+    → 不得進入 UI stocks
 
-ui_data.json
-    ↓
-提供 index.html 使用
+analysis.json 的股票：
+    → 必須完整進入 UI stocks
 
+因此：
 
-============================================================
-舊架構已移除
-============================================================
+    analysis stocks N
+            ↓
+    UI stocks N
 
-本版本不得再依賴：
+不能因為 UI 需要而重新篩選成：
 
-    short_term_candidates
-    short_term.qualified
-    short_term.score
-
-也不得產生：
-
-    六項核心
-    六項核心候選
-    六項核心條件
-
-build_ui_data.py 不做任何「是否符合條件」的重新判斷。
+    1985
+    2143
+    其他固定數字
 
 
 ============================================================
-UI-DATA-3.0 Contract
+今日精選
+============================================================
+
+今日精選唯一來源：
+
+    analysis.json
+        short_term_candidates
+
+前端不得重新判斷。
+
+本程式也不得自行判斷 RSI / MACD / KD
+或其他條件來建立今日精選。
+
+
+============================================================
+六項核心
+============================================================
+
+本版本不建立舊版「六項核心」邏輯。
+
+也不在 UI schema 中產生：
+
+    six_core
+    core_conditions
+    core_score
+
+analysis.json 如果仍然提供舊欄位，
+本程式只允許原樣放在 backend.short_term
+供除錯/顯示使用，不以其重新篩選股票。
+
+
+============================================================
+持倉
+============================================================
+
+後端不建立任何預設持倉。
+
+初始：
+
+    has_holdings = false
+    holdings_profit = null
+
+每檔：
+
+    shares = null
+    average_cost = null
+    market_value = null
+    profit = null
+    return_pct = null
+
+
+============================================================
+UI-DATA-2.0 Contract
 ============================================================
 
 root:
@@ -136,29 +169,6 @@ stocks:
     recommendation
     backend
     holding
-
-
-============================================================
-持倉原則
-============================================================
-
-後端不建立任何預設持倉。
-
-初始：
-
-    has_holdings = false
-    holdings_profit = null
-
-每檔：
-
-    shares = null
-    average_cost = null
-    market_value = null
-    profit = null
-    return_pct = null
-
-
-============================================================
 """
 
 from __future__ import annotations
@@ -175,7 +185,7 @@ from typing import Any, Dict, List, Optional, Tuple
 # 基本設定
 # ============================================================
 
-VERSION = "UI-DATA-3.0"
+VERSION = "UI-DATA-2.0"
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 DATA_DIR = BASE_DIR / "Data"
@@ -286,6 +296,8 @@ def normalize_symbol(value: Any) -> str:
     for suffix in (
         ".TW",
         ".TWO",
+        ".TSE",
+        ".OTC",
     ):
 
         if text.endswith(suffix):
@@ -308,7 +320,10 @@ def first_value(
     keys: List[str],
 ) -> Any:
 
-    if not isinstance(record, dict):
+    if not isinstance(
+        record,
+        dict,
+    ):
         return None
 
     for key in keys:
@@ -333,7 +348,10 @@ def load_universe() -> Dict[str, Dict[str, Any]]:
         UNIVERSE_FILE
     )
 
-    if not isinstance(data, dict):
+    if not isinstance(
+        data,
+        dict,
+    ):
 
         raise RuntimeError(
             "universe.json 格式錯誤："
@@ -380,6 +398,7 @@ def load_universe() -> Dict[str, Dict[str, Any]]:
             continue
 
         record = dict(item)
+
         record["symbol"] = symbol
 
         result[symbol] = record
@@ -387,7 +406,7 @@ def load_universe() -> Dict[str, Dict[str, Any]]:
     if not result:
 
         raise RuntimeError(
-            "universe.json 沒有有效資料"
+            "universe.json 沒有有效標的"
         )
 
     universe_count = data.get(
@@ -433,7 +452,10 @@ def load_analysis() -> Dict[str, Any]:
         ANALYSIS_FILE
     )
 
-    if not isinstance(data, dict):
+    if not isinstance(
+        data,
+        dict,
+    ):
 
         raise RuntimeError(
             "analysis.json 格式錯誤："
@@ -472,29 +494,35 @@ def get_stock_name(
     universe_record: Dict[str, Any],
 ) -> str:
 
-    value = first_value(
+    name = first_value(
         analysis_record,
         [
             "name",
             "stock_name",
+            "security_name",
+            "company_name",
             "名稱",
+            "股票名稱",
         ],
     )
 
-    if value:
-        return str(value).strip()
+    if name:
+        return str(name).strip()
 
-    value = first_value(
+    name = first_value(
         universe_record,
         [
             "name",
             "stock_name",
+            "security_name",
+            "company_name",
             "名稱",
+            "股票名稱",
         ],
     )
 
-    if value:
-        return str(value).strip()
+    if name:
+        return str(name).strip()
 
     return symbol
 
@@ -508,7 +536,7 @@ def get_market(
     universe_record: Dict[str, Any],
 ) -> str:
 
-    value = first_value(
+    market = first_value(
         analysis_record,
         [
             "market",
@@ -517,10 +545,12 @@ def get_market(
         ],
     )
 
-    if value:
-        return str(value).strip()
+    if market:
+        return str(
+            market
+        ).strip()
 
-    value = first_value(
+    market = first_value(
         universe_record,
         [
             "market",
@@ -529,8 +559,10 @@ def get_market(
         ],
     )
 
-    if value:
-        return str(value).strip()
+    if market:
+        return str(
+            market
+        ).strip()
 
     return ""
 
@@ -594,6 +626,15 @@ def get_instrument_type(
     ):
         return "bond"
 
+    if any(
+        token in text
+        for token in (
+            "etn",
+            "指數投資證券",
+        )
+    ):
+        return "etn"
+
     return "stock"
 
 
@@ -613,6 +654,7 @@ def get_metrics(
         metrics,
         dict,
     ):
+
         return {}
 
     return metrics
@@ -641,7 +683,11 @@ def get_price(
     )
 
     if value is not None:
-        return rounded(value, 2)
+
+        return rounded(
+            value,
+            2,
+        )
 
     return rounded(
         first_value(
@@ -650,7 +696,6 @@ def get_price(
                 "price",
                 "close",
                 "latest_price",
-                "last_price",
             ],
         ),
         2,
@@ -687,9 +732,9 @@ def get_change(
         first_value(
             metrics,
             [
+                "change1_pct",
                 "change_pct",
                 "change_percent",
-                "change1_pct",
             ],
         ),
         2,
@@ -715,16 +760,6 @@ def build_indicators(
     metrics = get_metrics(
         record
     )
-
-    indicators = record.get(
-        "indicators"
-    )
-
-    if not isinstance(
-        indicators,
-        dict,
-    ):
-        indicators = {}
 
     short_term = record.get(
         "short_term"
@@ -756,272 +791,203 @@ def build_indicators(
     ):
         kd = {}
 
-    def value_from(
-        primary: Dict[str, Any],
-        secondary: Dict[str, Any],
-        keys: List[str],
-    ) -> Any:
-
-        value = first_value(
-            primary,
-            keys,
-        )
-
-        if value is not None:
-            return value
-
-        return first_value(
-            secondary,
-            keys,
-        )
-
     return {
 
         "rsi":
             rounded(
-                value_from(
-                    indicators,
-                    short_term,
-                    ["rsi"],
+                short_term.get(
+                    "rsi"
                 ),
                 2,
             ),
 
         "macd":
             rounded(
-                value_from(
-                    indicators,
-                    macd,
-                    ["macd"],
+                macd.get(
+                    "macd"
                 ),
                 4,
             ),
 
         "macd_signal":
             rounded(
-                value_from(
-                    indicators,
-                    macd,
-                    ["signal", "macd_signal"],
+                macd.get(
+                    "signal"
                 ),
                 4,
             ),
 
         "macd_histogram":
             rounded(
-                value_from(
-                    indicators,
-                    macd,
-                    ["histogram", "macd_histogram"],
+                macd.get(
+                    "histogram"
                 ),
                 4,
             ),
 
         "macd_golden_cross":
             bool(
-                value_from(
-                    indicators,
-                    macd,
-                    ["golden_cross", "macd_golden_cross"],
+                macd.get(
+                    "golden_cross",
+                    False,
                 )
             ),
 
         "kd_k":
             rounded(
-                value_from(
-                    indicators,
-                    kd,
-                    ["k", "kd_k"],
+                kd.get(
+                    "k"
                 ),
                 2,
             ),
 
         "kd_d":
             rounded(
-                value_from(
-                    indicators,
-                    kd,
-                    ["d", "kd_d"],
+                kd.get(
+                    "d"
                 ),
                 2,
             ),
 
         "kd_golden_cross":
             bool(
-                value_from(
-                    indicators,
-                    kd,
-                    ["golden_cross", "kd_golden_cross"],
+                kd.get(
+                    "golden_cross",
+                    False,
                 )
             ),
 
         "ma5":
             rounded(
-                value_from(
-                    indicators,
-                    metrics,
-                    ["ma5"],
+                metrics.get(
+                    "ma5"
                 ),
                 2,
             ),
 
         "ma20":
             rounded(
-                value_from(
-                    indicators,
-                    metrics,
-                    ["ma20"],
+                metrics.get(
+                    "ma20"
                 ),
                 2,
             ),
 
         "ma60":
             rounded(
-                value_from(
-                    indicators,
-                    metrics,
-                    ["ma60"],
+                metrics.get(
+                    "ma60"
                 ),
                 2,
             ),
 
         "ma20_up":
             bool(
-                value_from(
-                    indicators,
-                    metrics,
-                    ["ma20_up"],
+                metrics.get(
+                    "ma20_up",
+                    False,
                 )
             ),
 
         "ma20_ratio":
             rounded(
-                value_from(
-                    indicators,
-                    metrics,
-                    ["ma20_ratio"],
+                metrics.get(
+                    "ma20_ratio"
                 ),
                 4,
             ),
 
         "bias20_pct":
             rounded(
-                value_from(
-                    indicators,
-                    metrics,
-                    ["bias20_pct"],
+                metrics.get(
+                    "bias20_pct"
                 ),
                 2,
             ),
 
         "high60":
             rounded(
-                value_from(
-                    indicators,
-                    metrics,
-                    ["high60"],
+                metrics.get(
+                    "high60"
                 ),
                 2,
             ),
 
         "low60":
             rounded(
-                value_from(
-                    indicators,
-                    metrics,
-                    ["low60"],
+                metrics.get(
+                    "low60"
                 ),
                 2,
             ),
 
         "position60_pct":
             rounded(
-                value_from(
-                    indicators,
-                    metrics,
-                    ["position60_pct"],
+                metrics.get(
+                    "position60_pct"
                 ),
                 2,
             ),
 
         "change1_pct":
             rounded(
-                value_from(
-                    indicators,
-                    metrics,
-                    ["change1_pct"],
+                metrics.get(
+                    "change1_pct"
                 ),
                 2,
             ),
 
         "change5_pct":
             rounded(
-                value_from(
-                    indicators,
-                    metrics,
-                    ["change5_pct"],
+                metrics.get(
+                    "change5_pct"
                 ),
                 2,
             ),
 
         "change10_pct":
             rounded(
-                value_from(
-                    indicators,
-                    metrics,
-                    ["change10_pct"],
+                metrics.get(
+                    "change10_pct"
                 ),
                 2,
             ),
 
         "change20_pct":
             rounded(
-                value_from(
-                    indicators,
-                    metrics,
-                    ["change20_pct"],
+                metrics.get(
+                    "change20_pct"
                 ),
                 2,
             ),
 
         "volume":
             rounded(
-                value_from(
-                    indicators,
-                    metrics,
-                    ["volume"],
+                metrics.get(
+                    "volume"
                 ),
                 2,
             ),
 
         "volume5_previous_avg":
             rounded(
-                value_from(
-                    indicators,
-                    metrics,
-                    ["volume5_previous_avg"],
+                metrics.get(
+                    "volume5_previous_avg"
                 ),
                 2,
             ),
 
         "volume_ratio":
             rounded(
-                value_from(
-                    indicators,
-                    metrics,
-                    [
-                        "volume_ratio",
-                        "volume_ratio_vs_previous_5",
-                    ],
+                metrics.get(
+                    "volume_ratio_vs_previous_5"
                 ),
                 4,
             ),
 
         "volume_signal":
-            value_from(
-                indicators,
-                metrics,
-                ["volume_signal"],
+            metrics.get(
+                "volume_signal"
             ),
     }
 
@@ -1089,22 +1055,101 @@ def build_chip(
             ),
 
         "ten_day_used":
-            chip.get(
-                "ten_day_used"
+            bool(
+                chip.get(
+                    "ten_day_used",
+                    True,
+                )
             ),
     }
 
 
 # ============================================================
-# Backend Analysis
+# Recommendation
 #
-# 完全保留 analysis 已提供的分析資料。
-# 不重新判定。
+# 只讀 analysis.json 已產生的 DCA action。
+# 不自行建立選股條件。
 # ============================================================
 
-def build_backend(
+def build_recommendation(
     record: Dict[str, Any],
-) -> Dict[str, Any]:
+) -> str:
+
+    dca = record.get(
+        "dca"
+    )
+
+    if not isinstance(
+        dca,
+        dict,
+    ):
+        dca = {}
+
+    action = dca.get(
+        "action"
+    )
+
+    if action:
+
+        mapping = {
+
+            "積極買進":
+                "積極關注",
+
+            "正常買進":
+                "偏多，可分批",
+
+            "觀察":
+                "等待拉回",
+
+            "高檔觀察":
+                "暫不追價",
+
+            "暫停加碼":
+                "暫停操作",
+
+            "極端負乖離":
+                "偏多，可分批",
+
+            "資料不足":
+                "等待資料",
+        }
+
+        return mapping.get(
+            str(action),
+            str(action),
+        )
+
+    # --------------------------------------------------------
+    # short_term qualified 只作後端既有結果的顯示。
+    # 不以它建立新的候選集合。
+    # --------------------------------------------------------
+
+    short_term = record.get(
+        "short_term"
+    )
+
+    if isinstance(
+        short_term,
+        dict,
+    ):
+
+        if short_term.get(
+            "qualified"
+        ) is True:
+
+            return "偏多，可分批"
+
+    return "觀察"
+
+
+# ============================================================
+# Strength
+# ============================================================
+
+def build_strength(
+    record: Dict[str, Any],
+) -> str:
 
     short_term = record.get(
         "short_term"
@@ -1126,153 +1171,61 @@ def build_backend(
     ):
         dca = {}
 
-    recommendation = record.get(
-        "recommendation"
-    )
+    # --------------------------------------------------------
+    # analysis 已提供 qualified
+    # 只作顯示，不重新計算。
+    # --------------------------------------------------------
 
-    if not isinstance(
-        recommendation,
-        dict,
-    ):
-        recommendation = {}
+    if short_term.get(
+        "qualified"
+    ) is True:
 
-    return {
+        return "強勢"
 
-        "status":
-            record.get(
-                "status"
-            ),
-
-        "latest_date":
-            record.get(
-                "latest_date"
-            ),
-
-        "history_count":
-            record.get(
-                "history_count"
-            ),
-
-        "short_term":
-            short_term,
-
-        "dca":
-            dca,
-
-        "recommendation":
-            recommendation,
-
-        "indicators":
-            build_indicators(
-                record
-            ),
-
-        "chip":
-            build_chip(
-                record
-            ),
-    }
-
-
-# ============================================================
-# Strength
-#
-# 不重新計算。
-# 優先使用 analysis 已提供的 strength。
-# ============================================================
-
-def build_strength(
-    record: Dict[str, Any],
-) -> Optional[str]:
-
-    value = record.get(
-        "strength"
-    )
-
-    if value is not None:
-        return str(value)
-
-    recommendation = record.get(
-        "recommendation"
-    )
-
-    if isinstance(
-        recommendation,
-        dict,
-    ):
-
-        value = recommendation.get(
-            "strength"
+    score = number(
+        short_term.get(
+            "score"
         )
-
-        if value is not None:
-            return str(value)
-
-    return None
-
-
-# ============================================================
-# Recommendation
-#
-# 不重新判定。
-# 優先使用 analysis 已提供的 recommendation。
-# ============================================================
-
-def build_recommendation(
-    record: Dict[str, Any],
-) -> Optional[str]:
-
-    value = record.get(
-        "recommendation"
     )
 
-    if isinstance(
-        value,
-        str,
-    ):
+    if score is not None:
 
-        return value
+        if score >= 4:
+            return "強勢"
 
-    if isinstance(
-        value,
-        dict,
-    ):
+        if score >= 2:
+            return "中性"
 
-        for key in (
-            "label",
-            "text",
-            "action",
-            "recommendation",
-        ):
+        return "弱勢"
 
-            item = value.get(
-                key
-            )
-
-            if item is not None:
-                return str(item)
-
-    dca = record.get(
-        "dca"
+    action = dca.get(
+        "action"
     )
 
-    if isinstance(
-        dca,
-        dict,
-    ):
+    if action in {
+        "積極買進",
+        "正常買進",
+        "極端負乖離",
+    }:
 
-        action = dca.get(
-            "action"
-        )
+        return "強勢"
 
-        if action is not None:
-            return str(action)
+    if action in {
+        "觀察",
+        "高檔觀察",
+    }:
 
-    return None
+        return "中性"
+
+    if action == "暫停加碼":
+
+        return "弱勢"
+
+    return "中性"
 
 
 # ============================================================
-# Stock Record
+# Stock
 # ============================================================
 
 def build_stock(
@@ -1304,6 +1257,26 @@ def build_stock(
     change, change_pct = get_change(
         record
     )
+
+    dca = record.get(
+        "dca"
+    )
+
+    if not isinstance(
+        dca,
+        dict,
+    ):
+        dca = {}
+
+    short_term = record.get(
+        "short_term"
+    )
+
+    if not isinstance(
+        short_term,
+        dict,
+    ):
+        short_term = {}
 
     return {
 
@@ -1339,9 +1312,39 @@ def build_stock(
             ),
 
         "backend":
-            build_backend(
-                record
-            ),
+            {
+
+                "status":
+                    record.get(
+                        "status"
+                    ),
+
+                "latest_date":
+                    record.get(
+                        "latest_date"
+                    ),
+
+                "history_count":
+                    record.get(
+                        "history_count"
+                    ),
+
+                "short_term":
+                    short_term,
+
+                "dca":
+                    dca,
+
+                "indicators":
+                    build_indicators(
+                        record
+                    ),
+
+                "chip":
+                    build_chip(
+                        record
+                    ),
+            },
 
         "holding":
             {
@@ -1568,23 +1571,12 @@ def build_market(
 # ============================================================
 # Today Picks
 #
-# 新架構原則：
+# 唯一來源：
 #
-# build_ui_data.py 不自行選股。
+# analysis.json
+#     short_term_candidates
 #
-# 只接受 analysis.json 已提供的 UI 精選清單。
-#
-# 支援：
-#
-#     today_picks
-#     selected_stocks
-#     picks
-#
-# 若 analysis 沒有提供：
-#
-#     []
-#
-# 不自行使用條件判定。
+# 不重新計算、不重新篩選。
 # ============================================================
 
 def build_today_picks(
@@ -1592,24 +1584,10 @@ def build_today_picks(
     stocks: Dict[str, Dict[str, Any]],
 ) -> List[str]:
 
-    candidates: Any = None
-
-    for key in (
-        "today_picks",
-        "selected_stocks",
-        "picks",
-    ):
-
-        if key in analysis:
-
-            candidates = analysis.get(
-                key
-            )
-
-            break
-
-    if candidates is None:
-        return []
+    candidates = analysis.get(
+        "short_term_candidates",
+        [],
+    )
 
     if not isinstance(
         candidates,
@@ -1617,26 +1595,13 @@ def build_today_picks(
     ):
 
         raise RuntimeError(
-            "analysis.json 今日精選資料必須是 array"
+            "analysis.json short_term_candidates "
+            "必須是 array"
         )
 
     result: List[str] = []
 
     for raw_symbol in candidates:
-
-        if isinstance(
-            raw_symbol,
-            dict,
-        ):
-
-            raw_symbol = first_value(
-                raw_symbol,
-                [
-                    "symbol",
-                    "code",
-                    "ticker",
-                ],
-            )
 
         symbol = normalize_symbol(
             raw_symbol
@@ -1646,11 +1611,21 @@ def build_today_picks(
             continue
 
         if symbol not in stocks:
-            continue
 
-        if stocks[symbol].get(
+            raise RuntimeError(
+                "❌ short_term_candidates "
+                f"包含 analysis stocks 不存在的 symbol："
+                f"{symbol}"
+            )
+
+        record = stocks[
+            symbol
+        ]
+
+        if record.get(
             "instrument_type"
         ) != "stock":
+
             continue
 
         if symbol not in result:
@@ -1665,145 +1640,153 @@ def build_today_picks(
 # ============================================================
 # Top 10
 #
-# 新架構原則：
+# Top 10 是後端已存在資料的排序展示。
 #
-# 不自行計算排名。
+# 不重新計算任何指標。
 #
-# 優先使用 analysis 已提供的：
+# 排序來源：
+#   short_term.qualified
+#   short_term.score
+#   indicators.ma20_up
+#   indicators.volume_ratio
+#   dca.level
 #
-#     top10
-#     top_10
-#     ranking
-#
-# 若 analysis 沒有提供：
-#
-#     依 analysis stocks 原始順序保留前 10
-#
-# 不使用 qualified / score。
+# 這些全部都已經存在 analysis。
 # ============================================================
 
+def top10_sort_key(
+    symbol: str,
+    record: Dict[str, Any],
+) -> Tuple:
+
+    backend = record.get(
+        "backend"
+    )
+
+    if not isinstance(
+        backend,
+        dict,
+    ):
+        backend = {}
+
+    short_term = backend.get(
+        "short_term"
+    )
+
+    if not isinstance(
+        short_term,
+        dict,
+    ):
+        short_term = {}
+
+    dca = backend.get(
+        "dca"
+    )
+
+    if not isinstance(
+        dca,
+        dict,
+    ):
+        dca = {}
+
+    indicators = backend.get(
+        "indicators"
+    )
+
+    if not isinstance(
+        indicators,
+        dict,
+    ):
+        indicators = {}
+
+    qualified = (
+        1
+        if short_term.get(
+            "qualified",
+            False,
+        )
+        else 0
+    )
+
+    score = number(
+        short_term.get(
+            "score"
+        )
+    )
+
+    if score is None:
+        score = 0
+
+    ma20_up = (
+        1
+        if indicators.get(
+            "ma20_up",
+            False,
+        )
+        else 0
+    )
+
+    volume_ratio = number(
+        indicators.get(
+            "volume_ratio"
+        )
+    )
+
+    if volume_ratio is None:
+        volume_ratio = 0
+
+    dca_level = number(
+        dca.get(
+            "level"
+        )
+    )
+
+    if dca_level is None:
+        dca_level = 0
+
+    return (
+        qualified,
+        score,
+        ma20_up,
+        volume_ratio,
+        dca_level,
+        symbol,
+    )
+
+
 def build_top10(
-    analysis: Dict[str, Any],
     stocks: Dict[str, Dict[str, Any]],
 ) -> List[str]:
 
-    candidates: Any = None
+    symbols: List[str] = []
 
-    for key in (
-        "top10",
-        "top_10",
-        "ranking",
-    ):
-
-        if key in analysis:
-
-            candidates = analysis.get(
-                key
-            )
-
-            break
-
-    if candidates is not None:
+    for symbol, record in stocks.items():
 
         if not isinstance(
-            candidates,
-            list,
+            record,
+            dict,
         ):
+            continue
 
-            raise RuntimeError(
-                f"analysis.json {key} 必須是 array"
-            )
+        if record.get(
+            "instrument_type"
+        ) != "stock":
+            continue
 
-        result: List[str] = []
+        symbols.append(
+            symbol
+        )
 
-        for item in candidates:
-
-            if isinstance(
-                item,
-                dict,
-            ):
-
-                item = first_value(
-                    item,
-                    [
-                        "symbol",
-                        "code",
-                        "ticker",
-                    ],
-                )
-
-            symbol = normalize_symbol(
-                item
-            )
-
-            if not symbol:
-                continue
-
-            if symbol not in stocks:
-                continue
-
-            if stocks[symbol].get(
-                "instrument_type"
-            ) != "stock":
-                continue
-
-            if symbol not in result:
-
-                result.append(
-                    symbol
-                )
-
-            if len(result) >= 10:
-                break
-
-        return result
-
-    # --------------------------------------------------------
-    # 沒有後端排名時：
-    # 保留 analysis 原始股票順序。
-    #
-    # 不重新評分。
-    # --------------------------------------------------------
-
-    result: List[str] = []
-
-    analysis_stocks = analysis.get(
-        "stocks",
-        {},
+    symbols.sort(
+        key=lambda symbol:
+            top10_sort_key(
+                symbol,
+                stocks[symbol],
+            ),
+        reverse=True,
     )
 
-    if isinstance(
-        analysis_stocks,
-        dict,
-    ):
-
-        for raw_symbol in analysis_stocks.keys():
-
-            symbol = normalize_symbol(
-                raw_symbol
-            )
-
-            if not symbol:
-                continue
-
-            if symbol not in stocks:
-                continue
-
-            if stocks[symbol].get(
-                "instrument_type"
-            ) != "stock":
-                continue
-
-            if symbol not in result:
-
-                result.append(
-                    symbol
-                )
-
-            if len(result) >= 10:
-                break
-
-    return result
+    return symbols[:10]
 
 
 # ============================================================
@@ -1855,17 +1838,39 @@ def build_bond(
 
 
 # ============================================================
+# Watchlist
+# ============================================================
+
+def build_watchlist() -> List[str]:
+
+    # --------------------------------------------------------
+    # Watchlist 是前端本機功能。
+    # 後端初始永遠空白。
+    # --------------------------------------------------------
+
+    return []
+
+
+# ============================================================
 # Summary
 # ============================================================
 
 def build_summary(
     today_picks: List[str],
+    analysis_count: int,
+    universe_count: int,
 ) -> Dict[str, Any]:
 
     return {
 
         "today_picks":
             len(today_picks),
+
+        "analysis_stocks":
+            analysis_count,
+
+        "universe_stocks":
+            universe_count,
 
         "holdings_profit":
             None,
@@ -1903,7 +1908,7 @@ def build_ui_data(
     ] = {}
 
     # --------------------------------------------------------
-    # analysis 是唯一分析資料來源
+    # analysis 是 UI 股票資料唯一來源
     # --------------------------------------------------------
 
     for raw_symbol, record in analysis_stocks.items():
@@ -1926,7 +1931,9 @@ def build_ui_data(
             {},
         )
 
-        stocks[symbol] = build_stock(
+        stocks[
+            symbol
+        ] = build_stock(
             symbol,
             record,
             universe_record,
@@ -1940,7 +1947,7 @@ def build_ui_data(
         )
 
     # --------------------------------------------------------
-    # Tabs
+    # 今日精選
     # --------------------------------------------------------
 
     today_picks = build_today_picks(
@@ -1948,14 +1955,25 @@ def build_ui_data(
         stocks,
     )
 
+    # --------------------------------------------------------
+    # Top 10
+    # --------------------------------------------------------
+
     top10 = build_top10(
-        analysis,
-        stocks,
+        stocks
     )
+
+    # --------------------------------------------------------
+    # ETF
+    # --------------------------------------------------------
 
     etf = build_etf(
         stocks
     )
+
+    # --------------------------------------------------------
+    # Bond
+    # --------------------------------------------------------
 
     bond = build_bond(
         stocks
@@ -1963,12 +1981,9 @@ def build_ui_data(
 
     # --------------------------------------------------------
     # Watchlist
-    #
-    # 前端使用者自行管理。
-    # 後端初始一定空白。
     # --------------------------------------------------------
 
-    watchlist: List[str] = []
+    watchlist = build_watchlist()
 
     return {
 
@@ -1993,7 +2008,9 @@ def build_ui_data(
 
         "summary":
             build_summary(
-                today_picks
+                today_picks,
+                len(analysis_stocks),
+                len(universe),
             ),
 
         "tabs":
@@ -2027,11 +2044,16 @@ def build_ui_data(
 def validate_ui_data(
     output: Dict[str, Any],
     analysis: Dict[str, Any],
+    universe: Dict[str, Dict[str, Any]],
 ) -> None:
 
     section(
-        "UI-DATA-3.0 Schema Contract Validation"
+        "UI-DATA-2.0 Schema Contract Validation"
     )
+
+    # --------------------------------------------------------
+    # Root
+    # --------------------------------------------------------
 
     required_keys = {
 
@@ -2066,6 +2088,10 @@ def validate_ui_data(
             "schema_version 錯誤："
             f"{output.get('schema_version')}"
         )
+
+    # --------------------------------------------------------
+    # Stocks
+    # --------------------------------------------------------
 
     stocks = output.get(
         "stocks"
@@ -2109,6 +2135,14 @@ def validate_ui_data(
         f"ui stocks：{ui_count}"
     )
 
+    log(
+        f"universe stocks：{len(universe)}"
+    )
+
+    # --------------------------------------------------------
+    # 核心斷點
+    # --------------------------------------------------------
+
     if analysis_count > 0 and ui_count == 0:
 
         raise RuntimeError(
@@ -2123,7 +2157,7 @@ def validate_ui_data(
         )
 
     # --------------------------------------------------------
-    # 股票集合一致性
+    # analysis → UI 股票集合必須 1:1
     # --------------------------------------------------------
 
     normalized_analysis_symbols = {
@@ -2136,41 +2170,62 @@ def validate_ui_data(
         stocks.keys()
     )
 
-    missing_ui = (
-        normalized_analysis_symbols
-        - ui_symbols
-    )
+    if normalized_analysis_symbols != ui_symbols:
 
-    unexpected_ui = (
-        ui_symbols
-        - normalized_analysis_symbols
-    )
-
-    if missing_ui:
-
-        sample = sorted(
-            missing_ui
-        )[:20]
-
-        raise RuntimeError(
-            "❌ analysis → UI 股票遺失："
-            + ", ".join(sample)
-            + (
-                " ..."
-                if len(missing_ui) > 20
-                else ""
-            )
+        missing_ui = (
+            normalized_analysis_symbols
+            - ui_symbols
         )
 
-    if unexpected_ui:
+        unexpected_ui = (
+            ui_symbols
+            - normalized_analysis_symbols
+        )
 
-        sample = sorted(
-            unexpected_ui
-        )[:20]
+        message = (
+            "❌ analysis → UI 股票集合不一致"
+        )
+
+        if missing_ui:
+
+            message += (
+                "\n遺失："
+                + ", ".join(
+                    sorted(
+                        missing_ui
+                    )[:20]
+                )
+            )
+
+        if unexpected_ui:
+
+            message += (
+                "\n多出："
+                + ", ".join(
+                    sorted(
+                        unexpected_ui
+                    )[:20]
+                )
+            )
 
         raise RuntimeError(
-            "❌ UI 出現 analysis 未提供的股票："
-            + ", ".join(sample)
+            message
+        )
+
+    log(
+        "✓ analysis → UI stocks：1:1 PASS"
+    )
+
+    # --------------------------------------------------------
+    # 不得把 Universe 全部灌入 UI
+    #
+    # 這是避免 2143 → UI 的核心防線。
+    # --------------------------------------------------------
+
+    if ui_count > len(universe):
+
+        raise RuntimeError(
+            "❌ UI stocks 數量大於 Universe"
         )
 
     # --------------------------------------------------------
@@ -2209,7 +2264,9 @@ def validate_ui_data(
         raise RuntimeError(
             "tabs 缺少："
             + ", ".join(
-                sorted(missing_tabs)
+                sorted(
+                    missing_tabs
+                )
             )
         )
 
@@ -2223,6 +2280,74 @@ def validate_ui_data(
             raise RuntimeError(
                 f"tabs.{tab_name} 必須是 array"
             )
+
+    # --------------------------------------------------------
+    # Today picks
+    # --------------------------------------------------------
+
+    candidates = analysis.get(
+        "short_term_candidates",
+        [],
+    )
+
+    if not isinstance(
+        candidates,
+        list,
+    ):
+
+        raise RuntimeError(
+            "analysis.short_term_candidates "
+            "必須是 array"
+        )
+
+    expected_today_picks: List[str] = []
+
+    for raw_symbol in candidates:
+
+        symbol = normalize_symbol(
+            raw_symbol
+        )
+
+        if not symbol:
+            continue
+
+        if symbol not in ui_symbols:
+            continue
+
+        if stocks[
+            symbol
+        ].get(
+            "instrument_type"
+        ) != "stock":
+
+            continue
+
+        if symbol not in expected_today_picks:
+
+            expected_today_picks.append(
+                symbol
+            )
+
+    actual_today_picks = tabs[
+        "today_picks"
+    ]
+
+    if expected_today_picks != actual_today_picks:
+
+        raise RuntimeError(
+            "❌ short_term_candidates "
+            "→ today_picks 不一致"
+        )
+
+    log(
+        "✓ short_term_candidates "
+        "→ today_picks：PASS"
+    )
+
+    log(
+        f"✓ 今日精選："
+        f"{len(actual_today_picks)}"
+    )
 
     # --------------------------------------------------------
     # Summary
@@ -2241,17 +2366,33 @@ def validate_ui_data(
             "summary 必須是 object"
         )
 
-    today_count = len(
-        tabs["today_picks"]
-    )
-
     if summary.get(
         "today_picks"
-    ) != today_count:
+    ) != len(
+        actual_today_picks
+    ):
 
         raise RuntimeError(
-            "summary.today_picks 與 "
-            "tabs.today_picks 數量不一致"
+            "summary.today_picks "
+            "與 tabs.today_picks 不一致"
+        )
+
+    if summary.get(
+        "analysis_stocks"
+    ) != analysis_count:
+
+        raise RuntimeError(
+            "summary.analysis_stocks "
+            "與 analysis stocks 不一致"
+        )
+
+    if summary.get(
+        "universe_stocks"
+    ) != len(universe):
+
+        raise RuntimeError(
+            "summary.universe_stocks "
+            "與 universe 不一致"
         )
 
     # --------------------------------------------------------
@@ -2270,22 +2411,25 @@ def validate_ui_data(
 
         raise RuntimeError(
             "初始持倉 contract 錯誤："
-            "has_holdings 必須為 false，"
-            "holdings_profit 必須為 null"
+            "has_holdings=false，"
+            "holdings_profit=null"
+            " 才是合法初始狀態"
         )
 
     # --------------------------------------------------------
     # Watchlist
     # --------------------------------------------------------
 
-    if tabs["watchlist"]:
+    if tabs[
+        "watchlist"
+    ]:
 
         raise RuntimeError(
             "❌ watchlist 初始必須為空"
         )
 
     # --------------------------------------------------------
-    # Stock Record
+    # Stock schema
     # --------------------------------------------------------
 
     required_stock_keys = {
@@ -2301,6 +2445,15 @@ def validate_ui_data(
         "recommendation",
         "backend",
         "holding",
+    }
+
+    required_holding_keys = {
+
+        "shares",
+        "average_cost",
+        "market_value",
+        "profit",
+        "return_pct",
     }
 
     for symbol, record in stocks.items():
@@ -2324,7 +2477,9 @@ def validate_ui_data(
             raise RuntimeError(
                 f"{symbol} 缺少欄位："
                 + ", ".join(
-                    sorted(missing_stock)
+                    sorted(
+                        missing_stock
+                    )
                 )
             )
 
@@ -2349,15 +2504,6 @@ def validate_ui_data(
                 f"{symbol} holding 必須是 object"
             )
 
-        required_holding_keys = {
-
-            "shares",
-            "average_cost",
-            "market_value",
-            "profit",
-            "return_pct",
-        }
-
         missing_holding = (
             required_holding_keys
             - set(holding.keys())
@@ -2368,45 +2514,91 @@ def validate_ui_data(
             raise RuntimeError(
                 f"{symbol} holding 缺少："
                 + ", ".join(
-                    sorted(missing_holding)
+                    sorted(
+                        missing_holding
+                    )
                 )
             )
 
         for key in required_holding_keys:
 
-            if holding[key] is not None:
+            if holding[
+                key
+            ] is not None:
 
                 raise RuntimeError(
                     f"{symbol} 初始持倉欄位 "
                     f"{key} 不得預填"
                 )
 
+    # --------------------------------------------------------
+    # 禁止舊六項核心在 UI root / tabs 層
+    # --------------------------------------------------------
+
+    forbidden_root_keys = {
+
+        "six_core",
+        "six_core_conditions",
+        "core_conditions",
+        "core_score",
+        "core_filter",
+        "six_conditions",
+    }
+
+    root_overlap = (
+        forbidden_root_keys
+        & set(output.keys())
+    )
+
+    if root_overlap:
+
+        raise RuntimeError(
+            "❌ ui_data root 存在舊六項核心欄位："
+            + ", ".join(
+                sorted(
+                    root_overlap
+                )
+            )
+        )
+
+    forbidden_tab_keys = (
+        forbidden_root_keys
+        & set(tabs.keys())
+    )
+
+    if forbidden_tab_keys:
+
+        raise RuntimeError(
+            "❌ tabs 存在舊六項核心欄位："
+            + ", ".join(
+                sorted(
+                    forbidden_tab_keys
+                )
+            )
+        )
+
     log(
         "✓ Schema Contract：PASS"
     )
 
     log(
-        f"✓ UI stocks：{ui_count}"
+        "✓ analysis → UI：1:1 PASS"
     )
 
     log(
-        f"✓ 今日精選：{today_count}"
+        "✓ Universe 不會直接灌入 UI：PASS"
     )
 
     log(
-        f"✓ Top 10：{len(tabs['top10'])}"
+        "✓ 今日精選使用 backend candidates：PASS"
     )
 
     log(
-        f"✓ ETF：{len(tabs['etf'])}"
+        "✓ 舊六項核心 root/tab schema：PASS"
     )
 
     log(
-        f"✓ 債券：{len(tabs['bond'])}"
-    )
-
-    log(
-        "✓ 我的清單：初始空白"
+        "✓ 初始持倉：PASS"
     )
 
 
@@ -2423,127 +2615,78 @@ def validate_analysis_connection(
         "Analysis → UI Connection Validation"
     )
 
-    # --------------------------------------------------------
-    # 今日精選
-    # --------------------------------------------------------
+    candidates = analysis.get(
+        "short_term_candidates",
+        [],
+    )
 
-    expected_today: List[str] = []
-
-    source_today = None
-
-    for key in (
-        "today_picks",
-        "selected_stocks",
-        "picks",
+    if not isinstance(
+        candidates,
+        list,
     ):
 
-        if key in analysis:
+        raise RuntimeError(
+            "analysis.json "
+            "short_term_candidates 必須是 array"
+        )
 
-            source_today = analysis.get(
-                key
-            )
+    expected: List[str] = []
 
-            break
+    for raw_symbol in candidates:
 
-    if source_today is not None:
+        symbol = normalize_symbol(
+            raw_symbol
+        )
 
-        if not isinstance(
-            source_today,
-            list,
-        ):
+        if not symbol:
+            continue
+
+        if symbol not in output[
+            "stocks"
+        ]:
 
             raise RuntimeError(
-                "analysis 今日精選資料格式錯誤"
+                "❌ candidate 不存在於 UI stocks："
+                f"{symbol}"
             )
 
-        for item in source_today:
+        if output[
+            "stocks"
+        ][symbol].get(
+            "instrument_type"
+        ) != "stock":
 
-            if isinstance(
-                item,
-                dict,
-            ):
+            continue
 
-                item = first_value(
-                    item,
-                    [
-                        "symbol",
-                        "code",
-                        "ticker",
-                    ],
-                )
+        if symbol not in expected:
 
-            symbol = normalize_symbol(
-                item
+            expected.append(
+                symbol
             )
 
-            if not symbol:
-                continue
-
-            if symbol not in output[
-                "stocks"
-            ]:
-                continue
-
-            if symbol not in expected_today:
-
-                expected_today.append(
-                    symbol
-                )
-
-    actual_today = output[
+    actual = output[
         "tabs"
     ][
         "today_picks"
     ]
 
-    if expected_today != actual_today:
+    if expected != actual:
 
         raise RuntimeError(
             "❌ analysis → UI 今日精選不一致"
         )
 
     log(
-        "✓ Analysis → UI 今日精選：PASS"
+        "✓ short_term_candidates "
+        "→ today_picks：PASS"
     )
 
     log(
-        f"✓ 今日精選：{len(actual_today)}"
-    )
-
-    # --------------------------------------------------------
-    # Top 10
-    # --------------------------------------------------------
-
-    actual_top10 = output[
-        "tabs"
-    ][
-        "top10"
-    ]
-
-    if len(actual_top10) > 10:
-
-        raise RuntimeError(
-            "❌ Top 10 超過 10 檔"
-        )
-
-    log(
-        "✓ Analysis → UI Top 10：PASS"
+        f"✓ 後端候選：{len(candidates)}"
     )
 
     log(
-        f"✓ Top 10：{len(actual_top10)}"
-    )
-
-    # --------------------------------------------------------
-    # 明確確認：沒有舊候選資料參與 UI 建構
-    # --------------------------------------------------------
-
-    log(
-        "✓ UI builder 不重新計算選股條件：PASS"
-    )
-
-    log(
-        "✓ UI builder 不依賴舊 qualified / score：PASS"
+        f"✓ UI 今日精選：{len(actual)}"
     )
 
 
@@ -2577,6 +2720,10 @@ def save_ui_data(
                 ensure_ascii=False,
                 indent=2,
             )
+
+        # ----------------------------------------------------
+        # 寫入後驗證
+        # ----------------------------------------------------
 
         with temp_file.open(
             "r",
@@ -2621,6 +2768,17 @@ def save_ui_data(
 
             raise RuntimeError(
                 "❌ 拒絕寫入空 stocks"
+            )
+
+        if verify.get(
+            "summary",
+            {},
+        ).get(
+            "has_holdings"
+        ) is not False:
+
+            raise RuntimeError(
+                "❌ 拒絕寫入預設持倉"
             )
 
         temp_file.replace(
@@ -2690,7 +2848,18 @@ def print_summary(
     log("")
 
     log(
-        f"UI 股票：{len(stocks)}"
+        f"Universe："
+        f"{summary.get('universe_stocks')}"
+    )
+
+    log(
+        f"Analysis 股票："
+        f"{summary.get('analysis_stocks')}"
+    )
+
+    log(
+        f"UI 股票："
+        f"{len(stocks)}"
     )
 
     log(
@@ -2745,7 +2914,8 @@ def print_summary(
     log("")
 
     log(
-        "✓ UI-DATA-3.0 正式版完成"
+        "✓ build_ui_data.py "
+        f"{VERSION} 完成"
     )
 
 
@@ -2800,6 +2970,7 @@ def main() -> int:
         validate_ui_data(
             output,
             analysis,
+            universe,
         )
 
         # ----------------------------------------------------
