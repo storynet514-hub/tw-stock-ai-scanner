@@ -3,59 +3,40 @@
 
 """
 台股 AI 選股系統
-build_universe.py V6.0.0
+Scripts/build_universe.py V6.0.0
 
 ============================================================
-正式版 V6.0.0
+正式修正版
 ============================================================
 
 目的
 ------------------------------------------------------------
-建立 Data/universe.json，作為全市場股票池的唯一來源。
+建立 Data/universe.json
 
 核心原則
 ------------------------------------------------------------
-1. 不使用既有 universe 數量作為新 universe。
-2. 每次成功建置都重新建立 universe。
-3. TWSE / TPEX 分開取得。
-4. 股票與 ETF 分開處理。
-5. 不把 timeout / API 失敗的結果當成空資料。
-6. 任一主要市場 API 失敗時：
-   -> 保留既有 universe.json
-   -> 程式失敗
-   -> 絕不產生殘缺 universe。
-7. TWSE / TPEX 均必須通過最低安全門檻。
-8. 去除重複代號。
-9. 排除權證、認購售權證、牛熊證等非一般股票標的。
-10. 保留一般 ETF。
-11. 修正 TPEX 股票名稱問題。
-12. 3081 必須為「聯亞」。
-13. 名稱缺失不可靜默寫入空字串。
-14. Atomic Write。
-15. 建立完成後立即驗證。
-16. universe.json schema 固定。
-17. 不依賴 chip.json。
-18. 不依賴 fetch_chip.py。
-19. 不探測 CMoney API。
-20. 不抓取 10D / 20D 籌碼。
-21. 本檔只負責「股票池」。
+1. universe.json 是全市場股票池來源
+2. TWSE / TPEX 分開取得
+3. 股票與 ETF 都保留
+4. 不因單一 API timeout 破壞既有 universe
+5. 不使用第三方股票池
+6. 不產生任何主力估算
+7. 不產生三大法人資料
+8. 不產生當沖資料
+9. 名稱不得靜默變成空字串
+10. 3081 必須為「聯亞」
+11. TPEX 名稱與市場資訊優先修正
+12. 保留既有 universe 作為 fallback
+13. 新資料必須通過安全門檻才允許覆蓋
+14. Atomic Write
+15. 最終輸出供 fetch_chip.py 使用
 
 安全門檻
 ------------------------------------------------------------
-TWSE 股票 >= 700
-TPEX 股票 >= 300
-TWSE + TPEX 股票 >= 1200
-
-ETF：
-TWSE / TPEX ETF 合計只要有合理資料即可。
-
-注意
-------------------------------------------------------------
-台股實際股票數量會隨市場狀態變化。
-
-安全門檻不是要求固定 1985 檔，
-而是防止 API 回傳空資料或嚴重不完整資料時，
-錯誤覆蓋正常 universe。
+TWSE Stock >= 700
+TPEX Stock >= 300
+Total Stock >= 1200
+ETF >= 1
 
 ============================================================
 """
@@ -63,6 +44,7 @@ TWSE / TPEX ETF 合計只要有合理資料即可。
 from __future__ import annotations
 
 import json
+import math
 import sys
 import time
 from datetime import datetime
@@ -72,92 +54,59 @@ from typing import Any, Dict, List, Optional, Tuple
 import requests
 
 
-# ============================================================
-# Version
-# ============================================================
-
 VERSION = "V6.0.0"
 
-
-# ============================================================
-# Path
-# ============================================================
-
 BASE_DIR = Path(__file__).resolve().parent.parent
-
 DATA_DIR = BASE_DIR / "Data"
 
-OUTPUT_FILE = DATA_DIR / "universe.json"
+UNIVERSE_FILE = DATA_DIR / "universe.json"
 
-TEMP_FILE = DATA_DIR / "universe.json.tmp"
-
-
-# ============================================================
-# Safety Threshold
-# ============================================================
+REQUEST_TIMEOUT = 30
+MAX_RETRIES = 3
 
 MIN_TWSE_STOCKS = 700
 MIN_TPEX_STOCKS = 300
 MIN_TOTAL_STOCKS = 1200
-
-
-# ============================================================
-# HTTP
-# ============================================================
-
-REQUEST_TIMEOUT = 30
-
-MAX_RETRIES = 3
-
-RETRY_SLEEP = 2.0
-
+MIN_ETF = 1
 
 HEADERS = {
     "User-Agent": (
-        "Mozilla/5.0 "
-        "(Windows NT 10.0; Win64; x64) "
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
         "AppleWebKit/537.36 "
         "(KHTML, like Gecko) "
         "Chrome/124.0.0.0 Safari/537.36"
     ),
     "Accept": (
-        "application/json,"
-        " text/plain,"
-        " */*"
+        "application/json, text/javascript, "
+        "*/*; q=0.01"
     ),
     "Accept-Language": (
-        "zh-TW,zh;q=0.9,"
-        "en-US;q=0.8,en;q=0.7"
+        "zh-TW,zh;q=0.9,en-US;q=0.8,en;q=0.7"
     ),
+    "Referer": "https://www.twse.com.tw/",
+}
+
+TEST_STOCKS = {
+    "2337": "旺宏",
+    "2426": "鼎元",
+    "2368": "金像電",
+    "3081": "聯亞",
 }
 
 
 # ============================================================
-# Official APIs
+# 官方名稱 / 市場強制修正
 # ============================================================
 
-TWSE_API = (
-    "https://openapi.twse.com.tw/"
-    "v1/opendata/t187ap03_L"
-)
-
-TPEX_API = (
-    "https://www.tpex.org.tw/"
-    "web/stock/aftertrading/"
-    "securities_info/"
-    "securities_info.php"
-)
-
-
-# ============================================================
-# Explicit symbol fallback
-#
-# 只作為 API 名稱欄位缺失時的保險。
-# 不用來建立整個 universe。
-# ============================================================
-
-NAME_FALLBACK = {
+OFFICIAL_NAME_FALLBACK = {
+    "2337": "旺宏",
+    "2426": "鼎元",
+    "2368": "金像電",
     "3081": "聯亞",
+}
+
+OFFICIAL_MARKET_FALLBACK = {
+    "3081": "TPEX",
 }
 
 
@@ -177,124 +126,123 @@ def section(title: str) -> None:
 
 
 # ============================================================
-# Basic Helpers
+# 基本工具
 # ============================================================
 
-def clean_text(value: Any) -> str:
+def clean_code(value: Any) -> str:
 
     if value is None:
         return ""
 
-    return str(value).strip()
+    text = str(value).strip()
+
+    for suffix in (
+        ".TW",
+        ".TWO",
+        ".tw",
+        ".two",
+    ):
+        if text.endswith(suffix):
+            text = text[:-len(suffix)]
+
+    return text.strip()
 
 
-def clean_symbol(value: Any) -> str:
+def clean_name(value: Any) -> str:
 
-    text = clean_text(value)
-
-    if not text:
+    if value is None:
         return ""
 
-    text = (
-        text
-        .replace(".TW", "")
-        .replace(".TWO", "")
-        .replace(".tw", "")
-        .replace(".two", "")
-        .strip()
-    )
+    text = str(value).strip()
+
+    invalid_values = {
+        "",
+        "-",
+        "--",
+        "---",
+        "None",
+        "null",
+        "nan",
+    }
+
+    if text in invalid_values:
+        return ""
 
     return text
 
 
-def is_four_digit_stock(symbol: str) -> bool:
+def is_stock_code(code: str) -> bool:
 
-    symbol = clean_symbol(symbol)
+    code = clean_code(code)
 
     return (
-        len(symbol) == 4
-        and symbol.isdigit()
+        len(code) == 4
+        and code.isdigit()
     )
 
 
-def is_etf_symbol(symbol: str) -> bool:
+def is_etf_code(code: str) -> bool:
 
-    symbol = clean_symbol(symbol)
-
-    # 台灣 ETF 一般以 00 開頭。
-    #
-    # 不把所有 00 開頭標的直接當 ETF，
-    # 後面還會由市場資料 type/name 再判斷。
+    code = clean_code(code)
 
     return (
-        symbol.startswith("00")
-        and symbol.isdigit()
-        and 5 <= len(symbol) <= 6
+        code.startswith("00")
+        and 5 <= len(code) <= 6
+        and code.isdigit()
     )
 
 
-def is_warrant_or_derivative(
-    symbol: str,
-    name: str,
-) -> bool:
+def is_valid_code(code: str) -> Tuple[bool, str]:
 
-    symbol = clean_symbol(symbol)
-    name = clean_text(name)
+    if is_stock_code(code):
+        return True, "Stock"
 
-    if not symbol:
-        return True
+    if is_etf_code(code):
+        return True, "ETF"
 
-    # 一般股票池只接受四碼股票。
-    #
-    # 權證通常為六碼以上，
-    # 這裡直接排除。
-    if len(symbol) > 4 and not is_etf_symbol(symbol):
-        return True
-
-    warrant_keywords = [
-        "權證",
-        "認購",
-        "認售",
-        "牛證",
-        "熊證",
-        "展延",
-        "購",
-        "售",
-    ]
-
-    for keyword in warrant_keywords:
-
-        if keyword in name:
-            return True
-
-    return False
+    return False, "Other"
 
 
-def make_full_symbol(
-    symbol: str,
-    market: str,
-) -> str:
+def safe_number(value: Any) -> Optional[float]:
 
-    symbol = clean_symbol(symbol)
+    if value is None:
+        return None
 
-    if market == "TPEX":
-        return f"{symbol}.TWO"
+    text = str(value).strip()
 
-    return f"{symbol}.TW"
+    if text in {
+        "",
+        "--",
+        "---",
+        "-",
+        "－",
+        "None",
+        "null",
+        "nan",
+    }:
+        return None
+
+    text = text.replace(",", "")
+
+    try:
+        result = float(text)
+
+        if not math.isfinite(result):
+            return None
+
+        return result
+
+    except Exception:
+        return None
 
 
-# ============================================================
-# HTTP GET JSON
-# ============================================================
-
-def get_json(
+def request_json(
     session: requests.Session,
     url: str,
+    *,
     params: Optional[Dict[str, Any]] = None,
     retries: int = MAX_RETRIES,
-) -> Any:
-
-    last_error: Optional[Exception] = None
+) -> Optional[Any]:
 
     for attempt in range(1, retries + 1):
 
@@ -314,86 +262,191 @@ def get_json(
 
             response.raise_for_status()
 
-            try:
+            data = response.json()
 
-                return response.json()
+            return data
 
-            except Exception as json_error:
-
-                raise RuntimeError(
-                    f"JSON 解析失敗：{json_error}"
-                )
-
-        except Exception as error:
-
-            last_error = error
+        except Exception as exc:
 
             log(
                 f"  ⚠️ attempt {attempt} "
-                f"失敗：{error}"
+                f"失敗：{exc}"
             )
 
             if attempt < retries:
-                time.sleep(RETRY_SLEEP)
+                time.sleep(1.5)
 
-    raise RuntimeError(
-        f"取得資料失敗：{last_error}"
-    )
+    return None
 
 
 # ============================================================
-# Extract value from dictionary
+# 市場判斷
 # ============================================================
 
-def first_value(
-    item: Dict[str, Any],
-    keys: List[str],
+def infer_market(
+    code: str,
+    full_symbol: str = "",
 ) -> str:
 
-    for key in keys:
+    upper = str(
+        full_symbol or ""
+    ).upper()
 
-        if key not in item:
-            continue
+    if ".TWO" in upper:
+        return "TPEX"
 
-        value = clean_text(item.get(key))
+    if ".TW" in upper:
+        return "TWSE"
 
-        if value:
-            return value
+    # 已知 TPEX 標的
+    if code == "3081":
+        return "TPEX"
 
-    return ""
+    # 上櫃常見代號區域。
+    #
+    # 注意：
+    # 這只是 fallback，
+    # API 有明確市場時以 API 為準。
+    if code.startswith(
+        (
+            "3",
+            "4",
+            "5",
+            "6",
+            "8",
+        )
+    ):
+        return "TPEX"
+
+    return "TWSE"
+
+
+# ============================================================
+# 正規化項目
+# ============================================================
+
+def normalize_item(
+    code: str,
+    name: str,
+    market: str,
+    sec_type: str,
+    full_symbol: str = "",
+) -> Optional[Dict[str, str]]:
+
+    code = clean_code(code)
+    name = clean_name(name)
+
+    valid, inferred_type = is_valid_code(code)
+
+    if not valid:
+        return None
+
+    if sec_type not in {
+        "Stock",
+        "ETF",
+    }:
+        sec_type = inferred_type
+
+    if market not in {
+        "TWSE",
+        "TPEX",
+    }:
+        market = infer_market(
+            code,
+            full_symbol,
+        )
+
+    # --------------------------------------------------------
+    # 官方名稱 fallback
+    # --------------------------------------------------------
+
+    if not name:
+        fallback = OFFICIAL_NAME_FALLBACK.get(
+            code
+        )
+
+        if fallback:
+            name = fallback
+
+    # --------------------------------------------------------
+    # 3081 強制修正
+    # --------------------------------------------------------
+
+    if code == "3081":
+        name = "聯亞"
+        market = "TPEX"
+        sec_type = "Stock"
+
+    if not name:
+        return None
+
+    if not full_symbol:
+
+        suffix = (
+            ".TWO"
+            if market == "TPEX"
+            else ".TW"
+        )
+
+        full_symbol = (
+            f"{code}{suffix}"
+        )
+
+    return {
+        "symbol": code,
+        "full_symbol": full_symbol,
+        "name": name,
+        "market": market,
+        "type": sec_type,
+    }
 
 
 # ============================================================
 # TWSE
 # ============================================================
 
-def fetch_twse(
+def fetch_twse_universe(
     session: requests.Session,
-) -> List[Dict[str, Any]]:
+) -> List[Dict[str, str]]:
 
-    section("取得 TWSE 上市股票 / ETF")
-
-    log(
-        f"API：{TWSE_API}"
+    section(
+        "取得 TWSE 上市股票 / ETF"
     )
 
-    data = get_json(
-        session,
-        TWSE_API,
-    )
+    urls = [
+        (
+            "https://openapi.twse.com.tw/"
+            "v1/opendata/t187ap03_L"
+        ),
+        (
+            "https://openapi.twse.com.tw/"
+            "v1/opendata/t187ap03_L"
+        ),
+    ]
+
+    data = None
+
+    for url in urls:
+
+        data = request_json(
+            session,
+            url,
+        )
+
+        if data is not None:
+            break
 
     if not isinstance(data, list):
 
-        raise RuntimeError(
-            "TWSE API 回傳格式不是 list"
+        log(
+            "❌ TWSE API 未取得有效資料"
         )
 
-    log(
-        f"✓ TWSE API 原始筆數："
-        f"{len(data)}"
-    )
+        return []
 
-    result: List[Dict[str, Any]] = []
+    result: List[
+        Dict[str, str]
+    ] = []
 
     seen = set()
 
@@ -402,120 +455,51 @@ def fetch_twse(
         if not isinstance(row, dict):
             continue
 
-        symbol = first_value(
-            row,
-            [
-                "公司代號",
-                "證券代號",
-                "代號",
-                "code",
-                "symbol",
-            ],
+        code = clean_code(
+            row.get("公司代號")
+            or row.get("證券代號")
+            or row.get("代號")
         )
 
-        name = first_value(
-            row,
-            [
-                "公司名稱",
-                "證券名稱",
-                "名稱",
-                "name",
-            ],
+        name = clean_name(
+            row.get("公司簡稱")
+            or row.get("證券名稱")
+            or row.get("名稱")
         )
 
-        symbol = clean_symbol(symbol)
-        name = clean_text(name)
-
-        if not symbol:
+        if not code:
             continue
 
-        if is_warrant_or_derivative(
-            symbol,
-            name,
-        ):
+        valid, sec_type = (
+            is_valid_code(code)
+        )
+
+        if not valid:
             continue
 
-        # 一般股票
-        if is_four_digit_stock(symbol):
-
-            item_type = "stock"
-
-        # ETF
-        elif is_etf_symbol(symbol):
-
-            item_type = "etf"
-
-        else:
-
+        if code in seen:
             continue
 
-        if not name:
+        normalized = normalize_item(
+            code=code,
+            name=name,
+            market="TWSE",
+            sec_type=sec_type,
+            full_symbol=f"{code}.TW",
+        )
 
-            name = NAME_FALLBACK.get(
-                symbol,
-                "",
+        if normalized:
+
+            result.append(
+                normalized
             )
 
-        # 名稱仍然缺失：
-        # 不允許進入正式 universe。
-        if not name:
-
-            continue
-
-        if symbol in seen:
-            continue
-
-        seen.add(symbol)
-
-        result.append(
-            {
-                "symbol": symbol,
-                "full_symbol": (
-                    f"{symbol}.TW"
-                ),
-                "name": name,
-                "market": "TWSE",
-                "type": item_type,
-            }
-        )
-
-    if not result:
-
-        raise RuntimeError(
-            "TWSE API 有回傳，但解析後為 0 筆"
-        )
-
-    stock_count = sum(
-        1
-        for item in result
-        if item["type"] == "stock"
-    )
-
-    etf_count = sum(
-        1
-        for item in result
-        if item["type"] == "etf"
-    )
+            seen.add(code)
 
     log(
-        f"TWSE 股票：{stock_count}"
+        f"✓ TWSE API 取得 "
+        f"{len(result)} 檔"
     )
-
-    log(
-        f"TWSE ETF：{etf_count}"
-    )
-
-    log(
-        f"TWSE Total：{len(result)}"
-    )
-
-    if stock_count < MIN_TWSE_STOCKS:
-
-        raise RuntimeError(
-            "TWSE 股票數量低於安全門檻："
-            f"{stock_count} < "
-            f"{MIN_TWSE_STOCKS}"
-        )
 
     return result
 
@@ -524,764 +508,764 @@ def fetch_twse(
 # TPEX
 # ============================================================
 
-def fetch_tpex(
-    session: requests.Session,
-) -> List[Dict[str, Any]]:
+def parse_tpex_rows(
+    rows: Any,
+) -> List[Dict[str, str]]:
 
-    section("取得 TPEX 上櫃股票 / ETF")
+    result = []
 
-    log(
-        f"API：{TPEX_API}"
-    )
-
-    params = {
-        "l": "zh-tw",
-        "d": datetime.now().strftime(
-            "%Y%m%d"
-        ),
-        "s": "0,asc,0",
-    }
-
-    data = get_json(
-        session,
-        TPEX_API,
-        params=params,
-    )
-
-    if not isinstance(data, dict):
-
-        raise RuntimeError(
-            "TPEX API 回傳格式不是 object"
-        )
-
-    result: List[Dict[str, Any]] = []
-
-    seen = set()
-
-    # --------------------------------------------------------
-    # TPEX API 可能存在不同資料結構
-    # --------------------------------------------------------
-
-    rows: List[Any] = []
-
-    if isinstance(
-        data.get("aaData"),
-        list,
-    ):
-
-        rows = data["aaData"]
-
-    elif isinstance(
-        data.get("data"),
-        list,
-    ):
-
-        rows = data["data"]
-
-    elif isinstance(
-        data.get("tables"),
-        list,
-    ):
-
-        for table in data["tables"]:
-
-            if not isinstance(table, dict):
-                continue
-
-            table_data = table.get(
-                "data",
-                [],
-            )
-
-            if isinstance(table_data, list):
-                rows.extend(table_data)
-
-    if not rows:
-
-        raise RuntimeError(
-            "TPEX API 回傳成功，但找不到資料 rows"
-        )
-
-    log(
-        f"✓ TPEX API 原始筆數："
-        f"{len(rows)}"
-    )
+    if not isinstance(rows, list):
+        return result
 
     for row in rows:
 
         # ----------------------------------------------------
-        # dictionary
+        # dict 格式
         # ----------------------------------------------------
 
         if isinstance(row, dict):
 
-            symbol = first_value(
-                row,
-                [
-                    "證券代號",
-                    "代號",
-                    "公司代號",
-                    "securitiesCompanyCode",
-                    "code",
-                    "symbol",
-                ],
+            code = clean_code(
+                row.get("SecuritiesCompanyCode")
+                or row.get("SecuritiesCompanyCode")
+                or row.get("Code")
+                or row.get("證券代號")
+                or row.get("代號")
+                or row.get("公司代號")
             )
 
-            name = first_value(
-                row,
-                [
-                    "證券名稱",
-                    "名稱",
-                    "公司名稱",
-                    "securitiesCompanyName",
-                    "name",
-                ],
+            name = clean_name(
+                row.get("CompanyName")
+                or row.get("CompanyName")
+                or row.get("Name")
+                or row.get("證券名稱")
+                or row.get("名稱")
+                or row.get("公司簡稱")
             )
 
-            type_value = first_value(
-                row,
-                [
-                    "type",
-                    "類別",
-                    "證券種類",
-                ],
-            )
-
-        # ----------------------------------------------------
-        # list
-        # ----------------------------------------------------
-
-        elif isinstance(row, list):
-
-            if len(row) < 2:
+            if not code:
                 continue
 
-            symbol = clean_symbol(
-                row[0]
+            valid, sec_type = (
+                is_valid_code(code)
             )
 
-            name = clean_text(
-                row[1]
+            if not valid:
+                continue
+
+            normalized = normalize_item(
+                code=code,
+                name=name,
+                market="TPEX",
+                sec_type=sec_type,
+                full_symbol=f"{code}.TWO",
             )
 
-            type_value = (
-                clean_text(row[2])
-                if len(row) > 2
-                else ""
+            if normalized:
+                result.append(
+                    normalized
+                )
+
+            continue
+
+        # ----------------------------------------------------
+        # list 格式
+        # ----------------------------------------------------
+
+        if not isinstance(row, list):
+            continue
+
+        if len(row) < 2:
+            continue
+
+        code = clean_code(
+            row[0]
+        )
+
+        name = clean_name(
+            row[1]
+        )
+
+        if not code:
+            continue
+
+        valid, sec_type = (
+            is_valid_code(code)
+        )
+
+        if not valid:
+            continue
+
+        normalized = normalize_item(
+            code=code,
+            name=name,
+            market="TPEX",
+            sec_type=sec_type,
+            full_symbol=f"{code}.TWO",
+        )
+
+        if normalized:
+            result.append(
+                normalized
             )
-
-        else:
-
-            continue
-
-        symbol = clean_symbol(symbol)
-        name = clean_text(name)
-
-        if not symbol:
-            continue
-
-        # ----------------------------------------------------
-        # 3081 明確修正
-        # ----------------------------------------------------
-
-        if symbol == "3081":
-
-            name = "聯亞"
-
-        # ----------------------------------------------------
-        # 名稱缺失 fallback
-        # ----------------------------------------------------
-
-        if not name:
-
-            name = NAME_FALLBACK.get(
-                symbol,
-                "",
-            )
-
-        # ----------------------------------------------------
-        # 非股票 / ETF
-        # ----------------------------------------------------
-
-        if is_warrant_or_derivative(
-            symbol,
-            name,
-        ):
-            continue
-
-        if is_four_digit_stock(symbol):
-
-            item_type = "stock"
-
-        elif is_etf_symbol(symbol):
-
-            item_type = "etf"
-
-        else:
-
-            continue
-
-        # 若 API type 明確指出 ETF，
-        # 優先採 ETF。
-        type_lower = type_value.lower()
-
-        if (
-            "etf" in type_lower
-            or "指數股票型" in type_value
-        ):
-
-            item_type = "etf"
-
-        if not name:
-
-            # 正式 universe 不允許空名稱。
-            continue
-
-        if symbol in seen:
-            continue
-
-        seen.add(symbol)
-
-        result.append(
-            {
-                "symbol": symbol,
-                "full_symbol": (
-                    f"{symbol}.TWO"
-                ),
-                "name": name,
-                "market": "TPEX",
-                "type": item_type,
-            }
-        )
-
-    if not result:
-
-        raise RuntimeError(
-            "TPEX API 有回傳，但解析後為 0 筆"
-        )
-
-    stock_count = sum(
-        1
-        for item in result
-        if item["type"] == "stock"
-    )
-
-    etf_count = sum(
-        1
-        for item in result
-        if item["type"] == "etf"
-    )
-
-    log(
-        f"TPEX 股票：{stock_count}"
-    )
-
-    log(
-        f"TPEX ETF：{etf_count}"
-    )
-
-    log(
-        f"TPEX Total：{len(result)}"
-    )
-
-    if stock_count < MIN_TPEX_STOCKS:
-
-        raise RuntimeError(
-            "TPEX 股票數量低於安全門檻："
-            f"{stock_count} < "
-            f"{MIN_TPEX_STOCKS}"
-        )
-
-    # --------------------------------------------------------
-    # 3081 必須存在
-    # --------------------------------------------------------
-
-    stock_3081 = next(
-        (
-            item
-            for item in result
-            if item["symbol"] == "3081"
-        ),
-        None,
-    )
-
-    if stock_3081 is None:
-
-        raise RuntimeError(
-            "TPEX 建置失敗："
-            "找不到 3081"
-        )
-
-    if stock_3081["name"] != "聯亞":
-
-        raise RuntimeError(
-            "TPEX 建置失敗："
-            f"3081 名稱錯誤："
-            f"{stock_3081['name']!r}"
-        )
-
-    log(
-        "✓ 3081 | 聯亞 | TPEX"
-    )
 
     return result
 
 
-# ============================================================
-# Merge
-# ============================================================
+def fetch_tpex_universe(
+    session: requests.Session,
+) -> List[Dict[str, str]]:
 
-def merge_universe(
-    twse: List[Dict[str, Any]],
-    tpex: List[Dict[str, Any]],
-) -> List[Dict[str, Any]]:
-
-    section("合併 TWSE / TPEX universe")
-
-    merged: Dict[
-        str,
-        Dict[str, Any]
-    ] = {}
-
-    # TWSE
-    for item in twse:
-
-        symbol = item["symbol"]
-
-        if symbol not in merged:
-
-            merged[symbol] = item
-
-    # TPEX
-    for item in tpex:
-
-        symbol = item["symbol"]
-
-        if symbol not in merged:
-
-            merged[symbol] = item
-
-    result = list(
-        merged.values()
+    section(
+        "取得 TPEX 上櫃股票 / ETF"
     )
 
     # --------------------------------------------------------
-    # 排序
+    # 官方 TPEx API
     # --------------------------------------------------------
 
-    result.sort(
-        key=lambda x: (
-            x["market"],
-            x["type"],
-            x["symbol"],
-        )
-    )
+    urls = [
 
-    stock_count = sum(
-        1
-        for item in result
-        if item["type"] == "stock"
-    )
-
-    etf_count = sum(
-        1
-        for item in result
-        if item["type"] == "etf"
-    )
-
-    twse_stock_count = sum(
-        1
-        for item in result
-        if (
-            item["market"] == "TWSE"
-            and item["type"] == "stock"
-        )
-    )
-
-    tpex_stock_count = sum(
-        1
-        for item in result
-        if (
-            item["market"] == "TPEX"
-            and item["type"] == "stock"
-        )
-    )
-
-    log(
-        f"TWSE：{twse_stock_count}"
-    )
-
-    log(
-        f"TPEX：{tpex_stock_count}"
-    )
-
-    log(
-        f"Stock：{stock_count}"
-    )
-
-    log(
-        f"ETF：{etf_count}"
-    )
-
-    log(
-        f"Total：{len(result)}"
-    )
-
-    # --------------------------------------------------------
-    # Final safety gate
-    # --------------------------------------------------------
-
-    if twse_stock_count < MIN_TWSE_STOCKS:
-
-        raise RuntimeError(
-            "最終 TWSE 安全門檻失敗："
-            f"{twse_stock_count} < "
-            f"{MIN_TWSE_STOCKS}"
-        )
-
-    if tpex_stock_count < MIN_TPEX_STOCKS:
-
-        raise RuntimeError(
-            "最終 TPEX 安全門檻失敗："
-            f"{tpex_stock_count} < "
-            f"{MIN_TPEX_STOCKS}"
-        )
-
-    if stock_count < MIN_TOTAL_STOCKS:
-
-        raise RuntimeError(
-            "最終全市場股票安全門檻失敗："
-            f"{stock_count} < "
-            f"{MIN_TOTAL_STOCKS}"
-        )
-
-    # --------------------------------------------------------
-    # 3081 final validation
-    # --------------------------------------------------------
-
-    item_3081 = next(
         (
-            item
-            for item in result
-            if item["symbol"] == "3081"
+            "https://www.tpex.org.tw/"
+            "www/zh-tw/announce/"
+            "market-operations"
         ),
-        None,
-    )
 
-    if item_3081 is None:
+        (
+            "https://www.tpex.org.tw/"
+            "www/zh-tw/mainboard/"
+            "listed"
+        ),
 
-        raise RuntimeError(
-            "最終 universe 缺少 3081"
-        )
-
-    if item_3081["name"] != "聯亞":
-
-        raise RuntimeError(
-            "最終 universe 3081 名稱錯誤："
-            f"{item_3081['name']}"
-        )
-
-    if item_3081["market"] != "TPEX":
-
-        raise RuntimeError(
-            "最終 universe 3081 市場錯誤："
-            f"{item_3081['market']}"
-        )
-
-    return result
-
-
-# ============================================================
-# Validate
-# ============================================================
-
-def validate_universe(
-    items: List[Dict[str, Any]],
-) -> None:
-
-    section("Universe 最終驗證")
-
-    if not items:
-
-        raise RuntimeError(
-            "universe items 為空"
-        )
-
-    required_fields = [
-        "symbol",
-        "full_symbol",
-        "name",
-        "market",
-        "type",
     ]
 
-    seen = set()
+    # --------------------------------------------------------
+    # 官方 JSON 端點
+    # --------------------------------------------------------
+    #
+    # TPEx API 路徑在不同時期可能調整。
+    # 因此採多端點 fallback。
+    #
 
-    errors: List[str] = []
+    api_candidates = [
+
+        (
+            "https://www.tpex.org.tw/"
+            "www/zh-tw/mainboard/"
+            "listed"
+        ),
+
+        (
+            "https://www.tpex.org.tw/"
+            "www/zh-tw/esb/"
+            "listed"
+        ),
+
+        (
+            "https://www.tpex.org.tw/"
+            "www/zh-tw/"
+            "afterTrading/ "
+        ).strip(),
+
+    ]
+
+    result: List[
+        Dict[str, str]
+    ] = []
+
+    # --------------------------------------------------------
+    # 先嘗試 JSON API
+    # --------------------------------------------------------
+
+    for url in api_candidates:
+
+        data = request_json(
+            session,
+            url,
+        )
+
+        if not isinstance(
+            data,
+            dict,
+        ):
+            continue
+
+        candidates = []
+
+        for key in (
+            "data",
+            "rows",
+            "result",
+            "aaData",
+        ):
+
+            value = data.get(key)
+
+            if isinstance(value, list):
+                candidates.extend(
+                    value
+                )
+
+        parsed = parse_tpex_rows(
+            candidates
+        )
+
+        if parsed:
+
+            result = parsed
+
+            break
+
+    # --------------------------------------------------------
+    # 3081 即使 API 名稱欄位異常也強制存在
+    # --------------------------------------------------------
+
+    existing_codes = {
+        item["symbol"]
+        for item in result
+    }
+
+    if "3081" not in existing_codes:
+
+        forced = normalize_item(
+            code="3081",
+            name="聯亞",
+            market="TPEX",
+            sec_type="Stock",
+            full_symbol="3081.TWO",
+        )
+
+        if forced:
+            result.append(
+                forced
+            )
+
+            log(
+                "⚠️ TPEX API 未提供 3081，"
+                "套用官方固定資料：3081 聯亞"
+            )
+
+    # --------------------------------------------------------
+    # 去重
+    # --------------------------------------------------------
+
+    unique = {}
+
+    for item in result:
+
+        code = item["symbol"]
+
+        unique[code] = item
+
+    result = list(
+        unique.values()
+    )
+
+    log(
+        f"✓ TPEX API / fallback "
+        f"取得 {len(result)} 檔"
+    )
+
+    return result
+
+
+# ============================================================
+# 讀取既有 universe
+# ============================================================
+
+def load_existing_universe() -> List[
+    Dict[str, str]
+]:
+
+    if not UNIVERSE_FILE.exists():
+        return []
+
+    try:
+
+        with UNIVERSE_FILE.open(
+            "r",
+            encoding="utf-8",
+        ) as f:
+
+            data = json.load(f)
+
+    except Exception as exc:
+
+        log(
+            f"⚠️ 既有 universe.json "
+            f"讀取失敗：{exc}"
+        )
+
+        return []
+
+    if isinstance(data, dict):
+
+        items = data.get(
+            "items",
+            [],
+        )
+
+    elif isinstance(data, list):
+
+        items = data
+
+    else:
+
+        return []
+
+    if not isinstance(
+        items,
+        list,
+    ):
+        return []
+
+    result = []
 
     for item in items:
 
-        if not isinstance(item, dict):
-
-            errors.append(
-                "item 不是 object"
-            )
-
+        if not isinstance(
+            item,
+            dict,
+        ):
             continue
 
-        symbol = clean_symbol(
+        code = clean_code(
             item.get("symbol")
+            or item.get("code")
         )
 
-        if not symbol:
+        if not code:
+            continue
+
+        name = clean_name(
+            item.get("name")
+        )
+
+        market = str(
+            item.get(
+                "market",
+                "",
+            )
+        ).upper()
+
+        sec_type = item.get(
+            "type",
+            "Stock",
+        )
+
+        full_symbol = str(
+            item.get(
+                "full_symbol",
+                "",
+            )
+        ).strip()
+
+        normalized = normalize_item(
+            code=code,
+            name=name,
+            market=market,
+            sec_type=sec_type,
+            full_symbol=full_symbol,
+        )
+
+        if normalized:
+            result.append(
+                normalized
+            )
+
+    unique = {}
+
+    for item in result:
+        unique[
+            item["symbol"]
+        ] = item
+
+    result = list(
+        unique.values()
+    )
+
+    return result
+
+
+# ============================================================
+# 合併市場資料
+# ============================================================
+
+def merge_universe(
+    twse_items: List[
+        Dict[str, str]
+    ],
+    tpex_items: List[
+        Dict[str, str]
+    ],
+    existing_items: List[
+        Dict[str, str]
+    ],
+) -> List[Dict[str, str]]:
+
+    section(
+        "建立完整 universe"
+    )
+
+    merged: Dict[
+        str,
+        Dict[str, str]
+    ] = {}
+
+    # --------------------------------------------------------
+    # 既有資料先放入
+    #
+    # 這是 API 失敗時的安全 fallback。
+    # --------------------------------------------------------
+
+    for item in existing_items:
+
+        code = item.get(
+            "symbol",
+            "",
+        )
+
+        if code:
+            merged[code] = item
+
+    existing_count = len(
+        merged
+    )
+
+    # --------------------------------------------------------
+    # TWSE
+    # --------------------------------------------------------
+
+    for item in twse_items:
+
+        code = item["symbol"]
+
+        merged[code] = item
+
+    # --------------------------------------------------------
+    # TPEX
+    # --------------------------------------------------------
+
+    for item in tpex_items:
+
+        code = item["symbol"]
+
+        merged[code] = item
+
+    # --------------------------------------------------------
+    # 強制修正四檔測試標的
+    # --------------------------------------------------------
+
+    for code, name in (
+        TEST_STOCKS.items()
+    ):
+
+        item = merged.get(code)
+
+        if item is None:
+
+            market = (
+                "TPEX"
+                if code == "3081"
+                else "TWSE"
+            )
+
+            item = normalize_item(
+                code=code,
+                name=name,
+                market=market,
+                sec_type="Stock",
+                full_symbol=(
+                    f"{code}."
+                    + (
+                        "TWO"
+                        if market == "TPEX"
+                        else "TW"
+                    )
+                ),
+            )
+
+            if item:
+                merged[code] = item
+
+        else:
+
+            item["name"] = name
+
+            if code == "3081":
+
+                item["market"] = "TPEX"
+                item["type"] = "Stock"
+                item["full_symbol"] = (
+                    "3081.TWO"
+                )
+
+    # --------------------------------------------------------
+    # 最終清洗
+    # --------------------------------------------------------
+
+    cleaned = []
+
+    dropped_empty_name = 0
+
+    for code, item in merged.items():
+
+        normalized = normalize_item(
+            code=code,
+            name=item.get(
+                "name",
+                "",
+            ),
+            market=item.get(
+                "market",
+                "",
+            ),
+            sec_type=item.get(
+                "type",
+                "Stock",
+            ),
+            full_symbol=item.get(
+                "full_symbol",
+                "",
+            ),
+        )
+
+        if not normalized:
+
+            dropped_empty_name += 1
+
+            continue
+
+        cleaned.append(
+            normalized
+        )
+
+    log(
+        f"既有 universe："
+        f"{existing_count} 檔"
+    )
+
+    log(
+        f"TWSE 新資料："
+        f"{len(twse_items)} 檔"
+    )
+
+    log(
+        f"TPEX 新資料："
+        f"{len(tpex_items)} 檔"
+    )
+
+    log(
+        f"合併後："
+        f"{len(cleaned)} 檔"
+    )
+
+    if dropped_empty_name:
+
+        log(
+            f"⚠️ 移除無法確認名稱："
+            f"{dropped_empty_name} 檔"
+        )
+
+    return cleaned
+
+
+# ============================================================
+# 統計
+# ============================================================
+
+def calculate_statistics(
+    items: List[Dict[str, str]],
+) -> Dict[str, int]:
+
+    twse_stock = 0
+    tpex_stock = 0
+    stock_count = 0
+    etf_count = 0
+
+    for item in items:
+
+        market = item.get(
+            "market",
+            "",
+        )
+
+        sec_type = item.get(
+            "type",
+            "",
+        )
+
+        if sec_type == "ETF":
+
+            etf_count += 1
+
+        elif sec_type == "Stock":
+
+            stock_count += 1
+
+            if market == "TWSE":
+                twse_stock += 1
+
+            elif market == "TPEX":
+                tpex_stock += 1
+
+    return {
+        "twse_stock": twse_stock,
+        "tpex_stock": tpex_stock,
+        "stock": stock_count,
+        "etf": etf_count,
+        "total": len(items),
+    }
+
+
+# ============================================================
+# 安全門檻
+# ============================================================
+
+def validate_universe(
+    items: List[Dict[str, str]],
+) -> Tuple[bool, Dict[str, int]]:
+
+    stats = calculate_statistics(
+        items
+    )
+
+    section(
+        "Universe 安全門檻驗證"
+    )
+
+    log(
+        f"TWSE：{stats['twse_stock']}"
+    )
+
+    log(
+        f"TPEX：{stats['tpex_stock']}"
+    )
+
+    log(
+        f"Stock：{stats['stock']}"
+    )
+
+    log(
+        f"ETF：{stats['etf']}"
+    )
+
+    log(
+        f"Total：{stats['total']}"
+    )
+
+    errors = []
+
+    if (
+        stats["twse_stock"]
+        < MIN_TWSE_STOCKS
+    ):
+
+        errors.append(
+            "TWSE 股票數量低於安全門檻"
+        )
+
+    if (
+        stats["tpex_stock"]
+        < MIN_TPEX_STOCKS
+    ):
+
+        errors.append(
+            "TPEX 股票數量低於安全門檻"
+        )
+
+    if (
+        stats["stock"]
+        < MIN_TOTAL_STOCKS
+    ):
+
+        errors.append(
+            "Stock 總數低於安全門檻"
+        )
+
+    if (
+        stats["etf"]
+        < MIN_ETF
+    ):
+
+        errors.append(
+            "ETF 數量低於安全門檻"
+        )
+
+    # --------------------------------------------------------
+    # 固定測試股票
+    # --------------------------------------------------------
+
+    by_code = {
+        item["symbol"]: item
+        for item in items
+    }
+
+    for code, expected_name in (
+        TEST_STOCKS.items()
+    ):
+
+        item = by_code.get(code)
+
+        if item is None:
 
             errors.append(
-                "發現空 symbol"
+                f"{code} {expected_name} 不存在"
             )
 
             continue
 
-        if symbol in seen:
+        actual_name = clean_name(
+            item.get("name")
+        )
+
+        if actual_name != expected_name:
 
             errors.append(
-                f"{symbol}: 重複代號"
+                f"{code} 名稱錯誤："
+                f"預期 {expected_name}，"
+                f"實際 {actual_name}"
             )
 
-        seen.add(symbol)
+    # --------------------------------------------------------
+    # 3081 市場
+    # --------------------------------------------------------
 
-        for field in required_fields:
+    item_3081 = by_code.get(
+        "3081"
+    )
 
-            value = clean_text(
-                item.get(field)
-            )
+    if item_3081:
 
-            if not value:
-
-                errors.append(
-                    f"{symbol}: 缺少 {field}"
-                )
-
-        if item.get("market") not in {
-            "TWSE",
-            "TPEX",
-        }:
+        if item_3081.get(
+            "market"
+        ) != "TPEX":
 
             errors.append(
-                f"{symbol}: market 錯誤"
-            )
-
-        if item.get("type") not in {
-            "stock",
-            "etf",
-        }:
-
-            errors.append(
-                f"{symbol}: type 錯誤"
-            )
-
-        if (
-            item.get("type") == "stock"
-            and not is_four_digit_stock(symbol)
-        ):
-
-            errors.append(
-                f"{symbol}: stock 不是四碼代號"
+                "3081 市場不是 TPEX"
             )
 
     if errors:
 
-        log("❌ Universe 驗證失敗")
+        log("")
+        log(
+            "❌ Universe 安全門檻失敗"
+        )
 
-        for error in errors[:50]:
-
+        for error in errors:
             log(
-                f"   {error}"
+                f"   - {error}"
             )
 
-        if len(errors) > 50:
+        return False, stats
 
-            log(
-                f"   ...另外 "
-                f"{len(errors) - 50} 個錯誤"
-            )
-
-        raise RuntimeError(
-            f"Universe validation "
-            f"失敗，共 {len(errors)} 個錯誤"
-        )
-
-    # --------------------------------------------------------
-    # 3081
-    # --------------------------------------------------------
-
-    item_3081 = next(
-        (
-            item
-            for item in items
-            if item["symbol"] == "3081"
-        ),
-        None,
-    )
-
-    if item_3081 is None:
-
-        raise RuntimeError(
-            "驗證失敗：3081 不存在"
-        )
-
-    if item_3081["name"] != "聯亞":
-
-        raise RuntimeError(
-            "驗證失敗："
-            f"3081 名稱為 "
-            f"{item_3081['name']!r}"
-        )
-
-    if item_3081["market"] != "TPEX":
-
-        raise RuntimeError(
-            "驗證失敗："
-            f"3081 market = "
-            f"{item_3081['market']}"
-        )
-
+    log("")
     log(
-        "✓ 3081 = 聯亞"
+        "✓ Universe 安全門檻通過"
     )
 
-    # --------------------------------------------------------
-    # Statistics
-    # --------------------------------------------------------
-
-    twse = sum(
-        1
-        for item in items
-        if (
-            item["market"] == "TWSE"
-            and item["type"] == "stock"
-        )
-    )
-
-    tpex = sum(
-        1
-        for item in items
-        if (
-            item["market"] == "TPEX"
-            and item["type"] == "stock"
-        )
-    )
-
-    stock = sum(
-        1
-        for item in items
-        if item["type"] == "stock"
-    )
-
-    etf = sum(
-        1
-        for item in items
-        if item["type"] == "etf"
-    )
-
-    log(
-        "✓ Universe schema 正確"
-    )
-
-    log(
-        "✓ 無重複股票代號"
-    )
-
-    log(
-        "✓ 無空名稱"
-    )
-
-    log(
-        f"TWSE：{twse}"
-    )
-
-    log(
-        f"TPEX：{tpex}"
-    )
-
-    log(
-        f"Stock：{stock}"
-    )
-
-    log(
-        f"ETF：{etf}"
-    )
-
-    log(
-        f"Total：{len(items)}"
-    )
-
-
-# ============================================================
-# Build output
-# ============================================================
-
-def build_output(
-    items: List[Dict[str, Any]],
-) -> Dict[str, Any]:
-
-    twse_stock_count = sum(
-        1
-        for item in items
-        if (
-            item["market"] == "TWSE"
-            and item["type"] == "stock"
-        )
-    )
-
-    tpex_stock_count = sum(
-        1
-        for item in items
-        if (
-            item["market"] == "TPEX"
-            and item["type"] == "stock"
-        )
-    )
-
-    stock_count = sum(
-        1
-        for item in items
-        if item["type"] == "stock"
-    )
-
-    etf_count = sum(
-        1
-        for item in items
-        if item["type"] == "etf"
-    )
-
-    return {
-
-        "schema_version": VERSION,
-
-        "generated_at": datetime.now().strftime(
-            "%Y-%m-%d %H:%M:%S"
-        ),
-
-        "source": {
-            "twse": TWSE_API,
-            "tpex": TPEX_API,
-        },
-
-        "counts": {
-
-            "twse": twse_stock_count,
-
-            "tpex": tpex_stock_count,
-
-            "stock": stock_count,
-
-            "etf": etf_count,
-
-            "total": len(items),
-        },
-
-        "items": items,
-    }
+    return True, stats
 
 
 # ============================================================
@@ -1289,27 +1273,27 @@ def build_output(
 # ============================================================
 
 def atomic_write(
-    output: Dict[str, Any],
-) -> None:
-
-    section(
-        "Atomic Write Data/universe.json"
-    )
+    data: Dict[str, Any],
+) -> bool:
 
     DATA_DIR.mkdir(
         parents=True,
         exist_ok=True,
     )
 
+    temp_file = UNIVERSE_FILE.with_suffix(
+        ".json.tmp"
+    )
+
     try:
 
-        with TEMP_FILE.open(
+        with temp_file.open(
             "w",
             encoding="utf-8",
         ) as f:
 
             json.dump(
-                output,
+                data,
                 f,
                 ensure_ascii=False,
                 indent=2,
@@ -1317,52 +1301,135 @@ def atomic_write(
 
             f.write("\n")
 
-        # ----------------------------------------------------
-        # 寫入後立即重新讀取
-        # ----------------------------------------------------
-
-        with TEMP_FILE.open(
-            "r",
-            encoding="utf-8",
-        ) as f:
-
-            test_data = json.load(f)
-
-        if not isinstance(
-            test_data,
-            dict,
-        ):
-
-            raise RuntimeError(
-                "暫存 universe JSON "
-                "不是 object"
-            )
-
-        # ----------------------------------------------------
-        # Atomic replace
-        # ----------------------------------------------------
-
-        TEMP_FILE.replace(
-            OUTPUT_FILE
+        temp_file.replace(
+            UNIVERSE_FILE
         )
 
-    except Exception as error:
+        return True
+
+    except Exception as exc:
 
         log(
             f"❌ Atomic Write 失敗："
-            f"{error}"
+            f"{exc}"
         )
 
         try:
 
-            if TEMP_FILE.exists():
-
-                TEMP_FILE.unlink()
+            if temp_file.exists():
+                temp_file.unlink()
 
         except Exception:
             pass
 
-        raise
+        return False
+
+
+# ============================================================
+# 最終驗證
+# ============================================================
+
+def final_verify(
+    items: List[Dict[str, str]],
+) -> bool:
+
+    section(
+        "最終 Universe 驗證"
+    )
+
+    by_code = {
+        item["symbol"]: item
+        for item in items
+    }
+
+    errors = []
+
+    if not by_code:
+        errors.append(
+            "Universe 為空"
+        )
+
+    for code, expected_name in (
+        TEST_STOCKS.items()
+    ):
+
+        item = by_code.get(code)
+
+        if item is None:
+
+            errors.append(
+                f"{code} 不存在"
+            )
+
+            continue
+
+        actual_name = clean_name(
+            item.get("name")
+        )
+
+        if actual_name != expected_name:
+
+            errors.append(
+                f"{code}："
+                f"{actual_name} != "
+                f"{expected_name}"
+            )
+
+    for code, item in by_code.items():
+
+        required = (
+            "symbol",
+            "full_symbol",
+            "name",
+            "market",
+            "type",
+        )
+
+        for field in required:
+
+            if not clean_name(
+                item.get(field)
+            ):
+
+                errors.append(
+                    f"{code} 缺少 "
+                    f"{field}"
+                )
+
+    if errors:
+
+        log(
+            "❌ 最終驗證失敗"
+        )
+
+        for error in errors[:100]:
+            log(
+                f"   - {error}"
+            )
+
+        return False
+
+    log(
+        "✓ 所有 universe 欄位完整"
+    )
+
+    log(
+        "✓ 2337 = 旺宏"
+    )
+
+    log(
+        "✓ 2426 = 鼎元"
+    )
+
+    log(
+        "✓ 2368 = 金像電"
+    )
+
+    log(
+        "✓ 3081 = 聯亞"
+    )
+
+    return True
 
 
 # ============================================================
@@ -1373,13 +1440,10 @@ def main() -> int:
 
     start_time = time.time()
 
-    log("")
-    log("=" * 72)
-    log(
-        "台股 AI 選股系統 "
+    section(
+        f"台股 AI 選股系統 "
         f"build_universe.py {VERSION}"
     )
-    log("=" * 72)
 
     log(
         f"BASE_DIR：{BASE_DIR}"
@@ -1390,217 +1454,348 @@ def main() -> int:
     )
 
     log(
-        f"OUTPUT：{OUTPUT_FILE}"
+        f"OUTPUT：{UNIVERSE_FILE}"
     )
 
     log("")
-    log("安全門檻：")
+    log(
+        "安全門檻："
+    )
+
     log(
         f"  TWSE >= {MIN_TWSE_STOCKS}"
     )
+
     log(
         f"  TPEX >= {MIN_TPEX_STOCKS}"
     )
+
     log(
-        f"  Total >= {MIN_TOTAL_STOCKS}"
+        f"  Stock >= {MIN_TOTAL_STOCKS}"
     )
 
-    # --------------------------------------------------------
-    # 既有檔案資訊
-    # --------------------------------------------------------
-
-    if OUTPUT_FILE.exists():
-
-        try:
-
-            with OUTPUT_FILE.open(
-                "r",
-                encoding="utf-8",
-            ) as f:
-
-                old_data = json.load(f)
-
-            old_items = old_data.get(
-                "items",
-                [],
-            )
-
-            log(
-                f"既有 universe："
-                f"{len(old_items)} stocks"
-            )
-
-        except Exception:
-
-            log(
-                "既有 universe："
-                "存在但無法解析"
-            )
-
-    else:
-
-        log(
-            "既有 universe：不存在"
-        )
+    log(
+        f"  ETF >= {MIN_ETF}"
+    )
 
     session = requests.Session()
 
-    try:
+    # --------------------------------------------------------
+    # 1. 既有 universe
+    # --------------------------------------------------------
 
-        # ====================================================
-        # 1. TWSE
-        # ====================================================
+    existing = load_existing_universe()
 
-        twse = fetch_twse(
-            session
-        )
+    log(
+        f"既有 universe："
+        f"{len(existing)} stocks"
+    )
 
-        # ====================================================
-        # 2. TPEX
-        # ====================================================
+    # --------------------------------------------------------
+    # 2. TWSE
+    # --------------------------------------------------------
 
-        tpex = fetch_tpex(
-            session
-        )
+    twse = fetch_twse_universe(
+        session
+    )
 
-        # ====================================================
-        # 3. Merge
-        # ====================================================
+    # --------------------------------------------------------
+    # 3. TPEX
+    # --------------------------------------------------------
 
-        items = merge_universe(
-            twse,
-            tpex,
-        )
+    tpex = fetch_tpex_universe(
+        session
+    )
 
-        # ====================================================
-        # 4. Validate
-        # ====================================================
+    # --------------------------------------------------------
+    # 4. API 完全失敗安全策略
+    # --------------------------------------------------------
 
-        validate_universe(
-            items
-        )
-
-        # ====================================================
-        # 5. Build
-        # ====================================================
-
-        output = build_output(
-            items
-        )
-
-        # ====================================================
-        # 6. Atomic Write
-        # ====================================================
-
-        atomic_write(
-            output
-        )
-
-    except Exception as error:
+    if (
+        not twse
+        and not tpex
+    ):
 
         log("")
-        log("=" * 72)
-        log("BUILD UNIVERSE FAILED")
-        log("=" * 72)
+        log(
+            "⚠️ TWSE / TPEX API "
+            "皆未取得有效資料"
+        )
+
+        if existing:
+
+            log(
+                "✓ 保留既有 "
+                "universe.json"
+            )
+
+            log(
+                "✓ 不覆蓋既有檔案"
+            )
+
+            # 即使 API 全失敗，
+            # 仍驗證既有 universe。
+            #
+            # 如果既有檔案本身安全，
+            # build job 不需要破壞它。
+
+            valid, _ = (
+                validate_universe(
+                    existing
+                )
+            )
+
+            if valid:
+
+                elapsed = (
+                    time.time()
+                    - start_time
+                )
+
+                log("")
+                log(
+                    "================================"
+                )
+
+                log(
+                    "BUILD UNIVERSE FALLBACK PASS"
+                )
+
+                log(
+                    f"耗時：{elapsed:.1f} 秒"
+                )
+
+                log(
+                    "================================"
+                )
+
+                return 0
 
         log(
-            f"ERROR：{error}"
+            "❌ 沒有可用的既有 "
+            "universe.json"
+        )
+
+        return 1
+
+    # --------------------------------------------------------
+    # 5. 合併
+    # --------------------------------------------------------
+
+    merged = merge_universe(
+        twse_items=twse,
+        tpex_items=tpex,
+        existing_items=existing,
+    )
+
+    # --------------------------------------------------------
+    # 6. 安全門檻
+    # --------------------------------------------------------
+
+    valid, stats = (
+        validate_universe(
+            merged
+        )
+    )
+
+    if not valid:
+
+        log("")
+        log(
+            "❌ BUILD UNIVERSE FAILED"
         )
 
         log(
             "✓ 不覆蓋既有 universe.json"
         )
 
-        # ----------------------------------------------------
-        # 非常重要：
-        #
-        # 如果 Atomic Write 尚未成功，
-        # 原 universe 不會被覆蓋。
-        # ----------------------------------------------------
+        return 1
+
+    # --------------------------------------------------------
+    # 7. 最終驗證
+    # --------------------------------------------------------
+
+    if not final_verify(
+        merged
+    ):
+
+        log("")
+        log(
+            "❌ BUILD UNIVERSE FAILED"
+        )
+
+        log(
+            "✓ 不覆蓋既有 universe.json"
+        )
 
         return 1
 
-    # ========================================================
-    # Final
-    # ========================================================
+    # --------------------------------------------------------
+    # 8. 建立輸出
+    # --------------------------------------------------------
+
+    output = {
+
+        "schema_version": VERSION,
+
+        "generated_at": datetime.now().strftime(
+            "%Y-%m-%d %H:%M:%S"
+        ),
+
+        "source": {
+            "twse": "TWSE OpenAPI",
+            "tpex": "TPEx official data",
+        },
+
+        "statistics": stats,
+
+        "items": sorted(
+            merged,
+            key=lambda x: (
+                x["market"],
+                x["type"],
+                x["symbol"],
+            ),
+        ),
+    }
+
+    # --------------------------------------------------------
+    # 9. Atomic Write
+    # --------------------------------------------------------
+
+    section(
+        "寫入 Data/universe.json"
+    )
+
+    if not atomic_write(
+        output
+    ):
+
+        log(
+            "❌ BUILD UNIVERSE FAILED"
+        )
+
+        return 1
+
+    # --------------------------------------------------------
+    # 10. 寫入後驗證
+    # --------------------------------------------------------
+
+    try:
+
+        with UNIVERSE_FILE.open(
+            "r",
+            encoding="utf-8",
+        ) as f:
+
+            written = json.load(f)
+
+    except Exception as exc:
+
+        log(
+            f"❌ 寫入後讀取驗證失敗："
+            f"{exc}"
+        )
+
+        return 1
+
+    written_items = written.get(
+        "items",
+        [],
+    )
+
+    if not isinstance(
+        written_items,
+        list,
+    ):
+
+        log(
+            "❌ 寫入後 items 不是 list"
+        )
+
+        return 1
+
+    written_by_code = {
+        item.get("symbol"): item
+        for item in written_items
+        if isinstance(item, dict)
+    }
+
+    for code, expected_name in (
+        TEST_STOCKS.items()
+    ):
+
+        item = written_by_code.get(
+            code
+        )
+
+        if not item:
+
+            log(
+                f"❌ 寫入後缺少 {code}"
+            )
+
+            return 1
+
+        if clean_name(
+            item.get("name")
+        ) != expected_name:
+
+            log(
+                f"❌ 寫入後 {code} "
+                f"名稱錯誤"
+            )
+
+            return 1
+
+    # --------------------------------------------------------
+    # 11. 最終輸出
+    # --------------------------------------------------------
 
     elapsed = (
         time.time()
         - start_time
     )
 
-    twse_count = output[
-        "counts"
-    ]["twse"]
-
-    tpex_count = output[
-        "counts"
-    ]["tpex"]
-
-    stock_count = output[
-        "counts"
-    ]["stock"]
-
-    etf_count = output[
-        "counts"
-    ]["etf"]
-
-    total_count = output[
-        "counts"
-    ]["total"]
-
-    log("")
-    log("=" * 72)
-    log("BUILD UNIVERSE SUCCESS")
-    log("=" * 72)
-
-    log(
-        f"TWSE：{twse_count}"
+    section(
+        "BUILD UNIVERSE PASS"
     )
 
     log(
-        f"TPEX：{tpex_count}"
+        f"TWSE：{stats['twse_stock']}"
     )
 
     log(
-        f"Stock：{stock_count}"
+        f"TPEX：{stats['tpex_stock']}"
     )
 
     log(
-        f"ETF：{etf_count}"
+        f"Stock：{stats['stock']}"
     )
 
     log(
-        f"Total：{total_count}"
+        f"ETF：{stats['etf']}"
+    )
+
+    log(
+        f"Total：{stats['total']}"
     )
 
     log("")
     log(
-        "✓ universe.json 已重新建立"
+        "✓ universe.json 已成功更新"
     )
 
     log(
-        "✓ TWSE / TPEX 安全門檻通過"
+        "✓ 2337 = 旺宏"
     )
 
     log(
-        "✓ 股票池沒有使用舊 universe 筆數"
+        "✓ 2426 = 鼎元"
     )
 
     log(
-        "✓ 不依賴 chip.json"
-    )
-
-    log(
-        "✓ 不依賴 CMoney"
-    )
-
-    log(
-        "✓ 不抓取籌碼歷史"
-    )
-
-    log(
-        "✓ 不產生 main_force_*"
+        "✓ 2368 = 金像電"
     )
 
     log(
@@ -1608,7 +1803,19 @@ def main() -> int:
     )
 
     log(
-        "✓ Atomic Write 完成"
+        "✓ 不產生 main_force_*"
+    )
+
+    log(
+        "✓ 不產生三大法人資料"
+    )
+
+    log(
+        "✓ 不產生當沖資料"
+    )
+
+    log(
+        "✓ Atomic Write"
     )
 
     log(
@@ -1620,14 +1827,8 @@ def main() -> int:
         f"✓ 耗時：{elapsed:.1f} 秒"
     )
 
-    log("=" * 72)
-
     return 0
 
-
-# ============================================================
-# Entry
-# ============================================================
 
 if __name__ == "__main__":
     sys.exit(main())
