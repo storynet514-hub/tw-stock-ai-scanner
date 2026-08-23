@@ -1,3 +1,4 @@
+```python
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
@@ -6,7 +7,7 @@
 build_universe.py V10.2
 
 ============================================================
-V10.2 正式版
+V10.2 正式修正版
 ============================================================
 
 目的
@@ -22,63 +23,77 @@ V10.2 正式版
 
 來源原則
 ------------------------------------------------------------
-1. TWSE 官方資料優先
-2. TPEX 官方資料優先
-3. 不再依賴 TPEX 公司頁面 HTML Regex
-4. TPEX 主要改抓官方上櫃股票行情資料表
-5. 第三方 Yahoo 僅作「名稱」最後 fallback
-6. 第三方不得提供籌碼 / 價格 / 成交量
-7. 3081 必須為「聯亞」
-8. 3081 必須為 TPEX
-9. 禁止空白 name
-10. 禁止 None name
-11. 禁止用 symbol 當 name
-12. 禁止以單一固定股票冒充完整 TPEX Universe
-13. TPEX 官方來源失敗時直接 FAIL
-14. 不得用不完整資料覆蓋既有 universe.json
-15. Atomic Write
-16. 寫入後重新驗證
-17. fetch_chip.py 不負責修正 universe
+1. TWSE 官方 ISIN
+2. TPEX 官方 OpenAPI
+3. TPEX 官方公司頁僅作固定身份補充
+4. 第三方 Yahoo 僅作名稱 fallback
+5. 第三方不得提供籌碼 / 價格 / 成交量
+6. 3081 必須為「聯亞」
+7. 3081 必須為 TPEX
+8. 禁止空白 name
+9. 禁止 None name
+10. 禁止用 symbol 當 name
+11. 禁止以單一固定股票冒充完整 TPEX Universe
+12. TPEX 官方來源失敗時直接 FAIL
+13. 不得用不完整資料覆蓋既有 universe.json
+14. Atomic Write
+15. 寫入後重新驗證
+16. fetch_chip.py 不負責修正 universe
 
-重要修正
+============================================================
+V10.2 修正重點
+============================================================
+
+舊版問題：
 ------------------------------------------------------------
-V10.1 問題：
+原本使用：
 
-TPEX 公司頁面 HTML 結構不是：
+https://www.tpex.org.tw/web/stock/aftertrading/
+daily_close_quotes/stk_quote_result.php
 
-<td>3081</td><td>聯亞</td>
+GitHub Actions 實際發生：
 
-因此 Regex 只抓到固定 fallback：
-3081 = 聯亞
+Response ended prematurely
 
-造成：
+導致：
+TWSE = 1241
+TPEX = 0
+3081 fallback = 1
 
-TWSE 1241
-+
-3081
-=
-1242
+最終 Universe = 1242
 
-這不是完整 Universe。
+這不是完整市場。
 
-V10.2：
-改用 TPEX 官方「上櫃股票行情」資料表。
-該官方資料表直接包含：
+============================================================
+本版處理
+============================================================
 
-代號
-名稱
-收盤
-...
+TPEX 主來源改為官方 OpenAPI：
 
-因此直接由官方表格取得代號與名稱。
+https://www.tpex.org.tw/openapi/v1/
+tpex_mainboard_daily_close_quotes
+
+官方 JSON 欄位：
+
+SecuritiesCompanyCode
+CompanyName
+
+直接建立：
+
+symbol
+name
+market = TPEX
+type
+source = TPEX_OFFICIAL_OPENAPI
+
+3081 fallback 仍保留，
+但永遠不計入 real_tpex_count。
 
 ============================================================
 """
 
 from __future__ import annotations
 
-import csv
-import io
 import json
 import re
 import sys
@@ -107,9 +122,9 @@ HEADERS = {
         "Chrome/151.0.0.0 Safari/537.36"
     ),
     "Accept": (
+        "application/json,"
         "text/html,application/xhtml+xml,"
         "application/xml;q=0.9,"
-        "application/json;q=0.9,"
         "*/*;q=0.8"
     ),
     "Accept-Language": (
@@ -144,10 +159,7 @@ TEST_STOCKS = {
 
 
 # ============================================================
-# 最後安全閥
-#
-# 僅限固定驗證股票。
-# 不可用來假裝建立完整市場。
+# 固定身份安全閥
 # ============================================================
 
 MANDATORY_NAME_FALLBACK = {
@@ -166,16 +178,11 @@ MANDATORY_MARKET_FALLBACK = {
 
 
 # ============================================================
-# Universe 合理數量門檻
-#
-# 注意：
-# 這些不是要求「剛好多少」。
-# 只是防止官方 API 掛掉後產生極小 Universe。
+# Universe 數量門檻
 # ============================================================
 
 MIN_TWSE_COUNT = 1000
 MIN_TPEX_COUNT = 500
-
 MIN_TOTAL_COUNT = 1500
 
 
@@ -249,7 +256,7 @@ def is_valid_code(code: str) -> bool:
     if code.isdigit() and len(code) == 4:
         return True
 
-    # ETF / 債券 ETF / 特殊證券
+    # ETF / 部分特殊證券
     if (
         code.isdigit()
         and 5 <= len(code) <= 6
@@ -362,36 +369,10 @@ def safe_request(
 
 
 # ============================================================
-# Decode
-# ============================================================
-
-def decode_text(content: bytes) -> str:
-
-    encodings = [
-        "utf-8-sig",
-        "utf-8",
-        "big5",
-        "cp950",
-    ]
-
-    for encoding in encodings:
-
-        try:
-            return content.decode(
-                encoding
-            )
-
-        except UnicodeDecodeError:
-            continue
-
-    return content.decode(
-        "utf-8",
-        errors="replace",
-    )
-
-
-# ============================================================
 # HTML Table Parser
+#
+# 保留給 TWSE ISIN 使用。
+# TPEX 行情不再使用 HTML Parser。
 # ============================================================
 
 class SimpleHTMLTableParser(
@@ -428,7 +409,6 @@ class SimpleHTMLTableParser(
         if tag == "table":
 
             self.in_table = True
-
             self.current_table = []
 
         elif (
@@ -509,288 +489,6 @@ class SimpleHTMLTableParser(
 
 
 # ============================================================
-# 找股票表格
-# ============================================================
-
-def find_security_table(
-    html: str,
-) -> Optional[List[List[str]]]:
-
-    parser = SimpleHTMLTableParser()
-
-    try:
-
-        parser.feed(html)
-
-    except Exception as exc:
-
-        log(
-            f"⚠️ HTML table parser error: "
-            f"{exc}"
-        )
-
-        return None
-
-    best_table = None
-    best_score = -1
-
-    for table in parser.tables:
-
-        if not table:
-            continue
-
-        score = 0
-
-        sample = " ".join(
-            " ".join(row)
-            for row in table[:10]
-        )
-
-        # 中文欄位
-        for keyword in (
-            "代號",
-            "名稱",
-            "收盤",
-            "成交股數",
-            "股票",
-        ):
-
-            if keyword in sample:
-                score += 10
-
-        # 股票代號數量
-        code_count = 0
-
-        for row in table:
-
-            for cell in row:
-
-                value = clean_code(cell)
-
-                if is_valid_code(value):
-
-                    code_count += 1
-
-                    break
-
-        score += min(
-            code_count,
-            500,
-        )
-
-        if score > best_score:
-
-            best_score = score
-            best_table = table
-
-    return best_table
-
-
-# ============================================================
-# 從表格推導欄位
-# ============================================================
-
-def detect_columns(
-    table: List[List[str]],
-) -> Dict[str, int]:
-
-    columns: Dict[str, int] = {}
-
-    if not table:
-        return columns
-
-    header = table[0]
-
-    for index, value in enumerate(
-        header
-    ):
-
-        text = clean_name(
-            value
-        )
-
-        if not text:
-            continue
-
-        if (
-            "代號" in text
-            or "股票代號" in text
-            or text.lower() == "code"
-        ):
-
-            columns["code"] = index
-
-        elif (
-            "名稱" in text
-            or "股票名稱" in text
-            or text.lower()
-            in (
-                "name",
-                "company",
-            )
-        ):
-
-            columns["name"] = index
-
-    return columns
-
-
-# ============================================================
-# 解析官方表格
-# ============================================================
-
-def parse_security_table(
-    table: List[List[str]],
-    market: str,
-    source: str,
-) -> Dict[str, Dict[str, Any]]:
-
-    result: Dict[
-        str,
-        Dict[str, Any]
-    ] = {}
-
-    if not table:
-        return result
-
-    columns = detect_columns(
-        table
-    )
-
-    code_index = columns.get(
-        "code"
-    )
-
-    name_index = columns.get(
-        "name"
-    )
-
-    # --------------------------------------------------------
-    # 若表頭沒有成功辨識，
-    # 使用第一個合法股票代號欄位推導。
-    # --------------------------------------------------------
-
-    if code_index is None:
-
-        for row in table[:5]:
-
-            for index, cell in enumerate(
-                row
-            ):
-
-                if is_valid_code(
-                    clean_code(cell)
-                ):
-
-                    code_index = index
-                    break
-
-            if code_index is not None:
-                break
-
-    # --------------------------------------------------------
-    # 名稱欄位 fallback
-    # 通常名稱就在代號右側。
-    # --------------------------------------------------------
-
-    if (
-        name_index is None
-        and code_index is not None
-    ):
-
-        name_index = code_index + 1
-
-    if code_index is None:
-
-        return result
-
-    for row in table:
-
-        if len(row) <= code_index:
-            continue
-
-        code = clean_code(
-            row[code_index]
-        )
-
-        if not is_valid_code(code):
-            continue
-
-        name = ""
-
-        if (
-            name_index is not None
-            and name_index < len(row)
-        ):
-
-            name = clean_name(
-                row[name_index]
-            )
-
-        # ----------------------------------------------------
-        # 如果名稱欄位不正確，
-        # 往右找第一個合理中文名稱。
-        # ----------------------------------------------------
-
-        if not name:
-
-            for cell in row[
-                code_index + 1:
-            ]:
-
-                candidate = clean_name(
-                    cell
-                )
-
-                if not candidate:
-                    continue
-
-                if is_valid_code(
-                    candidate
-                ):
-                    continue
-
-                if re.fullmatch(
-                    r"[\d,.\-+%]+",
-                    candidate,
-                ):
-                    continue
-
-                name = candidate
-                break
-
-        if not name:
-            continue
-
-        # 排除表頭
-        if name in (
-            "名稱",
-            "股票名稱",
-            "公司名稱",
-            "Company Name",
-            "Name",
-        ):
-            continue
-
-        result[code] = {
-
-            "symbol": code,
-
-            "name": name,
-
-            "market": market,
-
-            "type": infer_type(
-                code
-            ),
-
-            "source": source,
-        }
-
-    return result
-
-
-# ============================================================
 # TWSE 官方 ISIN
 # ============================================================
 
@@ -845,12 +543,6 @@ def fetch_twse_official_isin(
         Dict[str, Any]
     ] = {}
 
-    # --------------------------------------------------------
-    # TWSE ISIN 頁面有多個 table。
-    # 不硬指定 table index。
-    # 逐 table 搜尋股票代號。
-    # --------------------------------------------------------
-
     for table in parser.tables:
 
         if not table:
@@ -862,7 +554,6 @@ def fetch_twse_official_isin(
                 continue
 
             code = ""
-
             code_index = None
 
             for index, cell in enumerate(
@@ -893,7 +584,6 @@ def fetch_twse_official_isin(
 
             name = ""
 
-            # 代號後面找名稱
             if code_index is not None:
 
                 for cell in row[
@@ -953,14 +643,16 @@ def fetch_twse_official_isin(
 
 
 # ============================================================
-# TPEX 官方上櫃股票行情
+# TPEX 官方 OpenAPI
 #
-# 官方頁面：
-# /web/stock/aftertrading/
-# daily_close_quotes/stk_quote_result.php
+# V10.2 修正版核心
 #
-# 此頁面直接列：
-# 代號 / 名稱 / 收盤 / ...
+# 不再使用：
+# stk_quote_result.php
+#
+# 改用：
+# https://www.tpex.org.tw/openapi/v1/
+# tpex_mainboard_daily_close_quotes
 # ============================================================
 
 def fetch_tpex_official_quotes(
@@ -968,79 +660,224 @@ def fetch_tpex_official_quotes(
 ) -> Dict[str, Dict[str, Any]]:
 
     section(
-        "2. TPEX 官方上櫃股票行情"
+        "2. TPEX 官方 OpenAPI 上櫃股票行情"
     )
 
     url = (
         "https://www.tpex.org.tw/"
-        "web/stock/aftertrading/"
-        "daily_close_quotes/"
-        "stk_quote_result.php"
+        "openapi/v1/"
+        "tpex_mainboard_daily_close_quotes"
+    )
+
+    log(
+        "官方來源："
+        "TPEX OpenAPI"
+    )
+
+    log(
+        f"Endpoint：{url}"
     )
 
     response = safe_request(
         session,
         url,
-        params={
-            "l": "zh-tw",
-            "o": "htm",
-        },
+        timeout=REQUEST_TIMEOUT,
     )
 
     if response is None:
 
         log(
-            "❌ TPEX 官方上櫃行情取得失敗"
+            "❌ TPEX 官方 OpenAPI 取得失敗"
         )
 
         return {}
 
-    table = find_security_table(
-        response.text
-    )
+    # --------------------------------------------------------
+    # OpenAPI 必須是 JSON。
+    # --------------------------------------------------------
 
-    if not table:
+    try:
+
+        payload = response.json()
+
+    except ValueError as exc:
 
         log(
-            "❌ TPEX 官方頁面沒有找到有效表格"
+            f"❌ TPEX OpenAPI JSON 解析失敗："
+            f"{exc}"
+        )
+
+        preview = (
+            response.text[:300]
+            .replace("\n", " ")
+            .replace("\r", " ")
+        )
+
+        log(
+            f"⚠️ Response preview："
+            f"{preview}"
         )
 
         return {}
 
-    result = parse_security_table(
-        table,
-        market="TPEX",
-        source="TPEX_OFFICIAL_QUOTES",
-    )
+    except Exception as exc:
+
+        log(
+            f"❌ TPEX OpenAPI 回應解析錯誤："
+            f"{exc}"
+        )
+
+        return {}
+
+    if not isinstance(
+        payload,
+        list,
+    ):
+
+        log(
+            "❌ TPEX OpenAPI 回傳格式不是 list"
+        )
+
+        log(
+            f"實際型別："
+            f"{type(payload).__name__}"
+        )
+
+        return {}
 
     log(
-        f"✓ TPEX 官方解析："
+        f"✓ TPEX OpenAPI 原始資料："
+        f"{len(payload)} 筆"
+    )
+
+    result: Dict[
+        str,
+        Dict[str, Any]
+    ] = {}
+
+    invalid_code_count = 0
+    missing_name_count = 0
+
+    for row in payload:
+
+        if not isinstance(
+            row,
+            dict,
+        ):
+            continue
+
+        # ----------------------------------------------------
+        # 官方欄位
+        # ----------------------------------------------------
+
+        code = clean_code(
+            row.get(
+                "SecuritiesCompanyCode"
+            )
+        )
+
+        name = clean_name(
+            row.get(
+                "CompanyName"
+            )
+        )
+
+        # ----------------------------------------------------
+        # 某些情況如果官方欄位名稱未來有微調，
+        # 只允許同一份官方 JSON 的明確別名。
+        # 不從第三方補。
+        # ----------------------------------------------------
+
+        if not code:
+
+            code = clean_code(
+                row.get("Code")
+            )
+
+        if not name:
+
+            name = clean_name(
+                row.get("Name")
+            )
+
+        if not is_valid_code(code):
+
+            invalid_code_count += 1
+            continue
+
+        if not name:
+
+            missing_name_count += 1
+            continue
+
+        # 防止名稱欄位異常
+        if name == code:
+
+            missing_name_count += 1
+            continue
+
+        result[code] = {
+
+            "symbol": code,
+
+            "name": name,
+
+            "market": "TPEX",
+
+            "type": infer_type(
+                code
+            ),
+
+            "source": (
+                "TPEX_OFFICIAL_OPENAPI"
+            ),
+        }
+
+    log(
+        f"✓ TPEX 官方 OpenAPI 有效資料："
         f"{len(result)} 檔"
     )
+
+    if invalid_code_count:
+
+        log(
+            f"⚠️ 無效代號略過："
+            f"{invalid_code_count} 筆"
+        )
+
+    if missing_name_count:
+
+        log(
+            f"⚠️ 缺少名稱略過："
+            f"{missing_name_count} 筆"
+        )
+
+    # --------------------------------------------------------
+    # 3081 必須由官方資料直接驗證
+    # --------------------------------------------------------
 
     if "3081" in result:
 
         log(
-            "✓ TPEX 官方直接取得："
-            "3081 = "
-            f"{result['3081']['name']}"
+            "✓ TPEX 官方 OpenAPI 直接取得："
+            f"3081 = {result['3081']['name']}"
         )
 
     else:
 
         log(
-            "⚠️ TPEX 官方表格仍未解析到 3081"
+            "⚠️ TPEX 官方 OpenAPI 未取得 3081"
         )
 
     return result
 
 
 # ============================================================
-# TPEX 另一個官方來源
+# TPEX 官方公司頁
 #
-# 公司資訊頁作為第二官方來源。
-# 不再依賴固定 Regex。
-# 只作補充。
+# 僅作固定身份補充。
+#
+# 不拿來建立完整 TPEX Universe。
 # ============================================================
 
 def fetch_tpex_company_page(
@@ -1074,19 +911,8 @@ def fetch_tpex_company_page(
         Dict[str, Any]
     ] = {}
 
-    # --------------------------------------------------------
-    # 不假設固定 HTML table。
-    #
-    # 以全文尋找：
-    # 3081 聯亞
-    #
-    # 以及其他：
-    # 股票代號 / 公司名稱
-    # --------------------------------------------------------
-
     text = response.text
 
-    # HTML entity / tag 去除
     text_clean = re.sub(
         r"<[^>]+>",
         " ",
@@ -1099,7 +925,12 @@ def fetch_tpex_company_page(
         text_clean,
     )
 
-    # 固定重要股票確認
+    # --------------------------------------------------------
+    # 只確認 3081。
+    #
+    # 不使用此頁面建立全市場 Universe。
+    # --------------------------------------------------------
+
     match = re.search(
         r"3081.{0,100}?聯亞",
         text_clean,
@@ -1118,7 +949,9 @@ def fetch_tpex_company_page(
 
             "type": "Stock",
 
-            "source": "TPEX_OFFICIAL_COMPANY",
+            "source": (
+                "TPEX_OFFICIAL_COMPANY"
+            ),
         }
 
     log(
@@ -1154,14 +987,20 @@ def fetch_tpex_official(
         Dict[str, Any]
     ] = {}
 
-    # 行情資料優先
+    # --------------------------------------------------------
+    # OpenAPI 主來源
+    # --------------------------------------------------------
+
     for code, item in quotes.items():
 
         result[code] = dict(
             item
         )
 
-    # 公司頁補充缺少項目
+    # --------------------------------------------------------
+    # 公司頁只補缺少項目
+    # --------------------------------------------------------
+
     for code, item in companies.items():
 
         if code not in result:
@@ -1172,7 +1011,6 @@ def fetch_tpex_official(
 
         else:
 
-            # 只補名稱
             if not clean_name(
                 result[code].get("name")
             ):
@@ -1182,11 +1020,10 @@ def fetch_tpex_official(
                 )
 
     # --------------------------------------------------------
-    # 3081 固定身份確認
+    # 固定身份安全閥
     #
-    # 這裡可以補 3081，
-    # 但後面「數量驗證」仍然會要求真正 TPEX
-    # 官方來源必須有合理數量。
+    # 只能補 3081 身份。
+    # 後續 real_tpex_count 會排除它。
     # --------------------------------------------------------
 
     if "3081" not in result:
@@ -1208,7 +1045,8 @@ def fetch_tpex_official(
 
         log(
             "⚠️ TPEX 官方解析未取得 3081，"
-            "套用固定身份確認：3081 = 聯亞"
+            "套用固定身份確認："
+            "3081 = 聯亞"
         )
 
     log(
@@ -1317,7 +1155,9 @@ def fetch_yahoo_name_fallback(
                     code
                 ),
 
-                "source": "YAHOO_NAME_FALLBACK",
+                "source": (
+                    "YAHOO_NAME_FALLBACK"
+                ),
             }
 
         except Exception:
@@ -1428,7 +1268,6 @@ def merge_sources(
 
     for code, item in tpex_data.items():
 
-        # TPEX 市場身份優先
         securities[code] = dict(
             item
         )
@@ -1511,7 +1350,6 @@ def force_verify_known_symbols(
                 ]
             )
 
-        # 固定身份
         item["name"] = expected["name"]
         item["market"] = expected["market"]
 
@@ -1550,10 +1388,6 @@ def validate_market_counts(
         f"TOTAL：{total}"
     )
 
-    # --------------------------------------------------------
-    # TWSE
-    # --------------------------------------------------------
-
     if twse_count < MIN_TWSE_COUNT:
 
         log(
@@ -1563,10 +1397,6 @@ def validate_market_counts(
         )
 
         return False
-
-    # --------------------------------------------------------
-    # TPEX
-    # --------------------------------------------------------
 
     if tpex_count < MIN_TPEX_COUNT:
 
@@ -1582,10 +1412,6 @@ def validate_market_counts(
         )
 
         return False
-
-    # --------------------------------------------------------
-    # TOTAL
-    # --------------------------------------------------------
 
     if total < MIN_TOTAL_COUNT:
 
@@ -1617,7 +1443,6 @@ def validate_names(
     )
 
     empty_items = []
-
     invalid_items = []
 
     for code, item in securities.items():
@@ -1749,7 +1574,6 @@ def normalize_all_records(
 
             else:
 
-                # 不猜市場
                 continue
 
         if market == "TPEX":
@@ -2068,7 +1892,6 @@ def verify_written_file(
 
             return False
 
-    # 全部名稱再次檢查
     for code, item in stocks.items():
 
         name = clean_name(
@@ -2123,7 +1946,7 @@ def main() -> int:
     )
 
     log(
-        "2. TPEX 官方上櫃行情"
+        "2. TPEX 官方 OpenAPI"
     )
 
     log(
@@ -2175,7 +1998,9 @@ def main() -> int:
     # ========================================================
     # 3. TPEX HARD FAIL
     #
-    # 這是本次 V10.2 最重要的修正。
+    # 只計真正官方來源。
+    # MANDATORY_IDENTITY_FALLBACK
+    # 永遠不能計入。
     # ========================================================
 
     real_tpex_count = sum(
@@ -2186,7 +2011,10 @@ def main() -> int:
         ) == "TPEX"
         and item.get(
             "source"
-        ) != "MANDATORY_IDENTITY_FALLBACK"
+        ) in (
+            "TPEX_OFFICIAL_OPENAPI",
+            "TPEX_OFFICIAL_COMPANY",
+        )
     )
 
     log(
@@ -2389,7 +2217,7 @@ def main() -> int:
 
             "primary": [
                 "TWSE_OFFICIAL_ISIN",
-                "TPEX_OFFICIAL_QUOTES",
+                "TPEX_OFFICIAL_OPENAPI",
             ],
 
             "secondary": [
@@ -2430,7 +2258,7 @@ def main() -> int:
     }
 
     # ========================================================
-    # 14. 寫入
+    # 14. Atomic Write
     # ========================================================
 
     section(
@@ -2580,3 +2408,4 @@ if __name__ == "__main__":
     sys.exit(
         main()
     )
+```
