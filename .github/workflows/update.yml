@@ -103,7 +103,6 @@ jobs:
 
       - name: Verify universe.json
         run: |
-
           set -e
 
           echo "========================================"
@@ -111,7 +110,6 @@ jobs:
           echo "========================================"
 
           python - <<'PY'
-
           import json
           from pathlib import Path
 
@@ -126,30 +124,194 @@ jobs:
               "r",
               encoding="utf-8-sig"
           ) as f:
-
               data = json.load(f)
 
           if not isinstance(data, dict):
               raise SystemExit(
-                  "❌ universe.json 格式錯誤"
+                  "❌ universe.json 格式錯誤：根節點不是 object"
               )
 
-          items = data.get("items")
+          # --------------------------------------------------
+          # build_universe.py V10.2 的正式格式：
+          #
+          # {
+          #   "schema_version": "...",
+          #   "universe_count": 2143,
+          #   "stocks": {
+          #       "2337": {...},
+          #       "2426": {...}
+          #   }
+          # }
+          #
+          # 舊版 Verify 檢查的是：
+          #     data["items"]
+          #
+          # 這已經與現在的 universe.json 架構不一致。
+          # --------------------------------------------------
 
-          if not isinstance(items, list):
+          stocks = data.get("stocks")
+
+          if not isinstance(stocks, dict):
               raise SystemExit(
-                  "❌ universe.json items 格式錯誤"
+                  "❌ universe.json stocks 格式錯誤："
+                  "應為 object/dict"
               )
 
-          if len(items) == 0:
+          if len(stocks) == 0:
               raise SystemExit(
-                  "❌ universe.json 沒有任何股票"
+                  "❌ universe.json stocks 沒有任何股票"
+              )
+
+          # --------------------------------------------------
+          # 基本數量驗證
+          # --------------------------------------------------
+
+          universe_count = data.get("universe_count")
+
+          if universe_count is not None:
+              if universe_count != len(stocks):
+                  raise SystemExit(
+                      f"❌ universe_count 不一致："
+                      f"header={universe_count}, "
+                      f"實際={len(stocks)}"
+                  )
+
+          print(
+              f"✓ Universe：{len(stocks)} 檔"
+          )
+
+          # --------------------------------------------------
+          # 固定股票驗證
+          # --------------------------------------------------
+
+          expected = {
+              "2337": {
+                  "name": "旺宏",
+                  "market": "TWSE",
+              },
+              "2426": {
+                  "name": "鼎元",
+                  "market": "TWSE",
+              },
+              "2368": {
+                  "name": "金像電",
+                  "market": "TWSE",
+              },
+              "3081": {
+                  "name": "聯亞",
+                  "market": "TPEX",
+              },
+          }
+
+          for code, expected_item in expected.items():
+
+              item = stocks.get(code)
+
+              if not isinstance(item, dict):
+                  raise SystemExit(
+                      f"❌ 找不到股票：{code}"
+                  )
+
+              name = str(
+                  item.get("name", "")
+              ).strip()
+
+              market = str(
+                  item.get("market", "")
+              ).strip().upper()
+
+              if name != expected_item["name"]:
+                  raise SystemExit(
+                      f"❌ {code} 名稱錯誤："
+                      f"實際={name}，"
+                      f"預期={expected_item['name']}"
+                  )
+
+              if market != expected_item["market"]:
+                  raise SystemExit(
+                      f"❌ {code} 市場錯誤："
+                      f"實際={market}，"
+                      f"預期={expected_item['market']}"
+                  )
+
+              print(
+                  f"✓ {code} | "
+                  f"{name} | "
+                  f"{market}"
+              )
+
+          # --------------------------------------------------
+          # 全市場名稱完整性
+          # --------------------------------------------------
+
+          missing_name = []
+
+          for code, item in stocks.items():
+
+              if not isinstance(item, dict):
+                  missing_name.append(code)
+                  continue
+
+              name = str(
+                  item.get("name", "")
+              ).strip()
+
+              if not name:
+                  missing_name.append(code)
+
+          if missing_name:
+
+              print(
+                  "❌ 發現名稱缺失："
+                  f"{len(missing_name)} 檔"
+              )
+
+              for code in missing_name[:50]:
+                  print(f"   {code}")
+
+              raise SystemExit(
+                  "❌ universe.json 存在空白 name"
               )
 
           print(
-              f"✓ Universe：{len(items)} 檔"
+              f"✓ 全部 {len(stocks)} 檔名稱完整"
           )
 
+          # --------------------------------------------------
+          # 股票代號唯一性
+          # --------------------------------------------------
+
+          codes = list(stocks.keys())
+
+          if len(codes) != len(set(codes)):
+              raise SystemExit(
+                  "❌ universe.json 存在重複股票代號"
+              )
+
+          print(
+              f"✓ 股票代號唯一：{len(codes)} 檔"
+          )
+
+          # --------------------------------------------------
+          # schema_version
+          # --------------------------------------------------
+
+          version = data.get(
+              "schema_version",
+              "UNKNOWN"
+          )
+
+          print(
+              f"✓ schema_version：{version}"
+          )
+
+          # --------------------------------------------------
+          # 最終成功
+          # --------------------------------------------------
+
+          print("========================================")
+          print("✓ Verify universe.json PASS")
+          print("========================================")
           PY
 
       # ============================================================
