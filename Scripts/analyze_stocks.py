@@ -2766,7 +2766,7 @@ def evaluate_short_term(
         "volume_rule":
             (
                 "今日成交量 ÷ "
-                "前5個交易日平均成交量 >= 1.5"
+                "前5個交易日平均成交量 > 1.5"
             ),
 
         "volume_ratio":
