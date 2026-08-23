@@ -4,7 +4,7 @@
 """
 台股 AI 選股系統
 Scripts/analyze_stocks.py
-正式版 V3.2
+正式版 V3.3
 
 ============================================================
 分析層責任
@@ -203,7 +203,7 @@ from typing import Any, Dict, List, Optional, Tuple
 # 基本設定
 # ============================================================
 
-VERSION = "V3.2"
+VERSION = "V3.3"
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 DATA_DIR = BASE_DIR / "Data"
@@ -393,26 +393,84 @@ def load_universe() -> Dict[str, Dict[str, Any]]:
             "universe.json 格式錯誤"
         )
 
-    items = data.get(
-        "items",
-        []
-    )
-
-    if not isinstance(
-        items,
-        list
-    ):
-
-        raise RuntimeError(
-            "universe.json items 格式錯誤"
-        )
+    # --------------------------------------------------------
+    # V10.2 正式 Universe 格式：
+    #
+    # {
+    #     "stocks": {
+    #         "2337": { ... },
+    #         "3081": { ... }
+    #     }
+    # }
+    #
+    # 舊版 Universe 格式：
+    #
+    # {
+    #     "items": [
+    #         {"symbol": "2337", ...}
+    #     ]
+    # }
+    #
+    # V3.3 同時支援兩種格式，
+    # 但優先使用 V10.2 的 stocks。
+    # --------------------------------------------------------
 
     stocks: Dict[
         str,
         Dict[str, Any]
     ] = {}
 
-    for item in items:
+    source_records: List[Any] = []
+    source_mode = ""
+
+    v10_stocks = data.get(
+        "stocks"
+    )
+
+    if isinstance(
+        v10_stocks,
+        dict
+    ):
+
+        source_mode = "stocks"
+
+        for key, item in v10_stocks.items():
+
+            if not isinstance(
+                item,
+                dict
+            ):
+                continue
+
+            record = dict(item)
+
+            if not record.get("symbol"):
+                record["symbol"] = key
+
+            source_records.append(record)
+
+    else:
+
+        items = data.get(
+            "items",
+            []
+        )
+
+        if isinstance(
+            items,
+            list
+        ):
+
+            source_mode = "items"
+            source_records = items
+
+    if not source_records:
+
+        raise RuntimeError(
+            "Universe 沒有可讀取的 stocks/items 資料"
+        )
+
+    for item in source_records:
 
         if not isinstance(
             item,
@@ -453,6 +511,23 @@ def load_universe() -> Dict[str, Dict[str, Any]]:
                         ""
                     )
                 ).strip(),
+
+            "type":
+                str(
+                    item.get(
+                        "type",
+                        ""
+                    )
+                ).strip(),
+
+            "full_symbol":
+                str(
+                    item.get(
+                        "full_symbol",
+                        ""
+                    )
+                ).strip(),
+
         }
 
     if not stocks:
@@ -463,6 +538,10 @@ def load_universe() -> Dict[str, Dict[str, Any]]:
 
     log(
         f"Universe：{len(stocks)} 檔"
+    )
+
+    log(
+        f"Universe 格式：{source_mode}"
     )
 
     return stocks
