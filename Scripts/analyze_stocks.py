@@ -4,185 +4,153 @@
 """
 台股 AI 選股系統
 Scripts/analyze_stocks.py
+
 正式版 V3.3
+新增 Entry Timing 回測模組 1.0
 
 ============================================================
 分析層責任
 ============================================================
 
-本程式只負責「分析」。
-
-讀取：
+本程式只負責：
 
     Data/universe.json
-    Data/prices/manifest.json
-    Data/prices/prices_001.json ~ prices_020.json
+    Data/prices/
     Data/chip.json
-
-輸出：
-
+        ↓
+    技術分析
+        ↓
+    籌碼分析
+        ↓
+    DCA 分析
+        ↓
+    強勢股判定
+        ↓
+    Entry Timing 歷史回測
+        ↓
     Data/analysis.json
 
-============================================================
-重要架構邊界
-============================================================
+本程式絕對不：
 
-本程式：
-
-    不抓 CMoney API
-    不執行 fetch_chip.py
-    不執行 fetch_prices.py
-    不修改 chip.json
-    不修改 prices
-    不修改 universe.json
-
-只使用既有資料進行分析。
+    - 抓 API
+    - 修改 prices
+    - 修改 chip.json
+    - 修改 universe.json
+    - 修改其他資料來源
 
 ============================================================
-V3.2 核心修正
+短期選股：五項技術條件
 ============================================================
 
-短期選股核心條件正式固定為「五項」：
+1. MACD 黃金交叉
+2. KD 黃金交叉
+3. RSI > 50
+4. 今日成交量 / 前5個交易日平均成交量 >= 1.5
+5. 股價 > MA20 且 MA20 向上
 
-    1. MACD 黃金交叉
-    2. KD 黃金交叉
-    3. RSI > 50
-    4. 今日成交量 / 前5個交易日平均成交量 > 1.5
-    5. 股價 > MA20 且 MA20 向上
+注意：
 
-原本：
-
-    5. 股價 > MA20
-    6. MA20 向上
-
-已正式合併成：
-
-    5. 股價 > MA20 且 MA20 向上
+    第 5 項是單一合併條件。
 
 因此：
 
     core_total = 5
 
-核心分數：
-
-    0/5
-    1/5
-    2/5
-    3/5
-    4/5
-    5/5
-
 ============================================================
-核心條件與籌碼分析的架構邊界
+籌碼
 ============================================================
 
-「核心五項」是技術面過濾條件。
+籌碼不是核心條件。
 
-主力籌碼：
+使用：
 
     1D
     5D
     10D
     20D
 
-不是第六項核心條件。
-
-但是：
-
-    1D / 5D / 10D / 20D
-
-都會實際參與籌碼方向分析。
-
-尤其：
-
-    10D 不可移除。
-
-籌碼方向：
-
-    偏多
-    分歧
-    偏空
-    資料不足
-
-因此：
-
-    核心分數 ≠ 籌碼分數
-
-兩者必須分層。
+10D 保留並實際參與籌碼方向分析。
 
 ============================================================
-價格資料架構
+Entry Timing
 ============================================================
 
-目前價格資料：
+只有「當前五項全部符合」的強勢股才進行 Entry Timing 回測。
 
-    Data/prices/
-        manifest.json
-        prices_001.json
-        prices_002.json
-        ...
-        prices_020.json
+比較兩種歷史進場方式：
 
-V3.2：
+A. 立即進場
+    歷史訊號成立日
+    → 當日收盤價進場
 
-    1. 讀取 manifest
-    2. 找出所有價格 shard
-    3. 載入 shard
-    4. 建立 price_index
-    5. 正規化股票代號
-    6. 依股票代號取得歷史資料
+B. 等待回測
+    歷史訊號成立日
+    → 等待價格回到 MA20 合理區間
+    → 回測區間上緣作為標準化進場價格
 
-支援：
+主要比較：
 
-    {
-        "2337": [...]
-    }
+    - 勝率
+    - 平均報酬
+    - 中位數報酬
+    - 平均最大有利波動 MFE
+    - 平均最大不利波動 MAE
 
-    {
-        "stocks": {
-            "2337": [...]
-        }
-    }
+另外保留：
 
-    {
-        "data": {
-            "2337": [...]
-        }
-    }
+    pullback_trigger_rate
 
-    [
-        {
-            "symbol": "2337",
-            "prices": [...]
-        }
-    ]
-
-以及：
-
-    2337.TW
-    2337.TWO
-
-都正規化為：
-
-    2337
+避免只看「成功回測的股票」而忽略有多少訊號根本沒有回測。
 
 ============================================================
-資料管線硬性驗證
+Entry Timing 預設參數
 ============================================================
 
-如果：
+歷史訊號最低資料：
 
-    Universe > 0
-    但價格成功股票 = 0
+    60 個交易日
 
-直接失敗。
+主要持有期間：
 
-如果：
+    10 個交易日
 
-    Universe > 0
-    價格成功股票 > 0
+等待回測：
 
-正常產生 analysis.json。
+    最多 10 個交易日
+
+合理回測區：
+
+    MA20 × 0.98
+    ~
+    MA20 × 1.02
+
+也就是：
+
+    MA20 下方 2%
+    至
+    MA20 上方 2%
+
+回測策略：
+
+    未來價格 Low 觸及 MA20 × 1.02
+    即視為可以成交。
+
+為避免沒有 Open 資料造成假設：
+
+    pullback entry price
+    統一使用回測區上緣 MA20 × 1.02
+
+這是保守標準化價格。
+
+勝率定義：
+
+    持有期結束價格 > 進場價格
+
+不是：
+
+    「曾經碰到過 +5% 就算贏」
+
+因此不會產生虛假的高勝率。
 
 ============================================================
 """
@@ -191,6 +159,7 @@ from __future__ import annotations
 
 import json
 import math
+import statistics
 import sys
 import time
 
@@ -204,6 +173,8 @@ from typing import Any, Dict, List, Optional, Tuple
 # ============================================================
 
 VERSION = "V3.3"
+
+ENTRY_TIMING_SCHEMA = "ENTRY-TIMING-1.0"
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 DATA_DIR = BASE_DIR / "Data"
@@ -225,9 +196,11 @@ OUTPUT_FILE = DATA_DIR / "analysis.json"
 SHORT_TERM_CONFIG = {
 
     "rsi_period": 14,
+
     "rsi_min": 50.0,
 
     "volume_lookback": 5,
+
     "volume_multiplier": 1.5,
 
     "ma20_period": 20,
@@ -235,7 +208,9 @@ SHORT_TERM_CONFIG = {
     "kd_period": 9,
 
     "macd_fast": 12,
+
     "macd_slow": 26,
+
     "macd_signal": 9,
 
     "minimum_history": 60,
@@ -243,27 +218,65 @@ SHORT_TERM_CONFIG = {
 
 
 # ============================================================
-# 零股定投設定
+# DCA 設定
 # ============================================================
 
 DCA_CONFIG = {
 
     "ma20_aggressive": 0.97,
+
     "ma20_normal": 1.02,
+
     "ma20_pause": 1.05,
 
     "low60_aggressive": 1.03,
 
     "volume_aggressive": 1.5,
+
     "volume_normal": 1.0,
+
     "volume_observe": 0.5,
 
     "max_loss_pct": 20.0,
 
     "rebalance_warn": 30.0,
+
     "rebalance_high": 50.0,
 
     "extreme_bias": -20.0,
+}
+
+
+# ============================================================
+# Entry Timing 設定
+# ============================================================
+
+ENTRY_TIMING_CONFIG = {
+
+    # 歷史回測最少需要的資料
+    "minimum_history": 60,
+
+    # 主要持有期間
+    "holding_days": 10,
+
+    # 訊號後最多等待幾天
+    "pullback_wait_days": 10,
+
+    # 合理回測區間
+    #
+    # MA20 × 0.98
+    # ~
+    # MA20 × 1.02
+    #
+    "pullback_lower_pct": 0.98,
+
+    "pullback_upper_pct": 1.02,
+
+    # 判定兩策略優勢需要的最小勝率差
+    "win_rate_edge": 0.05,
+
+    # 最少歷史訊號
+    "minimum_signals": 5,
 }
 
 
@@ -272,47 +285,93 @@ DCA_CONFIG = {
 # ============================================================
 
 def log(message: str = "") -> None:
-    print(message, flush=True)
+
+    print(
+        message,
+        flush=True
+    )
 
 
 def section(title: str) -> None:
+
     log("")
-    log("=" * 72)
+
+    log(
+        "=" * 72
+    )
+
     log(title)
-    log("=" * 72)
+
+    log(
+        "=" * 72
+    )
 
 
 # ============================================================
 # JSON
 # ============================================================
 
-def load_json(path: Path) -> Any:
+def load_json(
+    path: Path
+) -> Any:
 
     if not path.exists():
-        raise RuntimeError(f"找不到檔案：{path}")
 
-    with path.open("r", encoding="utf-8-sig") as f:
-        return json.load(f)
+        raise RuntimeError(
+            f"找不到檔案：{path}"
+        )
+
+    try:
+
+        with path.open(
+            "r",
+            encoding="utf-8-sig"
+        ) as f:
+
+            return json.load(f)
+
+    except Exception as exc:
+
+        raise RuntimeError(
+            f"JSON 讀取失敗：{path}：{exc}"
+        ) from exc
 
 
 # ============================================================
 # Number
 # ============================================================
 
-def safe_float(value: Any) -> Optional[float]:
+def safe_float(
+    value: Any
+) -> Optional[float]:
 
     if value is None:
         return None
 
-    try:
-        value = float(value)
+    if isinstance(
+        value,
+        bool
+    ):
+        return None
 
-        if not math.isfinite(value):
+    try:
+
+        result = float(
+            str(value)
+            .replace(",", "")
+            .strip()
+        )
+
+        if not math.isfinite(
+            result
+        ):
+
             return None
 
-        return value
+        return result
 
     except Exception:
+
         return None
 
 
@@ -320,12 +379,16 @@ def safe_float(value: Any) -> Optional[float]:
 # Date
 # ============================================================
 
-def parse_date(value: Any) -> Optional[datetime]:
+def parse_date(
+    value: Any
+) -> Optional[datetime]:
 
     if value is None:
         return None
 
-    text = str(value).strip()
+    text = str(
+        value
+    ).strip()
 
     for fmt in (
         "%Y-%m-%d",
@@ -336,26 +399,37 @@ def parse_date(value: Any) -> Optional[datetime]:
     ):
 
         try:
-            return datetime.strptime(text, fmt)
+
+            return datetime.strptime(
+                text,
+                fmt
+            )
 
         except Exception:
+
             pass
 
     return None
 
 
 # ============================================================
-# Symbol Normalization
+# Symbol
 # ============================================================
 
-def normalize_symbol(value: Any) -> str:
+def normalize_symbol(
+    value: Any
+) -> str:
 
     if value is None:
+
         return ""
 
-    text = str(value).strip().upper()
+    text = str(
+        value
+    ).strip().upper()
 
     if not text:
+
         return ""
 
     for suffix in (
@@ -363,7 +437,9 @@ def normalize_symbol(value: Any) -> str:
         ".TWO",
     ):
 
-        if text.endswith(suffix):
+        if text.endswith(
+            suffix
+        ):
 
             text = text[
                 :-len(suffix)
@@ -378,7 +454,8 @@ def normalize_symbol(value: Any) -> str:
 # Universe
 # ============================================================
 
-def load_universe() -> Dict[str, Dict[str, Any]]:
+def load_universe(
+) -> Dict[str, Dict[str, Any]]:
 
     data = load_json(
         UNIVERSE_FILE
@@ -393,61 +470,77 @@ def load_universe() -> Dict[str, Dict[str, Any]]:
             "universe.json 格式錯誤"
         )
 
-    # --------------------------------------------------------
-    # V10.2 正式 Universe 格式：
-    #
-    # {
-    #     "stocks": {
-    #         "2337": { ... },
-    #         "3081": { ... }
-    #     }
-    # }
-    #
-    # 舊版 Universe 格式：
-    #
-    # {
-    #     "items": [
-    #         {"symbol": "2337", ...}
-    #     ]
-    # }
-    #
-    # V3.3 同時支援兩種格式，
-    # 但優先使用 V10.2 的 stocks。
-    # --------------------------------------------------------
+    stocks = data.get(
+        "stocks"
+    )
 
-    stocks: Dict[
+    result: Dict[
         str,
         Dict[str, Any]
     ] = {}
 
-    source_records: List[Any] = []
-    source_mode = ""
-
-    v10_stocks = data.get(
-        "stocks"
-    )
-
     if isinstance(
-        v10_stocks,
+        stocks,
         dict
     ):
 
-        source_mode = "stocks"
-
-        for key, item in v10_stocks.items():
+        for raw_symbol, item in stocks.items():
 
             if not isinstance(
                 item,
                 dict
             ):
+
                 continue
 
-            record = dict(item)
+            symbol = normalize_symbol(
+                item.get(
+                    "symbol"
+                )
+                or raw_symbol
+            )
 
-            if not record.get("symbol"):
-                record["symbol"] = key
+            if not symbol:
 
-            source_records.append(record)
+                continue
+
+            result[symbol] = {
+
+                "symbol":
+                    symbol,
+
+                "name":
+                    str(
+                        item.get(
+                            "name",
+                            ""
+                        )
+                    ).strip(),
+
+                "market":
+                    str(
+                        item.get(
+                            "market",
+                            ""
+                        )
+                    ).strip(),
+
+                "type":
+                    str(
+                        item.get(
+                            "type",
+                            ""
+                        )
+                    ).strip(),
+
+                "full_symbol":
+                    str(
+                        item.get(
+                            "full_symbol",
+                            ""
+                        )
+                    ).strip(),
+            }
 
     else:
 
@@ -461,97 +554,88 @@ def load_universe() -> Dict[str, Dict[str, Any]]:
             list
         ):
 
-            source_mode = "items"
-            source_records = items
+            for item in items:
 
-    if not source_records:
+                if not isinstance(
+                    item,
+                    dict
+                ):
+
+                    continue
+
+                symbol = normalize_symbol(
+                    item.get(
+                        "symbol"
+                    )
+                    or item.get(
+                        "code"
+                    )
+                    or item.get(
+                        "ticker"
+                    )
+                )
+
+                if not symbol:
+
+                    continue
+
+                result[symbol] = {
+
+                    "symbol":
+                        symbol,
+
+                    "name":
+                        str(
+                            item.get(
+                                "name",
+                                ""
+                            )
+                        ).strip(),
+
+                    "market":
+                        str(
+                            item.get(
+                                "market",
+                                ""
+                            )
+                        ).strip(),
+
+                    "type":
+                        str(
+                            item.get(
+                                "type",
+                                ""
+                            )
+                        ).strip(),
+
+                    "full_symbol":
+                        str(
+                            item.get(
+                                "full_symbol",
+                                ""
+                            )
+                        ).strip(),
+                }
+
+    if not result:
 
         raise RuntimeError(
-            "Universe 沒有可讀取的 stocks/items 資料"
-        )
-
-    for item in source_records:
-
-        if not isinstance(
-            item,
-            dict
-        ):
-            continue
-
-        symbol = (
-            item.get("code")
-            or item.get("symbol")
-            or item.get("ticker")
-        )
-
-        symbol = normalize_symbol(
-            symbol
-        )
-
-        if not symbol:
-            continue
-
-        stocks[symbol] = {
-
-            "symbol":
-                symbol,
-
-            "name":
-                str(
-                    item.get(
-                        "name",
-                        ""
-                    )
-                ).strip(),
-
-            "market":
-                str(
-                    item.get(
-                        "market",
-                        ""
-                    )
-                ).strip(),
-
-            "type":
-                str(
-                    item.get(
-                        "type",
-                        ""
-                    )
-                ).strip(),
-
-            "full_symbol":
-                str(
-                    item.get(
-                        "full_symbol",
-                        ""
-                    )
-                ).strip(),
-
-        }
-
-    if not stocks:
-
-        raise RuntimeError(
-            "Universe 沒有有效股票"
+            "Universe 沒有有效股票資料"
         )
 
     log(
-        f"Universe：{len(stocks)} 檔"
+        f"Universe：{len(result)} 檔"
     )
 
-    log(
-        f"Universe 格式：{source_mode}"
-    )
-
-    return stocks
+    return result
 
 
 # ============================================================
 # Price Manifest
 # ============================================================
 
-def load_price_manifest() -> Dict[str, Any]:
+def load_price_manifest(
+) -> Dict[str, Any]:
 
     data = load_json(
         PRICES_MANIFEST
@@ -570,32 +654,32 @@ def load_price_manifest() -> Dict[str, Any]:
 
 
 # ============================================================
-# Manifest File List
+# Price Shards
 # ============================================================
 
 def get_price_shard_files(
     manifest: Dict[str, Any]
 ) -> List[Path]:
 
-    files: List[str] = []
+    filenames: List[str] = []
 
-    manifest_files = manifest.get(
+    files = manifest.get(
         "files"
     )
 
     if isinstance(
-        manifest_files,
+        files,
         list
     ):
 
-        for item in manifest_files:
+        for item in files:
 
             if isinstance(
                 item,
                 str
             ):
 
-                files.append(
+                filenames.append(
                     item
                 )
 
@@ -617,82 +701,31 @@ def get_price_shard_files(
 
                     if value:
 
-                        files.append(
+                        filenames.append(
                             str(value)
                         )
 
                         break
 
-    # --------------------------------------------------------
-    # 舊格式相容
-    # --------------------------------------------------------
+    if not filenames:
 
-    stocks = manifest.get(
-        "stocks"
-    )
+        if PRICES_DIR.exists():
 
-    if isinstance(
-        stocks,
-        dict
-    ):
-
-        for item in stocks.values():
-
-            if isinstance(
-                item,
-                str
-            ):
-
-                files.append(
-                    item
-                )
-
-            elif isinstance(
-                item,
-                dict
-            ):
-
-                for key in (
-                    "file",
-                    "path",
-                    "filename",
-                ):
-
-                    value = item.get(
-                        key
-                    )
-
-                    if value:
-
-                        files.append(
-                            str(value)
-                        )
-
-                        break
-
-    # --------------------------------------------------------
-    # manifest 沒列出檔案時
-    # --------------------------------------------------------
-
-    if (
-        not files
-        and PRICES_DIR.exists()
-    ):
-
-        for path in sorted(
-            PRICES_DIR.glob(
-                "prices_*.json"
-            )
-        ):
-
-            files.append(
+            filenames = [
                 path.name
-            )
+                for path
+                in sorted(
+                    PRICES_DIR.glob(
+                        "prices_*.json"
+                    )
+                )
+            ]
 
     result: List[Path] = []
+
     seen = set()
 
-    for filename in files:
+    for filename in filenames:
 
         filename = str(
             filename
@@ -702,6 +735,7 @@ def get_price_shard_files(
         )
 
         if filename in seen:
+
             continue
 
         seen.add(
@@ -717,62 +751,25 @@ def get_price_shard_files(
             BASE_DIR / filename,
         ]
 
-        found = None
-
         for candidate in candidates:
 
             if candidate.exists():
 
-                found = candidate
+                result.append(
+                    candidate
+                )
+
                 break
 
-        if found is not None:
-
-            result.append(
-                found
-            )
-
     result.sort(
-        key=lambda p: p.name
+        key=lambda x: x.name
     )
 
     return result
 
 
 # ============================================================
-# Price Row Detection
-# ============================================================
-
-def looks_like_price_row(
-    value: Any
-) -> bool:
-
-    if not isinstance(
-        value,
-        dict
-    ):
-
-        return False
-
-    keys = {
-        str(k).lower()
-        for k in value.keys()
-    }
-
-    return bool(
-        keys
-        & {
-            "date",
-            "trade_date",
-            "tradedate",
-            "close",
-            "price",
-        }
-    )
-
-
-# ============================================================
-# Extract History Candidate
+# Price Data Extraction
 # ============================================================
 
 def extract_history_candidate(
@@ -793,7 +790,6 @@ def extract_history_candidate(
 
         for key in (
             "prices",
-            "price",
             "history",
             "data",
             "rows",
@@ -812,27 +808,30 @@ def extract_history_candidate(
 
                 return candidate
 
-        if looks_like_price_row(
-            value
-        ):
+        keys = {
+            str(k).lower()
+            for k in value.keys()
+        }
 
-            return [value]
+        if keys & {
+            "date",
+            "trade_date",
+            "close",
+            "price",
+        }:
+
+            return [
+                value
+            ]
 
     return None
 
-
-# ============================================================
-# Extract Stocks From Shard
-# ============================================================
 
 def extract_stocks_from_shard(
     data: Any
 ) -> Dict[str, Any]:
 
-    result: Dict[
-        str,
-        Any
-    ] = {}
+    result = {}
 
     if isinstance(
         data,
@@ -855,10 +854,10 @@ def extract_stocks_from_shard(
                 dict
             ):
 
-                for symbol, value in container.items():
+                for raw_symbol, value in container.items():
 
-                    normalized = normalize_symbol(
-                        symbol
+                    symbol = normalize_symbol(
+                        raw_symbol
                     )
 
                     history = extract_history_candidate(
@@ -866,28 +865,26 @@ def extract_stocks_from_shard(
                     )
 
                     if (
-                        normalized
+                        symbol
                         and history is not None
                     ):
 
                         result[
-                            normalized
+                            symbol
                         ] = history
 
                 if result:
+
                     return result
 
-        # ----------------------------------------------------
-        # 直接 symbol -> history
-        # ----------------------------------------------------
+        for raw_symbol, value in data.items():
 
-        for key, value in data.items():
-
-            normalized = normalize_symbol(
-                key
+            symbol = normalize_symbol(
+                raw_symbol
             )
 
-            if not normalized:
+            if not symbol:
+
                 continue
 
             history = extract_history_candidate(
@@ -897,20 +894,23 @@ def extract_stocks_from_shard(
             if history is not None:
 
                 result[
-                    normalized
+                    symbol
                 ] = history
 
         if result:
+
             return result
 
-        # ----------------------------------------------------
-        # 單一股票物件
-        # ----------------------------------------------------
-
         symbol = normalize_symbol(
-            data.get("symbol")
-            or data.get("code")
-            or data.get("ticker")
+            data.get(
+                "symbol"
+            )
+            or data.get(
+                "code"
+            )
+            or data.get(
+                "ticker"
+            )
         )
 
         if symbol:
@@ -925,13 +925,7 @@ def extract_stocks_from_shard(
                     symbol
                 ] = history
 
-            return result
-
-    # --------------------------------------------------------
-    # list 結構
-    # --------------------------------------------------------
-
-    if isinstance(
+    elif isinstance(
         data,
         list
     ):
@@ -946,13 +940,22 @@ def extract_stocks_from_shard(
                 continue
 
             symbol = normalize_symbol(
-                item.get("symbol")
-                or item.get("code")
-                or item.get("ticker")
-                or item.get("stock_id")
+                item.get(
+                    "symbol"
+                )
+                or item.get(
+                    "code"
+                )
+                or item.get(
+                    "ticker"
+                )
+                or item.get(
+                    "stock_id"
+                )
             )
 
             if not symbol:
+
                 continue
 
             history = extract_history_candidate(
@@ -976,16 +979,21 @@ def parse_price_history(
     data: Any
 ) -> List[Dict[str, Any]]:
 
-    rows: List[
-        Dict[str, Any]
-    ] = []
+    raw_rows = []
 
     if isinstance(
+        data,
+        list
+    ):
+
+        raw_rows = data
+
+    elif isinstance(
         data,
         dict
     ):
 
-        raw_rows = (
+        candidate = (
             data.get("prices")
             or data.get("data")
             or data.get("history")
@@ -995,21 +1003,19 @@ def parse_price_history(
         )
 
         if isinstance(
-            raw_rows,
+            candidate,
             dict
         ):
 
-            converted = []
-
-            for date, item in raw_rows.items():
+            for date, value in candidate.items():
 
                 if isinstance(
-                    item,
+                    value,
                     dict
                 ):
 
                     row = dict(
-                        item
+                        value
                     )
 
                     row.setdefault(
@@ -1017,34 +1023,30 @@ def parse_price_history(
                         date
                     )
 
-                    converted.append(
+                    raw_rows.append(
                         row
                     )
 
                 else:
 
-                    converted.append(
+                    raw_rows.append(
                         {
                             "date":
                                 date,
 
                             "close":
-                                item,
+                                value,
                         }
                     )
 
-            raw_rows = converted
+        elif isinstance(
+            candidate,
+            list
+        ):
 
-    elif isinstance(
-        data,
-        list
-    ):
+            raw_rows = candidate
 
-        raw_rows = data
-
-    else:
-
-        raw_rows = []
+    rows = []
 
     for row in raw_rows:
 
@@ -1055,7 +1057,7 @@ def parse_price_history(
 
             continue
 
-        date = (
+        date_value = (
             row.get("date")
             or row.get("Date")
             or row.get("trade_date")
@@ -1064,10 +1066,11 @@ def parse_price_history(
         )
 
         dt = parse_date(
-            date
+            date_value
         )
 
         if dt is None:
+
             continue
 
         close = (
@@ -1077,13 +1080,10 @@ def parse_price_history(
         )
 
         if close is None:
-            close = row.get(
-                "price"
-            )
 
-        if close is None:
-            close = row.get(
-                "Price"
+            close = (
+                row.get("price")
+                or row.get("Price")
             )
 
         volume = (
@@ -1121,6 +1121,7 @@ def parse_price_history(
         )
 
         if close is None:
+
             continue
 
         rows.append(
@@ -1158,18 +1159,15 @@ def parse_price_history(
     )
 
     rows.sort(
-        key=lambda x:
-            parse_date(
-                x["date"]
-            )
-            or datetime.min
+        key=lambda row:
+            row["date"]
     )
 
     return rows
 
 
 # ============================================================
-# Load All Price Shards
+# Load Price Index
 # ============================================================
 
 def load_price_index(
@@ -1190,18 +1188,10 @@ def load_price_index(
     if not shard_files:
 
         raise RuntimeError(
-            "manifest 沒有找到任何價格分檔"
+            "找不到任何 prices shard"
         )
 
-    log(
-        f"價格分檔："
-        f"{len(shard_files)} 個"
-    )
-
-    price_index: Dict[
-        str,
-        List[Dict[str, Any]]
-    ] = {}
+    price_index = {}
 
     shard_statistics = []
 
@@ -1220,7 +1210,7 @@ def load_price_index(
                 data
             )
 
-            loaded_count = 0
+            loaded = 0
 
             for symbol, history in stocks.items():
 
@@ -1234,7 +1224,7 @@ def load_price_index(
                         symbol
                     ] = rows
 
-                    loaded_count += 1
+                    loaded += 1
 
             shard_statistics.append(
                 {
@@ -1246,17 +1236,15 @@ def load_price_index(
                         len(stocks),
 
                     "stocks_loaded":
-                        loaded_count,
+                        loaded,
                 }
             )
 
             log(
                 f"[{index:02d}/"
                 f"{len(shard_files):02d}] "
-                f"{path.name} "
-                f"→ "
-                f"{len(stocks)} 檔 / "
-                f"{loaded_count} 檔有效"
+                f"{path.name} → "
+                f"{loaded} 檔有效"
             )
 
         except Exception as exc:
@@ -1283,18 +1271,16 @@ def load_price_index(
                 }
             )
 
-    log("")
+    if not price_index:
+
+        raise RuntimeError(
+            "價格 shard 載入後沒有有效股票"
+        )
 
     log(
         f"價格索引完成："
         f"{len(price_index)} 檔"
     )
-
-    if not price_index:
-
-        raise RuntimeError(
-            "價格分檔全部載入後沒有任何有效股票資料"
-        )
 
     return (
         price_index,
@@ -1308,7 +1294,7 @@ def load_price_index(
 
             "shards":
                 shard_statistics,
-        },
+        }
     )
 
 
@@ -1322,6 +1308,7 @@ def moving_average(
 ) -> Optional[float]:
 
     if len(values) < period:
+
         return None
 
     return (
@@ -1338,6 +1325,7 @@ def previous_moving_average(
 ) -> Optional[float]:
 
     if len(values) < period + 1:
+
         return None
 
     return (
@@ -1360,10 +1348,14 @@ def ema_series(
 ) -> List[float]:
 
     if len(values) < period:
+
         return []
 
-    multiplier = 2.0 / (
-        period + 1
+    multiplier = (
+        2.0
+        / (
+            period + 1
+        )
     )
 
     result = []
@@ -1413,7 +1405,8 @@ def calculate_macd(
     ]
 
     if len(closes) < (
-        slow + signal_period
+        slow
+        + signal_period
     ):
 
         return {
@@ -1492,7 +1485,9 @@ def calculate_macd(
         signal_period
     )
 
-    if len(signal_series) < 2:
+    if len(
+        signal_series
+    ) < 2:
 
         return {
 
@@ -1532,9 +1527,12 @@ def calculate_macd(
     )
 
     golden_cross = (
+
         previous_macd
         <= previous_signal
+
         and
+
         current_macd
         > current_signal
     )
@@ -1577,7 +1575,10 @@ def calculate_rsi(
     period: int = 14
 ) -> Optional[float]:
 
-    if len(closes) < period + 1:
+    if len(closes) < (
+        period + 1
+    ):
+
         return None
 
     gains = []
@@ -1593,25 +1594,19 @@ def calculate_rsi(
             - closes[i - 1]
         )
 
-        if change > 0:
-
-            gains.append(
-                change
-            )
-
-            losses.append(
+        gains.append(
+            max(
+                change,
                 0.0
             )
+        )
 
-        else:
-
-            gains.append(
+        losses.append(
+            max(
+                -change,
                 0.0
             )
-
-            losses.append(
-                abs(change)
-            )
+        )
 
     avg_gain = (
         sum(
@@ -1634,13 +1629,17 @@ def calculate_rsi(
 
         avg_gain = (
             avg_gain
-            * (period - 1)
+            * (
+                period - 1
+            )
             + gains[i]
         ) / period
 
         avg_loss = (
             avg_loss
-            * (period - 1)
+            * (
+                period - 1
+            )
             + losses[i]
         ) / period
 
@@ -1657,7 +1656,9 @@ def calculate_rsi(
         100.0
         - (
             100.0
-            / (1.0 + rs)
+            / (
+                1.0 + rs
+            )
         ),
         2
     )
@@ -1696,18 +1697,25 @@ def calculate_kd(
     for row in rows:
 
         close = safe_float(
-            row.get("close")
+            row.get(
+                "close"
+            )
         )
 
         if close is None:
+
             continue
 
         high = safe_float(
-            row.get("high")
+            row.get(
+                "high"
+            )
         )
 
         low = safe_float(
-            row.get("low")
+            row.get(
+                "low"
+            )
         )
 
         highs.append(
@@ -1726,7 +1734,9 @@ def calculate_kd(
             close
         )
 
-    if len(closes) < period:
+    if len(
+        closes
+    ) < period:
 
         return {
 
@@ -1754,16 +1764,22 @@ def calculate_kd(
         len(closes)
     ):
 
+        high_window = highs[
+            i - period + 1:
+            i + 1
+        ]
+
+        low_window = lows[
+            i - period + 1:
+            i + 1
+        ]
+
         window_high = max(
-            highs[
-                i - period + 1:i + 1
-            ]
+            high_window
         )
 
         window_low = min(
-            lows[
-                i - period + 1:i + 1
-            ]
+            low_window
         )
 
         denominator = (
@@ -1806,12 +1822,17 @@ def calculate_kd(
 
     golden_cross = False
 
-    if len(k_values) >= 2:
+    if len(
+        k_values
+    ) >= 2:
 
         golden_cross = (
+
             k_values[-2]
             <= d_values[-2]
+
             and
+
             k_values[-1]
             > d_values[-1]
         )
@@ -1849,10 +1870,13 @@ def calculate_price_metrics(
     closes = [
         row["close"]
         for row in rows
-        if row.get("close") is not None
+        if row.get(
+            "close"
+        ) is not None
     ]
 
     if not closes:
+
         return {}
 
     current_price = closes[-1]
@@ -1879,7 +1903,9 @@ def calculate_price_metrics(
 
     volumes = [
         safe_float(
-            row.get("volume")
+            row.get(
+                "volume"
+            )
         )
         for row in rows
     ]
@@ -1890,77 +1916,49 @@ def calculate_price_metrics(
         else None
     )
 
-    # --------------------------------------------------------
-    # 今日成交量 / 前5個交易日平均成交量
-    # 注意：前5日不包含今日
-    # --------------------------------------------------------
+    previous_5_avg = None
 
-    previous_5_volume_avg = None
-
-    if len(volumes) >= 6:
+    if len(
+        volumes
+    ) >= 6:
 
         previous_5 = [
             value
-            for value in volumes[-6:-1]
+            for value
+            in volumes[-6:-1]
             if value is not None
         ]
 
-        if len(previous_5) == 5:
+        if len(
+            previous_5
+        ) == 5:
 
-            previous_5_volume_avg = (
-                sum(previous_5)
+            previous_5_avg = (
+                sum(
+                    previous_5
+                )
                 / 5.0
             )
 
-    volume_ratio_vs_previous_5 = None
+    volume_ratio = None
 
     if (
         today_volume is not None
-        and previous_5_volume_avg is not None
-        and previous_5_volume_avg > 0
+        and previous_5_avg is not None
+        and previous_5_avg > 0
     ):
 
-        volume_ratio_vs_previous_5 = (
+        volume_ratio = (
             today_volume
-            / previous_5_volume_avg
-        )
-
-    available_volumes = [
-        value
-        for value in volumes
-        if value is not None
-    ]
-
-    volume5_including_today = None
-
-    if len(
-        available_volumes
-    ) >= 5:
-
-        volume5_including_today = (
-            sum(
-                available_volumes[-5:]
-            )
-            / 5.0
-        )
-
-    volume20 = None
-
-    if len(
-        available_volumes
-    ) >= 20:
-
-        volume20 = (
-            sum(
-                available_volumes[-20:]
-            )
-            / 20.0
+            / previous_5_avg
         )
 
     high60 = None
     low60 = None
 
-    if len(closes) >= 60:
+    if len(
+        closes
+    ) >= 60:
 
         high60 = max(
             closes[-60:]
@@ -1970,7 +1968,7 @@ def calculate_price_metrics(
             closes[-60:]
         )
 
-    elif closes:
+    else:
 
         high60 = max(
             closes
@@ -1990,36 +1988,6 @@ def calculate_price_metrics(
         bias20_pct = (
             current_price
             / ma20
-            - 1.0
-        ) * 100.0
-
-    change1_pct = None
-
-    if len(closes) >= 2:
-
-        change1_pct = (
-            current_price
-            / closes[-2]
-            - 1.0
-        ) * 100.0
-
-    change5_pct = None
-
-    if len(closes) >= 6:
-
-        change5_pct = (
-            current_price
-            / closes[-6]
-            - 1.0
-        ) * 100.0
-
-    change20_pct = None
-
-    if len(closes) >= 21:
-
-        change20_pct = (
-            current_price
-            / closes[-21]
             - 1.0
         ) * 100.0
 
@@ -2067,27 +2035,14 @@ def calculate_price_metrics(
             / low60
         )
 
-    # --------------------------------------------------------
-    # 第五項核心條件所需的單一結果
-    #
-    # 股價 > MA20
-    # 且
-    # MA20 向上
-    #
-    # 注意：
-    # 這裡不是兩個核心條件，
-    # 而是一個合併後的核心條件。
-    # --------------------------------------------------------
-
     price_above_ma20 = (
-        current_price is not None
-        and ma20 is not None
+        ma20 is not None
         and current_price > ma20
     )
 
     ma20_up = (
-        previous_ma20 is not None
-        and ma20 is not None
+        ma20 is not None
+        and previous_ma20 is not None
         and ma20 > previous_ma20
     )
 
@@ -2096,32 +2051,61 @@ def calculate_price_metrics(
         and ma20_up
     )
 
-    volume_signal = "資料不足"
+    change1_pct = None
 
-    if (
-        volume_ratio_vs_previous_5
-        is not None
-    ):
+    if len(
+        closes
+    ) >= 2:
 
-        ratio = (
-            volume_ratio_vs_previous_5
-        )
+        change1_pct = (
+            current_price
+            / closes[-2]
+            - 1.0
+        ) * 100.0
 
-        if ratio >= 1.5:
+    change5_pct = None
 
-            volume_signal = "放量"
+    if len(
+        closes
+    ) >= 6:
 
-        elif ratio >= 1.0:
+        change5_pct = (
+            current_price
+            / closes[-6]
+            - 1.0
+        ) * 100.0
 
-            volume_signal = "正常"
+    change20_pct = None
 
-        elif ratio >= 0.5:
+    if len(
+        closes
+    ) >= 21:
 
-            volume_signal = "量縮"
+        change20_pct = (
+            current_price
+            / closes[-21]
+            - 1.0
+        ) * 100.0
 
-        else:
+    if volume_ratio is None:
 
-            volume_signal = "明顯量縮"
+        volume_signal = "資料不足"
+
+    elif volume_ratio >= 1.5:
+
+        volume_signal = "放量"
+
+    elif volume_ratio >= 1.0:
+
+        volume_signal = "正常"
+
+    elif volume_ratio >= 0.5:
+
+        volume_signal = "量縮"
+
+    else:
+
+        volume_signal = "明顯量縮"
 
     return {
 
@@ -2241,34 +2225,18 @@ def calculate_price_metrics(
 
         "volume5_previous_avg":
             round(
-                previous_5_volume_avg,
+                previous_5_avg,
                 2
             )
-            if previous_5_volume_avg is not None
-            else None,
-
-        "volume5_including_today":
-            round(
-                volume5_including_today,
-                2
-            )
-            if volume5_including_today is not None
-            else None,
-
-        "volume20":
-            round(
-                volume20,
-                2
-            )
-            if volume20 is not None
+            if previous_5_avg is not None
             else None,
 
         "volume_ratio_vs_previous_5":
             round(
-                volume_ratio_vs_previous_5,
+                volume_ratio,
                 4
             )
-            if volume_ratio_vs_previous_5 is not None
+            if volume_ratio is not None
             else None,
 
         "volume_signal":
@@ -2277,7 +2245,7 @@ def calculate_price_metrics(
 
 
 # ============================================================
-# Chip Helpers
+# Chip
 # ============================================================
 
 def chip_value(
@@ -2289,42 +2257,42 @@ def chip_value(
         key
     )
 
+    aliases = {
+
+        "main_force_1d": (
+            "main_force_1D",
+            "main_force_1d_pct",
+            "main_force_1D_pct",
+            "mf1",
+            "1d",
+        ),
+
+        "main_force_5d": (
+            "main_force_5D",
+            "main_force_5d_pct",
+            "main_force_5D_pct",
+            "mf5",
+            "5d",
+        ),
+
+        "main_force_10d": (
+            "main_force_10D",
+            "main_force_10d_pct",
+            "main_force_10D_pct",
+            "mf10",
+            "10d",
+        ),
+
+        "main_force_20d": (
+            "main_force_20D",
+            "main_force_20d_pct",
+            "main_force_20D_pct",
+            "mf20",
+            "20d",
+        ),
+    }
+
     if value is None:
-
-        aliases = {
-
-            "main_force_1d": (
-                "main_force_1D",
-                "main_force_1D_pct",
-                "main_force_1d_pct",
-                "mf1",
-                "1d",
-            ),
-
-            "main_force_5d": (
-                "main_force_5D",
-                "main_force_5D_pct",
-                "main_force_5d_pct",
-                "mf5",
-                "5d",
-            ),
-
-            "main_force_10d": (
-                "main_force_10D",
-                "main_force_10D_pct",
-                "main_force_10d_pct",
-                "mf10",
-                "10d",
-            ),
-
-            "main_force_20d": (
-                "main_force_20D",
-                "main_force_20D_pct",
-                "main_force_20d_pct",
-                "mf20",
-                "20d",
-            ),
-        }
 
         for alias in aliases.get(
             key,
@@ -2343,10 +2311,6 @@ def chip_value(
         value
     )
 
-
-# ============================================================
-# Chip Analysis
-# ============================================================
 
 def calculate_chip_analysis(
     chip: Dict[str, Any]
@@ -2374,7 +2338,8 @@ def calculate_chip_analysis(
 
     values = [
         value
-        for value in (
+        for value
+        in (
             mf1,
             mf5,
             mf10,
@@ -2383,27 +2348,25 @@ def calculate_chip_analysis(
         if value is not None
     ]
 
-    positive_count = sum(
-        1
+    positive = sum(
+        value > 0
         for value in values
-        if value > 0
     )
 
-    negative_count = sum(
-        1
+    negative = sum(
+        value < 0
         for value in values
-        if value < 0
     )
 
-    if len(values) == 0:
+    if not values:
 
         direction = "資料不足"
 
-    elif positive_count >= 3:
+    elif positive >= 3:
 
         direction = "偏多"
 
-    elif negative_count >= 3:
+    elif negative >= 3:
 
         direction = "偏空"
 
@@ -2411,17 +2374,10 @@ def calculate_chip_analysis(
 
         direction = "分歧"
 
-    # --------------------------------------------------------
-    # 中期籌碼：
-    #
-    # 5D / 10D / 20D
-    #
-    # 10D 明確參與。
-    # --------------------------------------------------------
-
     medium_values = [
         value
-        for value in (
+        for value
+        in (
             mf5,
             mf10,
             mf20,
@@ -2430,15 +2386,15 @@ def calculate_chip_analysis(
     ]
 
     medium_positive = sum(
-        1
-        for value in medium_values
-        if value > 0
+        value > 0
+        for value
+        in medium_values
     )
 
     medium_negative = sum(
-        1
-        for value in medium_values
-        if value < 0
+        value < 0
+        for value
+        in medium_values
     )
 
     if not medium_values:
@@ -2456,10 +2412,6 @@ def calculate_chip_analysis(
     else:
 
         medium_direction = "中期分歧"
-
-    # --------------------------------------------------------
-    # 10D 狀態
-    # --------------------------------------------------------
 
     if mf10 is None:
 
@@ -2492,10 +2444,10 @@ def calculate_chip_analysis(
             mf20,
 
         "positive_count":
-            positive_count,
+            positive,
 
         "negative_count":
-            negative_count,
+            negative,
 
         "direction":
             direction,
@@ -2527,7 +2479,7 @@ def calculate_chip_analysis(
 
 
 # ============================================================
-# Short Term Evaluation
+# 五項核心判定
 # ============================================================
 
 def evaluate_short_term(
@@ -2537,19 +2489,6 @@ def evaluate_short_term(
     rsi: Optional[float],
     chip: Dict[str, Any]
 ) -> Dict[str, Any]:
-
-    # ========================================================
-    # 五項核心條件
-    #
-    # 1. MACD 黃金交叉
-    # 2. KD 黃金交叉
-    # 3. RSI > 50
-    # 4. 今日成交量 > 前5個交易日平均成交量 × 1.5
-    # 5. 股價 > MA20 且 MA20 向上
-    #
-    # 注意：
-    # 第五項是單一條件。
-    # ========================================================
 
     conditions = {
 
@@ -2590,7 +2529,7 @@ def evaluate_short_term(
                 metrics.get(
                     "volume_ratio_vs_previous_5"
                 )
-                > SHORT_TERM_CONFIG[
+                >= SHORT_TERM_CONFIG[
                     "volume_multiplier"
                 ]
             ),
@@ -2620,13 +2559,6 @@ def evaluate_short_term(
         chip
     )
 
-    # --------------------------------------------------------
-    # 技術強度
-    #
-    # 核心五項是純技術條件。
-    # 籌碼另行判斷。
-    # --------------------------------------------------------
-
     if score >= 5:
 
         technical_strength = "強勢"
@@ -2643,12 +2575,6 @@ def evaluate_short_term(
 
         technical_strength = "偏弱"
 
-    # --------------------------------------------------------
-    # 綜合方向
-    #
-    # 不把籌碼偷偷算成第六項。
-    # --------------------------------------------------------
-
     chip_direction = chip_analysis.get(
         "direction",
         "資料不足"
@@ -2658,25 +2584,25 @@ def evaluate_short_term(
 
         if chip_direction == "偏多":
 
-            final_direction = "偏多"
+            direction = "偏多"
 
             operation = "偏多，可分批"
 
         elif chip_direction == "偏空":
 
-            final_direction = "技術偏多、籌碼偏空"
+            direction = "技術偏多、籌碼偏空"
 
             operation = "技術符合，籌碼觀察"
 
         elif chip_direction == "分歧":
 
-            final_direction = "技術偏多、籌碼分歧"
+            direction = "技術偏多、籌碼分歧"
 
             operation = "可觀察，分批"
 
         else:
 
-            final_direction = "技術偏多"
+            direction = "技術偏多"
 
             operation = "偏多，可分批"
 
@@ -2684,33 +2610,23 @@ def evaluate_short_term(
 
         if chip_direction == "偏空":
 
-            final_direction = "偏空"
+            direction = "偏空"
 
             operation = "暫停操作"
 
         elif chip_direction == "偏多":
 
-            final_direction = "技術未完全符合、籌碼偏多"
-
-            operation = "觀察"
-
-        elif chip_direction == "分歧":
-
-            final_direction = "分歧"
+            direction = "技術未完全符合、籌碼偏多"
 
             operation = "觀察"
 
         else:
 
-            final_direction = "中性"
+            direction = "中性"
 
             operation = "觀察"
 
     return {
-
-        # ----------------------------------------------------
-        # 核心結果
-        # ----------------------------------------------------
 
         "qualified":
             qualified,
@@ -2733,10 +2649,6 @@ def evaluate_short_term(
         "conditions":
             conditions,
 
-        # ----------------------------------------------------
-        # 技術強度
-        # ----------------------------------------------------
-
         "technical_strength":
             technical_strength,
 
@@ -2744,11 +2656,7 @@ def evaluate_short_term(
             operation,
 
         "direction":
-            final_direction,
-
-        # ----------------------------------------------------
-        # 技術指標
-        # ----------------------------------------------------
+            direction,
 
         "rsi":
             rsi,
@@ -2759,26 +2667,10 @@ def evaluate_short_term(
         "kd":
             kd,
 
-        # ----------------------------------------------------
-        # 成交量
-        # ----------------------------------------------------
-
-        "volume_rule":
-            (
-                "今日成交量 ÷ "
-                "前5個交易日平均成交量 > 1.5"
-            ),
-
         "volume_ratio":
             metrics.get(
                 "volume_ratio_vs_previous_5"
             ),
-
-        # ----------------------------------------------------
-        # 籌碼
-        #
-        # 與核心五項分開。
-        # ----------------------------------------------------
 
         "chip":
             chip_analysis,
@@ -2786,17 +2678,13 @@ def evaluate_short_term(
         "chip_is_core_condition":
             False,
 
-        # ----------------------------------------------------
-        # 明確標記 10D
-        # ----------------------------------------------------
-
         "ten_day_chip_used":
             True,
     }
 
 
 # ============================================================
-# DCA Loss Warning
+# DCA
 # ============================================================
 
 def calculate_loss_warning(
@@ -2808,19 +2696,18 @@ def calculate_loss_warning(
 
     for key in (
         "avg_cost",
-        "cost",
         "average_cost",
+        "cost",
     ):
 
-        value = safe_float(
+        cost = safe_float(
             chip.get(
                 key
             )
         )
 
-        if value is not None:
+        if cost is not None:
 
-            cost = value
             break
 
     if (
@@ -2893,18 +2780,10 @@ def calculate_loss_warning(
     }
 
 
-# ============================================================
-# DCA Evaluation
-# ============================================================
-
 def evaluate_dca(
     metrics: Dict[str, Any],
     chip: Dict[str, Any]
 ) -> Dict[str, Any]:
-
-    price = metrics.get(
-        "price"
-    )
 
     ma20_ratio = metrics.get(
         "ma20_ratio"
@@ -2940,13 +2819,9 @@ def evaluate_dca(
         <= DCA_CONFIG[
             "ma20_aggressive"
         ]
-
         and
-
         low60_ratio is not None
-
         and
-
         low60_ratio
         <= DCA_CONFIG[
             "low60_aggressive"
@@ -2981,144 +2856,107 @@ def evaluate_dca(
         action = "暫停加碼"
         level = 0
 
-    volume_signal = "資料不足"
+    if volume_ratio is None:
 
-    if volume_ratio is not None:
+        volume_signal = "資料不足"
 
-        if volume_ratio >= 1.5:
+    elif volume_ratio >= 1.5:
 
-            volume_signal = "放量"
+        volume_signal = "放量"
 
-        elif volume_ratio >= 1.0:
+    elif volume_ratio >= 1.0:
 
-            volume_signal = "正常"
+        volume_signal = "正常"
 
-        elif volume_ratio >= 0.5:
+    elif volume_ratio >= 0.5:
 
-            volume_signal = "量縮"
+        volume_signal = "量縮"
 
-        else:
+    else:
 
-            volume_signal = "明顯量縮"
-
-    chip_direction = chip_analysis.get(
-        "direction"
-    )
+        volume_signal = "明顯量縮"
 
     medium_direction = chip_analysis.get(
         "medium_direction"
     )
 
+    chip_adjustment = "neutral"
+
+    if medium_direction == "中期偏多":
+
+        chip_adjustment = "positive"
+
+    elif medium_direction == "中期偏空":
+
+        chip_adjustment = "negative"
+
     rebalance_signal = "normal"
 
     if position60 is not None:
 
-        if (
-            position60
-            >= DCA_CONFIG[
-                "rebalance_high"
-            ]
-        ):
+        if position60 >= DCA_CONFIG[
+            "rebalance_high"
+        ]:
 
             rebalance_signal = "高檔"
 
-        elif (
-            position60
-            >= DCA_CONFIG[
-                "rebalance_warn"
-            ]
-        ):
+        elif position60 >= DCA_CONFIG[
+            "rebalance_warn"
+        ]:
 
             rebalance_signal = "偏高"
 
     extreme_discount = (
         bias20 is not None
         and
-        bias20
-        <= DCA_CONFIG[
+        bias20 <= DCA_CONFIG[
             "extreme_bias"
         ]
     )
 
     if extreme_discount:
 
-        if level > 0:
-
-            level += 1
-
         action = "極端負乖離"
+        level += 1
 
     if (
         rebalance_signal == "高檔"
-        and level > 0
+        and
+        level > 0
     ):
 
         action = "高檔觀察"
-
         level = max(
             0,
             level - 1
         )
 
-    chip_adjustment = "neutral"
-
-    if (
-        medium_direction
-        == "中期偏多"
-    ):
-
-        chip_adjustment = "positive"
-
-    elif (
-        medium_direction
-        == "中期偏空"
-    ):
-
-        chip_adjustment = "negative"
-
-    volume_adjustment = "neutral"
-
-    if volume_signal == "放量":
-
-        volume_adjustment = "positive"
-
-    elif volume_signal == "明顯量縮":
-
-        volume_adjustment = "caution"
-
-    loss_warning = calculate_loss_warning(
-        price,
-        chip
-    )
-
     risk_flags = []
 
-    if (
-        rebalance_signal
-        == "高檔"
-    ):
+    if rebalance_signal == "高檔":
 
         risk_flags.append(
             "60日高檔"
         )
 
-    if (
-        volume_signal
-        == "明顯量縮"
-    ):
+    if volume_signal == "明顯量縮":
 
         risk_flags.append(
             "成交量明顯萎縮"
         )
 
-    if (
-        chip_adjustment
-        == "negative"
-    ):
+    if chip_adjustment == "negative":
 
         risk_flags.append(
             "中期籌碼偏空"
         )
+
+    loss_warning = calculate_loss_warning(
+        metrics.get(
+            "price"
+        ),
+        chip
+    )
 
     if loss_warning.get(
         "warning"
@@ -3169,11 +3007,10 @@ def evaluate_dca(
         "volume_signal":
             volume_signal,
 
-        "volume_adjustment":
-            volume_adjustment,
-
         "chip_direction":
-            chip_direction,
+            chip_analysis.get(
+                "direction"
+            ),
 
         "medium_chip_direction":
             medium_direction,
@@ -3219,6 +3056,1283 @@ def evaluate_dca(
 
 
 # ============================================================
+# Entry Timing：歷史訊號判定
+# ============================================================
+
+def historical_signal(
+    rows: List[Dict[str, Any]],
+    index: int
+) -> Optional[Dict[str, Any]]:
+
+    if index < (
+        ENTRY_TIMING_CONFIG[
+            "minimum_history"
+        ]
+        - 1
+    ):
+
+        return None
+
+    history = rows[
+        :index + 1
+    ]
+
+    closes = [
+        row["close"]
+        for row in history
+        if row.get(
+            "close"
+        ) is not None
+    ]
+
+    if len(
+        closes
+    ) < ENTRY_TIMING_CONFIG[
+        "minimum_history"
+    ]:
+
+        return None
+
+    metrics = calculate_price_metrics(
+        history
+    )
+
+    macd = calculate_macd(
+        closes
+    )
+
+    kd = calculate_kd(
+        history
+    )
+
+    rsi = calculate_rsi(
+        closes,
+        SHORT_TERM_CONFIG[
+            "rsi_period"
+        ]
+    )
+
+    if not metrics:
+
+        return None
+
+    conditions = {
+
+        "macd":
+            bool(
+                macd.get(
+                    "golden_cross",
+                    False
+                )
+            ),
+
+        "kd":
+            bool(
+                kd.get(
+                    "golden_cross",
+                    False
+                )
+            ),
+
+        "rsi":
+            (
+                rsi is not None
+                and
+                rsi > SHORT_TERM_CONFIG[
+                    "rsi_min"
+                ]
+            ),
+
+        "volume":
+            (
+                metrics.get(
+                    "volume_ratio_vs_previous_5"
+                )
+                is not None
+                and
+                metrics.get(
+                    "volume_ratio_vs_previous_5"
+                )
+                >= SHORT_TERM_CONFIG[
+                    "volume_multiplier"
+                ]
+            ),
+
+        "ma20":
+            bool(
+                metrics.get(
+                    "price_above_ma20_and_ma20_up",
+                    False
+                )
+            ),
+    }
+
+    qualified = all(
+        conditions.values()
+    )
+
+    if not qualified:
+
+        return None
+
+    return {
+
+        "index":
+            index,
+
+        "date":
+            history[-1][
+                "date"
+            ],
+
+        "close":
+            history[-1][
+                "close"
+            ],
+
+        "ma20":
+            metrics.get(
+                "ma20"
+            ),
+
+        "conditions":
+            conditions,
+    }
+
+
+# ============================================================
+# Entry Timing：統計
+# ============================================================
+
+def empty_entry_stats(
+) -> Dict[str, Any]:
+
+    return {
+
+        "trades":
+            0,
+
+        "wins":
+            0,
+
+        "losses":
+            0,
+
+        "win_rate":
+            None,
+
+        "avg_return_pct":
+            None,
+
+        "median_return_pct":
+            None,
+
+        "avg_mfe_pct":
+            None,
+
+        "avg_mae_pct":
+            None,
+    }
+
+
+def summarize_entry_trades(
+    trades: List[Dict[str, Any]]
+) -> Dict[str, Any]:
+
+    if not trades:
+
+        return empty_entry_stats()
+
+    returns = [
+        trade["return_pct"]
+        for trade in trades
+        if trade.get(
+            "return_pct"
+        ) is not None
+    ]
+
+    mfe_values = [
+        trade["mfe_pct"]
+        for trade in trades
+        if trade.get(
+            "mfe_pct"
+        ) is not None
+    ]
+
+    mae_values = [
+        trade["mae_pct"]
+        for trade in trades
+        if trade.get(
+            "mae_pct"
+        ) is not None
+    ]
+
+    wins = sum(
+        value > 0
+        for value in returns
+    )
+
+    losses = sum(
+        value <= 0
+        for value in returns
+    )
+
+    return {
+
+        "trades":
+            len(returns),
+
+        "wins":
+            wins,
+
+        "losses":
+            losses,
+
+        "win_rate":
+            round(
+                wins / len(returns),
+                4
+            )
+            if returns
+            else None,
+
+        "avg_return_pct":
+            round(
+                statistics.mean(
+                    returns
+                ),
+                2
+            )
+            if returns
+            else None,
+
+        "median_return_pct":
+            round(
+                statistics.median(
+                    returns
+                ),
+                2
+            )
+            if returns
+            else None,
+
+        "avg_mfe_pct":
+            round(
+                statistics.mean(
+                    mfe_values
+                ),
+                2
+            )
+            if mfe_values
+            else None,
+
+        "avg_mae_pct":
+            round(
+                statistics.mean(
+                    mae_values
+                ),
+                2
+            )
+            if mae_values
+            else None,
+    }
+
+
+# ============================================================
+# Entry Timing：立即進場
+# ============================================================
+
+def simulate_immediate_entry(
+    rows: List[Dict[str, Any]],
+    signal_index: int
+) -> Optional[Dict[str, Any]]:
+
+    holding_days = ENTRY_TIMING_CONFIG[
+        "holding_days"
+    ]
+
+    entry_index = signal_index
+
+    exit_index = (
+        entry_index
+        + holding_days
+    )
+
+    if exit_index >= len(
+        rows
+    ):
+
+        return None
+
+    entry_price = safe_float(
+        rows[
+            entry_index
+        ].get(
+            "close"
+        )
+    )
+
+    exit_price = safe_float(
+        rows[
+            exit_index
+        ].get(
+            "close"
+        )
+    )
+
+    if (
+        entry_price is None
+        or exit_price is None
+        or entry_price <= 0
+    ):
+
+        return None
+
+    future_rows = rows[
+        entry_index + 1:
+        exit_index + 1
+    ]
+
+    highs = [
+        safe_float(
+            row.get(
+                "high"
+            )
+        )
+        for row in future_rows
+    ]
+
+    lows = [
+        safe_float(
+            row.get(
+                "low"
+            )
+        )
+        for row in future_rows
+    ]
+
+    highs = [
+        value
+        for value in highs
+        if value is not None
+    ]
+
+    lows = [
+        value
+        for value in lows
+        if value is not None
+    ]
+
+    mfe = None
+
+    if highs:
+
+        mfe = (
+            max(highs)
+            / entry_price
+            - 1.0
+        ) * 100.0
+
+    mae = None
+
+    if lows:
+
+        mae = (
+            min(lows)
+            / entry_price
+            - 1.0
+        ) * 100.0
+
+    return {
+
+        "signal_date":
+            rows[
+                signal_index
+            ][
+                "date"
+            ],
+
+        "entry_date":
+            rows[
+                entry_index
+            ][
+                "date"
+            ],
+
+        "exit_date":
+            rows[
+                exit_index
+            ][
+                "date"
+            ],
+
+        "entry_price":
+            round(
+                entry_price,
+                2
+            ),
+
+        "exit_price":
+            round(
+                exit_price,
+                2
+            ),
+
+        "return_pct":
+            round(
+                (
+                    exit_price
+                    / entry_price
+                    - 1.0
+                ) * 100.0,
+                2
+            ),
+
+        "mfe_pct":
+            round(
+                mfe,
+                2
+            )
+            if mfe is not None
+            else None,
+
+        "mae_pct":
+            round(
+                mae,
+                2
+            )
+            if mae is not None
+            else None,
+    }
+
+
+# ============================================================
+# Entry Timing：等待回測
+# ============================================================
+
+def find_pullback_entry(
+    rows: List[Dict[str, Any]],
+    signal_index: int,
+    ma20: float
+) -> Optional[Dict[str, Any]]:
+
+    lower = (
+        ma20
+        * ENTRY_TIMING_CONFIG[
+            "pullback_lower_pct"
+        ]
+    )
+
+    upper = (
+        ma20
+        * ENTRY_TIMING_CONFIG[
+            "pullback_upper_pct"
+        ]
+    )
+
+    wait_days = ENTRY_TIMING_CONFIG[
+        "pullback_wait_days"
+    ]
+
+    last_index = min(
+        len(rows) - 1,
+        signal_index
+        + wait_days
+    )
+
+    for index in range(
+        signal_index + 1,
+        last_index + 1
+    ):
+
+        row = rows[
+            index
+        ]
+
+        low = safe_float(
+            row.get(
+                "low"
+            )
+        )
+
+        high = safe_float(
+            row.get(
+                "high"
+            )
+        )
+
+        close = safe_float(
+            row.get(
+                "close"
+            )
+        )
+
+        if low is None:
+
+            continue
+
+        # ----------------------------------------------------
+        # 價格觸及合理回測區
+        #
+        # 使用區間上緣作為標準化限價成交價格。
+        #
+        # 不使用未提供的 Open。
+        # ----------------------------------------------------
+
+        if low <= upper:
+
+            entry_price = upper
+
+            # 若當日 high 都低於 lower，
+            # 無法確認合理區間內曾經交易，
+            # 因此不視為有效回測。
+            if (
+                high is not None
+                and high < lower
+            ):
+
+                continue
+
+            return {
+
+                "index":
+                    index,
+
+                "date":
+                    row[
+                        "date"
+                    ],
+
+                "entry_price":
+                    entry_price,
+
+                "zone_lower":
+                    lower,
+
+                "zone_upper":
+                    upper,
+
+                "close":
+                    close,
+            }
+
+    return None
+
+
+# ============================================================
+# Entry Timing：回測進場交易
+# ============================================================
+
+def simulate_pullback_entry(
+    rows: List[Dict[str, Any]],
+    signal_index: int,
+    ma20: float
+) -> Optional[Dict[str, Any]]:
+
+    pullback = find_pullback_entry(
+        rows,
+        signal_index,
+        ma20
+    )
+
+    if pullback is None:
+
+        return None
+
+    entry_index = pullback[
+        "index"
+    ]
+
+    holding_days = ENTRY_TIMING_CONFIG[
+        "holding_days"
+    ]
+
+    exit_index = (
+        entry_index
+        + holding_days
+    )
+
+    if exit_index >= len(
+        rows
+    ):
+
+        return None
+
+    entry_price = pullback[
+        "entry_price"
+    ]
+
+    exit_price = safe_float(
+        rows[
+            exit_index
+        ].get(
+            "close"
+        )
+    )
+
+    if (
+        entry_price is None
+        or exit_price is None
+        or entry_price <= 0
+    ):
+
+        return None
+
+    future_rows = rows[
+        entry_index + 1:
+        exit_index + 1
+    ]
+
+    highs = [
+        safe_float(
+            row.get(
+                "high"
+            )
+        )
+        for row in future_rows
+    ]
+
+    lows = [
+        safe_float(
+            row.get(
+                "low"
+            )
+        )
+        for row in future_rows
+    ]
+
+    highs = [
+        value
+        for value in highs
+        if value is not None
+    ]
+
+    lows = [
+        value
+        for value in lows
+        if value is not None
+    ]
+
+    mfe = None
+
+    if highs:
+
+        mfe = (
+            max(highs)
+            / entry_price
+            - 1.0
+        ) * 100.0
+
+    mae = None
+
+    if lows:
+
+        mae = (
+            min(lows)
+            / entry_price
+            - 1.0
+        ) * 100.0
+
+    return {
+
+        "signal_date":
+            rows[
+                signal_index
+            ][
+                "date"
+            ],
+
+        "entry_date":
+            pullback[
+                "date"
+            ],
+
+        "exit_date":
+            rows[
+                exit_index
+            ][
+                "date"
+            ],
+
+        "entry_price":
+            round(
+                entry_price,
+                2
+            ),
+
+        "exit_price":
+            round(
+                exit_price,
+                2
+            ),
+
+        "return_pct":
+            round(
+                (
+                    exit_price
+                    / entry_price
+                    - 1.0
+                ) * 100.0,
+                2
+            ),
+
+        "mfe_pct":
+            round(
+                mfe,
+                2
+            )
+            if mfe is not None
+            else None,
+
+        "mae_pct":
+            round(
+                mae,
+                2
+            )
+            if mae is not None
+            else None,
+
+        "wait_days":
+            entry_index
+            - signal_index,
+
+        "pullback_zone":
+            {
+
+                "lower":
+                    round(
+                        pullback[
+                            "zone_lower"
+                        ],
+                        2
+                    ),
+
+                "upper":
+                    round(
+                        pullback[
+                            "zone_upper"
+                        ],
+                        2
+                    ),
+            },
+    }
+
+
+# ============================================================
+# Entry Timing：完整回測
+# ============================================================
+
+def backtest_entry_timing(
+    rows: List[Dict[str, Any]]
+) -> Dict[str, Any]:
+
+    minimum_history = ENTRY_TIMING_CONFIG[
+        "minimum_history"
+    ]
+
+    if len(rows) < (
+        minimum_history
+    ):
+
+        return {
+
+            "status":
+                "insufficient",
+
+            "signal_count":
+                0,
+
+            "immediate":
+                empty_entry_stats(),
+
+            "pullback":
+                empty_entry_stats(),
+
+            "pullback_trigger_rate":
+                None,
+
+            "preferred":
+                "observe",
+
+            "reason":
+                "歷史資料不足",
+        }
+
+    immediate_trades = []
+    pullback_trades = []
+
+    signal_count = 0
+    pullback_candidates = 0
+
+    start_index = (
+        minimum_history - 1
+    )
+
+    last_signal_index = (
+        len(rows)
+        - ENTRY_TIMING_CONFIG[
+            "holding_days"
+        ]
+        - 1
+    )
+
+    if last_signal_index < start_index:
+
+        return {
+
+            "status":
+                "insufficient",
+
+            "signal_count":
+                0,
+
+            "immediate":
+                empty_entry_stats(),
+
+            "pullback":
+                empty_entry_stats(),
+
+            "pullback_trigger_rate":
+                None,
+
+            "preferred":
+                "observe",
+
+            "reason":
+                "可回測區間不足",
+        }
+
+    for signal_index in range(
+        start_index,
+        last_signal_index + 1
+    ):
+
+        signal = historical_signal(
+            rows,
+            signal_index
+        )
+
+        if signal is None:
+
+            continue
+
+        signal_count += 1
+
+        immediate = simulate_immediate_entry(
+            rows,
+            signal_index
+        )
+
+        if immediate is not None:
+
+            immediate_trades.append(
+                immediate
+            )
+
+        ma20 = safe_float(
+            signal.get(
+                "ma20"
+            )
+        )
+
+        if ma20 is None or ma20 <= 0:
+
+            continue
+
+        pullback = simulate_pullback_entry(
+            rows,
+            signal_index,
+            ma20
+        )
+
+        if pullback is not None:
+
+            pullback_candidates += 1
+
+            pullback_trades.append(
+                pullback
+            )
+
+    immediate_stats = summarize_entry_trades(
+        immediate_trades
+    )
+
+    pullback_stats = summarize_entry_trades(
+        pullback_trades
+    )
+
+    trigger_rate = None
+
+    if signal_count > 0:
+
+        trigger_rate = round(
+            pullback_candidates
+            / signal_count,
+            4
+        )
+
+    preferred = "observe"
+
+    immediate_win = immediate_stats.get(
+        "win_rate"
+    )
+
+    pullback_win = pullback_stats.get(
+        "win_rate"
+    )
+
+    minimum_signals = ENTRY_TIMING_CONFIG[
+        "minimum_signals"
+    ]
+
+    if (
+        signal_count >= minimum_signals
+        and
+        immediate_win is not None
+        and
+        pullback_win is not None
+        and
+        pullback_stats[
+            "trades"
+        ] >= minimum_signals
+    ):
+
+        edge = ENTRY_TIMING_CONFIG[
+            "win_rate_edge"
+        ]
+
+        if (
+            immediate_win
+            >=
+            pullback_win
+            + edge
+        ):
+
+            preferred = "buy_now"
+
+        elif (
+            pullback_win
+            >=
+            immediate_win
+            + edge
+        ):
+
+            preferred = "wait_pullback"
+
+        else:
+
+            preferred = "observe"
+
+    elif (
+        signal_count >= minimum_signals
+        and
+        immediate_win is not None
+        and
+        pullback_win is None
+    ):
+
+        preferred = "buy_now"
+
+    elif (
+        signal_count >= minimum_signals
+        and
+        pullback_win is not None
+        and
+        immediate_win is not None
+    ):
+
+        if (
+            pullback_win
+            > immediate_win
+        ):
+
+            preferred = "wait_pullback"
+
+        elif (
+            immediate_win
+            > pullback_win
+        ):
+
+            preferred = "buy_now"
+
+    if signal_count < minimum_signals:
+
+        status = "insufficient"
+
+        preferred = "observe"
+
+    else:
+
+        status = "complete"
+
+    return {
+
+        "status":
+            status,
+
+        "signal_count":
+            signal_count,
+
+        "immediate":
+            immediate_stats,
+
+        "pullback":
+            pullback_stats,
+
+        "pullback_trigger_rate":
+            trigger_rate,
+
+        "preferred":
+            preferred,
+
+        "configuration":
+            {
+
+                "holding_days":
+                    ENTRY_TIMING_CONFIG[
+                        "holding_days"
+                    ],
+
+                "pullback_wait_days":
+                    ENTRY_TIMING_CONFIG[
+                        "pullback_wait_days"
+                    ],
+
+                "pullback_lower_pct":
+                    ENTRY_TIMING_CONFIG[
+                        "pullback_lower_pct"
+                    ],
+
+                "pullback_upper_pct":
+                    ENTRY_TIMING_CONFIG[
+                        "pullback_upper_pct"
+                    ],
+
+                "minimum_signals":
+                    minimum_signals,
+            },
+    }
+
+
+# ============================================================
+# Entry Timing：目前價格判定
+# ============================================================
+
+def build_current_entry_timing(
+    metrics: Dict[str, Any],
+    backtest: Dict[str, Any]
+) -> Dict[str, Any]:
+
+    price = safe_float(
+        metrics.get(
+            "price"
+        )
+    )
+
+    ma20 = safe_float(
+        metrics.get(
+            "ma20"
+        )
+    )
+
+    preferred = backtest.get(
+        "preferred",
+        "observe"
+    )
+
+    if (
+        price is None
+        or ma20 is None
+        or ma20 <= 0
+    ):
+
+        return {
+
+            "status":
+                "observe",
+
+            "preferred":
+                preferred,
+
+            "message":
+                "目前價格資料不足",
+
+            "pullback_zone":
+                None,
+        }
+
+    lower = (
+        ma20
+        * ENTRY_TIMING_CONFIG[
+            "pullback_lower_pct"
+        ]
+    )
+
+    upper = (
+        ma20
+        * ENTRY_TIMING_CONFIG[
+            "pullback_upper_pct"
+        ]
+    )
+
+    if price > upper:
+
+        price_position = "above_zone"
+
+    elif price >= lower:
+
+        price_position = "inside_zone"
+
+    else:
+
+        price_position = "below_zone"
+
+    if preferred == "buy_now":
+
+        status = "buy_now"
+
+        message = (
+            "歷史回測顯示立即進場較有利"
+        )
+
+    elif preferred == "wait_pullback":
+
+        if price > upper:
+
+            status = "wait_pullback"
+
+            message = (
+                "目前價格高於合理回測區，"
+                "等待回測較有利"
+            )
+
+        else:
+
+            status = "buy_now"
+
+            message = (
+                "歷史回測偏向等待回測，"
+                "但目前價格已進入合理區間"
+            )
+
+    else:
+
+        status = "observe"
+
+        message = (
+            "立即進場與等待回測優勢接近"
+        )
+
+    return {
+
+        "status":
+            status,
+
+        "preferred":
+            preferred,
+
+        "price_position":
+            price_position,
+
+        "current_price":
+            round(
+                price,
+                2
+            ),
+
+        "ma20":
+            round(
+                ma20,
+                2
+            ),
+
+        "pullback_zone":
+            {
+
+                "lower":
+                    round(
+                        lower,
+                        2
+                    ),
+
+                "upper":
+                    round(
+                        upper,
+                        2
+                    ),
+            },
+
+        "message":
+            message,
+    }
+
+
+# ============================================================
+# Entry Timing 完整結果
+# ============================================================
+
+def build_entry_timing(
+    rows: List[Dict[str, Any]],
+    metrics: Dict[str, Any],
+    qualified: bool
+) -> Dict[str, Any]:
+
+    if not qualified:
+
+        return {
+
+            "schema":
+                ENTRY_TIMING_SCHEMA,
+
+            "status":
+                "not_qualified",
+
+            "current":
+                {
+
+                    "status":
+                        "observe",
+
+                    "preferred":
+                        "observe",
+
+                    "message":
+                        "目前未達強勢股條件",
+                },
+
+            "backtest":
+                None,
+        }
+
+    backtest = backtest_entry_timing(
+        rows
+    )
+
+    current = build_current_entry_timing(
+        metrics,
+        backtest
+    )
+
+    return {
+
+        "schema":
+            ENTRY_TIMING_SCHEMA,
+
+        "status":
+            current.get(
+                "status",
+                "observe"
+            ),
+
+        "current":
+            current,
+
+        "backtest":
+            backtest,
+    }
+
+
+# ============================================================
 # Analyze One Stock
 # ============================================================
 
@@ -3242,17 +4356,15 @@ def analyze_stock(
         ""
     )
 
-    minimum_history = (
-        SHORT_TERM_CONFIG[
-            "minimum_history"
-        ]
+    minimum_history = SHORT_TERM_CONFIG[
+        "minimum_history"
+    ]
+
+    chip_analysis = calculate_chip_analysis(
+        chip
     )
 
     if len(rows) < 2:
-
-        chip_analysis = calculate_chip_analysis(
-            chip
-        )
 
         return {
 
@@ -3271,8 +4383,8 @@ def analyze_stock(
             "history_count":
                 len(rows),
 
-            "error":
-                "價格歷史不足",
+            "latest_date":
+                None,
 
             "metrics":
                 {},
@@ -3338,6 +4450,32 @@ def analyze_stock(
 
             "chip":
                 chip_analysis,
+
+            "entry_timing":
+                {
+
+                    "schema":
+                        ENTRY_TIMING_SCHEMA,
+
+                    "status":
+                        "insufficient",
+
+                    "current":
+                        {
+
+                            "status":
+                                "observe",
+
+                            "preferred":
+                                "observe",
+
+                            "message":
+                                "價格歷史不足",
+                        },
+
+                    "backtest":
+                        None,
+                },
         }
 
     metrics = calculate_price_metrics(
@@ -3393,12 +4531,6 @@ def analyze_stock(
             >= minimum_history,
     }
 
-    # --------------------------------------------------------
-    # 歷史資料不足 60 日：
-    #
-    # 不允許列為完整核心選股。
-    # --------------------------------------------------------
-
     if len(rows) < minimum_history:
 
         short_term[
@@ -3431,8 +4563,17 @@ def analyze_stock(
         chip
     )
 
-    chip_analysis = calculate_chip_analysis(
-        chip
+    qualified = bool(
+        short_term.get(
+            "qualified",
+            False
+        )
+    )
+
+    entry_timing = build_entry_timing(
+        rows,
+        metrics,
+        qualified
     )
 
     return {
@@ -3473,17 +4614,20 @@ def analyze_stock(
 
         "chip":
             chip_analysis,
+
+        "entry_timing":
+            entry_timing,
     }
 
 
 # ============================================================
-# Main Analysis
+# Run Analysis
 # ============================================================
 
 def run_analysis() -> Dict[str, Any]:
 
     section(
-        f"台股 AI 選股分析 V{VERSION}"
+        f"台股 AI 選股分析 {VERSION}"
     )
 
     universe = load_universe()
@@ -3522,17 +4666,9 @@ def run_analysis() -> Dict[str, Any]:
         f"{len(chip_stocks)}"
     )
 
-    # --------------------------------------------------------
-    # 載入所有價格 shard
-    # --------------------------------------------------------
-
     price_index, price_info = load_price_index(
         manifest
     )
-
-    # --------------------------------------------------------
-    # Universe / Price 驗證
-    # --------------------------------------------------------
 
     universe_symbols = set(
         universe.keys()
@@ -3553,37 +4689,24 @@ def run_analysis() -> Dict[str, Any]:
     )
 
     log("")
-
+    log("價格資料驗證")
     log(
-        "價格資料驗證："
+        f"Universe：{len(universe_symbols)}"
     )
-
     log(
-        f"Universe："
-        f"{len(universe_symbols)}"
+        f"價格索引：{len(price_symbols)}"
     )
-
     log(
-        f"價格索引："
-        f"{len(price_symbols)}"
+        f"成功對接：{len(matched_symbols)}"
     )
-
     log(
-        f"成功對接："
-        f"{len(matched_symbols)}"
-    )
-
-    log(
-        f"價格缺失："
-        f"{len(missing_symbols)}"
+        f"價格缺失：{len(missing_symbols)}"
     )
 
     if not matched_symbols:
 
         raise RuntimeError(
-            "❌ 價格資料沒有真正接通："
-            "Universe 與 prices shard "
-            "沒有任何股票成功對接"
+            "Universe 與 prices 沒有任何股票成功對接"
         )
 
     results = {}
@@ -3593,6 +4716,10 @@ def run_analysis() -> Dict[str, Any]:
     dca_buy = []
     dca_observe = []
     dca_pause = []
+
+    entry_buy_now = []
+    entry_wait_pullback = []
+    entry_observe = []
 
     complete = 0
     partial = 0
@@ -3615,6 +4742,14 @@ def run_analysis() -> Dict[str, Any]:
         "分歧": 0,
         "偏空": 0,
         "資料不足": 0,
+    }
+
+    entry_timing_distribution = {
+        "buy_now": 0,
+        "wait_pullback": 0,
+        "observe": 0,
+        "not_qualified": 0,
+        "insufficient": 0,
     }
 
     total = len(
@@ -3680,34 +4815,23 @@ def run_analysis() -> Dict[str, Any]:
 
             insufficient += 1
 
-        # ----------------------------------------------------
-        # 五項核心分數統計
-        # ----------------------------------------------------
-
         short_term = record.get(
             "short_term",
             {}
         )
 
-        core_score = short_term.get(
+        score = short_term.get(
             "score"
         )
 
-        if core_score is not None:
+        if isinstance(
+            score,
+            int
+        ) and 0 <= score <= 5:
 
-            core_score_int = int(
-                core_score
-            )
-
-            if 0 <= core_score_int <= 5:
-
-                core_score_distribution[
-                    str(core_score_int)
-                ] += 1
-
-        # ----------------------------------------------------
-        # 籌碼方向統計
-        # ----------------------------------------------------
+            core_score_distribution[
+                str(score)
+            ] += 1
 
         chip_direction = (
             record.get(
@@ -3729,10 +4853,6 @@ def run_analysis() -> Dict[str, Any]:
             chip_direction
         ] += 1
 
-        # ----------------------------------------------------
-        # 五項全部符合
-        # ----------------------------------------------------
-
         if short_term.get(
             "qualified",
             False
@@ -3741,10 +4861,6 @@ def run_analysis() -> Dict[str, Any]:
             short_candidates.append(
                 symbol
             )
-
-        # ----------------------------------------------------
-        # DCA
-        # ----------------------------------------------------
 
         dca_action = (
             record.get(
@@ -3777,6 +4893,44 @@ def run_analysis() -> Dict[str, Any]:
         elif dca_action == "暫停加碼":
 
             dca_pause.append(
+                symbol
+            )
+
+        entry_status = (
+            record.get(
+                "entry_timing",
+                {}
+            ).get(
+                "status",
+                "not_qualified"
+            )
+        )
+
+        if entry_status not in (
+            entry_timing_distribution
+        ):
+
+            entry_status = "observe"
+
+        entry_timing_distribution[
+            entry_status
+        ] += 1
+
+        if entry_status == "buy_now":
+
+            entry_buy_now.append(
+                symbol
+            )
+
+        elif entry_status == "wait_pullback":
+
+            entry_wait_pullback.append(
+                symbol
+            )
+
+        elif entry_status == "observe":
+
+            entry_observe.append(
                 symbol
             )
 
@@ -3853,6 +5007,24 @@ def run_analysis() -> Dict[str, Any]:
 
                 "chip_direction_distribution":
                     chip_direction_distribution,
+
+                "entry_timing_distribution":
+                    entry_timing_distribution,
+
+                "entry_buy_now":
+                    len(
+                        entry_buy_now
+                    ),
+
+                "entry_wait_pullback":
+                    len(
+                        entry_wait_pullback
+                    ),
+
+                "entry_observe":
+                    len(
+                        entry_observe
+                    ),
             },
 
         "price_info":
@@ -3874,6 +5046,15 @@ def run_analysis() -> Dict[str, Any]:
 
         "dca_pause":
             dca_pause,
+
+        "entry_buy_now":
+            entry_buy_now,
+
+        "entry_wait_pullback":
+            entry_wait_pullback,
+
+        "entry_observe":
+            entry_observe,
     }
 
 
@@ -3915,10 +5096,6 @@ def save_analysis(
                     "Data/chip.json",
             },
 
-        # ----------------------------------------------------
-        # 正式規則
-        # ----------------------------------------------------
-
         "analysis_rules":
             {
 
@@ -3954,35 +5131,10 @@ def save_analysis(
                                     ),
                             },
 
-                        "macd":
-                            "MACD 黃金交叉",
-
-                        "kd":
-                            "KD 黃金交叉",
-
-                        "rsi":
-                            "RSI > 50",
-
-                        "volume":
-                            (
-                                "今日成交量 ÷ "
-                                "前5個交易日平均成交量 "
-                                ">= 1.5"
-                            ),
-
-                        "price_ma20":
-                            (
-                                "股價 > MA20 "
-                                "且 MA20 向上"
-                            ),
-
                         "minimum_history":
                             SHORT_TERM_CONFIG[
                                 "minimum_history"
                             ],
-
-                        "qualification":
-                            "五項核心條件全部符合",
                     },
 
                 "chip":
@@ -3990,18 +5142,6 @@ def save_analysis(
 
                         "is_core_condition":
                             False,
-
-                        "1d":
-                            "保留並分析",
-
-                        "5d":
-                            "保留並分析",
-
-                        "10d":
-                            "保留並實際參與籌碼方向分析",
-
-                        "20d":
-                            "保留並分析",
 
                         "direction_basis":
                             [
@@ -4017,15 +5157,56 @@ def save_analysis(
                                 "10D",
                                 "20D",
                             ],
+
+                        "ten_day_used":
+                            True,
                     },
 
                 "dca":
                     DCA_CONFIG,
-            },
 
-        # ----------------------------------------------------
-        # Data Pipeline
-        # ----------------------------------------------------
+                "entry_timing":
+                    {
+
+                        "schema":
+                            ENTRY_TIMING_SCHEMA,
+
+                        "description":
+                            (
+                                "比較強勢股歷史訊號"
+                                "立即進場與等待回測"
+                                "兩種進場方式"
+                            ),
+
+                        "holding_days":
+                            ENTRY_TIMING_CONFIG[
+                                "holding_days"
+                            ],
+
+                        "pullback_wait_days":
+                            ENTRY_TIMING_CONFIG[
+                                "pullback_wait_days"
+                            ],
+
+                        "pullback_lower_pct":
+                            ENTRY_TIMING_CONFIG[
+                                "pullback_lower_pct"
+                            ],
+
+                        "pullback_upper_pct":
+                            ENTRY_TIMING_CONFIG[
+                                "pullback_upper_pct"
+                            ],
+
+                        "win_rate_definition":
+                            "持有期結束價格 > 進場價格",
+
+                        "minimum_signals":
+                            ENTRY_TIMING_CONFIG[
+                                "minimum_signals"
+                            ],
+                    },
+            },
 
         "data_pipeline":
             {
@@ -4062,27 +5243,15 @@ def save_analysis(
                     ],
             },
 
-        # ----------------------------------------------------
-        # Statistics
-        # ----------------------------------------------------
-
         "statistics":
             analysis[
                 "statistics"
             ],
 
-        # ----------------------------------------------------
-        # 五項核心全部符合股票
-        # ----------------------------------------------------
-
         "short_term_candidates":
             analysis[
                 "short_term_candidates"
             ],
-
-        # ----------------------------------------------------
-        # DCA
-        # ----------------------------------------------------
 
         "dca_buy":
             analysis[
@@ -4099,9 +5268,20 @@ def save_analysis(
                 "dca_pause"
             ],
 
-        # ----------------------------------------------------
-        # 股票分析結果
-        # ----------------------------------------------------
+        "entry_buy_now":
+            analysis[
+                "entry_buy_now"
+            ],
+
+        "entry_wait_pullback":
+            analysis[
+                "entry_wait_pullback"
+            ],
+
+        "entry_observe":
+            analysis[
+                "entry_observe"
+            ],
 
         "stocks":
             analysis[
@@ -4126,7 +5306,7 @@ def save_analysis(
         )
 
     # --------------------------------------------------------
-    # 寫入後重新讀取驗證
+    # 寫入後驗證
     # --------------------------------------------------------
 
     with temp_file.open(
@@ -4144,13 +5324,15 @@ def save_analysis(
     ):
 
         raise RuntimeError(
-            "analysis.json 寫入後格式錯誤"
+            "analysis.json 寫入後 root 格式錯誤"
         )
 
+    stocks = verify.get(
+        "stocks"
+    )
+
     if not isinstance(
-        verify.get(
-            "stocks"
-        ),
+        stocks,
         dict
     ):
 
@@ -4158,9 +5340,7 @@ def save_analysis(
             "analysis.json stocks 格式錯誤"
         )
 
-    if len(
-        verify["stocks"]
-    ) != len(
+    if len(stocks) != len(
         analysis["results"]
     ):
 
@@ -4168,52 +5348,8 @@ def save_analysis(
             "analysis.json 股票數量驗證失敗"
         )
 
-    required_top_keys = {
-
-        "schema_version",
-
-        "generated_at",
-
-        "source",
-
-        "analysis_rules",
-
-        "data_pipeline",
-
-        "statistics",
-
-        "short_term_candidates",
-
-        "dca_buy",
-
-        "dca_observe",
-
-        "dca_pause",
-
-        "stocks",
-    }
-
-    missing_keys = (
-        required_top_keys
-        -
-        set(
-            verify.keys()
-        )
-    )
-
-    if missing_keys:
-
-        raise RuntimeError(
-            "analysis.json 缺少欄位："
-            + ", ".join(
-                sorted(
-                    missing_keys
-                )
-            )
-        )
-
     # --------------------------------------------------------
-    # 強制驗證核心規則 = 5
+    # 核心規則驗證
     # --------------------------------------------------------
 
     rules = verify[
@@ -4227,50 +5363,68 @@ def save_analysis(
     ) != 5:
 
         raise RuntimeError(
-            "❌ 核心條件數量驗證失敗："
             "core_total 必須為 5"
         )
 
-    core_conditions = rules.get(
+    conditions = rules.get(
         "core_conditions"
     )
 
     if not isinstance(
-        core_conditions,
+        conditions,
         dict
     ):
 
         raise RuntimeError(
-            "❌ core_conditions 格式錯誤"
+            "core_conditions 格式錯誤"
         )
 
-    if len(
-        core_conditions
-    ) != 5:
+    if len(conditions) != 5:
 
         raise RuntimeError(
-            "❌ 核心條件驗證失敗："
-            "必須正好 5 項"
+            "核心條件必須正好 5 項"
         )
 
-    if (
-        core_conditions.get("5")
-        !=
-        "股價 > MA20 且 MA20 向上"
+    if conditions.get(
+        "5"
+    ) != "股價 > MA20 且 MA20 向上":
+
+        raise RuntimeError(
+            "第五項核心條件錯誤"
+        )
+
+    # --------------------------------------------------------
+    # Entry Timing Schema
+    # --------------------------------------------------------
+
+    entry_rules = verify[
+        "analysis_rules"
+    ].get(
+        "entry_timing"
+    )
+
+    if not isinstance(
+        entry_rules,
+        dict
     ):
 
         raise RuntimeError(
-            "❌ 第五項核心條件不是合併後的 "
-            "股價 > MA20 且 MA20 向上"
+            "Entry Timing 規則不存在"
+        )
+
+    if entry_rules.get(
+        "schema"
+    ) != ENTRY_TIMING_SCHEMA:
+
+        raise RuntimeError(
+            "Entry Timing schema 錯誤"
         )
 
     # --------------------------------------------------------
-    # 驗證每一檔股票都是五項核心
+    # 每檔股票驗證
     # --------------------------------------------------------
 
-    for symbol, stock in verify[
-        "stocks"
-    ].items():
+    for symbol, stock in stocks.items():
 
         short_term = stock.get(
             "short_term",
@@ -4282,67 +5436,37 @@ def save_analysis(
         ) != 5:
 
             raise RuntimeError(
-                f"❌ {symbol} "
-                "core_total != 5"
+                f"{symbol}: core_total != 5"
             )
 
-        conditions = short_term.get(
+        stock_conditions = short_term.get(
             "conditions"
         )
 
         if not isinstance(
-            conditions,
+            stock_conditions,
             dict
         ):
 
             raise RuntimeError(
-                f"❌ {symbol} "
-                "conditions 格式錯誤"
+                f"{symbol}: conditions 格式錯誤"
             )
 
         if len(
-            conditions
+            stock_conditions
         ) != 5:
 
             raise RuntimeError(
-                f"❌ {symbol} "
-                "核心條件不是 5 項"
+                f"{symbol}: 核心條件不是 5 項"
             )
-
-        score = short_term.get(
-            "score"
-        )
-
-        if (
-            not isinstance(
-                score,
-                int
-            )
-            or score < 0
-            or score > 5
-        ):
-
-            raise RuntimeError(
-                f"❌ {symbol} "
-                "核心分數不是 0~5"
-            )
-
-        # ----------------------------------------------------
-        # 籌碼不能被算成核心條件
-        # ----------------------------------------------------
 
         if short_term.get(
             "chip_is_core_condition"
         ) is not False:
 
             raise RuntimeError(
-                f"❌ {symbol} "
-                "籌碼錯誤地被標記為核心條件"
+                f"{symbol}: 籌碼錯誤成為核心條件"
             )
-
-        # ----------------------------------------------------
-        # 10D 必須保留並使用
-        # ----------------------------------------------------
 
         chip = stock.get(
             "chip",
@@ -4354,13 +5478,119 @@ def save_analysis(
         ) is not True:
 
             raise RuntimeError(
-                f"❌ {symbol} "
-                "10D 未被標記為實際使用"
+                f"{symbol}: 10D 未標記為使用"
             )
 
-    # --------------------------------------------------------
-    # 最重要的資料管線驗證
-    # --------------------------------------------------------
+        entry_timing = stock.get(
+            "entry_timing"
+        )
+
+        if not isinstance(
+            entry_timing,
+            dict
+        ):
+
+            raise RuntimeError(
+                f"{symbol}: entry_timing 缺失"
+            )
+
+        if entry_timing.get(
+            "schema"
+        ) != ENTRY_TIMING_SCHEMA:
+
+            raise RuntimeError(
+                f"{symbol}: entry_timing schema 錯誤"
+            )
+
+        status = entry_timing.get(
+            "status"
+        )
+
+        allowed_status = {
+            "buy_now",
+            "wait_pullback",
+            "observe",
+            "not_qualified",
+            "insufficient",
+        }
+
+        if status not in allowed_status:
+
+            raise RuntimeError(
+                f"{symbol}: "
+                f"非法 entry_timing.status={status}"
+            )
+
+        # ----------------------------------------------------
+        # 未符合強勢股時，不應該出現 Entry Timing 回測
+        # ----------------------------------------------------
+
+        qualified = bool(
+            short_term.get(
+                "qualified",
+                False
+            )
+        )
+
+        if not qualified:
+
+            if status not in {
+                "not_qualified",
+                "insufficient",
+            }:
+
+                raise RuntimeError(
+                    f"{symbol}: "
+                    "未符合強勢股卻產生有效 Entry Timing"
+                )
+
+        # ----------------------------------------------------
+        # 強勢股必須有回測結果
+        # ----------------------------------------------------
+
+        if qualified:
+
+            backtest = entry_timing.get(
+                "backtest"
+            )
+
+            if not isinstance(
+                backtest,
+                dict
+            ):
+
+                raise RuntimeError(
+                    f"{symbol}: "
+                    "強勢股缺少 Entry Timing backtest"
+                )
+
+            immediate = backtest.get(
+                "immediate"
+            )
+
+            pullback = backtest.get(
+                "pullback"
+            )
+
+            if not isinstance(
+                immediate,
+                dict
+            ):
+
+                raise RuntimeError(
+                    f"{symbol}: "
+                    "immediate stats 格式錯誤"
+                )
+
+            if not isinstance(
+                pullback,
+                dict
+            ):
+
+                raise RuntimeError(
+                    f"{symbol}: "
+                    "pullback stats 格式錯誤"
+                )
 
     stats = verify[
         "statistics"
@@ -4378,29 +5608,25 @@ def save_analysis(
 
     if (
         universe_count > 0
-        and matched_count == 0
+        and
+        matched_count == 0
     ):
 
         raise RuntimeError(
-            "❌ analysis.json 拒絕輸出："
-            "Universe 有股票，但沒有任何價格資料成功對接"
+            "Universe 有資料，但價格完全沒有對接"
         )
-
-    # --------------------------------------------------------
-    # 寫入正式檔案
-    # --------------------------------------------------------
 
     temp_file.replace(
         OUTPUT_FILE
     )
 
     log(
-        f"✓ {OUTPUT_FILE}"
+        f"✓ 已寫入：{OUTPUT_FILE}"
     )
 
 
 # ============================================================
-# Final Summary
+# Summary
 # ============================================================
 
 def print_summary(
@@ -4454,11 +5680,7 @@ def print_summary(
     log("")
 
     log(
-        "================================"
-    )
-
-    log(
-        "短期核心條件：5 項"
+        "短期技術條件：5 項"
     )
 
     log(
@@ -4474,71 +5696,73 @@ def print_summary(
     )
 
     log(
-        "4. 量比 >= 1.5"
+        "4. 成交量比 >= 1.5"
     )
 
     log(
         "5. 股價 > MA20 且 MA20 向上"
     )
 
-    log(
-        "================================"
-    )
-
     log("")
 
     log(
-        "五項核心全部符合："
+        "強勢股："
         f"{stats['short_term_candidates']}"
     )
 
     log("")
 
     log(
-        "核心分數分布："
+        "Entry Timing"
     )
 
-    distribution = stats[
-        "core_score_distribution"
-    ]
+    log(
+        "可直接進場："
+        f"{stats['entry_buy_now']}"
+    )
 
-    for score in range(
-        0,
-        6
-    ):
+    log(
+        "等待回測："
+        f"{stats['entry_wait_pullback']}"
+    )
 
-        log(
-            f"  {score}/5："
-            f"{distribution.get(str(score), 0)} 檔"
-        )
+    log(
+        "觀察："
+        f"{stats['entry_observe']}"
+    )
 
     log("")
 
     log(
-        "籌碼方向："
+        "Entry Timing 回測設定："
     )
 
-    chip_distribution = stats[
-        "chip_direction_distribution"
-    ]
+    log(
+        "持有期間："
+        f"{ENTRY_TIMING_CONFIG['holding_days']} "
+        "交易日"
+    )
 
-    for direction in (
-        "偏多",
-        "分歧",
-        "偏空",
-        "資料不足",
-    ):
+    log(
+        "等待回測："
+        f"{ENTRY_TIMING_CONFIG['pullback_wait_days']} "
+        "交易日"
+    )
 
-        log(
-            f"  {direction}："
-            f"{chip_distribution.get(direction, 0)} 檔"
-        )
+    log(
+        "合理回測區："
+        "MA20 × 0.98 ~ MA20 × 1.02"
+    )
+
+    log(
+        "勝率定義："
+        "持有期結束價格 > 進場價格"
+    )
 
     log("")
 
     log(
-        "籌碼分析："
-        "1D / 5D / 10D / 20D"
+        "籌碼：1D / 5D / 10D / 20D"
     )
 
     log(
@@ -4546,47 +5770,17 @@ def print_summary(
     )
 
     log(
-        "注意：籌碼不是第六項核心條件"
+        "籌碼不是技術核心條件"
     )
 
     log("")
 
     log(
-        "零股定投可買："
-        f"{stats['dca_buy']}"
+        f"耗時：{elapsed:.1f} 秒"
     )
 
     log(
-        "零股定投觀察："
-        f"{stats['dca_observe']}"
-    )
-
-    log(
-        "零股定投暫停："
-        f"{stats['dca_pause']}"
-    )
-
-    log("")
-
-    log(
-        "短期成交量規則："
-    )
-
-    log(
-        "今日成交量 ÷ "
-        "前5個交易日平均成交量 >= 1.5"
-    )
-
-    log("")
-
-    log(
-        f"耗時："
-        f"{elapsed:.1f} 秒"
-    )
-
-    log(
-        f"輸出："
-        f"{OUTPUT_FILE}"
+        f"輸出：{OUTPUT_FILE}"
     )
 
 
@@ -4599,14 +5793,23 @@ def main() -> int:
     start = time.time()
 
     log("")
-    log("=" * 72)
+    log(
+        "=" * 72
+    )
 
     log(
         "台股 AI 選股系統 "
         f"analyze_stocks.py {VERSION}"
     )
 
-    log("=" * 72)
+    log(
+        "Entry Timing："
+        f"{ENTRY_TIMING_SCHEMA}"
+    )
+
+    log(
+        "=" * 72
+    )
 
     try:
 
@@ -4631,14 +5834,18 @@ def main() -> int:
     except Exception as exc:
 
         log("")
-        log("=" * 72)
+        log(
+            "=" * 72
+        )
 
         log(
             f"❌ analyze_stocks.py "
             f"{VERSION} 執行失敗"
         )
 
-        log("=" * 72)
+        log(
+            "=" * 72
+        )
 
         log(
             f"原因：{exc}"
