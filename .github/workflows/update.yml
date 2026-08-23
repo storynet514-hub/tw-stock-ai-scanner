@@ -9,6 +9,7 @@ on:
 permissions:
   contents: write
 
+
 jobs:
 
   update:
@@ -24,6 +25,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+
       # ============================================================
       # 2. Python
       # ============================================================
@@ -33,12 +35,14 @@ jobs:
         with:
           python-version: "3.11"
 
+
       # ============================================================
       # 3. Install dependencies
       # ============================================================
 
       - name: Install dependencies
         run: |
+
           set -e
 
           python -m pip install --upgrade pip
@@ -47,12 +51,14 @@ jobs:
             pandas \
             requests
 
+
       # ============================================================
       # 4. Verify project structure
       # ============================================================
 
       - name: Verify required files
         run: |
+
           set -e
 
           echo "========================================"
@@ -82,6 +88,7 @@ jobs:
 
           done
 
+
       # ============================================================
       # 5. Build Universe
       # ============================================================
@@ -97,12 +104,24 @@ jobs:
 
           python Scripts/build_universe.py
 
+
       # ============================================================
       # 6. Verify Universe
+      #
+      # 正式 schema：
+      #
+      # {
+      #   "schema_version": "...",
+      #   "universe_count": 2143,
+      #   "stocks": {
+      #       "2337": {...}
+      #   }
+      # }
       # ============================================================
 
       - name: Verify universe.json
         run: |
+
           set -e
 
           echo "========================================"
@@ -110,12 +129,14 @@ jobs:
           echo "========================================"
 
           python - <<'PY'
+
           import json
           from pathlib import Path
 
           path = Path("Data/universe.json")
 
           if not path.exists():
+
               raise SystemExit(
                   "❌ Data/universe.json 不存在"
               )
@@ -124,103 +145,124 @@ jobs:
               "r",
               encoding="utf-8-sig"
           ) as f:
+
               data = json.load(f)
 
-          if not isinstance(data, dict):
+          if not isinstance(
+              data,
+              dict
+          ):
+
               raise SystemExit(
-                  "❌ universe.json 格式錯誤：根節點不是 object"
+                  "❌ universe.json 根節點必須是 object"
               )
 
-          # --------------------------------------------------
-          # build_universe.py V10.2 的正式格式：
-          #
-          # {
-          #   "schema_version": "...",
-          #   "universe_count": 2143,
-          #   "stocks": {
-          #       "2337": {...},
-          #       "2426": {...}
-          #   }
-          # }
-          #
-          # 舊版 Verify 檢查的是：
-          #     data["items"]
-          #
-          # 這已經與現在的 universe.json 架構不一致。
-          # --------------------------------------------------
+          stocks = data.get(
+              "stocks"
+          )
 
-          stocks = data.get("stocks")
+          if not isinstance(
+              stocks,
+              dict
+          ):
 
-          if not isinstance(stocks, dict):
               raise SystemExit(
-                  "❌ universe.json stocks 格式錯誤："
-                  "應為 object/dict"
+                  "❌ universe.json stocks 必須是 object"
               )
 
           if len(stocks) == 0:
+
               raise SystemExit(
-                  "❌ universe.json stocks 沒有任何股票"
+                  "❌ universe.json stocks 為空"
               )
 
-          # --------------------------------------------------
-          # 基本數量驗證
-          # --------------------------------------------------
-
-          universe_count = data.get("universe_count")
+          universe_count = data.get(
+              "universe_count"
+          )
 
           if universe_count is not None:
-              if universe_count != len(stocks):
+
+              try:
+
+                  universe_count = int(
+                      universe_count
+                  )
+
+              except Exception:
+
                   raise SystemExit(
-                      f"❌ universe_count 不一致："
+                      "❌ universe_count 不是有效整數"
+                  )
+
+              if universe_count != len(stocks):
+
+                  raise SystemExit(
+                      "❌ universe_count 不一致："
                       f"header={universe_count}, "
-                      f"實際={len(stocks)}"
+                      f"actual={len(stocks)}"
                   )
 
           print(
               f"✓ Universe：{len(stocks)} 檔"
           )
 
-          # --------------------------------------------------
-          # 固定股票驗證
-          # --------------------------------------------------
+          # --------------------------------------------------------
+          # 固定測試股票
+          # --------------------------------------------------------
 
           expected = {
+
               "2337": {
                   "name": "旺宏",
                   "market": "TWSE",
               },
+
               "2426": {
                   "name": "鼎元",
                   "market": "TWSE",
               },
+
               "2368": {
                   "name": "金像電",
                   "market": "TWSE",
               },
+
               "3081": {
                   "name": "聯亞",
                   "market": "TPEX",
               },
+
           }
 
           for code, expected_item in expected.items():
 
               item = stocks.get(code)
 
-              if not isinstance(item, dict):
+              if not isinstance(
+                  item,
+                  dict
+              ):
+
                   raise SystemExit(
                       f"❌ 找不到股票：{code}"
                   )
 
               name = str(
-                  item.get("name", "")
+                  item.get(
+                      "name",
+                      ""
+                  )
               ).strip()
 
               market = str(
-                  item.get("market", "")
+                  item.get(
+                      "market",
+                      ""
+                  )
               ).strip().upper()
 
               if name != expected_item["name"]:
+
                   raise SystemExit(
                       f"❌ {code} 名稱錯誤："
                       f"實際={name}，"
@@ -228,6 +270,7 @@ jobs:
                   )
 
               if market != expected_item["market"]:
+
                   raise SystemExit(
                       f"❌ {code} 市場錯誤："
                       f"實際={market}，"
@@ -235,39 +278,48 @@ jobs:
                   )
 
               print(
-                  f"✓ {code} | "
-                  f"{name} | "
-                  f"{market}"
+                  f"✓ {code} | {name} | {market}"
               )
 
-          # --------------------------------------------------
-          # 全市場名稱完整性
-          # --------------------------------------------------
+          # --------------------------------------------------------
+          # 全市場名稱
+          # --------------------------------------------------------
 
           missing_name = []
 
           for code, item in stocks.items():
 
-              if not isinstance(item, dict):
+              if not isinstance(
+                  item,
+                  dict
+              ):
+
                   missing_name.append(code)
+
                   continue
 
               name = str(
-                  item.get("name", "")
+                  item.get(
+                      "name",
+                      ""
+                  )
               ).strip()
 
               if not name:
+
                   missing_name.append(code)
 
           if missing_name:
 
               print(
-                  "❌ 發現名稱缺失："
-                  f"{len(missing_name)} 檔"
+                  f"❌ 名稱缺失：{len(missing_name)} 檔"
               )
 
               for code in missing_name[:50]:
-                  print(f"   {code}")
+
+                  print(
+                      f"   {code}"
+                  )
 
               raise SystemExit(
                   "❌ universe.json 存在空白 name"
@@ -277,45 +329,40 @@ jobs:
               f"✓ 全部 {len(stocks)} 檔名稱完整"
           )
 
-          # --------------------------------------------------
-          # 股票代號唯一性
-          # --------------------------------------------------
+          # --------------------------------------------------------
+          # 代號唯一性
+          # --------------------------------------------------------
 
-          codes = list(stocks.keys())
+          codes = list(
+              stocks.keys()
+          )
 
           if len(codes) != len(set(codes)):
+
               raise SystemExit(
-                  "❌ universe.json 存在重複股票代號"
+                  "❌ universe.json 股票代號重複"
               )
 
           print(
               f"✓ 股票代號唯一：{len(codes)} 檔"
           )
 
-          # --------------------------------------------------
-          # schema_version
-          # --------------------------------------------------
-
-          version = data.get(
-              "schema_version",
-              "UNKNOWN"
-          )
-
           print(
-              f"✓ schema_version：{version}"
+              f"✓ schema_version："
+              f"{data.get('schema_version', 'UNKNOWN')}"
           )
-
-          # --------------------------------------------------
-          # 最終成功
-          # --------------------------------------------------
 
           print("========================================")
           print("✓ Verify universe.json PASS")
           print("========================================")
+
           PY
+
 
       # ============================================================
       # 7. Fetch Prices
+      #
+      # 不修改 fetch_prices.py V4.2
       # ============================================================
 
       - name: Run fetch_prices.py
@@ -329,8 +376,9 @@ jobs:
 
           python Scripts/fetch_prices.py
 
+
       # ============================================================
-      # 8. Verify Prices
+      # 8. Verify Price Shards
       # ============================================================
 
       - name: Verify price shards
@@ -368,6 +416,7 @@ jobs:
 
           echo "✓ 價格分檔：$COUNT 個"
 
+
       # ============================================================
       # 9. Fetch Chip
       # ============================================================
@@ -382,6 +431,7 @@ jobs:
           echo "========================================"
 
           python Scripts/fetch_chip.py
+
 
       # ============================================================
       # 10. Verify Chip
@@ -401,7 +451,9 @@ jobs:
           import json
           from pathlib import Path
 
-          path = Path("Data/chip.json")
+          path = Path(
+              "Data/chip.json"
+          )
 
           if not path.exists():
 
@@ -416,7 +468,10 @@ jobs:
 
               data = json.load(f)
 
-          if not isinstance(data, dict):
+          if not isinstance(
+              data,
+              dict
+          ):
 
               raise SystemExit(
                   "❌ chip.json 格式錯誤"
@@ -428,8 +483,11 @@ jobs:
 
           PY
 
+
       # ============================================================
       # 11. Analyze Stocks
+      #
+      # 不修改 analyze_stocks.py V3.3
       # ============================================================
 
       - name: Run analyze_stocks.py
@@ -442,6 +500,7 @@ jobs:
           echo "========================================"
 
           python Scripts/analyze_stocks.py
+
 
       # ============================================================
       # 12. Verify Analysis
@@ -461,7 +520,9 @@ jobs:
           import json
           from pathlib import Path
 
-          path = Path("Data/analysis.json")
+          path = Path(
+              "Data/analysis.json"
+          )
 
           if not path.exists():
 
@@ -476,18 +537,26 @@ jobs:
 
               data = json.load(f)
 
-          if not isinstance(data, dict):
+          if not isinstance(
+              data,
+              dict
+          ):
 
               raise SystemExit(
                   "❌ analysis.json 格式錯誤"
               )
 
-          stocks = data.get("stocks")
+          stocks = data.get(
+              "stocks"
+          )
 
-          if not isinstance(stocks, dict):
+          if not isinstance(
+              stocks,
+              dict
+          ):
 
               raise SystemExit(
-                  "❌ analysis.json stocks 格式錯誤"
+                  "❌ analysis.json stocks 必須是 object"
               )
 
           if len(stocks) == 0:
@@ -507,7 +576,7 @@ jobs:
           ):
 
               raise SystemExit(
-                  "❌ short_term_candidates 格式錯誤"
+                  "❌ short_term_candidates 必須是 array"
               )
 
           print(
@@ -520,16 +589,17 @@ jobs:
 
           PY
 
+
       # ============================================================
       # 13. Build UI Data
-      #
-      # 這一步是目前缺失的核心
       #
       # analysis.json
       #       ↓
       # build_ui_data.py
       #       ↓
       # ui_data.json
+      #
+      # 這是正式 UI 資料轉換層。
       # ============================================================
 
       - name: Run build_ui_data.py
@@ -538,19 +608,16 @@ jobs:
           set -e
 
           echo "========================================"
-          echo "Running build_ui_data.py"
+          echo "Running build_ui_data.py UI-DATA-2.0"
           echo "========================================"
 
           python Scripts/build_ui_data.py
 
+
       # ============================================================
       # 14. Verify UI Data
       #
-      # 防止：
-      #
-      # Action 顯示成功
-      # 但 ui_data.json 是舊檔案
-      # 或 stocks 為空
+      # 完整 UI-DATA-2.0 Contract Validation
       # ============================================================
 
       - name: Verify ui_data.json
@@ -559,7 +626,7 @@ jobs:
           set -e
 
           echo "========================================"
-          echo "Verify ui_data.json"
+          echo "Verify UI-DATA-2.0"
           echo "========================================"
 
           python - <<'PY'
@@ -567,12 +634,14 @@ jobs:
           import json
           from pathlib import Path
 
+          UI_VERSION = "UI-DATA-2.0"
+
           path = Path(
               "Data/ui_data.json"
           )
 
           # --------------------------------------------------------
-          # 檔案存在
+          # File
           # --------------------------------------------------------
 
           if not path.exists():
@@ -600,68 +669,56 @@ jobs:
                   f"❌ ui_data.json JSON 讀取失敗：{exc}"
               )
 
-          # --------------------------------------------------------
-          # Object
-          # --------------------------------------------------------
-
           if not isinstance(
               data,
               dict
           ):
 
               raise SystemExit(
-                  "❌ ui_data.json 必須是 object"
+                  "❌ ui_data.json root 必須是 object"
               )
 
           # --------------------------------------------------------
-          # 必要欄位
+          # Schema Version
           # --------------------------------------------------------
 
-          required_keys = {
+          if data.get(
+              "schema_version"
+          ) != UI_VERSION:
+
+              raise SystemExit(
+                  "❌ schema_version 錯誤："
+                  f"{data.get('schema_version')}"
+              )
+
+          # --------------------------------------------------------
+          # Root
+          # --------------------------------------------------------
+
+          required_root = {
 
               "schema_version",
-
               "generated_at",
-
               "status",
-
               "market",
-
               "summary",
-
               "tabs",
-
               "stocks",
 
           }
 
-          missing = (
-              required_keys
+          missing_root = (
+              required_root
               - set(data.keys())
           )
 
-          if missing:
+          if missing_root:
 
               raise SystemExit(
-                  "❌ ui_data.json 缺少必要欄位："
+                  "❌ root 缺少："
                   + ", ".join(
-                      sorted(missing)
+                      sorted(missing_root)
                   )
-              )
-
-          # --------------------------------------------------------
-          # Schema
-          # --------------------------------------------------------
-
-          schema = data.get(
-              "schema_version"
-          )
-
-          if schema != "UI-DATA-2.0":
-
-              raise SystemExit(
-                  "❌ schema_version 錯誤："
-                  + str(schema)
               )
 
           # --------------------------------------------------------
@@ -678,13 +735,13 @@ jobs:
           ):
 
               raise SystemExit(
-                  "❌ ui_data.json stocks 必須是 object"
+                  "❌ stocks 必須是 object"
               )
 
           if len(stocks) == 0:
 
               raise SystemExit(
-                  "❌ ui_data.json stocks 為空"
+                  "❌ stocks 為空"
               )
 
           # --------------------------------------------------------
@@ -701,19 +758,15 @@ jobs:
           ):
 
               raise SystemExit(
-                  "❌ ui_data.json tabs 必須是 object"
+                  "❌ tabs 必須是 object"
               )
 
           required_tabs = {
 
               "today_picks",
-
               "top10",
-
               "etf",
-
               "bond",
-
               "watchlist",
 
           }
@@ -731,10 +784,6 @@ jobs:
                       sorted(missing_tabs)
                   )
               )
-
-          # --------------------------------------------------------
-          # 每個 tab 都必須是 array
-          # --------------------------------------------------------
 
           for tab_name in required_tabs:
 
@@ -768,37 +817,29 @@ jobs:
               tabs["today_picks"]
           )
 
-          summary_count = summary.get(
+          if summary.get(
               "today_picks"
-          )
-
-          if summary_count != today_count:
+          ) != today_count:
 
               raise SystemExit(
-                  "❌ summary.today_picks 與 "
-                  "tabs.today_picks 數量不一致"
+                  "❌ summary.today_picks "
+                  "與 tabs.today_picks 不一致"
               )
 
-          # --------------------------------------------------------
-          # Holdings
-          # --------------------------------------------------------
-
-          if (
-
-              summary.get(
-                  "has_holdings"
-              ) is False
-
-              and
-
-              summary.get(
-                  "holdings_profit"
-              ) is not None
-
-          ):
+          if summary.get(
+              "has_holdings"
+          ) is not False:
 
               raise SystemExit(
-                  "❌ 沒有持倉時不得產生 holdings_profit"
+                  "❌ has_holdings 初始必須為 false"
+              )
+
+          if summary.get(
+              "holdings_profit"
+          ) is not None:
+
+              raise SystemExit(
+                  "❌ holdings_profit 初始必須為 null"
               )
 
           # --------------------------------------------------------
@@ -808,19 +849,110 @@ jobs:
           if tabs["watchlist"]:
 
               raise SystemExit(
-                  "❌ watchlist 不允許建立預設股票"
+                  "❌ watchlist 初始必須為空"
               )
 
           # --------------------------------------------------------
-          # 完成
+          # Stock Records
           # --------------------------------------------------------
 
-          print(
-              "✓ ui_data.json 驗證成功"
-          )
+          required_stock = {
+
+              "symbol",
+              "name",
+              "market",
+              "instrument_type",
+              "price",
+              "change",
+              "change_pct",
+              "strength",
+              "recommendation",
+              "backend",
+              "holding",
+
+          }
+
+          required_holding = {
+
+              "shares",
+              "average_cost",
+              "market_value",
+              "profit",
+              "return_pct",
+
+          }
+
+          for symbol, record in stocks.items():
+
+              if not isinstance(
+                  record,
+                  dict
+              ):
+
+                  raise SystemExit(
+                      f"❌ {symbol} record 必須是 object"
+                  )
+
+              missing_stock = (
+                  required_stock
+                  - set(record.keys())
+              )
+
+              if missing_stock:
+
+                  raise SystemExit(
+                      f"❌ {symbol} 缺少："
+                      + ", ".join(
+                          sorted(missing_stock)
+                      )
+                  )
+
+              if record.get(
+                  "symbol"
+              ) != symbol:
+
+                  raise SystemExit(
+                      f"❌ {symbol} symbol 欄位不一致"
+                  )
+
+              holding = record.get(
+                  "holding"
+              )
+
+              if not isinstance(
+                  holding,
+                  dict
+              ):
+
+                  raise SystemExit(
+                      f"❌ {symbol} holding 必須是 object"
+                  )
+
+              missing_holding = (
+                  required_holding
+                  - set(holding.keys())
+              )
+
+              if missing_holding:
+
+                  raise SystemExit(
+                      f"❌ {symbol} holding 缺少："
+                      + ", ".join(
+                          sorted(missing_holding)
+                      )
+                  )
+
+              for key in required_holding:
+
+                  if holding[key] is not None:
+
+                      raise SystemExit(
+                          f"❌ {symbol} holding.{key} "
+                          "初始不得有值"
+                      )
 
           print(
-              f"✓ schema_version：{schema}"
+              "✓ UI-DATA-2.0 Schema PASS"
           )
 
           print(
@@ -828,19 +960,23 @@ jobs:
           )
 
           print(
-              f"✓ 今日精選：{len(tabs['today_picks'])}"
+              f"✓ 今日精選："
+              f"{len(tabs['today_picks'])}"
           )
 
           print(
-              f"✓ Top 10：{len(tabs['top10'])}"
+              f"✓ Top 10："
+              f"{len(tabs['top10'])}"
           )
 
           print(
-              f"✓ ETF：{len(tabs['etf'])}"
+              f"✓ ETF："
+              f"{len(tabs['etf'])}"
           )
 
           print(
-              f"✓ 債券：{len(tabs['bond'])}"
+              f"✓ 債券："
+              f"{len(tabs['bond'])}"
           )
 
           print(
@@ -849,10 +985,19 @@ jobs:
 
           PY
 
+
       # ============================================================
-      # 15. Final Data Consistency Check
+      # 15. Final Analysis → UI Consistency
       #
-      # 確認 analysis → UI 沒有斷掉
+      # 這一層直接比較：
+      #
+      # analysis.stocks
+      #         ↕
+      # ui_data.stocks
+      #
+      # analysis.short_term_candidates
+      #         ↕
+      # ui_data.tabs.today_picks
       # ============================================================
 
       - name: Verify analysis to UI connection
@@ -867,6 +1012,29 @@ jobs:
           python - <<'PY'
 
           import json
+
+          def normalize_symbol(value):
+
+              if value is None:
+                  return ""
+
+              text = str(
+                  value
+              ).strip().upper()
+
+              if text.endswith(".TW"):
+
+                  text = text[:-3]
+
+              elif text.endswith(".TWO"):
+
+                  text = text[:-4]
+
+              return text
+
+          # --------------------------------------------------------
+          # Load
+          # --------------------------------------------------------
 
           with open(
               "Data/analysis.json",
@@ -894,29 +1062,34 @@ jobs:
               {}
           )
 
-          candidates = analysis.get(
-              "short_term_candidates",
-              []
-          )
-
-          today_picks = ui.get(
-              "tabs",
-              {}
-          ).get(
-              "today_picks",
-              []
-          )
-
           # --------------------------------------------------------
-          # 股票數量
+          # Basic
           # --------------------------------------------------------
+
+          if not isinstance(
+              analysis_stocks,
+              dict
+          ):
+
+              raise SystemExit(
+                  "❌ analysis.stocks 必須是 object"
+              )
+
+          if not isinstance(
+              ui_stocks,
+              dict
+          ):
+
+              raise SystemExit(
+                  "❌ ui.stocks 必須是 object"
+              )
 
           if len(
               analysis_stocks
           ) == 0:
 
               raise SystemExit(
-                  "❌ analysis.json 沒有股票"
+                  "❌ analysis.stocks 為空"
               )
 
           if len(
@@ -924,90 +1097,216 @@ jobs:
           ) == 0:
 
               raise SystemExit(
-                  "❌ ui_data.json 沒有股票"
+                  "❌ ui.stocks 為空"
               )
 
           # --------------------------------------------------------
-          # 今日精選
+          # 股票集合
           # --------------------------------------------------------
 
-          normalized_candidates = []
+          analysis_symbols = {
 
-          for symbol in candidates:
-
-              symbol = str(
-                  symbol
-              ).strip().upper()
-
-              if symbol.endswith(
-                  ".TW"
-              ):
-
-                  symbol = symbol[:-3]
-
-              elif symbol.endswith(
-                  ".TWO"
-              ):
-
-                  symbol = symbol[:-4]
-
-              if symbol:
-
-                  normalized_candidates.append(
-                      symbol
-                  )
-
-          normalized_candidates = [
-
-              symbol
+              normalize_symbol(symbol)
 
               for symbol
-              in normalized_candidates
+              in analysis_stocks.keys()
 
-              if symbol in ui_stocks
+              if normalize_symbol(symbol)
 
-              and ui_stocks[
-                  symbol
-              ].get(
-                  "instrument_type"
-              ) == "stock"
+          }
 
-          ]
+          ui_symbols = {
 
-          if (
-              normalized_candidates
-              != today_picks
+              normalize_symbol(symbol)
+
+              for symbol
+              in ui_stocks.keys()
+
+              if normalize_symbol(symbol)
+
+          }
+
+          missing_in_ui = (
+              analysis_symbols
+              - ui_symbols
+          )
+
+          extra_in_ui = (
+              ui_symbols
+              - analysis_symbols
+          )
+
+          if missing_in_ui:
+
+              sample = sorted(
+                  missing_in_ui
+              )[:30]
+
+              raise SystemExit(
+                  "❌ analysis → UI 股票遺失："
+                  + ", ".join(sample)
+              )
+
+          if extra_in_ui:
+
+              sample = sorted(
+                  extra_in_ui
+              )[:30]
+
+              raise SystemExit(
+                  "❌ UI 出現 analysis 沒有的股票："
+                  + ", ".join(sample)
+              )
+
+          # --------------------------------------------------------
+          # Today Picks
+          # --------------------------------------------------------
+
+          candidates = analysis.get(
+              "short_term_candidates",
+              []
+          )
+
+          if not isinstance(
+              candidates,
+              list
           ):
 
               raise SystemExit(
-                  "❌ analysis.json → "
-                  "ui_data.json 今日精選對接錯誤"
+                  "❌ short_term_candidates 必須是 array"
               )
 
+          expected_today = []
+
+          for raw_symbol in candidates:
+
+              symbol = normalize_symbol(
+                  raw_symbol
+              )
+
+              if not symbol:
+                  continue
+
+              if symbol not in ui_stocks:
+                  continue
+
+              record = ui_stocks[
+                  symbol
+              ]
+
+              if record.get(
+                  "instrument_type"
+              ) != "stock":
+
+                  continue
+
+              if symbol not in expected_today:
+
+                  expected_today.append(
+                      symbol
+                  )
+
+          actual_today = ui.get(
+              "tabs",
+              {}
+          ).get(
+              "today_picks",
+              []
+          )
+
+          if expected_today != actual_today:
+
+              raise SystemExit(
+                  "❌ analysis.json → "
+                  "ui_data.json today_picks 不一致"
+              )
+
+          # --------------------------------------------------------
+          # Top 10
+          # --------------------------------------------------------
+
+          top10 = ui.get(
+              "tabs",
+              {}
+          ).get(
+              "top10",
+              []
+          )
+
+          if len(top10) > 10:
+
+              raise SystemExit(
+                  "❌ Top 10 不得超過 10 檔"
+              )
+
+          for symbol in top10:
+
+              if symbol not in ui_stocks:
+
+                  raise SystemExit(
+                      f"❌ Top 10 出現不存在股票：{symbol}"
+                  )
+
+              if ui_stocks[
+                  symbol
+              ].get(
+                  "instrument_type"
+              ) != "stock":
+
+                  raise SystemExit(
+                      f"❌ Top 10 出現非股票商品：{symbol}"
+                  )
+
+          # --------------------------------------------------------
+          # Final
+          # --------------------------------------------------------
+
           print(
-              "✓ analysis stocks → UI stocks：成功"
+              "✓ analysis stocks → UI stocks：PASS"
           )
 
           print(
-              f"✓ analysis stocks：{len(analysis_stocks)}"
+              f"✓ analysis stocks："
+              f"{len(analysis_symbols)}"
           )
 
           print(
-              f"✓ UI stocks：{len(ui_stocks)}"
+              f"✓ UI stocks："
+              f"{len(ui_symbols)}"
           )
 
           print(
-              f"✓ 六項核心候選：{len(candidates)}"
+              f"✓ 六項核心候選："
+              f"{len(candidates)}"
           )
 
           print(
-              f"✓ 今日精選：{len(today_picks)}"
+              f"✓ 今日精選："
+              f"{len(actual_today)}"
+          )
+
+          print(
+              f"✓ Top 10："
+              f"{len(top10)}"
+          )
+
+          print(
+              "========================================"
+          )
+
+          print(
+              "✓ Analysis → UI connection PASS"
+          )
+
+          print(
+              "========================================"
           )
 
           PY
 
+
       # ============================================================
-      # 16. Show Final Files
+      # 16. Show Generated Files
       # ============================================================
 
       - name: Show generated files
@@ -1035,12 +1334,12 @@ jobs:
             -print \
             | sort
 
+
       # ============================================================
       # 17. Commit and Push
       #
-      # 最重要：
-      #
-      # 必須包含 Data/ui_data.json
+      # 只有前面所有 schema / connection
+      # validation 全部 PASS 才會到這裡。
       # ============================================================
 
       - name: Commit updated data
@@ -1073,7 +1372,7 @@ jobs:
           git add Data/ui_data.json
 
           # --------------------------------------------------------
-          # Check changes
+          # Check staged changes
           # --------------------------------------------------------
 
           if git diff --cached --quiet; then
@@ -1100,7 +1399,5 @@ jobs:
           echo ""
 
           echo "========================================"
-
           echo "✓ 資料已成功 Commit / Push"
-
           echo "========================================"
