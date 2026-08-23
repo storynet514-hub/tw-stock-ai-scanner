@@ -2544,7 +2544,7 @@ def evaluate_short_term(
     # 1. MACD 黃金交叉
     # 2. KD 黃金交叉
     # 3. RSI > 50
-    # 4. 量比 >= 1.5
+    # 4. 今日成交量 > 前5個交易日平均成交量 × 1.5
     # 5. 股價 > MA20 且 MA20 向上
     #
     # 注意：
@@ -2578,7 +2578,7 @@ def evaluate_short_term(
                 ]
             ),
 
-        "volume_ratio_ge_1_5":
+        "volume_ratio_gt_1_5":
             (
                 metrics.get(
                     "volume_ratio_vs_previous_5"
@@ -3307,7 +3307,7 @@ def analyze_stock(
                             "rsi_above_50":
                                 False,
 
-                            "volume_ratio_ge_1_5":
+                            "volume_ratio_gt_1_5":
                                 False,
 
                             "price_above_ma20_and_ma20_up":
