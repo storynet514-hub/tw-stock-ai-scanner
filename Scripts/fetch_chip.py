@@ -3,13 +3,13 @@
 
 """
 台股 AI 選股系統
-fetch_chip.py V9.4.2
+fetch_chip.py V9.4.3
 
 ============================================================
-V9.4.2 正式修正版
+V9.4.3 正式修正版
 ============================================================
 
-V9.4.2 核心修正
+核心資料架構
 ------------------------------------------------------------
 1. Data/universe.json 為唯一主要股票池來源
 2. 支援 universe.json V10.x / V11.x stocks object 架構
@@ -17,8 +17,8 @@ V9.4.2 核心修正
 4. stocks object 的 key 視為正式股票代號
 5. 不再用「00 開頭」判斷 ETF
 6. 支援台灣 ETF / ETN 的英文字母尾碼
-7. 支援 Universe 中 4～6 碼純數字代號
-8. 支援 Universe 中 4～6 碼數字 + 1～2 碼英文字母代號
+7. 支援 4～6 碼純數字代號
+8. 支援 4～6 碼數字 + 英數混合尾碼
 9. Universe 中合法標的不得被 fetch_chip 靜默排除
 10. universe_count 必須與 stocks object 實際數量一致
 11. fetch_chip 載入數量必須與 Universe 實際數量一致
@@ -30,16 +30,49 @@ V9.4.2 核心修正
 17. 不使用任何「三大法人 × 倍率」估算主力
 18. 當沖資料獨立處理
 19. 名稱缺失不得靜默寫入空字串
-20. 3081 必須為「聯亞」
-21. 3081 必須為 TPEX
-22. 正式資料寫入採 Atomic Write
-23. 固定驗證 2337 / 2426 / 2368 / 3081
-24. 10D 正式保留
-25. ETF / ETN 代號允許英文字母尾碼
-26. 不再因代號長度錯誤排除合法 Universe 標的
+20. 正式資料寫入採 Atomic Write
+21. 10D 正式保留
+22. ETF / ETN 代號允許英文字母與英數混合尾碼
+23. 不再因代號長度錯誤排除合法 Universe 標的
+24. 不再固定驗證特定 4 檔股票
+25. 不讓單一特定股票阻斷全市場 chip 建置
+
+============================================================
+V9.4.3 主要修正
+------------------------------------------------------------
+V9.4.2 錯誤：
+
+2887Z1 | invalid_symbol
+
+原因：
+原規則只接受：
+
+    1234
+    123456
+    1234A
+    1234AB
+
+但無法接受：
+
+    2887Z1
+
+V9.4.3 改為接受：
+
+    4～6 碼數字
+    +
+    1～2 碼英數字尾碼
+
+因此：
+
+    00400A  -> 合法
+    00631L  -> 合法
+    00632R  -> 合法
+    00710B  -> 合法
+    2887Z1  -> 合法
 
 ============================================================
 """
+
 
 from __future__ import annotations
 
@@ -60,7 +93,7 @@ import requests
 # Version
 # ============================================================
 
-VERSION = "V9.4.2"
+VERSION = "V9.4.3"
 
 
 # ============================================================
@@ -144,54 +177,29 @@ def clean_name(value: Any) -> str:
 # ============================================================
 # Symbol 判斷
 #
-# V9.4.2 重要修正
+# V9.4.3
 #
-# 原 V9.4.1 錯誤：
+# 合法格式：
 #
-#     \d{4}
-#     \d{4}[A-Z]{1,2}
+# 1. 4～6 碼純數字
 #
-# 導致合法 Universe 代號被錯誤排除，例如：
+#    2337
+#    0050
+#    006203
+#    00636
+#    00713
 #
-#     006203
-#     006204
-#     006205
-#     00636
-#     00690
-#     00713
-#     00400A
-#     00631L
-#     00632R
-#     00710B
+# 2. 4～6 碼數字 + 1～2 碼英數字尾碼
 #
-# 實際 Universe 已存在這些合法標的，
-# fetch_chip 不應自行用過窄格式把它們排除。
-#
-# V9.4.2：
-#
-#     4～6碼純數字
-#         -> 合法
-#
-#     4～6碼數字 + 1～2碼英文字母
-#         -> 合法
-#
-# 例如：
-#
-#     2337
-#     0050
-#     006203
-#     00636
-#     00713
-#     00400A
-#     00631L
-#     00632R
-#     00710B
-#     00981T
-#     01001T
+#    00400A
+#    00631L
+#    00632R
+#    00710B
+#    2887Z1
 #
 # 注意：
-# 不在這裡自行判斷「是不是 ETF」。
-# type 應優先使用 Universe 提供的 type。
+# 不在這裡自行判斷 ETF。
+# type 優先使用 Universe 提供的 type。
 #
 # ============================================================
 
@@ -206,8 +214,6 @@ def is_valid_symbol(
 
     # --------------------------------------------------------
     # 4～6 碼純數字
-    #
-    # 股票、ETF、ETN 等合法代號均允許。
     # --------------------------------------------------------
 
     if re.fullmatch(
@@ -218,25 +224,41 @@ def is_valid_symbol(
         return True, "Stock"
 
     # --------------------------------------------------------
-    # 4～6 碼數字 + 1～2 碼英文字母
+    # 4～6 碼數字 + 1～2 碼英數尾碼
     #
     # 例如：
     #
     # 00400A
-    # 00625K
     # 00631L
     # 00632R
     # 00710B
-    # 00981T
-    # 01001T
+    # 2887Z1
+    #
+    # 尾碼允許英文字母與數字混合。
+    # 至少包含一個英文字母，
+    # 避免把單純過長數字誤判為此類型。
     # --------------------------------------------------------
 
     if re.fullmatch(
-        r"\d{4,6}[A-Z]{1,2}",
+        r"\d{4,6}[A-Z0-9]{1,2}",
         code,
     ):
 
-        return True, "ETF"
+        suffix = code[
+            len(
+                re.match(
+                    r"^\d+",
+                    code,
+                ).group(0)
+            ):
+        ]
+
+        if re.search(
+            r"[A-Z]",
+            suffix,
+        ):
+
+            return True, "ETF"
 
     # --------------------------------------------------------
     # 其他未知格式
@@ -287,20 +309,15 @@ def safe_number(
 
 # ============================================================
 # Official fallback
+#
+# 僅作為資料缺失 fallback。
+# 不作為固定驗證條件。
 # ============================================================
 
-OFFICIAL_NAME_FALLBACK = {
-
-    "3081": "聯亞",
-
-}
+OFFICIAL_NAME_FALLBACK = {}
 
 
-OFFICIAL_MARKET_FALLBACK = {
-
-    "3081": "TPEX",
-
-}
+OFFICIAL_MARKET_FALLBACK = {}
 
 
 # ============================================================
@@ -665,7 +682,7 @@ def get_securities_from_universe(
 
                 log(
                     f"⚠️ {code} 名稱缺失，"
-                    f"使用官方確認名稱："
+                    f"使用 fallback 名稱："
                     f"{name}"
                 )
 
@@ -718,8 +735,8 @@ def get_securities_from_universe(
 
                 # 安全 fallback
                 #
-                # 市場真正來源仍以 Universe
-                # 的 market 欄位為優先。
+                # 正式市場資料仍優先使用
+                # Universe market 欄位。
                 market = (
                     "TPEX"
                     if code.startswith("3")
@@ -727,7 +744,9 @@ def get_securities_from_universe(
                 )
 
         # ----------------------------------------------------
-        # 官方市場 override
+        # fallback market
+        #
+        # 目前不強制任何特定股票市場。
         # ----------------------------------------------------
 
         fallback_market = (
@@ -1648,6 +1667,9 @@ def main() -> int:
 
             empty_name_cnt += 1
 
+            # 不使用空字串。
+            # 名稱缺失時使用代號作為最後保底，
+            # 避免 chip.json 出現空名稱。
             name = symbol
 
         inst_1d = (
@@ -1914,89 +1936,118 @@ def main() -> int:
         )
 
     # ========================================================
-    # 7. 固定測試股票
+    # 7. 全市場資料結構驗證
+    #
+    # 不再固定測試：
+    # 2337 / 2426 / 2368 / 3081
+    #
+    # 原因：
+    # fetch_chip 的任務是建立完整 Universe，
+    # 不應讓特定 4 檔股票成為全市場建置的
+    # 強制阻斷條件。
     # ========================================================
 
-    required_test_stocks = {
-
-        "2337": "旺宏",
-
-        "2426": "鼎元",
-
-        "2368": "金像電",
-
-        "3081": "聯亞",
-    }
-
     section(
-        "固定測試股票名稱與市場驗證"
+        "全市場 Chip 資料結構驗證"
     )
 
-    for symbol, expected_name in (
-        required_test_stocks.items()
+    validation_error_count = 0
+
+    for symbol, item in (
+        stocks_result.items()
     ):
 
-        item = stocks_result.get(
-            symbol
-        )
-
-        if not item:
+        if not isinstance(
+            item,
+            dict,
+        ):
 
             log(
-                f"❌ {symbol} "
-                f"{expected_name} 不存在"
+                f"❌ {symbol} 資料不是 object"
             )
 
-            return 1
+            validation_error_count += 1
 
-        actual_name = clean_name(
+            continue
+
+        if clean_code(
+            item.get(
+                "symbol",
+                "",
+            )
+        ) != symbol:
+
+            log(
+                f"❌ {symbol} symbol 欄位錯誤"
+            )
+
+            validation_error_count += 1
+
+        if not clean_name(
             item.get(
                 "name",
                 "",
             )
-        )
+        ):
 
-        actual_market = str(
+            log(
+                f"❌ {symbol} 名稱為空"
+            )
+
+            validation_error_count += 1
+
+        market = str(
             item.get(
                 "market",
                 "",
             )
         ).strip().upper()
 
-        expected_market = (
-            "TPEX"
-            if symbol == "3081"
-            else "TWSE"
-        )
+        if market not in (
+            "TWSE",
+            "TPEX",
+        ):
+
+            log(
+                f"❌ {symbol} market 無效："
+                f"{market}"
+            )
+
+            validation_error_count += 1
+
+        item_type = str(
+            item.get(
+                "type",
+                "",
+            )
+        ).strip()
+
+        if item_type not in (
+            "Stock",
+            "ETF",
+        ):
+
+            log(
+                f"❌ {symbol} type 無效："
+                f"{item_type}"
+            )
+
+            validation_error_count += 1
+
+    if validation_error_count:
+
+        log("")
 
         log(
-            f"{symbol} | "
-            f"預期：{expected_name} | "
-            f"實際：{actual_name} | "
-            f"市場：{actual_market}"
+            f"❌ 全市場資料結構驗證失敗："
+            f"{validation_error_count} 個錯誤"
         )
 
-        if actual_name != expected_name:
-
-            log(
-                f"❌ 股票名稱錯誤："
-                f"{symbol}"
-            )
-
-            return 1
-
-        if actual_market != expected_market:
-
-            log(
-                f"❌ 股票市場錯誤："
-                f"{symbol}"
-            )
-
-            return 1
+        return 1
 
     log(
-        "✓ 2337 / 2426 / 2368 / 3081 "
-        "名稱與市場驗證通過"
+        f"✓ 全市場 {len(stocks_result)} 檔 "
+        f"資料結構驗證通過"
     )
 
     # ========================================================
@@ -2109,6 +2160,10 @@ def main() -> int:
 
         return 1
 
+    # --------------------------------------------------------
+    # 數量
+    # --------------------------------------------------------
+
     if len(verify_stocks) != len(
         stocks_result
     ):
@@ -2117,45 +2172,141 @@ def main() -> int:
             "❌ chip.json 寫入數量錯誤"
         )
 
+        log(
+            f"   預期："
+            f"{len(stocks_result)}"
+        )
+
+        log(
+            f"   實際："
+            f"{len(verify_stocks)}"
+        )
+
         return 1
 
-    for symbol, expected_name in (
-        required_test_stocks.items()
+    # --------------------------------------------------------
+    # Universe 數量再次確認
+    # --------------------------------------------------------
+
+    if universe_actual_count is not None:
+
+        if len(
+            verify_stocks
+        ) != universe_actual_count:
+
+            log(
+                "❌ 寫入後 chip.json "
+                "與 Universe 數量不一致"
+            )
+
+            return 1
+
+    # --------------------------------------------------------
+    # 禁止欄位再次掃描
+    # --------------------------------------------------------
+
+    if not scan_forbidden_fields(
+        verify_stocks
     ):
 
-        item = verify_stocks.get(
-            symbol
-        )
+        return 1
+
+    # --------------------------------------------------------
+    # 寫入後所有標的基本結構
+    # --------------------------------------------------------
+
+    post_validation_errors = 0
+
+    for symbol, item in (
+        verify_stocks.items()
+    ):
 
         if not isinstance(
             item,
             dict,
         ):
 
+            post_validation_errors += 1
+
             log(
-                f"❌ 寫入後找不到："
-                f"{symbol}"
+                f"❌ 寫入後 {symbol} "
+                f"不是 object"
             )
 
-            return 1
+            continue
 
-        if clean_name(
+        if clean_code(
+            item.get(
+                "symbol",
+                "",
+            )
+        ) != symbol:
+
+            post_validation_errors += 1
+
+            log(
+                f"❌ 寫入後 {symbol} "
+                f"symbol 錯誤"
+            )
+
+        if not clean_name(
             item.get(
                 "name",
                 "",
             )
-        ) != expected_name:
+        ):
+
+            post_validation_errors += 1
 
             log(
-                f"❌ 寫入後名稱錯誤："
-                f"{symbol}"
+                f"❌ 寫入後 {symbol} "
+                f"name 為空"
             )
 
-            return 1
+        market = str(
+            item.get(
+                "market",
+                "",
+            )
+        ).strip().upper()
 
-    if not scan_forbidden_fields(
-        verify_stocks
-    ):
+        if market not in (
+            "TWSE",
+            "TPEX",
+        ):
+
+            post_validation_errors += 1
+
+            log(
+                f"❌ 寫入後 {symbol} "
+                f"market 錯誤"
+            )
+
+        item_type = str(
+            item.get(
+                "type",
+                "",
+            )
+        ).strip()
+
+        if item_type not in (
+            "Stock",
+            "ETF",
+        ):
+
+            post_validation_errors += 1
+
+            log(
+                f"❌ 寫入後 {symbol} "
+                f"type 錯誤"
+            )
+
+    if post_validation_errors:
+
+        log(
+            f"❌ 寫入後驗證失敗："
+            f"{post_validation_errors} 個錯誤"
+        )
 
         return 1
 
@@ -2165,8 +2316,11 @@ def main() -> int:
     )
 
     log(
-        "✓ 寫入後 2337 / 2426 / "
-        "2368 / 3081 驗證成功"
+        "✓ Universe / Chip 數量驗證成功"
+    )
+
+    log(
+        "✓ 全市場資料結構驗證成功"
     )
 
     log(
@@ -2293,6 +2447,10 @@ def main() -> int:
 
     log(
         "✓ 寫入後重新驗證：通過"
+    )
+
+    log(
+        "✓ 固定個股驗證：已移除"
     )
 
     log(
