@@ -1,0 +1,398 @@
+name: Apply Classification
+
+on:
+  workflow_dispatch:
+  workflow_run:
+    workflows:
+      - "Update Stock Data"
+    types:
+      - completed
+
+permissions:
+  contents: write
+
+jobs:
+  apply-classification:
+    if: >
+      github.event_name == 'workflow_dispatch' ||
+      github.event.workflow_run.conclusion == 'success'
+
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install requests pandas
+
+      # ==========================================================
+      # Step 1
+      # 建立正式 Universe
+      #
+      # 這裡不能再透過移除 status=verify 來放行資料。
+      # build_universe.py 必須自己正確建立：
+      #
+      # 第一層：目前交易標的
+      # 第二層：Instrument classification
+      # 第三層：Status validation
+      # 第四層：名稱 / 市場 / 代號補充
+      # ==========================================================
+
+      - name: Build official Universe
+        run: |
+          set -e
+
+          echo "============================================================"
+          echo "BUILD OFFICIAL UNIVERSE"
+          echo "============================================================"
+
+          python Scripts/build_universe.py
+
+          echo ""
+          echo "============================================================"
+          echo "UNIVERSE FILE CHECK"
+          echo "============================================================"
+
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          path = Path("Data/universe.json")
+
+          if not path.exists():
+              raise SystemExit(
+                  "❌ Data/universe.json 不存在"
+              )
+
+          with path.open(
+              "r",
+              encoding="utf-8-sig"
+          ) as f:
+              data = json.load(f)
+
+          if not isinstance(data, dict):
+              raise SystemExit(
+                  "❌ universe.json 根節點不是 object"
+              )
+
+          stocks = data.get("stocks")
+
+          if not isinstance(stocks, dict):
+              raise SystemExit(
+                  "❌ universe.json 的 stocks 不是 object/dict"
+              )
+
+          universe_count = data.get(
+              "universe_count"
+          )
+
+          if universe_count != len(stocks):
+              raise SystemExit(
+                  f"❌ Universe 數量錯誤："
+                  f"{universe_count} != {len(stocks)}"
+              )
+
+          print(
+              f"✓ universe_count = {universe_count}"
+          )
+
+          print(
+              f"✓ stocks object = {len(stocks)}"
+          )
+
+          print(
+              "✓ universe.json 結構驗證通過"
+          )
+          PY
+
+      # ==========================================================
+      # Step 2
+      # 檢查 Universe 是否真的有 status
+      #
+      # 這一步是為了解決目前 00400A 的核心問題：
+      # status 必須由 Universe 建立流程產生，
+      # 不能在後面把 verify 條件刪掉。
+      # ==========================================================
+
+      - name: Validate Universe status
+        run: |
+          set -e
+
+          echo "============================================================"
+          echo "VALIDATE UNIVERSE STATUS"
+          echo "============================================================"
+
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          from collections import Counter
+
+          path = Path("Data/universe.json")
+
+          with path.open(
+              "r",
+              encoding="utf-8-sig"
+          ) as f:
+              data = json.load(f)
+
+          stocks = data.get("stocks")
+
+          if not isinstance(stocks, dict):
+              raise SystemExit(
+                  "❌ stocks 必須是 object/dict"
+              )
+
+          required = (
+              "symbol",
+              "full_symbol",
+              "name",
+              "market",
+              "type",
+              "instrument_type",
+              "status",
+          )
+
+          status_counter = Counter()
+
+          for key, item in stocks.items():
+
+              if not isinstance(item, dict):
+                  raise SystemExit(
+                      f"❌ {key} 不是 object"
+                  )
+
+              missing = [
+                  field
+                  for field in required
+                  if field not in item
+              ]
+
+              if missing:
+                  raise SystemExit(
+                      f"❌ {key} 缺少欄位："
+                      + ", ".join(missing)
+                  )
+
+              if not str(item["status"]).strip():
+                  raise SystemExit(
+                      f"❌ {key} status 為空"
+                  )
+
+              status_counter[
+                  str(item["status"]).strip()
+              ] += 1
+
+          print(
+              f"✓ Universe 筆數：{len(stocks)}"
+          )
+
+          print(
+              "✓ status 欄位完整"
+          )
+
+          print(
+              "✓ status 統計："
+          )
+
+          for status, count in sorted(
+              status_counter.items()
+          ):
+              print(
+                  f"  {status}: {count}"
+              )
+
+          print(
+              "✓ Universe status validation PASS"
+          )
+          PY
+
+      # ==========================================================
+      # Step 3
+      # 執行 classification
+      #
+      # 注意：
+      # classification 是建立在已經驗證過的 Universe 上。
+      # 不允許 classification 反過來決定 Universe 基礎股票池。
+      # ==========================================================
+
+      - name: Run classification
+        run: |
+          set -e
+
+          echo "============================================================"
+          echo "RUN CLASSIFICATION"
+          echo "============================================================"
+
+          if [ ! -f "Scripts/add_classification.py" ]; then
+            echo "⚠ Scripts/add_classification.py 不存在"
+            echo "⚠ 跳過 classification"
+            exit 0
+          fi
+
+          python Scripts/add_classification.py
+
+      # ==========================================================
+      # Step 4
+      # Classification 後重新驗證
+      #
+      # 不能因 classification 失敗而產生半成品 Universe。
+      # ==========================================================
+
+      - name: Validate generated data
+        run: |
+          set -e
+
+          echo "============================================================"
+          echo "FINAL DATA VALIDATION"
+          echo "============================================================"
+
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          universe_path = Path(
+              "Data/universe.json"
+          )
+
+          if not universe_path.exists():
+              raise SystemExit(
+                  "❌ Data/universe.json 不存在"
+              )
+
+          with universe_path.open(
+              "r",
+              encoding="utf-8-sig"
+          ) as f:
+              universe = json.load(f)
+
+          if not isinstance(universe, dict):
+              raise SystemExit(
+                  "❌ universe.json 根節點錯誤"
+              )
+
+          stocks = universe.get(
+              "stocks"
+          )
+
+          if not isinstance(stocks, dict):
+              raise SystemExit(
+                  "❌ universe.json stocks 不是 object"
+              )
+
+          universe_count = universe.get(
+              "universe_count"
+          )
+
+          if universe_count != len(stocks):
+              raise SystemExit(
+                  f"❌ Universe count mismatch："
+                  f"{universe_count} != {len(stocks)}"
+              )
+
+          symbols = set()
+          full_symbols = set()
+
+          for key, item in stocks.items():
+
+              symbol = str(
+                  item.get("symbol", "")
+              ).strip()
+
+              full_symbol = str(
+                  item.get("full_symbol", "")
+              ).strip()
+
+              if not symbol:
+                  raise SystemExit(
+                      f"❌ {key} 缺少 symbol"
+                  )
+
+              if not full_symbol:
+                  raise SystemExit(
+                      f"❌ {key} 缺少 full_symbol"
+                  )
+
+              if symbol in symbols:
+                  raise SystemExit(
+                      f"❌ symbol duplicate：{symbol}"
+                  )
+
+              if full_symbol in full_symbols:
+                  raise SystemExit(
+                      f"❌ full_symbol duplicate："
+                      f"{full_symbol}"
+                  )
+
+              symbols.add(symbol)
+              full_symbols.add(full_symbol)
+
+          print(
+              f"✓ Universe：{len(stocks)}"
+          )
+
+          print(
+              "✓ symbol uniqueness PASS"
+          )
+
+          print(
+              "✓ full_symbol uniqueness PASS"
+          )
+
+          print(
+              "✓ Final data validation PASS"
+          )
+          PY
+
+      # ==========================================================
+      # Step 5
+      # 顯示 Git diff
+      # ==========================================================
+
+      - name: Show generated changes
+        run: |
+          echo "============================================================"
+          echo "GENERATED FILE CHANGES"
+          echo "============================================================"
+
+          git status --short
+
+          echo ""
+          echo "Changed files:"
+          git diff --name-only
+
+      # ==========================================================
+      # Step 6
+      # Commit
+      # ==========================================================
+
+      - name: Commit generated data
+        run: |
+          set -e
+
+          git config user.name \
+            "github-actions[bot]"
+
+          git config user.email \
+            "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git add Data/
+
+          if git diff --cached --quiet; then
+            echo "✓ 沒有新的 Data 變更"
+            exit 0
+          fi
+
+          git commit \
+            -m "chore: rebuild official universe and classification"
+
+          git push
