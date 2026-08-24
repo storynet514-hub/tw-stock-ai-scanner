@@ -3,36 +3,35 @@
 
 """
 台股 AI 選股系統
-fetch_chip.py V9.3
+fetch_chip.py V9.4
 
 ============================================================
-V9.3 正式版
+V9.4 正式修正版
 ============================================================
 
-核心架構
+核心原則
 ------------------------------------------------------------
-1. Data/universe.json V10.2 為唯一主要股票池來源
-2. 支援 universe.json V10.2 stocks object 架構
+1. Data/universe.json 為唯一主要股票池來源
+2. 支援 universe.json V10.x / V11.x stocks object 架構
 3. 相容舊版 items list 架構
-4. TWSE / TPEX 三大法人資料分開取得
-5. 1D / 5D / 10D / 20D 全部由每日原始資料累計
-6. 單位統一為「張」
-7. 不產生 main_force_*
-8. 不使用任何「三大法人 × 倍率」估算主力
-9. 當沖資料獨立處理
-10. 名稱缺失不得寫入空字串
-11. 3081 必須為「聯亞」
-12. 3081 必須為 TPEX
-13. 正式資料採 Atomic Write
-14. 固定驗證 2337 / 2426 / 2368 / 3081
-15. Universe 數量必須與實際載入數量一致
-16. 10D 正式保留
-17. 20D 正式保留
-18. TPEX 三大法人使用明確的三大法人買賣超欄位
-19. 不以「最後一個 numeric value」猜測三大法人欄位
-20. 當日資料抓取失敗不得偽造資料
-21. 歷史資料依實際成功交易日累計
-22. 同一交易日 TWSE/TPEX 分開取得
+4. stocks object 的 key 視為正式股票代號
+5. 不再用「00 開頭」判斷 ETF
+6. Universe 中合法標的不得被 fetch_chip 靜默排除
+7. universe_count 必須與 stocks object 實際數量一致
+8. fetch_chip 載入數量必須與 Universe 實際數量一致
+9. 被排除的代號必須明確列出
+10. TWSE / TPEX 三大法人資料分開取得
+11. 1D / 5D / 10D / 20D 皆由每日原始資料累計
+12. 單位維持「張」
+13. 不產生 main_force_*
+14. 不使用任何「三大法人 × 倍率」估算主力
+15. 當沖資料獨立處理
+16. 名稱缺失不得靜默寫入空字串
+17. 3081 必須為「聯亞」
+18. 3081 必須為 TPEX
+19. 正式資料寫入採 Atomic Write
+20. 固定驗證 2337 / 2426 / 2368 / 3081
+21. 10D 正式保留
 ============================================================
 """
 
@@ -54,7 +53,7 @@ import requests
 # Version
 # ============================================================
 
-VERSION = "V9.3"
+VERSION = "V9.4"
 
 
 # ============================================================
@@ -95,15 +94,6 @@ HEADERS = {
 
 
 # ============================================================
-# Request retry
-# ============================================================
-
-REQUEST_RETRIES = 3
-
-REQUEST_RETRY_SLEEP = 1.0
-
-
-# ============================================================
 # Log
 # ============================================================
 
@@ -112,13 +102,9 @@ def log(message: str = "") -> None:
 
 
 def section(title: str) -> None:
-
     log("")
-
     log("=" * 72)
-
     log(title)
-
     log("=" * 72)
 
 
@@ -151,6 +137,18 @@ def clean_name(value: Any) -> str:
 
 # ============================================================
 # Symbol 判斷
+#
+# 重要：
+# 舊版錯誤：
+#
+#   ETF 必須 startswith("00")
+#
+# 這會錯誤排除部分合法 ETF。
+#
+# V9.4：
+# ------------------------------------------------------------
+# 4碼數字       -> Stock
+# 5～6碼數字    -> ETF
 # ============================================================
 
 def is_valid_symbol(
@@ -159,16 +157,28 @@ def is_valid_symbol(
 
     code = clean_code(code)
 
-    # 一般四碼股票
+    if not code:
+        return False, "Other"
+
+    # --------------------------------------------------------
+    # 一般股票
+    # --------------------------------------------------------
+
     if len(code) == 4 and code.isdigit():
+
         return True, "Stock"
 
-    # ETF / 特殊 ETF
+    # --------------------------------------------------------
+    # ETF / ETN / 基金類 5～6 碼代號
+    #
+    # 不再限制 00 開頭。
+    # --------------------------------------------------------
+
     if (
-        code.startswith("00")
-        and 5 <= len(code) <= 6
+        5 <= len(code) <= 6
         and code.isdigit()
     ):
+
         return True, "ETF"
 
     return False, "Other"
@@ -198,11 +208,7 @@ def safe_number(
     ):
         return None
 
-    text = (
-        text
-        .replace(",", "")
-        .replace(" ", "")
-    )
+    text = text.replace(",", "")
 
     try:
 
@@ -237,103 +243,7 @@ OFFICIAL_MARKET_FALLBACK = {
 
 
 # ============================================================
-# HTTP JSON
-# ============================================================
-
-def request_json(
-    session: requests.Session,
-    url: str,
-) -> Optional[Any]:
-
-    last_error: Optional[Exception] = None
-
-    for attempt in range(
-        1,
-        REQUEST_RETRIES + 1,
-    ):
-
-        try:
-
-            response = session.get(
-                url,
-                headers=HEADERS,
-                timeout=REQUEST_TIMEOUT,
-            )
-
-            if response.status_code != 200:
-
-                last_error = RuntimeError(
-                    f"HTTP {response.status_code}"
-                )
-
-                if attempt < REQUEST_RETRIES:
-
-                    time.sleep(
-                        REQUEST_RETRY_SLEEP
-                    )
-
-                    continue
-
-                return None
-
-            try:
-
-                return response.json()
-
-            except Exception as e:
-
-                last_error = e
-
-                if attempt < REQUEST_RETRIES:
-
-                    time.sleep(
-                        REQUEST_RETRY_SLEEP
-                    )
-
-                    continue
-
-                return None
-
-        except Exception as e:
-
-            last_error = e
-
-            if attempt < REQUEST_RETRIES:
-
-                time.sleep(
-                    REQUEST_RETRY_SLEEP
-                )
-
-                continue
-
-            return None
-
-    if last_error:
-
-        return None
-
-    return None
-
-
-# ============================================================
-# 讀取 universe.json
-#
-# 正式 V10.2：
-#
-# {
-#   "schema_version": "V10.2",
-#   "universe_count": 2143,
-#   "stocks": {
-#       "2337": {...},
-#       "2426": {...}
-#   }
-# }
-#
-# 舊版：
-#
-# {
-#   "items": [...]
-# }
+# Universe loader
 # ============================================================
 
 def get_securities_from_universe(
@@ -354,6 +264,10 @@ def get_securities_from_universe(
 
         return securities
 
+    # --------------------------------------------------------
+    # 讀取 JSON
+    # --------------------------------------------------------
+
     try:
 
         with UNIVERSE_FILE.open(
@@ -371,11 +285,44 @@ def get_securities_from_universe(
 
         return securities
 
-    items: List[Any] = []
+    # --------------------------------------------------------
+    # 宣告數量
+    # --------------------------------------------------------
 
-    # ========================================================
-    # V10.2 stocks object
-    # ========================================================
+    declared_count: Optional[int] = None
+
+    if isinstance(
+        uni_data,
+        dict,
+    ):
+
+        raw_count = uni_data.get(
+            "universe_count"
+        )
+
+        if raw_count is not None:
+
+            try:
+
+                declared_count = int(
+                    raw_count
+                )
+
+            except Exception:
+
+                log(
+                    "❌ universe_count 不是有效整數"
+                )
+
+                return securities
+
+    # --------------------------------------------------------
+    # 正式 V10.x / V11.x stocks object
+    # --------------------------------------------------------
+
+    items: List[Dict[str, Any]] = []
+
+    source_stock_keys: List[str] = []
 
     if isinstance(
         uni_data,
@@ -393,37 +340,99 @@ def get_securities_from_universe(
 
             log(
                 "✓ 偵測到 universe.json "
-                "V10.x stocks object 架構"
+                "stocks object 架構"
             )
 
-            for code, item in stocks.items():
+            source_stock_keys = [
+                clean_code(key)
+                for key in stocks.keys()
+                if clean_code(key)
+            ]
+
+            raw_stock_count = len(
+                source_stock_keys
+            )
+
+            log(
+                f"✓ Universe stocks object："
+                f"{raw_stock_count} 檔"
+            )
+
+            # ------------------------------------------------
+            # 第一層驗證：
+            # universe_count vs stocks object
+            # ------------------------------------------------
+
+            if declared_count is not None:
+
+                if (
+                    declared_count
+                    != raw_stock_count
+                ):
+
+                    log(
+                        "❌ Universe 原始數量不一致"
+                    )
+
+                    log(
+                        f"   universe_count："
+                        f"{declared_count}"
+                    )
+
+                    log(
+                        f"   stocks object："
+                        f"{raw_stock_count}"
+                    )
+
+                    log(
+                        "❌ 停止 fetch_chip.py"
+                    )
+
+                    return securities
+
+                log(
+                    "✓ universe_count 與 "
+                    "stocks object 數量一致"
+                )
+
+            for key, item in stocks.items():
 
                 if not isinstance(
                     item,
                     dict,
                 ):
 
-                    continue
+                    log(
+                        f"❌ stocks[{key}] "
+                        f"不是 object"
+                    )
+
+                    return securities
 
                 normalized = dict(item)
 
-                if not normalized.get(
-                    "symbol"
-                ):
-
-                    normalized["symbol"] = code
+                # stocks key 是最高優先級
+                normalized["symbol"] = (
+                    clean_code(key)
+                )
 
                 if not normalized.get(
                     "code"
                 ):
 
-                    normalized["code"] = code
+                    normalized["code"] = (
+                        clean_code(key)
+                    )
 
                 items.append(
                     normalized
                 )
 
         else:
+
+            # ------------------------------------------------
+            # 舊版 items list
+            # ------------------------------------------------
 
             legacy_items = uni_data.get(
                 "items",
@@ -436,11 +445,20 @@ def get_securities_from_universe(
             ):
 
                 log(
-                    "⚠️ 偵測到舊版 universe.json "
-                    "items list 架構"
+                    "⚠️ 偵測到舊版 "
+                    "universe.json items list 架構"
                 )
 
-                items = legacy_items
+                for item in legacy_items:
+
+                    if isinstance(
+                        item,
+                        dict,
+                    ):
+
+                        items.append(
+                            dict(item)
+                        )
 
     elif isinstance(
         uni_data,
@@ -448,63 +466,49 @@ def get_securities_from_universe(
     ):
 
         log(
-            "⚠️ 偵測到舊版 universe.json "
-            "list 架構"
+            "⚠️ 偵測到舊版 "
+            "universe.json list 架構"
         )
 
-        items = uni_data
+        for item in uni_data:
 
-    # ========================================================
+            if isinstance(
+                item,
+                dict,
+            ):
+
+                items.append(
+                    dict(item)
+                )
+
+    # --------------------------------------------------------
     # 沒有資料
-    # ========================================================
+    # --------------------------------------------------------
 
     if not items:
 
         log(
-            "❌ universe.json 找不到 stocks "
-            "或 items 資料"
+            "❌ universe.json 找不到 "
+            "stocks 或 items 資料"
         )
 
         return securities
 
-    # ========================================================
-    # Universe header
-    # ========================================================
-
-    declared_count = None
-
-    if isinstance(
-        uni_data,
-        dict,
-    ):
-
-        declared_count = uni_data.get(
-            "universe_count"
-        )
-
-    if declared_count is not None:
-
-        log(
-            f"✓ Universe header："
-            f"{declared_count} 檔"
-        )
-
-    # ========================================================
+    # --------------------------------------------------------
     # 正式解析
-    # ========================================================
+    # --------------------------------------------------------
 
     seen = set()
+
+    rejected: List[Dict[str, str]] = []
 
     missing_name_count = 0
 
     for item in items:
 
-        if not isinstance(
-            item,
-            dict,
-        ):
-
-            continue
+        # ----------------------------------------------------
+        # symbol
+        # ----------------------------------------------------
 
         raw_symbol = clean_code(
             item.get(
@@ -513,6 +517,10 @@ def get_securities_from_universe(
             )
         )
 
+        # ----------------------------------------------------
+        # code
+        # ----------------------------------------------------
+
         raw_code = clean_code(
             item.get(
                 "code",
@@ -520,19 +528,53 @@ def get_securities_from_universe(
             )
         )
 
-        code = raw_code or raw_symbol
+        # stocks object 中 symbol 已經是 key，
+        # 優先使用 symbol。
+        code = raw_symbol or raw_code
 
         if not code:
+
+            rejected.append(
+                {
+                    "code": "",
+                    "reason": "missing_symbol",
+                }
+            )
+
             continue
+
+        # ----------------------------------------------------
+        # 重複
+        # ----------------------------------------------------
+
+        if code in seen:
+
+            rejected.append(
+                {
+                    "code": code,
+                    "reason": "duplicate",
+                }
+            )
+
+            continue
+
+        # ----------------------------------------------------
+        # 型別判斷
+        # ----------------------------------------------------
 
         valid, inferred_type = (
             is_valid_symbol(code)
         )
 
         if not valid:
-            continue
 
-        if code in seen:
+            rejected.append(
+                {
+                    "code": code,
+                    "reason": "invalid_symbol",
+                }
+            )
+
             continue
 
         seen.add(code)
@@ -561,8 +603,8 @@ def get_securities_from_universe(
                 name = fallback_name
 
                 log(
-                    f"⚠️ {code} universe "
-                    f"名稱缺失，使用官方確認名稱："
+                    f"⚠️ {code} 名稱缺失，"
+                    f"使用官方確認名稱："
                     f"{name}"
                 )
 
@@ -593,16 +635,27 @@ def get_securities_from_universe(
                 )
             ).strip().upper()
 
-            if ".TWO" in original_symbol:
+            if (
+                ".TWO" in original_symbol
+                or original_symbol.endswith(
+                    "TWO"
+                )
+            ):
 
                 market = "TPEX"
 
-            elif ".TW" in original_symbol:
+            elif (
+                ".TW" in original_symbol
+                or original_symbol.endswith(
+                    "TW"
+                )
+            ):
 
                 market = "TWSE"
 
             else:
 
+                # 最後安全 fallback
                 market = (
                     "TPEX"
                     if code.startswith("3")
@@ -610,7 +663,7 @@ def get_securities_from_universe(
                 )
 
         # ----------------------------------------------------
-        # 3081 強制確認
+        # 官方市場 override
         # ----------------------------------------------------
 
         fallback_market = (
@@ -647,7 +700,7 @@ def get_securities_from_universe(
             sec_type = inferred_type
 
         # ----------------------------------------------------
-        # full symbol
+        # full_symbol
         # ----------------------------------------------------
 
         full_symbol = str(
@@ -681,7 +734,7 @@ def get_securities_from_universe(
                 )
 
         # ----------------------------------------------------
-        # 寫入
+        # 正式寫入
         # ----------------------------------------------------
 
         securities.append(
@@ -695,8 +748,138 @@ def get_securities_from_universe(
         )
 
     # ========================================================
+    # 解析結果驗證
+    # ========================================================
+
+    log("")
+
+    log(
+        "Universe 解析結果"
+    )
+
+    log(
+        f"  原始 stocks object："
+        f"{len(source_stock_keys)} 檔"
+    )
+
+    log(
+        f"  成功解析："
+        f"{len(securities)} 檔"
+    )
+
+    log(
+        f"  被排除："
+        f"{len(rejected)} 檔"
+    )
+
+    # --------------------------------------------------------
+    # 被排除標的明確列出
+    # --------------------------------------------------------
+
+    if rejected:
+
+        log("")
+
+        log(
+            "❌ 發現 Universe 標的被排除："
+        )
+
+        # 最多完整列出前 100 筆
+        for item in rejected[:100]:
+
+            log(
+                f"   {item.get('code', '')}"
+                f" | "
+                f"{item.get('reason', '')}"
+            )
+
+        if len(rejected) > 100:
+
+            log(
+                f"   ...其餘 "
+                f"{len(rejected) - 100} 檔省略"
+            )
+
+    # --------------------------------------------------------
+    # stocks object：
+    # 實際解析數量必須完全一致
+    # --------------------------------------------------------
+
+    if source_stock_keys:
+
+        expected_count = len(
+            source_stock_keys
+        )
+
+        actual_count = len(
+            securities
+        )
+
+        if actual_count != expected_count:
+
+            log("")
+
+            log(
+                "❌ Universe 解析後數量不一致"
+            )
+
+            log(
+                f"   stocks object："
+                f"{expected_count}"
+            )
+
+            log(
+                f"   fetch_chip 載入："
+                f"{actual_count}"
+            )
+
+            log(
+                "❌ 不允許繼續寫入 chip.json"
+            )
+
+            return []
+
+        log(
+            "✓ Universe 原始標的"
+            "全部成功解析"
+        )
+
+    # --------------------------------------------------------
+    # 最終 declared count
+    # --------------------------------------------------------
+
+    if declared_count is not None:
+
+        if declared_count != len(
+            securities
+        ):
+
+            log(
+                "❌ Universe 最終數量驗證失敗"
+            )
+
+            log(
+                f"   header："
+                f"{declared_count}"
+            )
+
+            log(
+                f"   實際："
+                f"{len(securities)}"
+            )
+
+            return []
+
+        log(
+            "✓ Universe header / "
+            "實際載入數量驗證通過"
+        )
+
+    # ========================================================
     # 統計
     # ========================================================
+
+    log("")
 
     log(
         f"✓ 從 universe.json 成功載入 "
@@ -743,26 +926,10 @@ def get_securities_from_universe(
         f"✓ TPEX：{tpex_count} 檔"
     )
 
-    if declared_count is not None:
-
-        if declared_count != len(securities):
-
-            log(
-                f"❌ Universe 數量不一致："
-                f"header={declared_count} "
-                f"實際={len(securities)}"
-            )
-
-            return []
-
-        log(
-            "✓ Universe 數量驗證通過"
-        )
-
     if missing_name_count:
 
         log(
-            f"⚠️ universe.json 有 "
+            f"⚠️ Universe 有 "
             f"{missing_name_count} 檔名稱缺失"
         )
 
@@ -777,14 +944,6 @@ def get_securities_from_universe(
 
 # ============================================================
 # TWSE 三大法人
-#
-# T86：
-#
-# row[0]  證券代號
-# row[18] 三大法人買賣超股數
-#
-# 單位：股
-# /1000 = 張
 # ============================================================
 
 def fetch_twse_institutional(
@@ -799,250 +958,74 @@ def fetch_twse_institutional(
         f"?date={date_str}&selectType=ALL"
     )
 
-    data = request_json(
-        session,
-        url,
-    )
+    try:
 
-    if not isinstance(
-        data,
-        dict,
-    ):
+        resp = session.get(
+            url,
+            headers=HEADERS,
+            timeout=REQUEST_TIMEOUT,
+        )
+
+        if resp.status_code != 200:
+            return result
+
+        data = resp.json()
+
+        if data.get("stat") != "OK":
+            return result
+
+        rows = data.get(
+            "data",
+            [],
+        )
+
+        for row in rows:
+
+            if not isinstance(
+                row,
+                list,
+            ):
+                continue
+
+            if len(row) < 19:
+                continue
+
+            symbol = clean_code(
+                row[0]
+            )
+
+            valid, _ = is_valid_symbol(
+                symbol
+            )
+
+            if not valid:
+                continue
+
+            net_value = safe_number(
+                row[18]
+            )
+
+            if net_value is None:
+                continue
+
+            # TWSE T86 單位：股
+            # /1000 -> 張
+
+            result[symbol] = round(
+                net_value / 1000.0,
+                2,
+            )
+
+    except Exception:
 
         return result
-
-    if data.get("stat") != "OK":
-
-        return result
-
-    rows = data.get(
-        "data",
-        [],
-    )
-
-    if not isinstance(
-        rows,
-        list,
-    ):
-
-        return result
-
-    for row in rows:
-
-        if not isinstance(
-            row,
-            list,
-        ):
-
-            continue
-
-        if len(row) < 19:
-
-            continue
-
-        symbol = clean_code(
-            row[0]
-        )
-
-        valid, _ = is_valid_symbol(
-            symbol
-        )
-
-        if not valid:
-
-            continue
-
-        # 明確使用 T86 最後欄
-        net_value = safe_number(
-            row[18]
-        )
-
-        if net_value is None:
-
-            continue
-
-        result[symbol] = round(
-            net_value / 1000.0,
-            2,
-        )
 
     return result
 
 
 # ============================================================
 # TPEX 三大法人
-#
-# TPEX 官方日報：
-#
-# 代號
-# 名稱
-# ...
-# 三大法人買賣超股數
-#
-# 由於不同時期 API 可能存在不同 schema，
-# 本函式優先使用明確欄位名稱：
-#
-# 1. "三大法人買賣超股數"
-# 2. "三大法人買賣超"
-# 3. "三大法人買賣超股數合計"
-#
-# 若 API 只有 data list，
-# 則使用最後一欄，但必須先確認：
-# - row[0] 為代號
-# - row 至少有足夠欄位
-# - 最後欄確實是 numeric
-#
-# 單位：股
-# /1000 = 張
 # ============================================================
-
-def extract_tpex_net_value(
-    data: Dict[str, Any],
-    row: List[Any],
-) -> Optional[float]:
-
-    # --------------------------------------------------------
-    # 1. 找 API columns / fields / columnsName
-    # --------------------------------------------------------
-
-    columns = None
-
-    for key in (
-        "fields",
-        "columns",
-        "columnsName",
-        "column",
-        "title",
-    ):
-
-        value = data.get(key)
-
-        if isinstance(
-            value,
-            list,
-        ):
-
-            columns = value
-
-            break
-
-    # --------------------------------------------------------
-    # 2. 透過欄位名稱精準定位
-    # --------------------------------------------------------
-
-    if columns:
-
-        normalized_columns = [
-            str(x).strip()
-            for x in columns
-        ]
-
-        target_indexes = []
-
-        for index, column in enumerate(
-            normalized_columns
-        ):
-
-            if (
-                "三大法人買賣超股數" in column
-                or "三大法人買賣超" in column
-                or "三大法人買賣超股數合計" in column
-            ):
-
-                target_indexes.append(
-                    index
-                )
-
-        if target_indexes:
-
-            # 優先最後一個明確三大法人欄位
-            index = target_indexes[-1]
-
-            if index < len(row):
-
-                value = safe_number(
-                    row[index]
-                )
-
-                if value is not None:
-
-                    return value
-
-    # --------------------------------------------------------
-    # 3. 嘗試 data 欄位 metadata
-    # --------------------------------------------------------
-
-    data_meta = data.get(
-        "data",
-    )
-
-    if isinstance(
-        data_meta,
-        dict,
-    ):
-
-        for key in (
-            "fields",
-            "columns",
-            "columnsName",
-        ):
-
-            value = data_meta.get(
-                key
-            )
-
-            if isinstance(
-                value,
-                list,
-            ):
-
-                normalized_columns = [
-                    str(x).strip()
-                    for x in value
-                ]
-
-                for index, column in enumerate(
-                    normalized_columns
-                ):
-
-                    if (
-                        "三大法人買賣超股數"
-                        in column
-                        or "三大法人買賣超"
-                        in column
-                    ):
-
-                        if index < len(row):
-
-                            parsed = safe_number(
-                                row[index]
-                            )
-
-                            if parsed is not None:
-
-                                return parsed
-
-    # --------------------------------------------------------
-    # 4. fallback
-    #
-    # 官方 TPEX 日報資料結構中最後欄為：
-    # 三大法人買賣超股數
-    #
-    # 這裡只有在 row 本身有合理長度時才使用。
-    # --------------------------------------------------------
-
-    if len(row) >= 10:
-
-        value = safe_number(
-            row[-1]
-        )
-
-        if value is not None:
-
-            return value
-
-    return None
-
 
 def fetch_tpex_institutional(
     session: requests.Session,
@@ -1051,109 +1034,103 @@ def fetch_tpex_institutional(
 
     result: Dict[str, float] = {}
 
-    # --------------------------------------------------------
-    # 主要 JSON API
-    # --------------------------------------------------------
+    url = (
+        "https://www.tpex.org.tw/www/zh-tw/"
+        "institutions/institutional"
+        f"?date={date_str}&type=Daily"
+    )
 
-    urls = [
+    try:
 
-        (
-            "https://www.tpex.org.tw/www/zh-tw/"
-            "institutions/institutional"
-            f"?date={date_str}&type=Daily"
-        ),
-
-        (
-            "https://www.tpex.org.tw/www/zh-tw/"
-            "institutions/institutional"
-            f"?date={date_str}"
-        ),
-
-    ]
-
-    data: Optional[Any] = None
-
-    for url in urls:
-
-        data = request_json(
-            session,
+        resp = session.get(
             url,
+            headers=HEADERS,
+            timeout=REQUEST_TIMEOUT,
         )
 
-        if isinstance(
+        if resp.status_code != 200:
+            return result
+
+        try:
+
+            data = resp.json()
+
+        except Exception:
+
+            return result
+
+        if not isinstance(
             data,
             dict,
         ):
 
-            rows = data.get(
-                "data",
-                [],
-            )
+            return result
 
-            if isinstance(
-                rows,
-                list,
-            ) and rows:
-
-                break
-
-    if not isinstance(
-        data,
-        dict,
-    ):
-
-        return result
-
-    rows = data.get(
-        "data",
-        [],
-    )
-
-    if not isinstance(
-        rows,
-        list,
-    ):
-
-        return result
-
-    for row in rows:
+        rows = data.get(
+            "data",
+            [],
+        )
 
         if not isinstance(
-            row,
+            rows,
             list,
         ):
 
-            continue
+            return result
 
-        if len(row) < 3:
+        for row in rows:
 
-            continue
+            if not isinstance(
+                row,
+                list,
+            ):
 
-        symbol = clean_code(
-            row[0]
-        )
+                continue
 
-        valid, _ = is_valid_symbol(
-            symbol
-        )
+            if len(row) < 3:
+                continue
 
-        if not valid:
+            symbol = clean_code(
+                row[0]
+            )
 
-            continue
+            valid, _ = is_valid_symbol(
+                symbol
+            )
 
-        net_value = extract_tpex_net_value(
-            data,
-            row,
-        )
+            if not valid:
+                continue
 
-        if net_value is None:
+            numeric_values = []
 
-            continue
+            for value in row[2:]:
 
-        result[symbol] = round(
-            net_value / 1000.0,
-            2,
-        )
+                number = safe_number(
+                    value
+                )
+
+                if number is not None:
+
+                    numeric_values.append(
+                        number
+                    )
+
+            if not numeric_values:
+
+                continue
+
+            net_value = (
+                numeric_values[-1]
+            )
+
+            result[symbol] = round(
+                net_value / 1000.0,
+                2,
+            )
+
+    except Exception:
+
+        return result
 
     return result
 
@@ -1169,32 +1146,24 @@ def fetch_daily_institutional(
 
     result: Dict[str, float] = {}
 
-    # --------------------------------------------------------
-    # TWSE
-    # --------------------------------------------------------
-
     twse = fetch_twse_institutional(
         session,
         date_str,
     )
 
-    for symbol, value in twse.items():
-
-        result[symbol] = value
-
-    # --------------------------------------------------------
-    # TPEX
-    # --------------------------------------------------------
+    result.update(
+        twse
+    )
 
     tpex = fetch_tpex_institutional(
         session,
         date_str,
     )
 
-    for symbol, value in tpex.items():
+    for symbol, value in (
+        tpex.items()
+    ):
 
-        # 不會用 TPEX 覆蓋 TWSE
-        # 同一代號理論上不應同時存在。
         if symbol not in result:
 
             result[symbol] = value
@@ -1221,87 +1190,79 @@ def fetch_twse_daytrade(
         f"historical/day-trading?date={date_str}"
     )
 
-    data = request_json(
-        session,
-        url,
-    )
+    try:
 
-    if not isinstance(
-        data,
-        dict,
-    ):
+        resp = session.get(
+            url,
+            headers=HEADERS,
+            timeout=REQUEST_TIMEOUT,
+        )
+
+        if resp.status_code != 200:
+            return result
+
+        data = resp.json()
+
+        if data.get("stat") != "OK":
+            return result
+
+        rows = data.get(
+            "data",
+            [],
+        )
+
+        for row in rows:
+
+            if not isinstance(
+                row,
+                list,
+            ):
+                continue
+
+            if len(row) < 7:
+                continue
+
+            symbol = clean_code(
+                row[0]
+            )
+
+            valid, _ = is_valid_symbol(
+                symbol
+            )
+
+            if not valid:
+                continue
+
+            volume = safe_number(
+                row[5]
+            )
+
+            rate = safe_number(
+                row[6]
+            )
+
+            if volume is None:
+                continue
+
+            if rate is None:
+                rate = 0.0
+
+            result[symbol] = {
+
+                "day_trading_volume": round(
+                    volume,
+                    2,
+                ),
+
+                "day_trading_rate": round(
+                    rate,
+                    4,
+                ),
+            }
+
+    except Exception:
 
         return result
-
-    if data.get("stat") != "OK":
-
-        return result
-
-    rows = data.get(
-        "data",
-        [],
-    )
-
-    if not isinstance(
-        rows,
-        list,
-    ):
-
-        return result
-
-    for row in rows:
-
-        if not isinstance(
-            row,
-            list,
-        ):
-
-            continue
-
-        if len(row) < 7:
-
-            continue
-
-        symbol = clean_code(
-            row[0]
-        )
-
-        valid, _ = is_valid_symbol(
-            symbol
-        )
-
-        if not valid:
-
-            continue
-
-        volume = safe_number(
-            row[5]
-        )
-
-        rate = safe_number(
-            row[6]
-        )
-
-        if volume is None:
-
-            continue
-
-        if rate is None:
-
-            rate = 0.0
-
-        result[symbol] = {
-
-            "day_trading_volume": round(
-                volume,
-                2,
-            ),
-
-            "day_trading_rate": round(
-                rate,
-                4,
-            ),
-        }
 
     return result
 
@@ -1317,12 +1278,11 @@ def fetch_history_chips(
     str,
     Dict[str, Dict[str, List[float]]],
     Dict[str, Dict[str, float]],
-    List[str],
 ]:
 
     section(
-        f"同步最近 {days} 個有效交易日 "
-        f"TWSE/TPEX 三大法人資料"
+        f"同步 TWSE/TPEX 最近 {days} "
+        f"個交易日三大法人資料"
     )
 
     stock_history: Dict[
@@ -1335,21 +1295,17 @@ def fetch_history_chips(
         Dict[str, float]
     ] = {}
 
-    successful_dates: List[str] = []
-
     latest_date_str = ""
+
+    fetch_count = 0
 
     curr_date = datetime.now()
 
     attempted_days = 0
 
-    # --------------------------------------------------------
-    # 最多往前搜尋 60 個日曆日
-    # --------------------------------------------------------
-
     while (
-        len(successful_dates) < days
-        and attempted_days < 60
+        fetch_count < days
+        and attempted_days < 45
     ):
 
         if curr_date.weekday() < 5:
@@ -1365,15 +1321,7 @@ def fetch_history_chips(
                 )
             )
 
-            # ------------------------------------------------
-            # 只有有實際資料才算成功交易日
-            # ------------------------------------------------
-
             if daily_data:
-
-                successful_dates.append(
-                    date_str
-                )
 
                 if not latest_date_str:
 
@@ -1400,19 +1348,20 @@ def fetch_history_chips(
                         value
                     )
 
+                fetch_count += 1
+
                 log(
                     f"  └ 成功同步 {date_str} "
-                    f"籌碼資料 "
-                    f"(有效交易日 "
-                    f"{len(successful_dates)}/{days}，"
-                    f"標的 {len(daily_data)} 檔)"
+                    f"籌碼歷史 "
+                    f"(已累計 "
+                    f"{fetch_count}/{days} 日)"
                 )
 
                 # ------------------------------------------------
-                # 只抓最新有效交易日當沖
+                # 最新交易日當沖
                 # ------------------------------------------------
 
-                if len(successful_dates) == 1:
+                if not daytrade_data:
 
                     dt_data = (
                         fetch_twse_daytrade(
@@ -1425,11 +1374,6 @@ def fetch_history_chips(
 
                         daytrade_data.update(
                             dt_data
-                        )
-
-                        log(
-                            f"  └ 當沖資料同步："
-                            f"{len(dt_data)} 檔"
                         )
 
                 time.sleep(
@@ -1450,36 +1394,10 @@ def fetch_history_chips(
             )
         )
 
-    log("")
-
-    log(
-        f"✓ 有效交易日："
-        f"{len(successful_dates)}/{days}"
-    )
-
-    if successful_dates:
-
-        log(
-            f"✓ 最新交易日："
-            f"{successful_dates[0]}"
-        )
-
-        log(
-            f"✓ 最舊交易日："
-            f"{successful_dates[-1]}"
-        )
-
-    else:
-
-        log(
-            "❌ 沒有取得任何有效交易日資料"
-        )
-
     return (
         latest_date_str,
         stock_history,
         daytrade_data,
-        successful_dates,
     )
 
 
@@ -1493,11 +1411,9 @@ def calculate_period(
 ) -> Optional[float]:
 
     if not values:
-
         return None
 
     if len(values) < days:
-
         return None
 
     return round(
@@ -1509,169 +1425,23 @@ def calculate_period(
 
 
 # ============================================================
-# 建立安全名稱
+# Forbidden field scanner
 # ============================================================
 
-def resolve_name(
-    symbol: str,
-    value: Any,
-) -> Tuple[str, bool]:
-
-    name = clean_name(
-        value
-    )
-
-    if name:
-
-        return name, False
-
-    fallback = (
-        OFFICIAL_NAME_FALLBACK.get(
-            symbol
-        )
-    )
-
-    if fallback:
-
-        return fallback, True
-
-    # --------------------------------------------------------
-    # 不允許寫入空字串。
-    #
-    # 如果 universe 沒有名稱，
-    # 只能使用 symbol 作為最後安全識別值，
-    # 並記錄 fallback。
-    # --------------------------------------------------------
-
-    return symbol, True
-
-
-# ============================================================
-# 驗證固定測試股票
-# ============================================================
-
-def validate_required_stocks(
-    stocks_result: Dict[str, Dict[str, Any]],
+def scan_forbidden_fields(
+    stocks: Dict[str, Dict[str, Any]],
 ) -> bool:
 
-    required_test_stocks = {
-
-        "2337": {
-            "name": "旺宏",
-            "market": "TWSE",
-        },
-
-        "2426": {
-            "name": "鼎元",
-            "market": "TWSE",
-        },
-
-        "2368": {
-            "name": "金像電",
-            "market": "TWSE",
-        },
-
-        "3081": {
-            "name": "聯亞",
-            "market": "TPEX",
-        },
-
+    forbidden_fields = {
+        "main_force_1d",
+        "main_force_5d",
+        "main_force_10d",
+        "main_force_20d",
     }
 
-    section(
-        "固定測試股票名稱與市場驗證"
-    )
-
-    for symbol, expected in (
-        required_test_stocks.items()
+    for symbol, item in (
+        stocks.items()
     ):
-
-        item = stocks_result.get(
-            symbol
-        )
-
-        if not isinstance(
-            item,
-            dict,
-        ):
-
-            log(
-                f"❌ {symbol} "
-                f"{expected['name']} 不存在"
-            )
-
-            return False
-
-        actual_name = clean_name(
-            item.get(
-                "name",
-                "",
-            )
-        )
-
-        actual_market = str(
-            item.get(
-                "market",
-                "",
-            )
-        ).strip().upper()
-
-        log(
-            f"{symbol} | "
-            f"預期：{expected['name']} | "
-            f"實際：{actual_name} | "
-            f"市場：{actual_market}"
-        )
-
-        if actual_name != expected["name"]:
-
-            log(
-                f"❌ 股票名稱錯誤："
-                f"{symbol} "
-                f"預期 {expected['name']}，"
-                f"實際 {actual_name}"
-            )
-
-            return False
-
-        if actual_market != expected["market"]:
-
-            log(
-                f"❌ 股票市場錯誤："
-                f"{symbol} "
-                f"預期 {expected['market']}，"
-                f"實際 {actual_market}"
-            )
-
-            return False
-
-    log(
-        "✓ 2337 / 2426 / 2368 / 3081 "
-        "名稱與市場驗證通過"
-    )
-
-    return True
-
-
-# ============================================================
-# 禁止 main_force
-# ============================================================
-
-FORBIDDEN_FIELDS = {
-
-    "main_force_1d",
-    "main_force_5d",
-    "main_force_10d",
-    "main_force_20d",
-
-}
-
-
-def validate_no_main_force(
-    stocks: Dict[str, Any],
-) -> bool:
-
-    for symbol, item in stocks.items():
 
         if not isinstance(
             item,
@@ -1680,7 +1450,7 @@ def validate_no_main_force(
 
             continue
 
-        for field in FORBIDDEN_FIELDS:
+        for field in forbidden_fields:
 
             if field in item:
 
@@ -1690,244 +1460,6 @@ def validate_no_main_force(
                 )
 
                 return False
-
-    return True
-
-
-# ============================================================
-# Atomic Write
-# ============================================================
-
-def atomic_write_json(
-    target_file: Path,
-    payload: Dict[str, Any],
-) -> bool:
-
-    DATA_DIR.mkdir(
-        parents=True,
-        exist_ok=True,
-    )
-
-    temp_file = target_file.with_suffix(
-        ".json.tmp"
-    )
-
-    try:
-
-        with temp_file.open(
-            "w",
-            encoding="utf-8",
-        ) as f:
-
-            json.dump(
-                payload,
-                f,
-                ensure_ascii=False,
-                indent=2,
-            )
-
-            f.write("\n")
-
-            f.flush()
-
-        temp_file.replace(
-            target_file
-        )
-
-        return True
-
-    except Exception as e:
-
-        log(
-            f"❌ Atomic Write 失敗：{e}"
-        )
-
-        try:
-
-            if temp_file.exists():
-
-                temp_file.unlink()
-
-        except Exception:
-
-            pass
-
-        return False
-
-
-# ============================================================
-# 重新讀取 chip.json
-# ============================================================
-
-def verify_written_chip(
-    expected_count: int,
-    required_test_stocks: Dict[str, str],
-) -> bool:
-
-    section(
-        "寫入後重新讀取 chip.json 驗證"
-    )
-
-    try:
-
-        with CHIP_FILE.open(
-            "r",
-            encoding="utf-8",
-        ) as f:
-
-            verify_data = json.load(
-                f
-            )
-
-    except Exception as e:
-
-        log(
-            f"❌ chip.json 重新讀取失敗：{e}"
-        )
-
-        return False
-
-    if not isinstance(
-        verify_data,
-        dict,
-    ):
-
-        log(
-            "❌ chip.json 根節點不是 object"
-        )
-
-        return False
-
-    verify_stocks = (
-        verify_data.get(
-            "stocks"
-        )
-    )
-
-    if not isinstance(
-        verify_stocks,
-        dict,
-    ):
-
-        log(
-            "❌ chip.json stocks 格式錯誤"
-        )
-
-        return False
-
-    if len(verify_stocks) != expected_count:
-
-        log(
-            f"❌ chip.json 寫入數量錯誤："
-            f"預期 {expected_count}，"
-            f"實際 {len(verify_stocks)}"
-        )
-
-        return False
-
-    # --------------------------------------------------------
-    # 固定股票
-    # --------------------------------------------------------
-
-    for symbol, expected_name in (
-        required_test_stocks.items()
-    ):
-
-        item = verify_stocks.get(
-            symbol
-        )
-
-        if not isinstance(
-            item,
-            dict,
-        ):
-
-            log(
-                f"❌ 寫入後找不到：{symbol}"
-            )
-
-            return False
-
-        actual_name = clean_name(
-            item.get(
-                "name",
-                "",
-            )
-        )
-
-        if actual_name != expected_name:
-
-            log(
-                f"❌ 寫入後名稱錯誤："
-                f"{symbol} "
-                f"預期 {expected_name}，"
-                f"實際 {actual_name}"
-            )
-
-            return False
-
-        if not actual_name:
-
-            log(
-                f"❌ 寫入後出現空名稱："
-                f"{symbol}"
-            )
-
-            return False
-
-    # --------------------------------------------------------
-    # 禁止欄位
-    # --------------------------------------------------------
-
-    if not validate_no_main_force(
-        verify_stocks
-    ):
-
-        return False
-
-    # --------------------------------------------------------
-    # Schema
-    # --------------------------------------------------------
-
-    if verify_data.get(
-        "schema_version"
-    ) != VERSION:
-
-        log(
-            "❌ chip.json schema_version "
-            "與 fetch_chip 版本不一致"
-        )
-
-        return False
-
-    # --------------------------------------------------------
-    # Universe count
-    # --------------------------------------------------------
-
-    if verify_data.get(
-        "universe_count"
-    ) != expected_count:
-
-        log(
-            "❌ chip.json universe_count "
-            "錯誤"
-        )
-
-        return False
-
-    log(
-        f"✓ 寫入後 Chip："
-        f"{len(verify_stocks)} 檔"
-    )
-
-    log(
-        "✓ 寫入後 2337 / 2426 / "
-        "2368 / 3081 驗證成功"
-    )
-
-    log(
-        "✓ main_force_* 掃描通過"
-    )
 
     return True
 
@@ -1945,11 +1477,7 @@ def main() -> int:
         f"fetch_chip.py {VERSION} 啟動"
     )
 
-    log(
-        "============================================================"
-    )
-
-    log(
+    section(
         "核心資料架構"
     )
 
@@ -1981,14 +1509,10 @@ def main() -> int:
         "✗ 三大法人倍率估算：完全禁止"
     )
 
-    log(
-        "============================================================"
-    )
-
     session = requests.Session()
 
     # ========================================================
-    # 1. 股票池
+    # 1. Universe
     # ========================================================
 
     securities = (
@@ -2013,23 +1537,10 @@ def main() -> int:
         latest_date_str,
         stock_history,
         extra_data,
-        successful_dates,
     ) = fetch_history_chips(
         session,
         days=20,
     )
-
-    # ========================================================
-    # 歷史資料硬性檢查
-    # ========================================================
-
-    if not successful_dates:
-
-        log(
-            "❌ 完全沒有取得有效交易日資料"
-        )
-
-        return 1
 
     # ========================================================
     # 3. 建立 chip.json
@@ -2041,15 +1552,12 @@ def main() -> int:
     ] = {}
 
     complete_cnt = 0
-
     partial_cnt = 0
-
     insufficient_cnt = 0
-
     empty_name_cnt = 0
 
     # ========================================================
-    # 每一檔 universe 標的
+    # 每一檔 Universe 標的
     # ========================================================
 
     for item in securities:
@@ -2068,41 +1576,41 @@ def main() -> int:
             [],
         )
 
-        if not isinstance(
-            inst_list,
-            list,
-        ):
-
-            inst_list = []
-
         # ----------------------------------------------------
         # 名稱
         # ----------------------------------------------------
 
-        name, used_fallback = resolve_name(
-            symbol,
+        name = clean_name(
             item.get(
                 "name",
                 "",
-            ),
+            )
         )
 
-        if used_fallback:
+        if not name:
+
+            name = (
+                OFFICIAL_NAME_FALLBACK.get(
+                    symbol,
+                    "",
+                )
+            )
+
+        if not name:
 
             empty_name_cnt += 1
+
+            # 絕不寫入空字串
+            name = symbol
 
         # ----------------------------------------------------
         # 1D
         # ----------------------------------------------------
 
         inst_1d = (
-
             inst_list[0]
-
             if len(inst_list) >= 1
-
             else None
-
         )
 
         # ----------------------------------------------------
@@ -2157,34 +1665,15 @@ def main() -> int:
             {},
         )
 
-        if not isinstance(
-            ext,
-            dict,
-        ):
-
-            ext = {}
-
-        day_trade_volume = safe_number(
-            ext.get(
-                "day_trading_volume",
-                0.0,
-            )
+        day_trade_volume = ext.get(
+            "day_trading_volume",
+            0.0,
         )
 
-        day_trade_rate = safe_number(
-            ext.get(
-                "day_trading_rate",
-                0.0,
-            )
+        day_trade_rate = ext.get(
+            "day_trading_rate",
+            0.0,
         )
-
-        if day_trade_volume is None:
-
-            day_trade_volume = 0.0
-
-        if day_trade_rate is None:
-
-            day_trade_rate = 0.0
 
         # ----------------------------------------------------
         # 正式資料
@@ -2211,15 +1700,6 @@ def main() -> int:
                 "Stock",
             ),
 
-            # =================================================
-            # 三大法人
-            #
-            # 單位：張
-            #
-            # 正值 = 買超
-            # 負值 = 賣超
-            # =================================================
-
             "institutional_1d": inst_1d,
 
             "institutional_5d": inst_5d,
@@ -2228,53 +1708,19 @@ def main() -> int:
 
             "institutional_20d": inst_20d,
 
-            # =================================================
-            # 當沖
-            # =================================================
-
-            "day_trading_volume": round(
-                day_trade_volume,
-                2,
+            "day_trading_volume": (
+                day_trade_volume
             ),
 
-            "day_trading_rate": round(
-                day_trade_rate,
-                4,
+            "day_trading_rate": (
+                day_trade_rate
             ),
 
             "updated_at": latest_date_str,
         }
 
     # ========================================================
-    # 4. 三大法人欄位完整性統計
-    # ========================================================
-
-    inst_1d_count = sum(
-        1
-        for item in stocks_result.values()
-        if item.get("institutional_1d") is not None
-    )
-
-    inst_5d_count = sum(
-        1
-        for item in stocks_result.values()
-        if item.get("institutional_5d") is not None
-    )
-
-    inst_10d_count = sum(
-        1
-        for item in stocks_result.values()
-        if item.get("institutional_10d") is not None
-    )
-
-    inst_20d_count = sum(
-        1
-        for item in stocks_result.values()
-        if item.get("institutional_20d") is not None
-    )
-
-    # ========================================================
-    # 5. 建立 output
+    # 4. 建立 Output
     # ========================================================
 
     output = {
@@ -2318,48 +1764,24 @@ def main() -> int:
             "insufficient": insufficient_cnt,
 
             "empty_name": empty_name_cnt,
-
-            "institutional_1d": (
-                inst_1d_count
-            ),
-
-            "institutional_5d": (
-                inst_5d_count
-            ),
-
-            "institutional_10d": (
-                inst_10d_count
-            ),
-
-            "institutional_20d": (
-                inst_20d_count
-            ),
-
-            "successful_trading_days": (
-                len(successful_dates)
-            ),
         },
-
-        "trading_dates": successful_dates,
 
         "stocks": stocks_result,
     }
 
     # ========================================================
-    # 6. 禁止 main_force_*
+    # 5. 禁止欄位驗證
     # ========================================================
 
-    if not validate_no_main_force(
+    if not scan_forbidden_fields(
         stocks_result
     ):
 
         return 1
 
     # ========================================================
-    # 7. Universe 數量再次驗證
+    # 6. Universe 最終數量驗證
     # ========================================================
-
-    universe_declared_count = None
 
     try:
 
@@ -2368,80 +1790,129 @@ def main() -> int:
             encoding="utf-8-sig",
         ) as f:
 
-            universe_check = json.load(
-                f
-            )
-
-        if isinstance(
-            universe_check,
-            dict,
-        ):
-
-            universe_declared_count = (
-                universe_check.get(
-                    "universe_count"
-                )
-            )
+            universe_check = json.load(f)
 
     except Exception as e:
 
         log(
-            f"⚠️ 無法重新讀取 "
-            f"universe.json header：{e}"
+            f"❌ 無法重新讀取 universe.json："
+            f"{e}"
         )
 
-    if universe_declared_count is not None:
+        return 1
+
+    universe_declared_count = None
+
+    universe_actual_count = None
+
+    if isinstance(
+        universe_check,
+        dict,
+    ):
+
+        raw_count = universe_check.get(
+            "universe_count"
+        )
+
+        if raw_count is not None:
+
+            try:
+
+                universe_declared_count = int(
+                    raw_count
+                )
+
+            except Exception:
+
+                log(
+                    "❌ universe_count 無效"
+                )
+
+                return 1
+
+        stocks_obj = universe_check.get(
+            "stocks"
+        )
+
+        if isinstance(
+            stocks_obj,
+            dict,
+        ):
+
+            universe_actual_count = len(
+                stocks_obj
+            )
+
+    if universe_actual_count is not None:
 
         if (
             universe_declared_count
-            != len(stocks_result)
+            != universe_actual_count
         ):
 
             log(
-                "❌ Chip 股票池數量與 "
-                "universe.json 不一致"
+                "❌ Universe 原始資料本身數量不一致"
             )
 
             log(
-                f"   universe.json："
+                f"   header："
                 f"{universe_declared_count}"
             )
 
             log(
-                f"   chip："
+                f"   stocks："
+                f"{universe_actual_count}"
+            )
+
+            return 1
+
+        if (
+            len(stocks_result)
+            != universe_actual_count
+        ):
+
+            log(
+                "❌ fetch_chip 股票池數量不一致"
+            )
+
+            log(
+                f"   Universe："
+                f"{universe_actual_count}"
+            )
+
+            log(
+                f"   Chip："
                 f"{len(stocks_result)}"
             )
 
             return 1
 
         log(
-            f"✓ Chip Universe 數量："
-            f"{len(stocks_result)} 檔"
+            f"✓ Universe / Chip 數量一致："
+            f"{universe_actual_count} 檔"
         )
 
     # ========================================================
-    # 8. 固定測試股票
+    # 7. 固定測試股票
     # ========================================================
 
-    if not validate_required_stocks(
-        stocks_result
-    ):
+    required_test_stocks = {
 
-        return 1
+        "2337": "旺宏",
 
-    # ========================================================
-    # 9. 固定測試股票資料狀態
-    # ========================================================
+        "2426": "鼎元",
+
+        "2368": "金像電",
+
+        "3081": "聯亞",
+    }
 
     section(
-        "固定測試股票籌碼資料驗證"
+        "固定測試股票名稱與市場驗證"
     )
 
-    for symbol in (
-        "2337",
-        "2426",
-        "2368",
-        "3081",
+    for symbol, expected_name in (
+        required_test_stocks.items()
     ):
 
         item = stocks_result.get(
@@ -2451,65 +1922,246 @@ def main() -> int:
         if not item:
 
             log(
-                f"❌ {symbol} 不存在"
+                f"❌ {symbol} "
+                f"{expected_name} 不存在"
             )
 
             return 1
 
-        log(
-            f"{symbol} | "
-            f"{item['name']} | "
-            f"1D={item['institutional_1d']} | "
-            f"5D={item['institutional_5d']} | "
-            f"10D={item['institutional_10d']} | "
-            f"20D={item['institutional_20d']} | "
-            f"當沖率={item['day_trading_rate']}"
+        actual_name = clean_name(
+            item.get(
+                "name",
+                "",
+            )
         )
 
+        actual_market = str(
+            item.get(
+                "market",
+                "",
+            )
+        ).strip().upper()
+
+        expected_market = (
+            "TPEX"
+            if symbol == "3081"
+            else "TWSE"
+        )
+
+        log(
+            f"{symbol} | "
+            f"預期：{expected_name} | "
+            f"實際：{actual_name} | "
+            f"市場：{actual_market}"
+        )
+
+        if actual_name != expected_name:
+
+            log(
+                f"❌ 股票名稱錯誤："
+                f"{symbol}"
+            )
+
+            return 1
+
+        if actual_market != expected_market:
+
+            log(
+                f"❌ 股票市場錯誤："
+                f"{symbol}"
+            )
+
+            return 1
+
+    log(
+        "✓ 2337 / 2426 / 2368 / 3081 "
+        "名稱與市場驗證通過"
+    )
+
     # ========================================================
-    # 10. Atomic Write
+    # 8. Atomic Write
     # ========================================================
 
     section(
         "寫入 Data/chip.json (Atomic Write)"
     )
 
-    if not atomic_write_json(
-        CHIP_FILE,
-        output,
+    DATA_DIR.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
+
+    temp_file = CHIP_FILE.with_suffix(
+        ".json.tmp"
+    )
+
+    try:
+
+        with temp_file.open(
+            "w",
+            encoding="utf-8",
+        ) as f:
+
+            json.dump(
+                output,
+                f,
+                ensure_ascii=False,
+                indent=2,
+            )
+
+            f.flush()
+
+        temp_file.replace(
+            CHIP_FILE
+        )
+
+    except Exception as e:
+
+        log(
+            f"❌ 寫入 chip.json 失敗："
+            f"{e}"
+        )
+
+        try:
+
+            if temp_file.exists():
+                temp_file.unlink()
+
+        except Exception:
+            pass
+
+        return 1
+
+    # ========================================================
+    # 9. 寫入後重新驗證
+    # ========================================================
+
+    section(
+        "寫入後重新讀取 chip.json 驗證"
+    )
+
+    try:
+
+        with CHIP_FILE.open(
+            "r",
+            encoding="utf-8",
+        ) as f:
+
+            verify_data = json.load(
+                f
+            )
+
+    except Exception as e:
+
+        log(
+            f"❌ chip.json 重新讀取失敗："
+            f"{e}"
+        )
+
+        return 1
+
+    if not isinstance(
+        verify_data,
+        dict,
+    ):
+
+        log(
+            "❌ chip.json 根節點不是 object"
+        )
+
+        return 1
+
+    verify_stocks = (
+        verify_data.get(
+            "stocks"
+        )
+    )
+
+    if not isinstance(
+        verify_stocks,
+        dict,
+    ):
+
+        log(
+            "❌ chip.json stocks 格式錯誤"
+        )
+
+        return 1
+
+    if len(verify_stocks) != len(
+        stocks_result
+    ):
+
+        log(
+            "❌ chip.json 寫入數量錯誤"
+        )
+
+        return 1
+
+    # --------------------------------------------------------
+    # 固定股票重新驗證
+    # --------------------------------------------------------
+
+    for symbol, expected_name in (
+        required_test_stocks.items()
+    ):
+
+        item = verify_stocks.get(
+            symbol
+        )
+
+        if not isinstance(
+            item,
+            dict,
+        ):
+
+            log(
+                f"❌ 寫入後找不到："
+                f"{symbol}"
+            )
+
+            return 1
+
+        if clean_name(
+            item.get(
+                "name",
+                "",
+            )
+        ) != expected_name:
+
+            log(
+                f"❌ 寫入後名稱錯誤："
+                f"{symbol}"
+            )
+
+            return 1
+
+    # --------------------------------------------------------
+    # 禁止欄位再次掃描
+    # --------------------------------------------------------
+
+    if not scan_forbidden_fields(
+        verify_stocks
     ):
 
         return 1
 
     log(
-        "✓ Atomic Write 成功"
+        f"✓ 寫入後 Chip："
+        f"{len(verify_stocks)} 檔"
+    )
+
+    log(
+        "✓ 寫入後 2337 / 2426 / "
+        "2368 / 3081 驗證成功"
+    )
+
+    log(
+        "✓ main_force_* 掃描通過"
     )
 
     # ========================================================
-    # 11. 寫入後重新驗證
-    # ========================================================
-
-    required_test_names = {
-
-        "2337": "旺宏",
-
-        "2426": "鼎元",
-
-        "2368": "金像電",
-
-        "3081": "聯亞",
-
-    }
-
-    if not verify_written_chip(
-        len(stocks_result),
-        required_test_names,
-    ):
-
-        return 1
-
-    # ========================================================
-    # 12. 最終統計
+    # 10. Final
     # ========================================================
 
     elapsed = (
@@ -2551,11 +2203,6 @@ def main() -> int:
     )
 
     log(
-        f"✓ 有效交易日："
-        f"{len(successful_dates)} 日"
-    )
-
-    log(
         f"✓ 20D完整："
         f"{complete_cnt} 檔"
     )
@@ -2580,43 +2227,15 @@ def main() -> int:
     )
 
     log(
-        "三大法人資料狀態"
-    )
-
-    log(
-        f"✓ 1D："
-        f"{inst_1d_count} 檔"
-    )
-
-    log(
-        f"✓ 5D："
-        f"{inst_5d_count} 檔"
-    )
-
-    log(
-        f"✓ 10D："
-        f"{inst_10d_count} 檔"
-    )
-
-    log(
-        f"✓ 20D："
-        f"{inst_20d_count} 檔"
-    )
-
-    log(
-        "------------------------------------------------------------"
-    )
-
-    log(
         "主力資料狀態確認"
     )
 
     log(
-        "✗ main_force_1d ：未寫入"
+        "✗ main_force_1d：未寫入"
     )
 
     log(
-        "✗ main_force_5d ：未寫入"
+        "✗ main_force_5d：未寫入"
     )
 
     log(
@@ -2656,14 +2275,6 @@ def main() -> int:
     )
 
     log(
-        "✓ Universe 數量一致：通過"
-    )
-
-    log(
-        "✓ 固定股票驗證：通過"
-    )
-
-    log(
         "✓ Atomic Write：通過"
     )
 
@@ -2677,10 +2288,6 @@ def main() -> int:
 
     log(
         f"✓ 耗時：{elapsed:.1f} 秒"
-    )
-
-    log(
-        "============================================================"
     )
 
     return 0
