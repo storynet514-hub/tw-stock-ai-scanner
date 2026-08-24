@@ -1,140 +1,95 @@
-name: TW Stock AI Scanner CI/CD Pipeline
+name: Deploy to GitHub Pages
 
 on:
-  schedule:
-    # 每個交易日 15:30 (台灣時間) 自動執行數據更新 (UTC 07:30)
-    - cron: '30 7 * * 1-5'
-  workflow_dispatch: # 支援在 GitHub 介面上手動觸發執行
+  push:
+    branches:
+      - main
+  workflow_dispatch:
 
-# 賦予 GitHub Actions 自動更新程式碼與部署 Pages 的權限
 permissions:
-  contents: write
+  contents: read
   pages: write
   id-token: write
 
-# 避免重複部署衝突
 concurrency:
-  group: "pages"
+  group: pages
   cancel-in-progress: true
 
 jobs:
-  # ----------------------------------------------------
-  # Job 1: 抓取數據、更新 Data/ 並上傳部署 Artifact
-  # ----------------------------------------------------
-  build-and-sync:
+  build:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repository
+      - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set up Python 3.11
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-          cache: 'pip' # 自動讀取根目錄下的 requirements.txt 並快取
-
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
-
-      - name: Run Fetch Chip Data
-        run: |
-          # 執行籌碼資料抓取腳本
-          python Scripts/fetch_chip.py
-
-      - name: Commit and Push Updated Data
-        run: |
-          git config --global user.name 'github-actions[bot]'
-          git config --global user.email 'github-actions[bot]@users.noreply.github.com'
-          git add Data/
-          # 只有當 Data/ 資料夾有變更時才執行 commit 與 push
-          git diff --quiet && git diff --staged --quiet || (git commit -m "auto: update stock data [skip ci]" && git push)
-
-      - name: Create .nojekyll
-        run: touch .nojekyll # 確保 GitHub Pages 不會被 Jekyll 阻擋 Data/ 資料夾
-
       - name: Setup Pages
-        uses: actions/configure-pages@v4
+        uses: actions/configure-pages@v5
 
-      - name: Upload Artifact
-        uses: actions/upload-pages-artifact@v3
-        with:
-          path: '.' # 將根目錄（含 index.html 與 Data/）打包為 artifact
-
-  # ----------------------------------------------------
-  # Job 2: 部署至 GitHub Pages
-  # ----------------------------------------------------
-  deploy:
-    needs: build-and-sync
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    runs-on: ubuntu-latest
-    steps:
-      - name: Deploy to GitHub Pages
-        id: deployment
-        uses: actions/deploy-pages@v4
-
-  # ----------------------------------------------------
-  # Job 3: 部署完成後的 curl 健康檢查
-  # ----------------------------------------------------
-  verify-deployment:
-    needs: deploy
-    runs-on: ubuntu-latest
-    steps:
-      - name: Verify Live Endpoints (HTML, Chip & Price Manifest)
-        env:
-          BASE_URL: "https://storynet514-hub.github.io/tw-stock-ai-scanner"
+      - name: Build Pages site
         run: |
-          ENDPOINTS=(
-            ""                            # 代表首頁 index.html
-            "/Data/chip.json"            # 籌碼數據檔案
-            "/Data/prices/manifest.json" # K線價格索引檔
-          )
-
-          MAX_RETRIES=10
-          ALL_PASSED=true
+          set -e
 
           echo "========================================"
-          echo "Starting GitHub Pages Live Health Check"
+          echo "Building GitHub Pages site"
           echo "========================================"
 
-          for PATH_NAME in "${ENDPOINTS[@]}"; do
-            TARGET_URL="${BASE_URL}${PATH_NAME}"
-            RETRY_COUNT=0
-            SUCCESS=false
+          mkdir -p _site
 
-            echo ""
-            echo "🔍 Testing: ${TARGET_URL}"
+          # 複製網站前端
+          if [ -f "index.html" ]; then
+            cp index.html _site/index.html
+          else
+            echo "ERROR: index.html not found"
+            exit 1
+          fi
 
-            until [ $RETRY_COUNT -ge $MAX_RETRIES ]; do
-              HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" -L "$TARGET_URL")
-
-              if [ "$HTTP_STATUS" -eq 200 ]; then
-                echo "  ✓ Success: HTTP 200 OK"
-                SUCCESS=true
-                break
-              fi
-
-              RETRY_COUNT=$((RETRY_COUNT+1))
-              echo "  └ Attempt ${RETRY_COUNT}/${MAX_RETRIES}: Got HTTP ${HTTP_STATUS}, retrying in 10s..."
-              sleep 10
-            done
-
-            if [ "$SUCCESS" = false ]; then
-              echo "  ❌ Failed: Endpoint ${TARGET_URL} unreachable after ${MAX_RETRIES} attempts."
-              ALL_PASSED=false
-            fi
-          done
+          # 複製 Data
+          if [ -d "Data" ]; then
+            cp -R Data _site/Data
+          else
+            echo "WARNING: Data directory not found"
+          fi
 
           echo ""
           echo "========================================"
-          if [ "$ALL_PASSED" = true ]; then
-            echo "🎉 All endpoints successfully verified (HTTP 200)!"
-            exit 0
+          echo "Pages build verification"
+          echo "========================================"
+
+          test -f "_site/index.html"
+
+          if [ -d "_site/Data" ]; then
+            echo "✓ _site/Data exists"
+            find _site/Data -maxdepth 2 -type f | sort
           else
-            echo "💥 Health check failed. Some critical static files returned non-200 status."
-            exit 1
+            echo "WARNING: _site/Data does not exist"
           fi
+
+          echo ""
+          echo "✓ Pages site build completed"
+
+      # ------------------------------------------------------
+      # IMPORTANT:
+      # 只有這一個步驟可以建立 github-pages artifact
+      # 不要在其他 workflow/job 再建立同名 artifact
+      # ------------------------------------------------------
+      - name: Upload GitHub Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          name: github-pages
+          path: _site
+
+
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    runs-on: ubuntu-latest
+
+    needs: build
+
+    steps:
+      - name: Deploy GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
