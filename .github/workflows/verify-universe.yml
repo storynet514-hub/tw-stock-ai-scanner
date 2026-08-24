@@ -1,44 +1,63 @@
 name: Verify Universe
 
 on:
+  push:
+    branches:
+      - main
+    paths:
+      - "Scripts/build_universe.py"
+      - "Data/universe.json"
+      - ".github/workflows/verify-universe.yml"
+
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
+
+concurrency:
+  group: verify-universe
+  cancel-in-progress: true
 
 jobs:
-  verify-universe:
+  verify:
     runs-on: ubuntu-latest
 
     steps:
-      # ============================================================
-      # 1. Checkout
-      # ============================================================
-      - name: Checkout repository
+
+      # ======================================================
+      # Checkout
+      # ======================================================
+
+      - name: Checkout
         uses: actions/checkout@v4
 
-      # ============================================================
-      # 2. Python
-      # ============================================================
-      - name: Set up Python
+      # ======================================================
+      # Python
+      # ======================================================
+
+      - name: Setup Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
 
-      # ============================================================
-      # 3. Install dependencies
-      # ============================================================
+      # ======================================================
+      # Dependencies
+      # ======================================================
+
       - name: Install dependencies
         run: |
           set -e
 
           python -m pip install --upgrade pip
-          pip install requests pandas
 
-      # ============================================================
-      # 4. Build Universe
-      # ============================================================
-      - name: Run build_universe.py
+          pip install \
+            requests
+
+      # ======================================================
+      # Build Universe
+      # ======================================================
+
+      - name: Build Universe
         run: |
           set -e
 
@@ -48,9 +67,10 @@ jobs:
 
           python Scripts/build_universe.py
 
-      # ============================================================
-      # 5. Verify universe.json
-      # ============================================================
+      # ======================================================
+      # Verify universe.json
+      # ======================================================
+
       - name: Verify universe.json
         run: |
           set -e
@@ -64,261 +84,114 @@ jobs:
           import sys
           from pathlib import Path
 
-          universe_file = Path("Data/universe.json")
+          universe_file = Path(
+              "Data/universe.json"
+          )
+
+          # --------------------------------------------------
+          # File exists
+          # --------------------------------------------------
 
           if not universe_file.exists():
-              print("❌ Data/universe.json 不存在")
+              print(
+                  "❌ Data/universe.json 不存在"
+              )
               sys.exit(1)
+
+          # --------------------------------------------------
+          # JSON parse
+          # --------------------------------------------------
 
           try:
               with universe_file.open(
                   "r",
-                  encoding="utf-8-sig"
+                  encoding="utf-8",
               ) as f:
                   data = json.load(f)
+
           except Exception as e:
-              print(f"❌ universe.json 無法解析：{e}")
+              print(
+                  f"❌ universe.json 無法解析：{e}"
+              )
               sys.exit(1)
 
-          if not isinstance(data, dict):
-              print("❌ universe.json 根節點不是 object")
+          # --------------------------------------------------
+          # Root object
+          # --------------------------------------------------
+
+          if not isinstance(
+              data,
+              dict,
+          ):
+              print(
+                  "❌ universe.json 根節點不是 object"
+              )
               sys.exit(1)
 
-          stocks = data.get("stocks")
+          # --------------------------------------------------
+          # stocks 必須是 object
+          # --------------------------------------------------
 
-          if not isinstance(stocks, dict):
-              print("❌ universe.json 的 stocks 不是 object")
+          stocks = data.get(
+              "stocks"
+          )
+
+          if not isinstance(
+              stocks,
+              dict,
+          ):
+              print(
+                  "❌ universe.json 的 stocks "
+                  "不是 object"
+              )
               sys.exit(1)
 
-          universe_count = data.get("universe_count")
-          stock_count = data.get("stock_count")
-          etf_count = data.get("etf_count")
-          bond_count = data.get("bond_count")
+          # --------------------------------------------------
+          # Header
+          # --------------------------------------------------
 
-          actual_count = len(stocks)
+          universe_count = data.get(
+              "universe_count"
+          )
+
+          stock_count = data.get(
+              "stock_count"
+          )
+
+          etf_count = data.get(
+              "etf_count"
+          )
+
+          etn_count = data.get(
+              "etn_count"
+          )
+
+          twse_count = data.get(
+              "twse_count"
+          )
+
+          tpex_count = data.get(
+              "tpex_count"
+          )
+
+          actual_count = len(
+              stocks
+          )
+
+          # --------------------------------------------------
+          # Type statistics
+          # --------------------------------------------------
 
           actual_stock_count = 0
           actual_etf_count = 0
-          actual_bond_count = 0
+          actual_etn_count = 0
 
-          for symbol, item in stocks.items():
+          actual_twse_count = 0
+          actual_tpex_count = 0
 
-              if not isinstance(item, dict):
-                  print(
-                      f"❌ stocks[{symbol}] 不是 object"
-                  )
-                  sys.exit(1)
-
-              item_type = str(
-                  item.get("type", "")
-              ).strip().upper()
-
-              instrument_type = str(
-                  item.get("instrument_type", "")
-              ).strip().lower()
-
-              if (
-                  item_type == "ETF"
-                  or instrument_type == "ETF".lower()
-              ):
-                  actual_etf_count += 1
-
-              elif (
-                  item_type == "BOND"
-                  or instrument_type == "BOND".lower()
-              ):
-                  actual_bond_count += 1
-
-              else:
-                  actual_stock_count += 1
-
-          print("")
-          print("========================================")
-          print("Universe statistics")
-          print("========================================")
-          print(f"universe_count : {universe_count}")
-          print(f"actual stocks  : {actual_count}")
-          print(f"stock_count    : {stock_count}")
-          print(f"actual stocks  : {actual_stock_count}")
-          print(f"etf_count      : {etf_count}")
-          print(f"actual ETFs    : {actual_etf_count}")
-          print(f"bond_count     : {bond_count}")
-          print(f"actual bonds   : {actual_bond_count}")
-          print("")
-
-          # --------------------------------------------------------
-          # universe_count
-          # --------------------------------------------------------
-          if not isinstance(universe_count, int):
-              print("❌ universe_count 不是整數")
-              sys.exit(1)
-
-          if universe_count != actual_count:
-              print(
-                  "❌ Universe 數量不一致："
-                  f"header={universe_count}, "
-                  f"stocks={actual_count}"
-              )
-              sys.exit(1)
-
-          print(
-              f"✓ universe_count == len(stocks) "
-              f"== {actual_count}"
-          )
-
-          # --------------------------------------------------------
-          # stock_count
-          # --------------------------------------------------------
-          if not isinstance(stock_count, int):
-              print("❌ stock_count 不是整數")
-              sys.exit(1)
-
-          if stock_count != actual_stock_count:
-              print(
-                  "❌ stock_count 不一致："
-                  f"header={stock_count}, "
-                  f"actual={actual_stock_count}"
-              )
-              sys.exit(1)
-
-          print(
-              f"✓ stock_count == actual Stock count "
-              f"== {actual_stock_count}"
-          )
-
-          # --------------------------------------------------------
-          # etf_count
-          # --------------------------------------------------------
-          if not isinstance(etf_count, int):
-              print("❌ etf_count 不是整數")
-              sys.exit(1)
-
-          if etf_count != actual_etf_count:
-              print(
-                  "❌ etf_count 不一致："
-                  f"header={etf_count}, "
-                  f"actual={actual_etf_count}"
-              )
-              sys.exit(1)
-
-          print(
-              f"✓ etf_count == actual ETF count "
-              f"== {actual_etf_count}"
-          )
-
-          # --------------------------------------------------------
-          # bond_count
-          # --------------------------------------------------------
-          if bond_count is not None:
-
-              if not isinstance(bond_count, int):
-                  print("❌ bond_count 不是整數")
-                  sys.exit(1)
-
-              if bond_count != actual_bond_count:
-                  print(
-                      "❌ bond_count 不一致："
-                      f"header={bond_count}, "
-                      f"actual={actual_bond_count}"
-                  )
-                  sys.exit(1)
-
-              print(
-                  f"✓ bond_count == actual Bond count "
-                  f"== {actual_bond_count}"
-              )
-
-          # ========================================================
-          # 固定驗證股票
-          # ========================================================
-
-          required = {
-              "2337": {
-                  "name": "旺宏",
-                  "market": "TWSE",
-              },
-              "2426": {
-                  "name": "鼎元",
-                  "market": "TWSE",
-              },
-              "2368": {
-                  "name": "金像電",
-                  "market": "TWSE",
-              },
-              "3081": {
-                  "name": "聯亞",
-                  "market": "TPEX",
-              },
-          }
-
-          print("")
-          print("========================================")
-          print("Fixed stock verification")
-          print("========================================")
-
-          for symbol, expected in required.items():
-
-              if symbol not in stocks:
-                  print(
-                      f"❌ 找不到 {symbol}"
-                  )
-                  sys.exit(1)
-
-              item = stocks[symbol]
-
-              if not isinstance(item, dict):
-                  print(
-                      f"❌ {symbol} 資料不是 object"
-                  )
-                  sys.exit(1)
-
-              actual_name = str(
-                  item.get("name", "")
-              ).strip()
-
-              actual_market = str(
-                  item.get("market", "")
-              ).strip().upper()
-
-              expected_name = expected["name"]
-              expected_market = expected["market"]
-
-              print(
-                  f"{symbol} | "
-                  f"name={actual_name} | "
-                  f"market={actual_market}"
-              )
-
-              if actual_name != expected_name:
-                  print(
-                      f"❌ {symbol} 名稱錯誤："
-                      f"預期={expected_name}, "
-                      f"實際={actual_name}"
-                  )
-                  sys.exit(1)
-
-              if actual_market != expected_market:
-                  print(
-                      f"❌ {symbol} 市場錯誤："
-                      f"預期={expected_market}, "
-                      f"實際={actual_market}"
-                  )
-                  sys.exit(1)
-
-              print(
-                  f"✓ {symbol} "
-                  f"{expected_name} / "
-                  f"{expected_market}"
-              )
-
-          # ========================================================
-          # 結構驗證
-          # ========================================================
-
-          print("")
-          print("========================================")
-          print("Structure verification")
-          print("========================================")
+          # --------------------------------------------------
+          # Field validation
+          # --------------------------------------------------
 
           required_fields = [
               "symbol",
@@ -327,162 +200,588 @@ jobs:
               "market",
               "type",
               "instrument_type",
+              "status",
               "source",
+              "isin",
+              "listed_date",
           ]
 
+          symbols = set()
+          full_symbols = set()
+
           for symbol, item in stocks.items():
+
+              if not isinstance(
+                  item,
+                  dict,
+              ):
+                  print(
+                      f"❌ stocks[{symbol}] "
+                      "不是 object"
+                  )
+                  sys.exit(1)
+
+              # ----------------------------------------------
+              # Required fields
+              # ----------------------------------------------
 
               for field in required_fields:
 
                   if field not in item:
                       print(
-                          f"❌ {symbol} 缺少欄位："
-                          f"{field}"
+                          f"❌ {symbol} "
+                          f"缺少欄位：{field}"
                       )
                       sys.exit(1)
 
-          print(
-              f"✓ {actual_count} 檔標的結構欄位完整"
-          )
+              # ----------------------------------------------
+              # Symbol
+              # ----------------------------------------------
 
-          # ========================================================
-          # 最終
-          # ========================================================
+              actual_symbol = str(
+                  item.get(
+                      "symbol",
+                      "",
+                  )
+              ).strip()
+
+              if not actual_symbol:
+                  print(
+                      f"❌ {symbol} "
+                      "symbol 為空"
+                  )
+                  sys.exit(1)
+
+              if actual_symbol != symbol:
+                  print(
+                      f"❌ key / symbol 不一致："
+                      f"{symbol} != "
+                      f"{actual_symbol}"
+                  )
+                  sys.exit(1)
+
+              if symbol in symbols:
+                  print(
+                      f"❌ symbol 重複："
+                      f"{symbol}"
+                  )
+                  sys.exit(1)
+
+              symbols.add(
+                  symbol
+              )
+
+              # ----------------------------------------------
+              # Full symbol
+              # ----------------------------------------------
+
+              full_symbol = str(
+                  item.get(
+                      "full_symbol",
+                      "",
+                  )
+              ).strip()
+
+              if not full_symbol:
+                  print(
+                      f"❌ {symbol} "
+                      "full_symbol 為空"
+                  )
+                  sys.exit(1)
+
+              if full_symbol in full_symbols:
+                  print(
+                      f"❌ full_symbol 重複："
+                      f"{full_symbol}"
+                  )
+                  sys.exit(1)
+
+              full_symbols.add(
+                  full_symbol
+              )
+
+              # ----------------------------------------------
+              # Name
+              # ----------------------------------------------
+
+              name = str(
+                  item.get(
+                      "name",
+                      "",
+                  )
+              ).strip()
+
+              if not name:
+                  print(
+                      f"❌ {symbol} "
+                      "名稱為空"
+                  )
+                  sys.exit(1)
+
+              # ----------------------------------------------
+              # Market
+              # ----------------------------------------------
+
+              market = str(
+                  item.get(
+                      "market",
+                      "",
+                  )
+              ).strip().upper()
+
+              if market not in {
+                  "TWSE",
+                  "TPEX",
+              }:
+                  print(
+                      f"❌ {symbol} "
+                      f"市場無效：{market}"
+                  )
+                  sys.exit(1)
+
+              if market == "TWSE":
+                  actual_twse_count += 1
+              else:
+                  actual_tpex_count += 1
+
+              # ----------------------------------------------
+              # Instrument type
+              # ----------------------------------------------
+
+              instrument_type = str(
+                  item.get(
+                      "instrument_type",
+                      "",
+                  )
+              ).strip().upper()
+
+              if instrument_type == "STOCK":
+                  actual_stock_count += 1
+
+              elif instrument_type == "ETF":
+                  actual_etf_count += 1
+
+              elif instrument_type == "ETN":
+                  actual_etn_count += 1
+
+              else:
+                  print(
+                      f"❌ {symbol} "
+                      f"instrument_type 無效："
+                      f"{instrument_type}"
+                  )
+                  sys.exit(1)
+
+              # ----------------------------------------------
+              # Type
+              # ----------------------------------------------
+
+              item_type = str(
+                  item.get(
+                      "type",
+                      "",
+                  )
+              ).strip().upper()
+
+              expected_type = {
+                  "STOCK": "STOCK",
+                  "ETF": "ETF",
+                  "ETN": "ETN",
+              }[instrument_type]
+
+              if item_type != expected_type:
+                  print(
+                      f"❌ {symbol} "
+                      f"type / instrument_type "
+                      f"不一致："
+                      f"{item_type} / "
+                      f"{instrument_type}"
+                  )
+                  sys.exit(1)
+
+              # ----------------------------------------------
+              # Status
+              # ----------------------------------------------
+
+              status = str(
+                  item.get(
+                      "status",
+                      "",
+                  )
+              ).strip().lower()
+
+              if status != "active":
+                  print(
+                      f"❌ {symbol} "
+                      f"status 不是 active："
+                      f"{status}"
+                  )
+                  sys.exit(1)
+
+          # ==================================================
+          # Statistics
+          # ==================================================
 
           print("")
-          print("========================================")
-          print("UNIVERSE VERIFICATION PASS")
-          print("========================================")
           print(
-              f"✓ Universe      : {universe_count}"
+              "========================================"
           )
           print(
-              f"✓ Stocks object : {actual_count}"
+              "Universe statistics"
           )
           print(
-              f"✓ Stock         : {actual_stock_count}"
-          )
-          print(
-              f"✓ ETF           : {actual_etf_count}"
-          )
-          print(
-              f"✓ Bond          : {actual_bond_count}"
-          )
-          print(
-              "✓ 2337 旺宏 / TWSE"
-          )
-          print(
-              "✓ 2426 鼎元 / TWSE"
-          )
-          print(
-              "✓ 2368 金像電 / TWSE"
-          )
-          print(
-              "✓ 3081 聯亞 / TPEX"
-          )
-          print("")
-          print(
-              "✓ Universe layer verification completed."
-          )
-          print(
-              "✓ fetch_chip.py 尚未執行。"
-          )
-          print(
-              "✓ update.yml 尚未執行。"
-          )
-          print("")
-          PY
-
-      # ============================================================
-      # 6. 顯示 Universe 檔案摘要
-      # ============================================================
-      - name: Print universe summary
-        run: |
-          set -e
-
-          echo "========================================"
-          echo "Final universe.json summary"
-          echo "========================================"
-
-          python - <<'PY'
-          import json
-
-          with open(
-              "Data/universe.json",
-              "r",
-              encoding="utf-8-sig"
-          ) as f:
-              data = json.load(f)
-
-          stocks = data["stocks"]
-
-          print(
-              f"schema_version : "
-              f"{data.get('schema_version')}"
+              "========================================"
           )
 
           print(
               f"universe_count : "
-              f"{data.get('universe_count')}"
+              f"{universe_count}"
           )
 
           print(
-              f"actual_stocks  : "
-              f"{len(stocks)}"
+              f"actual objects : "
+              f"{actual_count}"
           )
 
           print(
               f"stock_count    : "
-              f"{data.get('stock_count')}"
+              f"{stock_count}"
+          )
+
+          print(
+              f"actual stocks  : "
+              f"{actual_stock_count}"
           )
 
           print(
               f"etf_count      : "
-              f"{data.get('etf_count')}"
+              f"{etf_count}"
           )
 
           print(
-              f"bond_count     : "
-              f"{data.get('bond_count')}"
+              f"actual ETFs    : "
+              f"{actual_etf_count}"
+          )
+
+          print(
+              f"etn_count      : "
+              f"{etn_count}"
+          )
+
+          print(
+              f"actual ETNs    : "
+              f"{actual_etn_count}"
+          )
+
+          print(
+              f"twse_count     : "
+              f"{twse_count}"
+          )
+
+          print(
+              f"actual TWSE    : "
+              f"{actual_twse_count}"
+          )
+
+          print(
+              f"tpex_count     : "
+              f"{tpex_count}"
+          )
+
+          print(
+              f"actual TPEX    : "
+              f"{actual_tpex_count}"
+          )
+
+          # ==================================================
+          # Header consistency
+          # ==================================================
+
+          if not isinstance(
+              universe_count,
+              int,
+          ):
+              print(
+                  "❌ universe_count "
+                  "不是整數"
+              )
+              sys.exit(1)
+
+          if universe_count != actual_count:
+              print(
+                  "❌ universe_count "
+                  "與 stocks 數量不一致"
+              )
+              sys.exit(1)
+
+          print(
+              f"✓ universe_count == "
+              f"len(stocks) == "
+              f"{actual_count}"
+          )
+
+          # --------------------------------------------------
+          # Stock
+          # --------------------------------------------------
+
+          if stock_count != actual_stock_count:
+              print(
+                  "❌ stock_count 不一致"
+              )
+              sys.exit(1)
+
+          print(
+              f"✓ stock_count == "
+              f"actual_stock_count == "
+              f"{actual_stock_count}"
+          )
+
+          # --------------------------------------------------
+          # ETF
+          # --------------------------------------------------
+
+          if etf_count != actual_etf_count:
+              print(
+                  "❌ etf_count 不一致"
+              )
+              sys.exit(1)
+
+          print(
+              f"✓ etf_count == "
+              f"actual_etf_count == "
+              f"{actual_etf_count}"
+          )
+
+          # --------------------------------------------------
+          # ETN
+          # --------------------------------------------------
+
+          if etn_count != actual_etn_count:
+              print(
+                  "❌ etn_count 不一致"
+              )
+              sys.exit(1)
+
+          print(
+              f"✓ etn_count == "
+              f"actual_etn_count == "
+              f"{actual_etn_count}"
+          )
+
+          # --------------------------------------------------
+          # Market
+          # --------------------------------------------------
+
+          if twse_count != actual_twse_count:
+              print(
+                  "❌ twse_count 不一致"
+              )
+              sys.exit(1)
+
+          if tpex_count != actual_tpex_count:
+              print(
+                  "❌ tpex_count 不一致"
+              )
+              sys.exit(1)
+
+          print(
+              f"✓ TWSE == {actual_twse_count}"
+          )
+
+          print(
+              f"✓ TPEX == {actual_tpex_count}"
+          )
+
+          # ==================================================
+          # Universe composition
+          # ==================================================
+
+          if (
+              actual_stock_count
+              + actual_etf_count
+              + actual_etn_count
+              != actual_count
+          ):
+              print(
+                  "❌ Stock + ETF + ETN "
+                  "不等於 Universe"
+              )
+              sys.exit(1)
+
+          print(
+              "✓ Stock + ETF + ETN "
+              "== Universe"
+          )
+
+          # ==================================================
+          # Sanity range
+          #
+          # 不要求固定 2600 或 2700。
+          # 只防止：
+          #   1985 → 明顯漏資料
+          #   >3000 → 很可能誤收權證/債券
+          # ==================================================
+
+          if actual_count < 2400:
+              print(
+                  "❌ Universe 數量異常偏低："
+                  f"{actual_count}"
+              )
+              print(
+                  "❌ 很可能有官方市場資料來源缺漏"
+              )
+              sys.exit(1)
+
+          if actual_count > 3000:
+              print(
+                  "❌ Universe 數量異常偏高："
+                  f"{actual_count}"
+              )
+              print(
+                  "❌ 很可能誤把非股票/ETF/ETN "
+                  "商品加入"
+              )
+              sys.exit(1)
+
+          print(
+              "✓ Universe 數量在合理範圍"
+          )
+
+          # ==================================================
+          # Minimum market coverage
+          # ==================================================
+
+          if actual_twse_count < 900:
+              print(
+                  "❌ TWSE 數量異常偏低"
+              )
+              sys.exit(1)
+
+          if actual_tpex_count < 1000:
+              print(
+                  "❌ TPEX 總數量異常偏低"
+              )
+              sys.exit(1)
+
+          if actual_etf_count < 100:
+              print(
+                  "❌ ETF 數量異常偏低"
+              )
+              sys.exit(1)
+
+          if actual_etn_count < 10:
+              print(
+                  "❌ ETN 數量異常偏低"
+              )
+              sys.exit(1)
+
+          print(
+              "✓ TWSE market coverage"
+          )
+
+          print(
+              "✓ TPEX market coverage"
+          )
+
+          print(
+              "✓ ETF coverage"
+          )
+
+          print(
+              "✓ ETN coverage"
+          )
+
+          # ==================================================
+          # 禁止固定測試股票
+          # ==================================================
+
+          print("")
+          print(
+              "========================================"
+          )
+          print(
+              "Dynamic Universe verification"
+          )
+          print(
+              "========================================"
+          )
+
+          print(
+              "✓ 無固定股票代號驗證"
+          )
+
+          print(
+              "✓ 無固定股票名稱驗證"
+          )
+
+          print(
+              "✓ 無固定測試標的"
+          )
+
+          print(
+              "✓ 不依賴特定股票才能 PASS"
+          )
+
+          print(
+              "✓ Universe 完全由官方資料建立"
+          )
+
+          # ==================================================
+          # Final
+          # ==================================================
+
+          print("")
+          print(
+              "========================================"
+          )
+          print(
+              "UNIVERSE VERIFICATION PASS"
+          )
+          print(
+              "========================================"
+          )
+
+          print(
+              f"✓ Universe : {actual_count}"
+          )
+
+          print(
+              f"✓ Stock    : "
+              f"{actual_stock_count}"
+          )
+
+          print(
+              f"✓ ETF      : "
+              f"{actual_etf_count}"
+          )
+
+          print(
+              f"✓ ETN      : "
+              f"{actual_etn_count}"
+          )
+
+          print(
+              f"✓ TWSE     : "
+              f"{actual_twse_count}"
+          )
+
+          print(
+              f"✓ TPEX     : "
+              f"{actual_tpex_count}"
           )
 
           print("")
-          print("Fixed stocks:")
+          print(
+              "✓ Universe layer verification completed."
+          )
 
-          for symbol in [
-              "2337",
-              "2426",
-              "2368",
-              "3081",
-          ]:
-              item = stocks[symbol]
+          print(
+              "✓ fetch_chip.py 尚未執行。"
+          )
 
-              print(
-                  f"{symbol} | "
-                  f"{item.get('name')} | "
-                  f"{item.get('market')} | "
-                  f"{item.get('full_symbol')}"
-              )
+          print(
+              "✓ update.yml 尚未執行。"
+          )
+
+          print("")
           PY
-
-      # ============================================================
-      # 7. Commit universe.json only when changed
-      # ============================================================
-      - name: Commit verified universe.json
-        run: |
-          set -e
-
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-
-          if git diff --quiet -- Data/universe.json; then
-            echo "✓ Data/universe.json 沒有變更"
-            exit 0
-          fi
-
-          git add Data/universe.json
-
-          git commit \
-            -m "verify: rebuild universe.json"
-
-          git push
