@@ -498,7 +498,7 @@ def classify_instrument(
 
     if contains_any(
         combined,
-        Warrant_KEYWORDS,
+        WARRANT_KEYWORDS,
     ):
         return "WARRANT", "WARRANT"
 
