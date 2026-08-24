@@ -5,7 +5,7 @@
 台股 AI 選股系統
 Scripts/build_universe.py
 
-正式版 UNIVERSE-V11.2
+正式版 UNIVERSE-V11.3
 
 ============================================================
 核心目的
@@ -15,80 +15,115 @@ Scripts/build_universe.py
 
 資料流：
 
-官方標的資料
-    ↓
+官方 TWSE / TPEX 現行標的
+        ↓
 build_universe.py
-    ↓
+        ↓
 Data/universe.json
-    ↓
-analyze_stocks.py
-    ↓
-Data/analysis.json
-    ↓
-build_ui_data.py
-    ↓
-Data/ui_data.json
-    ↓
-index.html
+        ↓
+fetch_chip.py / analyze_stocks.py
+        ↓
+後續分析資料
 
 ============================================================
-V11.2 核心修正
+V11.3 核心修正
 ============================================================
 
-1. TWSE 股票使用：
-   t187ap03_L
+1. TWSE 股票：
+   https://openapi.twse.com.tw/v1/opendata/t187ap03_L
 
-2. TWSE ETF 使用：
-   t187ap47_L
+   正式欄位：
+   公司代號
+   公司簡稱
 
-3. TPEX 股票使用：
-   mopsfin_t187ap03_O
+2. TWSE ETF：
+   https://openapi.twse.com.tw/v1/opendata/t187ap47_L
 
-4. TPEX 全證券補充使用：
-   tpex_mainboard_daily_close_quotes
+   正式欄位：
+   基金代號
+   基金簡稱
+   基金類型
 
-5. 不再使用 ISIN 歷史資料建立 Universe。
+3. TPEX 股票：
+   https://www.tpex.org.tw/openapi/v1/mopsfin_t187ap03_O
 
-6. ISIN 只能作為名稱補充，不能增加 Universe。
+   正式欄位：
+   SecuritiesCompanyCode
+   CompanyAbbreviation
 
-7. 不使用 tpex_mainboard_peratio 作為 Universe 主來源。
+4. TPEX ETF：
+   使用 TPEX 官方行情資料補充，
+   僅接受符合 ETF 證券代號規則的標的。
 
-8. 舊 universe.json 只能補充官方已存在的 symbol，
-   不得增加新的 Universe 標的。
+5. 不使用 ISIN 建立 Universe。
 
-9. 排除：
-   - 權證
-   - 歷史 ISIN
-   - 舊有價證券
-   - 明顯非股票 / ETF 商品
-   - 純分類文字
-   - 純國際代碼
-   - 無法確認市場的標的
+6. 不使用 Yahoo 建立 Universe。
 
-10. 保留：
-    - 上市股票
-    - 上櫃股票
-    - 上市 ETF
-    - 上櫃 ETF
+7. 舊 universe.json：
+   只能補充「官方已存在 symbol」的名稱。
+   不得增加 Universe。
+
+8. 名稱來源：
+
+   TWSE 股票：
+       公司簡稱
+
+   TPEX 股票：
+       CompanyAbbreviation
+
+   TWSE ETF：
+       基金簡稱
+
+   TPEX ETF：
+       官方行情名稱
+
+   舊 Universe：
+       僅作最後 fallback
+
+9. 法人完整名稱一律標準化：
+
+   旺宏電子股份有限公司
+       ↓
+   旺宏
+
+   鼎元光電科技股份有限公司
+       ↓
+   鼎元
+
+   金像電子股份有限公司
+       ↓
+   金像電
+
+10. 3081 聯亞必須存在。
+
+11. Universe 必須包含：
+    - TWSE 股票
+    - TPEX 股票
+    - TWSE ETF
+    - TPEX ETF
     - 債券 ETF
 
-11. 3081 聯亞必須存在。
+12. 排除：
+    - 權證
+    - 興櫃
+    - 舊有價證券
+    - ISIN 歷史資料
+    - 純分類文字
+    - 無法確認市場標的
+    - 非股票 / ETF 商品
 
-12. Universe 上限 5000。
+13. Universe 上限 5000。
 
-13. Universe 過少或核心股票缺失時直接停止。
+14. Universe 最少 1500。
+    過少直接停止，避免 API 異常導致空 Universe。
 
-14. 名稱優先順序：
+15. universe_count 必須永遠等於 stocks object 實際數量。
 
-    官方公司簡稱
-        ↓
-    官方公司名稱標準化
-        ↓
-    官方 ETF 名稱
-        ↓
-    舊 Universe 名稱
+16. symbol 必須唯一。
 
-15. Yahoo 不參與 Universe 決策。
+17. 2337 / 2426 / 2368 / 3081 固定驗證。
+
+18. Yahoo 不參與任何 Universe 決策。
 
 ============================================================
 """
@@ -109,7 +144,7 @@ import requests
 # 基本設定
 # ============================================================
 
-VERSION = "UNIVERSE-V11.2"
+VERSION = "UNIVERSE-V11.3"
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 DATA_DIR = BASE_DIR / "Data"
@@ -119,7 +154,6 @@ OUTPUT_FILE = DATA_DIR / "universe.json"
 TIMEOUT = 30
 
 MAX_UNIVERSE = 5000
-
 MIN_REASONABLE_UNIVERSE = 1500
 
 
@@ -132,6 +166,7 @@ HEADERS = {
         "Chrome/131.0 Safari/537.36"
     ),
     "Accept": "application/json,text/plain,*/*",
+    "Accept-Language": "zh-TW,zh;q=0.9,en-US;q=0.8,en;q=0.7",
 }
 
 
@@ -156,7 +191,6 @@ TPEX_QUOTES_URL = (
     "tpex_mainboard_daily_close_quotes"
 )
 
-# 備用 TPEX 行情來源
 TPEX_QUOTES_FALLBACK_URL = (
     "https://www.tpex.org.tw/openapi/v1/"
     "tpex_mainboard_quotes"
@@ -164,16 +198,14 @@ TPEX_QUOTES_FALLBACK_URL = (
 
 
 # ============================================================
-# 舊資料
+# 舊 Universe
 # ============================================================
 
-EXISTING_UNIVERSE_FILE = (
-    DATA_DIR / "universe.json"
-)
+EXISTING_UNIVERSE_FILE = DATA_DIR / "universe.json"
 
 
 # ============================================================
-# 必須存在的核心股票
+# 核心驗證標的
 # ============================================================
 
 REQUIRED_SYMBOLS = {
@@ -185,7 +217,7 @@ REQUIRED_SYMBOLS = {
 
 
 # ============================================================
-# 名稱清理
+# 名稱
 # ============================================================
 
 LEGAL_SUFFIXES = (
@@ -198,6 +230,7 @@ LEGAL_SHORT_SUFFIXES = (
     "（股）",
 )
 
+
 BAD_NAMES = {
     "",
     "NAN",
@@ -206,8 +239,6 @@ BAD_NAMES = {
     "UNDEFINED",
     "OTHERS",
     "OTHER",
-    "FOOD",
-    "SEMICONDUCTOR INDUSTRY",
     "STOCK",
     "ETF",
     "BOND",
@@ -215,24 +246,31 @@ BAD_NAMES = {
     "FUND",
     "COMMON STOCK",
     "PREFERRED STOCK",
+    "CEOGEU",
+    "CEOJEU",
+    "CEOIEU",
+    "CEOIRU",
+    "CEOIRU",
+    "CEOIRU",
 }
 
 
 # ============================================================
-# ETF 判斷
+# ETF / Bond
 # ============================================================
 
-ETF_KEYWORDS = (
+ETF_NAME_KEYWORDS = (
     "ETF",
     "指數",
     "指數型",
+    "指數股票型",
     "基金",
-    "被動式",
+    "交易所交易",
     "主動式",
+    "被動式",
     "收益型",
     "多元資產",
     "債券",
-    "債",
     "公司債",
     "金融債",
     "公債",
@@ -253,17 +291,16 @@ ETF_KEYWORDS = (
 )
 
 
-BOND_KEYWORDS = (
+BOND_NAME_KEYWORDS = (
     "債券",
-    "債",
     "公司債",
     "金融債",
     "公債",
     "國債",
     "美國國債",
     "美元債",
-    "投資級",
     "投資級債",
+    "投資級",
     "非投資等級",
     "高收益債",
     "高收益",
@@ -301,7 +338,9 @@ def section(title: str) -> None:
 # HTTP
 # ============================================================
 
-def request_json(url: str) -> Any:
+def request_json(
+    url: str,
+) -> Any:
 
     response = requests.get(
         url,
@@ -315,10 +354,12 @@ def request_json(url: str) -> Any:
 
 
 # ============================================================
-# 基本文字
+# 文字
 # ============================================================
 
-def clean_text(value: Any) -> str:
+def clean_text(
+    value: Any,
+) -> str:
 
     if value is None:
         return ""
@@ -344,7 +385,10 @@ def clean_text(value: Any) -> str:
     return text.strip()
 
 
-def upper_clean(value: Any) -> str:
+def upper_clean(
+    value: Any,
+) -> str:
+
     return clean_text(value).upper()
 
 
@@ -352,7 +396,9 @@ def upper_clean(value: Any) -> str:
 # Symbol
 # ============================================================
 
-def normalize_symbol(value: Any) -> str:
+def normalize_symbol(
+    value: Any,
+) -> str:
 
     text = upper_clean(value)
 
@@ -380,27 +426,50 @@ def normalize_symbol(value: Any) -> str:
     return text
 
 
-def is_valid_symbol(symbol: str) -> bool:
+def is_stock_symbol(
+    symbol: str,
+) -> bool:
 
     symbol = normalize_symbol(symbol)
 
-    if not symbol:
-        return False
+    return bool(
+        re.fullmatch(
+            r"\d{4}",
+            symbol,
+        )
+    )
 
-    # 本系統主要分析股票與 ETF。
+
+def is_etf_symbol(
+    symbol: str,
+) -> bool:
+
+    symbol = normalize_symbol(symbol)
+
+    # 台灣 ETF 目前主要為：
+    # 5~6 碼、00 開頭。
     #
-    # 權證通常為 5~6 碼，
-    # 但不以單純長度判斷。
-    #
-    # 明確排除部分權證常見格式：
-    if symbol.startswith("7") and len(symbol) == 6:
-        return False
+    # 允許末碼為英文字母，
+    # 例如部分債券 ETF：
+    # 00679B
+    # 00725B
+    # 等。
 
     return bool(
         re.fullmatch(
-            r"[A-Z0-9]{4,6}",
+            r"00\d{3}[A-Z0-9]?",
             symbol,
         )
+    )
+
+
+def is_valid_universe_symbol(
+    symbol: str,
+) -> bool:
+
+    return (
+        is_stock_symbol(symbol)
+        or is_etf_symbol(symbol)
     )
 
 
@@ -418,7 +487,7 @@ def normalize_company_name(
         return ""
 
     # --------------------------------------------------------
-    # 移除法人後綴
+    # 法人短尾碼
     # --------------------------------------------------------
 
     for suffix in LEGAL_SHORT_SUFFIXES:
@@ -428,6 +497,10 @@ def normalize_company_name(
             name = name[
                 :-len(suffix)
             ].strip()
+
+    # --------------------------------------------------------
+    # 法人完整尾碼
+    # --------------------------------------------------------
 
     changed = True
 
@@ -446,7 +519,7 @@ def normalize_company_name(
                 changed = True
 
     # --------------------------------------------------------
-    # 常見括號法人尾碼
+    # 括號法人
     # --------------------------------------------------------
 
     name = re.sub(
@@ -462,7 +535,7 @@ def normalize_company_name(
     )
 
     # --------------------------------------------------------
-    # 移除前後標點
+    # 前後符號
     # --------------------------------------------------------
 
     name = name.strip(
@@ -472,17 +545,11 @@ def normalize_company_name(
     return name
 
 
-# ============================================================
-# 名稱驗證
-# ============================================================
-
 def is_valid_name(
     value: Any,
 ) -> bool:
 
-    name = normalize_company_name(
-        value
-    )
+    name = normalize_company_name(value)
 
     if not name:
         return False
@@ -498,7 +565,7 @@ def is_valid_name(
     if name.isdigit():
         return False
 
-    # 純英文分類名稱
+    # 純英文分類 / 無意義代碼
     if re.fullmatch(
         r"[A-Z][A-Z0-9 _\-/\.]{1,}",
         upper,
@@ -512,18 +579,11 @@ def is_valid_name(
     ):
         return False
 
-    # 國際代碼
-    if re.fullmatch(
-        r"[A-Z]{2,}[0-9]{6,}",
-        upper,
-    ):
-        return False
-
     return True
 
 
 # ============================================================
-# Dictionary 欄位
+# Dictionary
 # ============================================================
 
 def first_value(
@@ -556,6 +616,8 @@ def build_full_symbol(
     market: str,
 ) -> str:
 
+    symbol = normalize_symbol(symbol)
+
     if market == "TPEX":
         return f"{symbol}.TWO"
 
@@ -563,123 +625,103 @@ def build_full_symbol(
 
 
 # ============================================================
-# ETF / Bond 判斷
+# ETF / Bond
 # ============================================================
 
-def looks_like_etf(
-    symbol: str,
-    name: str,
-    raw_type: Any = None,
+def contains_keyword(
+    text: str,
+    keywords: Iterable[str],
 ) -> bool:
 
-    text = (
-        clean_text(name)
-        + " "
-        + clean_text(raw_type)
-    ).upper()
+    text_lower = clean_text(text).lower()
 
-    for keyword in ETF_KEYWORDS:
+    for keyword in keywords:
 
-        if keyword.upper() in text:
+        if keyword.lower() in text_lower:
             return True
 
-    # 00xx 是台股 ETF 常見代號區域
-    if (
-        symbol.isdigit()
-        and symbol.startswith("00")
+    return False
+
+
+def looks_like_bond_etf(
+    symbol: str,
+    name: str,
+    raw_type: Any = "",
+) -> bool:
+
+    symbol = normalize_symbol(symbol)
+
+    name_text = clean_text(name)
+
+    type_text = clean_text(raw_type)
+
+    # 名稱必須明確具有債券屬性
+    if not contains_keyword(
+        name_text,
+        BOND_NAME_KEYWORDS,
+    ):
+        return False
+
+    # B / C / D 代號規則 + 名稱雙重判斷
+    if re.fullmatch(
+        r"00\d{3}[BCD]",
+        symbol,
+    ):
+        return True
+
+    # 官方基金類型明確包含債券時也接受
+    if contains_keyword(
+        type_text,
+        BOND_NAME_KEYWORDS,
     ):
         return True
 
     return False
 
 
-def looks_like_bond_etf(
+def looks_like_etf_name(
     name: str,
-    raw_type: Any = None,
+    raw_type: Any = "",
 ) -> bool:
 
     text = (
         clean_text(name)
         + " "
         + clean_text(raw_type)
-    ).lower()
+    )
 
-    for keyword in BOND_KEYWORDS:
-
-        if keyword.lower() in text:
-            return True
-
-    # 台股常見海外 / 債券 ETF 代號
-    #
-    # 例如：
-    # 00679B
-    # 00725B
-    # 00687B
-    #
-    # 只作輔助。
-    if re.fullmatch(
-        r"\d{5}[A-Z]",
-        clean_text(name),
-    ):
-        return False
-
-    return False
-
-
-def classify_instrument(
-    symbol: str,
-    name: str,
-    raw_type: Any = None,
-) -> str:
-
-    if looks_like_bond_etf(
-        name,
-        raw_type,
-    ):
-        return "bond"
-
-    if looks_like_etf(
-        symbol,
-        name,
-        raw_type,
-    ):
-        return "etf"
-
-    return "stock"
+    return contains_keyword(
+        text,
+        ETF_NAME_KEYWORDS,
+    )
 
 
 # ============================================================
 # Record
 # ============================================================
 
-def build_record(
+def make_record(
     symbol: Any,
     name: Any,
     market: str,
-    raw_type: Any = "",
-    source: str = "",
+    instrument_type: str,
+    source: str,
 ) -> Optional[Dict[str, Any]]:
 
-    symbol = normalize_symbol(
-        symbol
-    )
+    symbol = normalize_symbol(symbol)
 
-    name = normalize_company_name(
-        name
-    )
+    name = normalize_company_name(name)
 
     market = clean_text(
         market
     ).upper()
 
-    if not is_valid_symbol(
+    if not is_valid_universe_symbol(
         symbol
     ):
         return None
 
-    if not is_valid_name(
-        name
-    ):
+    if not is_valid_name(name):
         return None
 
     if market not in {
@@ -687,12 +729,6 @@ def build_record(
         "TPEX",
     }:
         return None
-
-    instrument_type = classify_instrument(
-        symbol,
-        name,
-        raw_type,
-    )
 
     if instrument_type == "bond":
 
@@ -748,7 +784,7 @@ def load_twse_stocks() -> Dict[str, Dict[str, Any]]:
 
         return {}
 
-    result = {}
+    result: Dict[str, Dict[str, Any]] = {}
 
     if not isinstance(
         payload,
@@ -769,48 +805,46 @@ def load_twse_stocks() -> Dict[str, Dict[str, Any]]:
             (
                 "公司代號",
                 "證券代號",
-                "代號",
-                "Code",
-                "code",
             ),
         )
 
-        # 公司簡稱優先
+        # ★ 關鍵：
+        # TWSE 官方簡稱優先。
         name = first_value(
             item,
             (
                 "公司簡稱",
-                "證券名稱",
-                "名稱",
-                "Name",
-                "name",
-                "公司名稱",
-                "CompanyName",
+                "證券簡稱",
             ),
         )
 
-        raw_type = first_value(
-            item,
-            (
-                "證券類別",
-                "類別",
-                "產業類別",
-            ),
-        )
+        # 不允許公司名稱搶走公司簡稱。
+        if not name:
 
-        record = build_record(
+            name = first_value(
+                item,
+                (
+                    "公司名稱",
+                    "名稱",
+                ),
+            )
+
+        symbol = normalize_symbol(symbol)
+
+        if not is_stock_symbol(symbol):
+            continue
+
+        record = make_record(
             symbol=symbol,
             name=name,
             market="TWSE",
-            raw_type=raw_type,
+            instrument_type="stock",
             source="TWSE_STOCK_OFFICIAL",
         )
 
         if record:
 
-            result[
-                record["symbol"]
-            ] = record
+            result[symbol] = record
 
     log(
         f"✓ TWSE 股票：{len(result)} 檔"
@@ -838,12 +872,12 @@ def load_twse_etf() -> Dict[str, Dict[str, Any]]:
     except Exception as exc:
 
         log(
-            f"⚠ TWSE ETF API 失敗：{exc}"
+            f"❌ TWSE ETF API 失敗：{exc}"
         )
 
         return {}
 
-    result = {}
+    result: Dict[str, Dict[str, Any]] = {}
 
     if not isinstance(
         payload,
@@ -864,60 +898,65 @@ def load_twse_etf() -> Dict[str, Dict[str, Any]]:
             (
                 "基金代號",
                 "證券代號",
-                "代號",
-                "Code",
-                "code",
             ),
         )
 
+        # ★ 官方 ETF 簡稱
         name = first_value(
             item,
             (
-                "基金名稱",
-                "證券名稱",
-                "名稱",
-                "Name",
-                "name",
+                "基金簡稱",
+                "證券簡稱",
             ),
         )
 
-        if not symbol or not name:
+        if not name:
+
+            name = first_value(
+                item,
+                (
+                    "基金中文名稱",
+                    "基金名稱",
+                ),
+            )
+
+        raw_type = first_value(
+            item,
+            (
+                "基金類型",
+                "證券類別",
+            ),
+        )
+
+        symbol = normalize_symbol(symbol)
+
+        if not is_etf_symbol(symbol):
             continue
 
-        record = build_record(
+        if not name:
+            continue
+
+        instrument_type = (
+            "bond"
+            if looks_like_bond_etf(
+                symbol,
+                name,
+                raw_type,
+            )
+            else "etf"
+        )
+
+        record = make_record(
             symbol=symbol,
             name=name,
             market="TWSE",
-            raw_type="ETF",
+            instrument_type=instrument_type,
             source="TWSE_ETF_OFFICIAL",
         )
 
         if record:
 
-            # 強制 ETF
-            record["type"] = (
-                "Bond ETF"
-                if looks_like_bond_etf(
-                    record["name"]
-                )
-                else "ETF"
-            )
-
-            record["instrument_type"] = (
-                "bond"
-                if record["type"] == "Bond ETF"
-                else "etf"
-            )
-
-            record["asset_class"] = (
-                "bond"
-                if record["type"] == "Bond ETF"
-                else "fund"
-            )
-
-            result[
-                record["symbol"]
-            ] = record
+            result[symbol] = record
 
     log(
         f"✓ TWSE ETF：{len(result)} 檔"
@@ -933,7 +972,7 @@ def load_twse_etf() -> Dict[str, Dict[str, Any]]:
 def load_tpex_stocks() -> Dict[str, Dict[str, Any]]:
 
     section(
-        "TPEX 官方公司基本資料"
+        "TPEX 官方股票資料"
     )
 
     try:
@@ -945,12 +984,12 @@ def load_tpex_stocks() -> Dict[str, Dict[str, Any]]:
     except Exception as exc:
 
         log(
-            f"⚠ TPEX 公司基本資料失敗：{exc}"
+            f"❌ TPEX 股票 API 失敗：{exc}"
         )
 
         return {}
 
-    result = {}
+    result: Dict[str, Dict[str, Any]] = {}
 
     if not isinstance(
         payload,
@@ -966,70 +1005,72 @@ def load_tpex_stocks() -> Dict[str, Dict[str, Any]]:
         ):
             continue
 
+        # ★ TPEX 正確欄位
         symbol = first_value(
             item,
             (
                 "SecuritiesCompanyCode",
-                "公司代號",
                 "證券代號",
-                "Code",
-                "code",
+                "公司代號",
             ),
         )
 
-        # TPEX 官方簡稱優先
+        # ★ TPEX 正確簡稱欄位
         name = first_value(
             item,
             (
                 "CompanyAbbreviation",
-                "證券名稱",
+                "證券簡稱",
                 "公司簡稱",
-                "名稱",
-                "CompanyName",
-                "name",
             ),
         )
 
-        raw_type = first_value(
-            item,
-            (
-                "SecuritiesIndustryCode",
-                "證券類別",
-                "類別",
-                "Type",
-            ),
-        )
+        # fallback 僅在簡稱不存在時使用完整名稱
+        if not name:
 
-        record = build_record(
+            name = first_value(
+                item,
+                (
+                    "CompanyName",
+                    "公司名稱",
+                    "名稱",
+                ),
+            )
+
+        symbol = normalize_symbol(symbol)
+
+        # TPEX 股票只接受 4 碼股票代號。
+        if not is_stock_symbol(symbol):
+            continue
+
+        record = make_record(
             symbol=symbol,
             name=name,
             market="TPEX",
-            raw_type=raw_type,
+            instrument_type="stock",
             source="TPEX_STOCK_OFFICIAL",
         )
 
         if record:
 
-            result[
-                record["symbol"]
-            ] = record
+            result[symbol] = record
 
     log(
-        f"✓ TPEX 公司資料：{len(result)} 檔"
+        f"✓ TPEX 股票：{len(result)} 檔"
     )
 
     return result
 
 
 # ============================================================
-# TPEX 全證券行情
+# TPEX 行情
 # ============================================================
 
 def parse_tpex_quotes(
     payload: Any,
 ) -> Dict[str, Dict[str, Any]]:
 
-    result = {}
+    result: Dict[str, Dict[str, Any]] = {}
 
     if not isinstance(
         payload,
@@ -1059,39 +1100,87 @@ def parse_tpex_quotes(
         name = first_value(
             item,
             (
+                "CompanyAbbreviation",
                 "CompanyName",
-                "公司名稱",
+                "證券簡稱",
                 "證券名稱",
+                "公司簡稱",
+                "公司名稱",
                 "名稱",
                 "Name",
                 "name",
             ),
         )
 
-        if not symbol or not name:
+        raw_type = first_value(
+            item,
+            (
+                "SecuritiesType",
+                "SecurityType",
+                "證券類別",
+                "類別",
+                "Type",
+            ),
+        )
+
+        symbol = normalize_symbol(symbol)
+
+        if not symbol:
             continue
 
-        record = build_record(
+        # TPEX 股票已由公司基本資料處理。
+        if is_stock_symbol(symbol):
+            continue
+
+        # 只允許 ETF。
+        if not is_etf_symbol(symbol):
+            continue
+
+        if not name:
+            continue
+
+        # 名稱沒有 ETF / 基金字樣時，
+        # 仍允許 00 開頭的官方 ETF 編碼。
+        is_etf = (
+            is_etf_symbol(symbol)
+            or looks_like_etf_name(
+                name,
+                raw_type,
+            )
+        )
+
+        if not is_etf:
+            continue
+
+        instrument_type = (
+            "bond"
+            if looks_like_bond_etf(
+                symbol,
+                name,
+                raw_type,
+            )
+            else "etf"
+        )
+
+        record = make_record(
             symbol=symbol,
             name=name,
             market="TPEX",
-            raw_type="",
-            source="TPEX_QUOTES_OFFICIAL",
+            instrument_type=instrument_type,
+            source="TPEX_ETF_OFFICIAL_QUOTES",
         )
 
         if record:
 
-            result[
-                record["symbol"]
-            ] = record
+            result[symbol] = record
 
     return result
 
 
-def load_tpex_quotes() -> Dict[str, Dict[str, Any]]:
+def load_tpex_etf() -> Dict[str, Dict[str, Any]]:
 
     section(
-        "TPEX 官方全證券行情"
+        "TPEX 官方 ETF 補充"
     )
 
     urls = (
@@ -1118,7 +1207,7 @@ def load_tpex_quotes() -> Dict[str, Dict[str, Any]]:
             if result:
 
                 log(
-                    f"✓ TPEX 全證券行情："
+                    f"✓ TPEX ETF："
                     f"{len(result)} 檔"
                 )
 
@@ -1127,8 +1216,13 @@ def load_tpex_quotes() -> Dict[str, Dict[str, Any]]:
         except Exception as exc:
 
             log(
-                f"⚠ TPEX 行情來源失敗：{exc}"
+                f"⚠ TPEX ETF 來源失敗："
+                f"{exc}"
             )
+
+    log(
+        "⚠ TPEX ETF 官方補充資料為 0 檔"
+    )
 
     return {}
 
@@ -1163,23 +1257,27 @@ def load_existing_universe() -> Dict[str, Dict[str, Any]]:
     except Exception as exc:
 
         log(
-            f"⚠ 舊 Universe 讀取失敗：{exc}"
+            f"⚠ 舊 Universe 讀取失敗："
+            f"{exc}"
         )
 
         return {}
 
-    stocks = data.get(
-        "stocks",
-        {},
-    )
+    stocks = {}
 
-    if not isinstance(
-        stocks,
-        dict,
-    ):
-        return {}
+    if isinstance(data, dict):
 
-    result = {}
+        raw_stocks = data.get(
+            "stocks"
+        )
+
+        if isinstance(
+            raw_stocks,
+            dict,
+        ):
+            stocks = raw_stocks
+
+    result: Dict[str, Dict[str, Any]] = {}
 
     for symbol, item in stocks.items():
 
@@ -1189,12 +1287,17 @@ def load_existing_universe() -> Dict[str, Dict[str, Any]]:
         ):
             continue
 
-        symbol2 = normalize_symbol(
+        normalized_symbol = normalize_symbol(
             item.get(
                 "symbol",
                 symbol,
             )
         )
+
+        if not is_valid_universe_symbol(
+            normalized_symbol
+        ):
+            continue
 
         name = normalize_company_name(
             item.get(
@@ -1203,6 +1306,9 @@ def load_existing_universe() -> Dict[str, Dict[str, Any]]:
             )
         )
 
+        if not is_valid_name(name):
+            continue
+
         market = clean_text(
             item.get(
                 "market",
@@ -1210,146 +1316,52 @@ def load_existing_universe() -> Dict[str, Dict[str, Any]]:
             )
         ).upper()
 
-        if not is_valid_symbol(
-            symbol2
-        ):
-            continue
-
-        if not is_valid_name(
-            name
-        ):
-            continue
-
         if market not in {
             "TWSE",
             "TPEX",
         }:
             continue
 
-        record = build_record(
-            symbol=symbol2,
-            name=name,
-            market=market,
-            raw_type=item.get(
-                "type",
-                "",
+        result[
+            normalized_symbol
+        ] = {
+            "symbol": normalized_symbol,
+            "name": name,
+            "market": market,
+            "type": clean_text(
+                item.get(
+                    "type",
+                    "",
+                )
             ),
-            source="EXISTING_UNIVERSE_FALLBACK",
-        )
-
-        if record:
-
-            result[symbol2] = record
+        }
 
     log(
-        f"既有 Universe：{len(result)} 檔"
+        f"既有 Universe："
+        f"{len(result)} 檔"
     )
 
     return result
 
 
 # ============================================================
-# 官方合併
+# 舊資料只作名稱補充
 # ============================================================
 
-def merge_official_sources(
-    twse_stocks: Dict[str, Dict[str, Any]],
-    twse_etf: Dict[str, Dict[str, Any]],
-    tpex_stocks: Dict[str, Dict[str, Any]],
-    tpex_quotes: Dict[str, Dict[str, Any]],
-) -> Dict[str, Dict[str, Any]]:
-
-    result = {}
-
-    # --------------------------------------------------------
-    # TWSE 股票
-    # --------------------------------------------------------
-
-    for symbol, record in twse_stocks.items():
-
-        result[symbol] = record
-
-    # --------------------------------------------------------
-    # TWSE ETF
-    # --------------------------------------------------------
-
-    for symbol, record in twse_etf.items():
-
-        result[symbol] = record
-
-    # --------------------------------------------------------
-    # TPEX 公司資料
-    #
-    # 公司資料優先於行情資料。
-    # --------------------------------------------------------
-
-    for symbol, record in tpex_stocks.items():
-
-        result[symbol] = record
-
-    # --------------------------------------------------------
-    # TPEX 全證券行情
-    #
-    # 只補官方公司資料沒有的標的。
-    #
-    # 這可以補：
-    # ETF
-    # 特殊可交易證券
-    #
-    # 但不允許權證等非 Universe 商品。
-    # --------------------------------------------------------
-
-    for symbol, record in tpex_quotes.items():
-
-        if symbol in result:
-            continue
-
-        name = record["name"]
-
-        # TPEX 額外行情資料只允許：
-        #
-        # 00 開頭 ETF
-        #
-        # 或名稱明確判斷為 ETF
-        #
-
-        is_etf = (
-            symbol.startswith("00")
-            or looks_like_etf(
-                symbol,
-                name,
-            )
-        )
-
-        if not is_etf:
-            continue
-
-        result[symbol] = record
-
-    return result
-
-
-# ============================================================
-# 舊資料只補名稱
-# ============================================================
-
-def supplement_names(
+def supplement_existing_names(
     official: Dict[str, Dict[str, Any]],
     existing: Dict[str, Dict[str, Any]],
 ) -> Dict[str, Dict[str, Any]]:
 
-    result = {}
-
-    for symbol, record in official.items():
-
-        result[symbol] = dict(
-            record
-        )
+    result = {
+        symbol: dict(record)
+        for symbol, record in official.items()
+    }
 
     for symbol, old_record in existing.items():
 
+        # ★ 絕對禁止舊 Universe 增加新標的。
         if symbol not in result:
-            # 絕對禁止舊資料擴張 Universe
             continue
 
         current = result[symbol]
@@ -1368,20 +1380,77 @@ def supplement_names(
             )
         )
 
-        # 只有官方名稱不存在時才補舊名稱
-        if (
-            not is_valid_name(
-                current_name
-            )
-            and is_valid_name(
-                old_name
-            )
+        # 官方名稱有效時永遠保留官方名稱。
+        if is_valid_name(
+            current_name
+        ):
+            continue
+
+        if is_valid_name(
+            old_name
         ):
 
             current["name"] = old_name
+
             current["source"] = (
-                "OFFICIAL_SYMBOL_EXISTING_NAME"
+                current.get(
+                    "source",
+                    "OFFICIAL",
+                )
+                + "_NAME_FALLBACK"
             )
+
+    return result
+
+
+# ============================================================
+# 官方 Universe 合併
+# ============================================================
+
+def merge_official_sources(
+    twse_stocks: Dict[str, Dict[str, Any]],
+    twse_etf: Dict[str, Dict[str, Any]],
+    tpex_stocks: Dict[str, Dict[str, Any]],
+    tpex_etf: Dict[str, Dict[str, Any]],
+) -> Dict[str, Dict[str, Any]]:
+
+    result: Dict[str, Dict[str, Any]] = {}
+
+    # --------------------------------------------------------
+    # TWSE 股票
+    # --------------------------------------------------------
+
+    for symbol, record in twse_stocks.items():
+
+        result[symbol] = record
+
+    # --------------------------------------------------------
+    # TWSE ETF
+    # --------------------------------------------------------
+
+    for symbol, record in twse_etf.items():
+
+        result[symbol] = record
+
+    # --------------------------------------------------------
+    # TPEX 股票
+    # --------------------------------------------------------
+
+    for symbol, record in tpex_stocks.items():
+
+        result[symbol] = record
+
+    # --------------------------------------------------------
+    # TPEX ETF
+    # --------------------------------------------------------
+
+    for symbol, record in tpex_etf.items():
+
+        # ETF 不應覆蓋股票。
+        if symbol in result:
+            continue
+
+        result[symbol] = record
 
     return result
 
@@ -1394,13 +1463,16 @@ def final_filter(
     stocks: Dict[str, Dict[str, Any]],
 ) -> Dict[str, Dict[str, Any]]:
 
-    result = {}
+    result: Dict[str, Dict[str, Any]] = {}
 
     for symbol, record in stocks.items():
 
-        symbol = normalize_symbol(
+        symbol = normalize_symbol(symbol)
+
+        if not is_valid_universe_symbol(
             symbol
-        )
+        ):
+            continue
 
         name = normalize_company_name(
             record.get(
@@ -1409,6 +1481,9 @@ def final_filter(
             )
         )
 
+        if not is_valid_name(name):
+            continue
+
         market = clean_text(
             record.get(
                 "market",
@@ -1416,30 +1491,57 @@ def final_filter(
             )
         ).upper()
 
-        if not is_valid_symbol(
-            symbol
-        ):
-            continue
-
-        if not is_valid_name(
-            name
-        ):
-            continue
-
         if market not in {
             "TWSE",
             "TPEX",
         }:
             continue
 
-        instrument_type = classify_instrument(
-            symbol,
-            name,
-            record.get(
-                "type",
-                "",
-            ),
+        instrument_type = record.get(
+            "instrument_type",
+            "",
         )
+
+        raw_type = record.get(
+            "type",
+            "",
+        )
+
+        # ----------------------------------------------------
+        # 股票
+        # ----------------------------------------------------
+
+        if is_stock_symbol(symbol):
+
+            instrument_type = "stock"
+
+        # ----------------------------------------------------
+        # ETF
+        # ----------------------------------------------------
+
+        elif is_etf_symbol(symbol):
+
+            if instrument_type not in {
+                "etf",
+                "bond",
+            }:
+
+                if looks_like_bond_etf(
+                    symbol,
+                    name,
+                    raw_type,
+                ):
+                    instrument_type = "bond"
+
+                else:
+                    instrument_type = "etf"
+
+        else:
+            continue
+
+        # ----------------------------------------------------
+        # 建立標準 record
+        # ----------------------------------------------------
 
         if instrument_type == "bond":
 
@@ -1477,7 +1579,7 @@ def final_filter(
 
 
 # ============================================================
-# 核心股票驗證
+# 核心標的驗證
 # ============================================================
 
 def validate_required_symbols(
@@ -1490,29 +1592,35 @@ def validate_required_symbols(
 
     missing = []
 
+    wrong_name = []
+
     for symbol, expected_name in (
         REQUIRED_SYMBOLS.items()
     ):
 
-        if symbol not in stocks:
+        record = stocks.get(symbol)
+
+        if record is None:
 
             log(
                 f"❌ {symbol} 不存在於 Universe"
             )
 
-            missing.append(
-                symbol
-            )
+            missing.append(symbol)
 
             continue
 
-        actual_name = stocks[
-            symbol
-        ]["name"]
+        actual_name = normalize_company_name(
+            record.get(
+                "name",
+                "",
+            )
+        )
 
-        market = stocks[
-            symbol
-        ]["market"]
+        market = record.get(
+            "market",
+            "",
+        )
 
         log(
             f"✓ {symbol} | "
@@ -1520,18 +1628,33 @@ def validate_required_symbols(
             f"{market}"
         )
 
+        if actual_name != expected_name:
+
+            log(
+                f"❌ {symbol} 名稱錯誤："
+                f"實際={actual_name} "
+                f"預期={expected_name}"
+            )
+
+            wrong_name.append(symbol)
+
     if missing:
 
         raise RuntimeError(
             "核心股票缺失："
-            + ", ".join(
-                missing
-            )
+            + ", ".join(missing)
+        )
+
+    if wrong_name:
+
+        raise RuntimeError(
+            "核心股票名稱錯誤："
+            + ", ".join(wrong_name)
         )
 
 
 # ============================================================
-# Schema
+# 統計
 # ============================================================
 
 def build_statistics(
@@ -1547,13 +1670,13 @@ def build_statistics(
 
     for record in stocks.values():
 
-        instrument_type = record[
+        instrument_type = record.get(
             "instrument_type"
-        ]
+        )
 
-        market = record[
+        market = record.get(
             "market"
-        ]
+        )
 
         if instrument_type == "stock":
             stock_count += 1
@@ -1578,17 +1701,23 @@ def build_statistics(
         "market_count": {
             "TWSE": twse_count,
             "TPEX": tpex_count,
+            "EMERGING": 0,
         },
     }
 
+
+# ============================================================
+# Schema Validation
+# ============================================================
 
 def validate_schema(
     data: Dict[str, Any],
 ) -> None:
 
-    required = (
+    required_keys = (
         "schema_version",
         "generated_at",
+        "source",
         "universe_count",
         "stock_count",
         "etf_count",
@@ -1597,7 +1726,7 @@ def validate_schema(
         "stocks",
     )
 
-    for key in required:
+    for key in required_keys:
 
         if key not in data:
 
@@ -1605,9 +1734,7 @@ def validate_schema(
                 f"缺少 Schema 欄位：{key}"
             )
 
-    stocks = data[
-        "stocks"
-    ]
+    stocks = data["stocks"]
 
     if not isinstance(
         stocks,
@@ -1618,13 +1745,23 @@ def validate_schema(
             "stocks 必須是 object"
         )
 
-    if len(stocks) != data[
+    # --------------------------------------------------------
+    # Universe count
+    # --------------------------------------------------------
+
+    if data[
         "universe_count"
-    ]:
+    ] != len(stocks):
 
         raise RuntimeError(
-            "Universe count 不一致"
+            "Universe 數量不一致："
+            f"header={data['universe_count']} "
+            f"實際={len(stocks)}"
         )
+
+    # --------------------------------------------------------
+    # Unique symbols
+    # --------------------------------------------------------
 
     seen = set()
 
@@ -1633,7 +1770,7 @@ def validate_schema(
         if symbol in seen:
 
             raise RuntimeError(
-                f"symbol 重複：{symbol}"
+                f"股票代號重複：{symbol}"
             )
 
         seen.add(symbol)
@@ -1646,7 +1783,7 @@ def validate_schema(
                 f"{symbol} symbol mismatch"
             )
 
-        if not is_valid_symbol(
+        if not is_valid_universe_symbol(
             symbol
         ):
 
@@ -1656,7 +1793,8 @@ def validate_schema(
 
         if not is_valid_name(
             record.get(
-                "name"
+                "name",
+                "",
             )
         ):
 
@@ -1665,11 +1803,23 @@ def validate_schema(
                 f"{record.get('name')}"
             )
 
+        market = record.get(
+            "market"
+        )
+
+        if market not in {
+            "TWSE",
+            "TPEX",
+        }:
+
+            raise RuntimeError(
+                f"{symbol} market 錯誤："
+                f"{market}"
+            )
+
         expected_full = build_full_symbol(
             symbol,
-            record.get(
-                "market"
-            ),
+            market,
         )
 
         if record.get(
@@ -1681,6 +1831,10 @@ def validate_schema(
                 f"{record.get('full_symbol')} "
                 f"!= {expected_full}"
             )
+
+    # --------------------------------------------------------
+    # Statistics
+    # --------------------------------------------------------
 
     stats = build_statistics(
         stocks
@@ -1696,12 +1850,23 @@ def validate_schema(
         if data[key] != stats[key]:
 
             raise RuntimeError(
-                f"{key} 統計錯誤"
+                f"{key} 統計錯誤："
+                f"header={data[key]} "
+                f"actual={stats[key]}"
             )
+
+    if (
+        data["market_count"]
+        != stats["market_count"]
+    ):
+
+        raise RuntimeError(
+            "market_count 統計錯誤"
+        )
 
 
 # ============================================================
-# 寫入
+# Atomic Write
 # ============================================================
 
 def write_output(
@@ -1713,10 +1878,8 @@ def write_output(
         exist_ok=True,
     )
 
-    temp_file = (
-        OUTPUT_FILE.with_suffix(
-            ".json.tmp"
-        )
+    temp_file = OUTPUT_FILE.with_suffix(
+        ".json.tmp"
     )
 
     with temp_file.open(
@@ -1752,7 +1915,7 @@ def main() -> int:
     )
 
     log(
-        "Universe：實際可分析台股標的"
+        "Universe：實際可分析台股股票 + ETF"
     )
 
     log(
@@ -1772,7 +1935,7 @@ def main() -> int:
     )
 
     log(
-        "TPEX ETF：mainboard daily quotes 補充"
+        "TPEX ETF：官方行情補充"
     )
 
     log(
@@ -1791,32 +1954,34 @@ def main() -> int:
     # 官方資料
     # --------------------------------------------------------
 
-    twse_stocks = (
-        load_twse_stocks()
-    )
+    twse_stocks = load_twse_stocks()
 
-    twse_etf = (
-        load_twse_etf()
-    )
+    if not twse_stocks:
+        raise RuntimeError(
+            "TWSE 股票官方資料為 0，"
+            "禁止建立 Universe"
+        )
 
-    tpex_stocks = (
-        load_tpex_stocks()
-    )
+    twse_etf = load_twse_etf()
 
-    tpex_quotes = (
-        load_tpex_quotes()
-    )
+    tpex_stocks = load_tpex_stocks()
 
-    # --------------------------------------------------------
-    # 舊資料
-    # --------------------------------------------------------
+    if not tpex_stocks:
+        raise RuntimeError(
+            "TPEX 股票官方資料為 0，"
+            "禁止建立 Universe"
+        )
 
-    existing = (
-        load_existing_universe()
-    )
+    tpex_etf = load_tpex_etf()
 
     # --------------------------------------------------------
-    # 合併官方資料
+    # 舊 Universe
+    # --------------------------------------------------------
+
+    existing = load_existing_universe()
+
+    # --------------------------------------------------------
+    # 官方 Universe
     # --------------------------------------------------------
 
     section(
@@ -1827,7 +1992,7 @@ def main() -> int:
         twse_stocks=twse_stocks,
         twse_etf=twse_etf,
         tpex_stocks=tpex_stocks,
-        tpex_quotes=tpex_quotes,
+        tpex_etf=tpex_etf,
     )
 
     log(
@@ -1839,13 +2004,13 @@ def main() -> int:
     # 舊資料只能補名稱
     # --------------------------------------------------------
 
-    merged = supplement_names(
+    merged = supplement_existing_names(
         official,
         existing,
     )
 
     # --------------------------------------------------------
-    # 最終驗證
+    # 最終過濾
     # --------------------------------------------------------
 
     section(
@@ -1862,7 +2027,7 @@ def main() -> int:
     )
 
     # --------------------------------------------------------
-    # Universe 數量安全檢查
+    # 數量安全檢查
     # --------------------------------------------------------
 
     if len(stocks) > MAX_UNIVERSE:
@@ -1909,23 +2074,20 @@ def main() -> int:
         ).isoformat(),
 
         "source": {
-            "TWSE_stock": (
-                "TWSE_OFFICIAL"
-            ),
-            "TWSE_etf": (
-                "TWSE_ETF_OFFICIAL"
-            ),
-            "TPEX_stock": (
-                "TPEX_OFFICIAL"
-            ),
-            "TPEX_quotes": (
-                "TPEX_OFFICIAL"
-            ),
-            "existing_universe": (
-                "NAME_ONLY_FALLBACK"
-            ),
+            "primary": [
+                "TWSE_STOCK_OFFICIAL",
+                "TWSE_ETF_OFFICIAL",
+                "TPEX_STOCK_OFFICIAL",
+                "TPEX_ETF_OFFICIAL_QUOTES",
+            ],
+            "fallback": [
+                "EXISTING_UNIVERSE_NAME_ONLY",
+            ],
             "yahoo": False,
             "isin_creates_universe": False,
+            "description": (
+                "現行可分析台股股票與ETF Universe"
+            ),
         },
 
         "universe_count": (
@@ -1951,13 +2113,13 @@ def main() -> int:
         "stocks": dict(
             sorted(
                 stocks.items(),
-                key=lambda x: x[0],
+                key=lambda item: item[0],
             )
         ),
     }
 
     # --------------------------------------------------------
-    # Schema validation
+    # Schema
     # --------------------------------------------------------
 
     section(
@@ -2035,6 +2197,10 @@ def main() -> int:
     log(
         f"TPEX："
         f"{stats['market_count']['TPEX']}"
+    )
+
+    log(
+        f"EMERGING：0"
     )
 
     log(
