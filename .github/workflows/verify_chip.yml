@@ -1,446 +1,86 @@
-name: Verify Chip Data
+name: Verify CHIP Data
 
 on:
   workflow_dispatch:
+
+  push:
+    paths:
+      - "Data/universe.json"
+      - "Data/chip.json"
+      - "Scripts/verify_chip.py"
+      - ".github/workflows/verify-chip.yml"
+
+permissions:
+  contents: read
 
 jobs:
   verify-chip:
     runs-on: ubuntu-latest
 
     steps:
+      # ==========================================================
+      # 1. Checkout
+      # ==========================================================
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      # ==========================================================
+      # 2. Python
+      # ==========================================================
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
 
-      - name: Verify chip.json
-        shell: bash
+      # ==========================================================
+      # 3. 執行 CHIP 完整驗證
+      # ==========================================================
+      - name: Verify CHIP Data
         run: |
           set -e
 
           echo "========================================"
-          echo "Verify Data/chip.json"
+          echo "CHIP DATA VERIFICATION"
           echo "========================================"
-          echo ""
 
-          python - <<'PY'
-          import json
-          import sys
-          from pathlib import Path
+          python Scripts/verify_chip.py
 
-          CHIP_FILE = Path("Data/chip.json")
-
-          TEST_STOCKS = {
-              "2337": "旺宏",
-              "2426": "鼎元",
-              "2368": "金像電",
-              "3081": "聯亞",
-          }
-
-          REQUIRED_FIELDS = [
-              "symbol",
-              "full_symbol",
-              "name",
-              "market",
-              "type",
-              "institutional_1d",
-              "institutional_5d",
-              "institutional_10d",
-              "institutional_20d",
-              "day_trading_volume",
-              "day_trading_rate",
-              "updated_at",
-          ]
-
-          print("========================================")
-          print("1. 檔案存在性")
-          print("========================================")
-
-          if not CHIP_FILE.exists():
-              print("❌ Data/chip.json 不存在")
-              sys.exit(1)
-
-          print("✓ Data/chip.json 存在")
-
-          print("")
-          print("========================================")
-          print("2. JSON 格式")
-          print("========================================")
-
-          try:
-              with CHIP_FILE.open("r", encoding="utf-8") as f:
-                  data = json.load(f)
-          except Exception as e:
-              print(f"❌ JSON 解析失敗：{e}")
-              sys.exit(1)
-
-          print("✓ JSON 格式正確")
-
-          if not isinstance(data, dict):
-              print("❌ chip.json 根節點不是 object")
-              sys.exit(1)
-
-          stocks = data.get("stocks")
-
-          if not isinstance(stocks, dict):
-              print("❌ chip.json 缺少 stocks object")
-              sys.exit(1)
-
-          print(f"✓ stocks 筆數：{len(stocks)}")
-
-          print("")
-          print("========================================")
-          print("3. schema / 主力估算欄位檢查")
-          print("========================================")
-
-          schema_version = data.get("schema_version", "")
-          print(f"schema_version：{schema_version}")
-
-          forbidden_fields = [
-              "main_force_1d",
-              "main_force_5d",
-              "main_force_10d",
-              "main_force_20d",
-          ]
-
-          forbidden_found = []
-
-          for symbol, item in stocks.items():
-              if not isinstance(item, dict):
-                  continue
-
-              for field in forbidden_fields:
-                  if field in item:
-                      forbidden_found.append((symbol, field))
-
-          if forbidden_found:
-              print("❌ 發現已禁止的 main_force_* 欄位：")
-
-              for symbol, field in forbidden_found[:20]:
-                  print(f"   {symbol}: {field}")
-
-              if len(forbidden_found) > 20:
-                  print(
-                      f"   ...另外 {len(forbidden_found) - 20} 筆"
-                  )
-
-              sys.exit(1)
-
-          print("✓ main_force_1d 未寫入")
-          print("✓ main_force_5d 未寫入")
-          print("✓ main_force_10d 未寫入")
-          print("✓ main_force_20d 未寫入")
-
-          print("")
-          print("========================================")
-          print("4. 必要欄位檢查")
-          print("========================================")
-
-          field_errors = []
-
-          for symbol, item in stocks.items():
-
-              if not isinstance(item, dict):
-                  field_errors.append(
-                      f"{symbol}: item 不是 object"
-                  )
-                  continue
-
-              for field in REQUIRED_FIELDS:
-                  if field not in item:
-                      field_errors.append(
-                          f"{symbol}: 缺少 {field}"
-                      )
-
-          if field_errors:
-              print("❌ 必要欄位錯誤")
-
-              for error in field_errors[:50]:
-                  print(f"   {error}")
-
-              if len(field_errors) > 50:
-                  print(
-                      f"   ...另外 {len(field_errors) - 50} 個錯誤"
-                  )
-
-              sys.exit(1)
-
-          print("✓ 所有標的必要欄位完整")
-
-          print("")
-          print("========================================")
-          print("5. 固定測試股票")
-          print("========================================")
-
-          for symbol, expected_name in TEST_STOCKS.items():
-
-              if symbol not in stocks:
-                  print(
-                      f"❌ {symbol} {expected_name} 不存在 chip.json"
-                  )
-                  sys.exit(1)
-
-              item = stocks[symbol]
-
-              actual_name = item.get("name", "").strip()
-
-              print(
-                  f"{symbol} | "
-                  f"預期：{expected_name} | "
-                  f"實際：{actual_name}"
-              )
-
-              if actual_name != expected_name:
-                  print(
-                      f"❌ 股票名稱不一致："
-                      f"{symbol} 預期 {expected_name}，"
-                      f"實際 {actual_name}"
-                  )
-                  sys.exit(1)
-
-          print("✓ 四檔固定測試股票名稱正確")
-
-          print("")
-          print("========================================")
-          print("6. 1D / 5D / 10D / 20D 型別檢查")
-          print("========================================")
-
-          institutional_fields = [
-              "institutional_1d",
-              "institutional_5d",
-              "institutional_10d",
-              "institutional_20d",
-          ]
-
-          numeric_errors = []
-
-          for symbol, item in stocks.items():
-
-              for field in institutional_fields:
-
-                  value = item.get(field)
-
-                  if value is None:
-                      continue
-
-                  if isinstance(value, bool):
-                      numeric_errors.append(
-                          f"{symbol}: {field} = bool"
-                      )
-                      continue
-
-                  if not isinstance(value, (int, float)):
-                      numeric_errors.append(
-                          f"{symbol}: {field} = {value!r}"
-                      )
-
-          if numeric_errors:
-              print("❌ 發現非法數值")
-
-              for error in numeric_errors[:50]:
-                  print(f"   {error}")
-
-              sys.exit(1)
-
-          print("✓ 1D / 5D / 10D / 20D 數值型別正確")
-
-          print("")
-          print("========================================")
-          print("7. 累計方向驗證")
-          print("========================================")
-
-          accumulation_errors = []
-
-          for symbol, item in stocks.items():
-
-              d1 = item.get("institutional_1d")
-              d5 = item.get("institutional_5d")
-              d10 = item.get("institutional_10d")
-              d20 = item.get("institutional_20d")
-
-              values = [d1, d5, d10, d20]
-
-              # None 代表資料不足，不判定為錯誤
-              if any(v is None for v in values):
-                  continue
-
-              # 這裡只確認資料不是 NaN / Infinity
-              for field, value in zip(
-                  institutional_fields,
-                  values
-              ):
-                  if isinstance(value, float):
-
-                      if value != value:
-                          accumulation_errors.append(
-                              f"{symbol}: {field}=NaN"
-                          )
-
-                      if value in (
-                          float("inf"),
-                          float("-inf")
-                      ):
-                          accumulation_errors.append(
-                              f"{symbol}: {field}=Infinity"
-                          )
-
-          if accumulation_errors:
-              print("❌ 累計資料存在非法數值")
-
-              for error in accumulation_errors[:50]:
-                  print(f"   {error}")
-
-              sys.exit(1)
-
-          print("✓ 1D / 5D / 10D / 20D 數值有效")
-
-          print("")
-          print("========================================")
-          print("8. 當沖資料檢查")
-          print("========================================")
-
-          daytrade_errors = []
-
-          for symbol, item in stocks.items():
-
-              volume = item.get("day_trading_volume")
-              rate = item.get("day_trading_rate")
-
-              if volume is not None:
-                  if not isinstance(volume, (int, float)):
-                      daytrade_errors.append(
-                          f"{symbol}: day_trading_volume 非數字"
-                      )
-
-              if rate is not None:
-                  if not isinstance(rate, (int, float)):
-                      daytrade_errors.append(
-                          f"{symbol}: day_trading_rate 非數字"
-                      )
-
-                  elif rate < 0 or rate > 100:
-                      daytrade_errors.append(
-                          f"{symbol}: "
-                          f"day_trading_rate={rate} 超出 0~100%"
-                      )
-
-          if daytrade_errors:
-              print("❌ 當沖資料錯誤")
-
-              for error in daytrade_errors[:50]:
-                  print(f"   {error}")
-
-              sys.exit(1)
-
-          print("✓ 當沖資料型別與範圍正常")
-
-          print("")
-          print("========================================")
-          print("9. 固定四檔資料內容")
-          print("========================================")
-
-          for symbol, expected_name in TEST_STOCKS.items():
-
-              item = stocks[symbol]
-
-              print("")
-              print(
-                  f"{symbol} {expected_name}"
-              )
-
-              print(
-                  f"  market = {item.get('market')}"
-              )
-
-              print(
-                  f"  type = {item.get('type')}"
-              )
-
-              print(
-                  f"  updated_at = {item.get('updated_at')}"
-              )
-
-              print(
-                  f"  institutional_1d = "
-                  f"{item.get('institutional_1d')}"
-              )
-
-              print(
-                  f"  institutional_5d = "
-                  f"{item.get('institutional_5d')}"
-              )
-
-              print(
-                  f"  institutional_10d = "
-                  f"{item.get('institutional_10d')}"
-              )
-
-              print(
-                  f"  institutional_20d = "
-                  f"{item.get('institutional_20d')}"
-              )
-
-              print(
-                  f"  day_trading_volume = "
-                  f"{item.get('day_trading_volume')}"
-              )
-
-              print(
-                  f"  day_trading_rate = "
-                  f"{item.get('day_trading_rate')}"
-              )
-
-          print("")
-          print("========================================")
-          print("10. 最終結果")
-          print("========================================")
-
-          print("✓ chip.json JSON 格式正確")
-          print("✓ stocks 資料結構正確")
-          print("✓ 必要欄位完整")
-          print("✓ 1D / 5D / 10D / 20D 欄位存在")
-          print("✓ 三大法人資料保留")
-          print("✓ 當沖資料保留")
-          print("✓ main_force_* 完全不存在")
-          print("✓ 未使用三大法人 × 1.12 假估算")
-          print("✓ 固定測試股票 2337 / 2426 / 2368 / 3081 通過")
-          print("")
-          print("========================================")
-          print("CHIP VERIFY PASS")
-          print("========================================")
-          PY
-
-      - name: Show chip summary
-        shell: bash
+      # ==========================================================
+      # 4. 額外確認 GitHub Workspace 沒有被修改
+      # ==========================================================
+      - name: Verify repository is unchanged
         run: |
           set -e
 
+          echo "========================================"
+          echo "VERIFY REPOSITORY STATE"
+          echo "========================================"
+
+          git status --short
+
+          if [ -n "$(git status --short)" ]; then
+            echo "❌ 驗證流程不應修改 Repository"
+            exit 1
+          fi
+
+          echo "✓ Repository 未被驗證流程修改"
+
+      # ==========================================================
+      # 5. PASS
+      # ==========================================================
+      - name: Verification PASS
+        run: |
           echo ""
-          echo "========================================"
-          echo "Chip Summary"
-          echo "========================================"
-
-          python - <<'PY'
-          import json
-
-          with open("Data/chip.json", "r", encoding="utf-8") as f:
-              data = json.load(f)
-
-          print(f"schema_version : {data.get('schema_version')}")
-          print(f"data_date      : {data.get('data_date')}")
-          print(f"generated_at   : {data.get('generated_at')}")
-          print(f"universe_count : {data.get('universe_count')}")
-          print(f"stock_count    : {data.get('stock_count')}")
-          print(f"etf_count      : {data.get('etf_count')}")
-          print(f"statistics     : {data.get('statistics')}")
-
-          print("")
-          print("main_force fields:")
-          print("  main_force_1d  : NOT PRESENT")
-          print("  main_force_5d  : NOT PRESENT")
-          print("  main_force_10d : NOT PRESENT")
-          print("  main_force_20d : NOT PRESENT")
-          PY
+          echo "============================================================"
+          echo "CHIP VERIFICATION PASS"
+          echo "============================================================"
+          echo "✓ Universe / Chip 數量驗證"
+          echo "✓ Universe symbol 完整性驗證"
+          echo "✓ Chip JSON 結構驗證"
+          echo "✓ 1D / 5D / 10D / 20D 欄位驗證"
+          echo "✓ 三大法人資料驗證"
+          echo "✓ 當沖資料驗證"
+          echo "✓ main_force_* 禁止欄位驗證"
+          echo "✓ 全市場抽樣驗證"
+          echo "✓ Repository 完整性驗證"
+          echo ""
