@@ -3,71 +3,44 @@
 
 """
 台股 AI 選股系統
-verify_chip.py V1.1
+verify_chip.py V1.2
 
 ============================================================
-V1.1 正式修正版
+V1.2 全市場正式驗證版
 ============================================================
 
-驗證目的
-------------------------------------------------------------
-本驗證器只負責確認：
-
-1. Data/universe.json 是否存在
-2. Data/chip.json 是否存在
-3. JSON 格式是否正常
-4. Universe stocks object 結構是否正常
-5. Universe 股票代號格式是否正常
-6. Universe ↔ Chip 全量股票池是否 100% 一致
-7. Chip universe_count 是否正確
-8. 全市場每一檔 Chip 資料欄位是否完整
-9. main_force_* 是否完全不存在
-10. institutional_1d / 5d / 10d / 20d 是否存在
-11. chip metadata 是否正常
-12. statistics 是否正常
-13. Stock / ETF 數量是否一致
-
-============================================================
-V1.1 重要修正
-------------------------------------------------------------
-
-完全移除：
-
-✗ required_test_stocks
-✗ expected_name
-✗ 2337
-✗ 2426
-✗ 2368
-✗ 3081
-✗ 旺宏
-✗ 鼎元
-✗ 金像電
-✗ 聯亞
-✗ 固定股票特殊驗證
-✗ 特定股票名稱驗證
-✗ 特定股票市場驗證
-
-驗證器不再依賴任何固定股票。
-
-============================================================
 驗證原則
 ------------------------------------------------------------
+Universe 是唯一股票池來源。
 
-Universe 是股票池唯一來源。
+驗證器只確認：
 
-Chip 必須：
+1. Universe / Chip 是否存在
+2. JSON 是否正常
+3. Universe stocks object 是否正常
+4. Universe 股票代號格式是否可接受
+5. Universe ↔ Chip 是否 100% 一致
+6. Chip universe_count 是否正確
+7. 全市場資料欄位是否完整
+8. 禁止欄位是否存在
+9. 1D / 5D / 10D / 20D 是否存在
+10. Chip metadata 是否正常
+11. statistics 是否正常
+12. Stock / ETF 數量是否一致
 
-Universe → Chip
-全部存在
+============================================================
+重要設計
+------------------------------------------------------------
 
-Chip → Universe
-不能多出
+不對任何單一股票做特殊驗證。
 
-因此：
+不依賴任何固定股票。
 
-Universe == Chip
+不掃描驗證器自身原始碼。
 
-才算通過。
+Universe 已接受的正式代號，只要符合台股
+Universe 可接受的代號格式，就不得被 verify_chip
+自行排除。
 
 ============================================================
 """
@@ -86,7 +59,7 @@ from typing import Any, Dict, List, Set
 # Version
 # ============================================================
 
-VERSION = "V1.1"
+VERSION = "V1.2"
 
 
 # ============================================================
@@ -154,43 +127,85 @@ def is_finite_number(value: Any) -> bool:
     if isinstance(value, (int, float)):
 
         try:
-
             return math.isfinite(
                 float(value)
             )
-
         except Exception:
-
             return False
 
     return False
 
 
 # ============================================================
-# Symbol format
+# Symbol validation
 # ============================================================
 
 def is_valid_symbol(code: str) -> bool:
+    """
+    驗證 Universe 股票代號格式。
+
+    接受：
+
+    4～6 碼純數字
+
+    4～6 碼數字 + 1～2 碼英數字
+
+    例如：
+
+    2337
+    0050
+    006203
+    00636
+    00713
+    00400A
+    00631L
+    00632R
+    00710B
+    2887Z1
+
+    注意：
+    Universe 本身才是正式股票池來源。
+    verify_chip 不負責重新定義哪些商品是 ETF、
+    ETN 或其他證券。
+
+    因此，只要代號符合 Universe 可接受的
+    4～6 位數字基礎 + 最多 2 位英數尾碼格式，
+    即視為合法。
+    """
 
     code = clean_code(code)
 
     if not code:
         return False
 
+    # --------------------------------------------------------
     # 4～6 碼純數字
+    # --------------------------------------------------------
+
     if re.fullmatch(
         r"\d{4,6}",
         code,
     ):
-
         return True
 
-    # 4～6 碼數字 + 1～2 碼英文字母
+    # --------------------------------------------------------
+    # 4～6 碼數字 + 1～2 碼英數字
+    #
+    # 包含：
+    #
+    # 00400A
+    # 00631L
+    # 00632R
+    # 00710B
+    # 2887Z1
+    #
+    # 不在 verify_chip 重新判斷商品類型。
+    # --------------------------------------------------------
+
     if re.fullmatch(
-        r"\d{4,6}[A-Z]{1,2}",
+        r"\d{4,6}[A-Z0-9]{1,2}",
         code,
     ):
-
         return True
 
     return False
@@ -221,16 +236,14 @@ def load_json(
 
 
 # ============================================================
-# Forbidden field scanner
+# Forbidden fields
 # ============================================================
 
 FORBIDDEN_FIELDS = {
-
     "main_force_1d",
     "main_force_5d",
     "main_force_10d",
     "main_force_20d",
-
 }
 
 
@@ -246,7 +259,6 @@ def scan_forbidden_fields(
             item,
             dict,
         ):
-
             continue
 
         for field in FORBIDDEN_FIELDS:
@@ -270,6 +282,9 @@ def main() -> int:
 
     warnings: List[str] = []
 
+    universe_count = None
+    chip_count = None
+
     log(
         "========================================"
     )
@@ -292,12 +307,11 @@ def main() -> int:
     )
 
     log(
-        "固定股票驗證：停用"
+        "驗證範圍：全市場"
     )
 
     log(
-        "2337 / 2426 / 2368 / 3081："
-        "不作為特殊驗證條件"
+        "固定個股特殊驗證：停用"
     )
 
     # ========================================================
@@ -345,8 +359,8 @@ def main() -> int:
         return finalize(
             errors,
             warnings,
-            None,
-            None,
+            universe_count,
+            chip_count,
         )
 
     # ========================================================
@@ -380,8 +394,8 @@ def main() -> int:
         return finalize(
             errors,
             warnings,
-            None,
-            None,
+            universe_count,
+            chip_count,
         )
 
     try:
@@ -407,8 +421,8 @@ def main() -> int:
         return finalize(
             errors,
             warnings,
-            None,
-            None,
+            universe_count,
+            chip_count,
         )
 
     # ========================================================
@@ -419,16 +433,29 @@ def main() -> int:
         "3. Universe 結構驗證"
     )
 
-    universe_stocks = None
-
-    if isinstance(
+    if not isinstance(
         universe,
         dict,
     ):
 
-        universe_stocks = universe.get(
-            "stocks"
+        log(
+            "❌ Universe 根節點不是 object"
         )
+
+        errors.append(
+            "Universe 根節點錯誤"
+        )
+
+        return finalize(
+            errors,
+            warnings,
+            universe_count,
+            chip_count,
+        )
+
+    universe_stocks = universe.get(
+        "stocks"
+    )
 
     if not isinstance(
         universe_stocks,
@@ -446,21 +473,29 @@ def main() -> int:
         return finalize(
             errors,
             warnings,
-            None,
-            None,
+            universe_count,
+            chip_count,
         )
 
     universe_codes: Set[str] = set()
+
+    empty_universe_keys: List[str] = []
 
     for key in universe_stocks.keys():
 
         code = clean_code(key)
 
-        if code:
+        if not code:
 
-            universe_codes.add(
-                code
+            empty_universe_keys.append(
+                str(key)
             )
+
+            continue
+
+        universe_codes.add(
+            code
+        )
 
     universe_count = len(
         universe_codes
@@ -471,15 +506,22 @@ def main() -> int:
         f"{universe_count} 檔"
     )
 
+    if empty_universe_keys:
+
+        log(
+            f"❌ Universe 發現 "
+            f"{len(empty_universe_keys)} "
+            f"個空白代號"
+        )
+
+        errors.append(
+            "Universe 存在空白代號"
+        )
+
     declared_universe_count = (
         universe.get(
             "universe_count"
         )
-        if isinstance(
-            universe,
-            dict,
-        )
-        else None
     )
 
     try:
@@ -490,6 +532,13 @@ def main() -> int:
 
     except Exception:
 
+        declared_universe_count = None
+
+    if (
+        declared_universe_count
+        is None
+    ):
+
         log(
             "❌ Universe universe_count 無效"
         )
@@ -498,43 +547,36 @@ def main() -> int:
             "Universe universe_count 無效"
         )
 
-        declared_universe_count = None
-
-    if (
+    elif (
         declared_universe_count
-        is not None
+        != universe_count
     ):
 
-        if (
-            declared_universe_count
-            != universe_count
-        ):
+        log(
+            "❌ Universe universe_count "
+            "與 stocks object 數量不一致"
+        )
 
-            log(
-                "❌ Universe universe_count "
-                "與 stocks object 數量不一致"
-            )
+        log(
+            f"   universe_count："
+            f"{declared_universe_count}"
+        )
 
-            log(
-                f"   universe_count："
-                f"{declared_universe_count}"
-            )
+        log(
+            f"   stocks："
+            f"{universe_count}"
+        )
 
-            log(
-                f"   stocks："
-                f"{universe_count}"
-            )
+        errors.append(
+            "Universe 數量不一致"
+        )
 
-            errors.append(
-                "Universe 數量不一致"
-            )
+    else:
 
-        else:
-
-            log(
-                "✓ Universe universe_count "
-                "與 stocks object 數量一致"
-            )
+        log(
+            "✓ Universe universe_count "
+            "與 stocks object 數量一致"
+        )
 
     # ========================================================
     # 4. Universe symbol format
@@ -544,7 +586,7 @@ def main() -> int:
         "4. Universe 股票代號格式"
     )
 
-    invalid_universe_symbols = []
+    invalid_universe_symbols: List[str] = []
 
     for code in sorted(
         universe_codes
@@ -563,7 +605,7 @@ def main() -> int:
         log(
             f"❌ 發現 "
             f"{len(invalid_universe_symbols)} "
-            f"個非法 Universe 股票代號"
+            f"個無法識別的 Universe 股票代號"
         )
 
         for code in (
@@ -575,7 +617,7 @@ def main() -> int:
             )
 
         errors.append(
-            "Universe 存在非法股票代號"
+            "Universe 存在無法識別的股票代號"
         )
 
     else:
@@ -609,7 +651,7 @@ def main() -> int:
             errors,
             warnings,
             universe_count,
-            None,
+            chip_count,
         )
 
     chip_stocks = chip.get(
@@ -633,14 +675,20 @@ def main() -> int:
             errors,
             warnings,
             universe_count,
-            None,
+            chip_count,
         )
 
-    chip_codes = {
-        clean_code(key)
-        for key in chip_stocks.keys()
-        if clean_code(key)
-    }
+    chip_codes: Set[str] = set()
+
+    for key in chip_stocks.keys():
+
+        code = clean_code(key)
+
+        if code:
+
+            chip_codes.add(
+                code
+            )
 
     chip_count = len(
         chip_codes
@@ -652,7 +700,7 @@ def main() -> int:
     )
 
     # ========================================================
-    # 6. Universe ↔ Chip full comparison
+    # 6. Universe → Chip full comparison
     # ========================================================
 
     section(
@@ -756,10 +804,7 @@ def main() -> int:
 
         chip_declared_count = None
 
-    if (
-        chip_declared_count
-        is None
-    ):
+    if chip_declared_count is None:
 
         log(
             "❌ chip.json universe_count 無效"
@@ -769,10 +814,7 @@ def main() -> int:
             "Chip universe_count 無效"
         )
 
-    elif (
-        chip_declared_count
-        != chip_count
-    ):
+    elif chip_declared_count != chip_count:
 
         log(
             "❌ chip.json universe_count "
@@ -801,8 +843,7 @@ def main() -> int:
         )
 
     if (
-        universe_count
-        == chip_count
+        universe_count == chip_count
         and not missing_from_chip
         and not extra_in_chip
     ):
@@ -814,7 +855,7 @@ def main() -> int:
         )
 
     # ========================================================
-    # 8. Full-market fields
+    # 8. Full market field validation
     # ========================================================
 
     section(
@@ -824,32 +865,24 @@ def main() -> int:
     required_fields = {
 
         "symbol",
-
         "full_symbol",
-
         "name",
-
         "market",
-
         "type",
 
         "institutional_1d",
-
         "institutional_5d",
-
         "institutional_10d",
-
         "institutional_20d",
 
         "day_trading_volume",
-
         "day_trading_rate",
 
         "updated_at",
 
     }
 
-    field_errors = []
+    field_errors: List[str] = []
 
     for symbol in sorted(
         chip_codes
@@ -890,7 +923,7 @@ def main() -> int:
             )
 
         # ----------------------------------------------------
-        # symbol 必須與 stocks key 一致
+        # symbol 必須與 key 一致
         # ----------------------------------------------------
 
         item_symbol = clean_code(
@@ -938,8 +971,7 @@ def main() -> int:
         ):
 
             field_errors.append(
-                f"{symbol}: "
-                f"market={market}"
+                f"{symbol}: market={market}"
             )
 
         # ----------------------------------------------------
@@ -958,8 +990,7 @@ def main() -> int:
         ):
 
             field_errors.append(
-                f"{symbol}: "
-                f"type={sec_type}"
+                f"{symbol}: type={sec_type}"
             )
 
         # ----------------------------------------------------
@@ -980,7 +1011,6 @@ def main() -> int:
         for field in numeric_fields:
 
             if field not in item:
-
                 continue
 
             value = item.get(
@@ -1054,37 +1084,36 @@ def main() -> int:
             )
 
         errors.append(
-            "發現 main_force_* 禁止欄位"
+            "發現禁止欄位"
         )
 
     else:
 
         log(
-            "✓ 全市場 chip 均沒有 main_force_*"
+            "✓ 全市場 chip 均沒有 "
+            "main_force_*"
         )
 
     # ========================================================
-    # 10. 1D / 5D / 10D / 20D
+    # 10. Period fields
     # ========================================================
 
     section(
         "10. 1D / 5D / 10D / 20D 欄位驗證"
     )
 
-    period_fields = {
+    period_fields = [
 
         "institutional_1d",
         "institutional_5d",
         "institutional_10d",
         "institutional_20d",
 
-    }
+    ]
 
-    period_errors = []
+    period_errors: List[str] = []
 
-    for field in sorted(
-        period_fields
-    ):
+    for field in period_fields:
 
         missing_count = 0
 
@@ -1102,7 +1131,6 @@ def main() -> int:
             ):
 
                 missing_count += 1
-
                 continue
 
             if field not in item:
@@ -1239,23 +1267,18 @@ def main() -> int:
 
     else:
 
-        statistic_fields = {
+        statistic_fields = [
 
             "complete",
-
             "partial",
-
             "insufficient",
-
             "empty_name",
 
-        }
+        ]
 
         statistic_errors = []
 
-        for field in sorted(
-            statistic_fields
-        ):
+        for field in statistic_fields:
 
             value = statistics.get(
                 field
@@ -1445,90 +1468,6 @@ def main() -> int:
         )
 
     # ========================================================
-    # 14. 固定股票依賴檢查
-    #
-    # 這裡不是驗證特定股票。
-    #
-    # 而是檢查驗證器本身是否仍殘留
-    # 舊版固定股票邏輯。
-    #
-    # 正式版完全禁止。
-    # ========================================================
-
-    section(
-        "14. 驗證器自我依賴檢查"
-    )
-
-    forbidden_verifier_terms = {
-
-        "required_test_stocks",
-
-        "expected_name",
-
-        "2337",
-
-        "2426",
-
-        "2368",
-
-        "3081",
-
-        "旺宏",
-
-        "鼎元",
-
-        "金像電",
-
-        "聯亞",
-
-    }
-
-    try:
-
-        verifier_source = Path(
-            __file__
-        ).read_text(
-            encoding="utf-8"
-        )
-
-    except Exception:
-
-        verifier_source = ""
-
-    verifier_found = []
-
-    if verifier_source:
-
-        for term in sorted(
-            forbidden_verifier_terms
-        ):
-
-            if term in verifier_source:
-
-                verifier_found.append(
-                    term
-                )
-
-    if verifier_found:
-
-        log(
-            "❌ 驗證器仍含固定股票依賴："
-            + ", ".join(
-                verifier_found
-            )
-        )
-
-        errors.append(
-            "驗證器仍含固定股票依賴"
-        )
-
-    else:
-
-        log(
-            "✓ 驗證器完全不依賴固定股票"
-        )
-
-    # ========================================================
     # Final
     # ========================================================
 
@@ -1537,6 +1476,8 @@ def main() -> int:
         warnings,
         universe_count,
         chip_count,
+        missing_from_chip,
+        extra_in_chip,
     )
 
 
@@ -1549,6 +1490,8 @@ def finalize(
     warnings: List[str],
     universe_count: Any,
     chip_count: Any,
+    missing_from_chip: List[str] | None = None,
+    extra_in_chip: List[str] | None = None,
 ) -> int:
 
     section(
@@ -1581,22 +1524,32 @@ def finalize(
             f"{chip_count} 檔"
         )
 
-    if universe_count is not None and chip_count is not None:
+    if missing_from_chip is None:
 
         log(
             "Universe → Chip 缺少："
-            f"無法於此階段重新計算"
-            if universe_count != chip_count
-            else
-            "Universe → Chip 缺少：0 檔"
+            "未完成計算"
         )
+
+    else:
+
+        log(
+            f"Universe → Chip 缺少："
+            f"{len(missing_from_chip)} 檔"
+        )
+
+    if extra_in_chip is None:
 
         log(
             "Chip → Universe 多出："
-            f"無法於此階段重新計算"
-            if universe_count != chip_count
-            else
-            "Chip → Universe 多出：0 檔"
+            "未完成計算"
+        )
+
+    else:
+
+        log(
+            f"Chip → Universe 多出："
+            f"{len(extra_in_chip)} 檔"
         )
 
     log(
@@ -1664,7 +1617,7 @@ def finalize(
     )
 
     log(
-        "✓ 驗證器不依賴任何固定股票"
+        "✓ 驗證不依賴任何固定個股"
     )
 
     log(
