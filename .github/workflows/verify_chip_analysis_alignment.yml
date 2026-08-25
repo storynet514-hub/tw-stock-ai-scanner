@@ -1,0 +1,395 @@
+name: Verify Chip Analysis Alignment
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify-chip-analysis-alignment:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Verify chip analysis alignment
+        run: |
+          set -e
+
+          echo "========================================"
+          echo "CHIP ANALYSIS ALIGNMENT VERIFICATION"
+          echo "========================================"
+
+          python - <<'PY'
+          import ast
+          import json
+          import sys
+          from pathlib import Path
+
+          ROOT = Path.cwd()
+          ANALYZE = ROOT / "Scripts" / "analyze_stocks.py"
+          CHIP = ROOT / "Data" / "chip.json"
+
+          errors = 0
+          warnings = 0
+
+          print("=" * 72)
+          print("台股 AI 選股系統")
+          print("analyze_stocks.py ↔ chip.json V9.4.3")
+          print("籌碼分析 Schema 對接驗證器 V1.0")
+          print("=" * 72)
+          print("驗證模式：唯讀 / AST / Schema 對照")
+          print("不修改 analyze_stocks.py")
+          print("不修改 chip.json")
+          print()
+
+          # --------------------------------------------------------
+          # 1. 檔案
+          # --------------------------------------------------------
+
+          print("=" * 72)
+          print("1. 檔案存在性")
+          print("=" * 72)
+
+          if not ANALYZE.exists():
+              print("❌ 找不到 Scripts/analyze_stocks.py")
+              sys.exit(1)
+
+          print("✓ Scripts/analyze_stocks.py 存在")
+
+          if not CHIP.exists():
+              print("❌ 找不到 Data/chip.json")
+              sys.exit(1)
+
+          print("✓ Data/chip.json 存在")
+
+          # --------------------------------------------------------
+          # 2. Python AST
+          # --------------------------------------------------------
+
+          source = ANALYZE.read_text(
+              encoding="utf-8-sig"
+          )
+
+          try:
+              tree = ast.parse(
+                  source,
+                  filename=str(ANALYZE)
+              )
+              print("✓ analyze_stocks.py Python syntax 正常")
+          except SyntaxError as exc:
+              print(f"❌ Python syntax error：{exc}")
+              sys.exit(1)
+
+          # --------------------------------------------------------
+          # 3. 找 calculate_chip_analysis
+          # --------------------------------------------------------
+
+          print()
+          print("=" * 72)
+          print("2. calculate_chip_analysis()")
+          print("=" * 72)
+
+          chip_function = None
+
+          for node in tree.body:
+              if (
+                  isinstance(node, ast.FunctionDef)
+                  and node.name == "calculate_chip_analysis"
+              ):
+                  chip_function = node
+                  break
+
+          if chip_function is None:
+              print("❌ 找不到 calculate_chip_analysis()")
+              errors += 1
+          else:
+              print("✓ calculate_chip_analysis() 存在")
+
+          # --------------------------------------------------------
+          # 4. 函式內名稱引用
+          # --------------------------------------------------------
+
+          referenced_names = set()
+
+          if chip_function is not None:
+              for node in ast.walk(chip_function):
+                  if isinstance(node, ast.Name):
+                      referenced_names.add(node.id)
+
+                  elif isinstance(node, ast.Attribute):
+                      referenced_names.add(node.attr)
+
+                  elif isinstance(node, ast.Constant):
+                      if isinstance(node.value, str):
+                          referenced_names.add(node.value)
+
+          # --------------------------------------------------------
+          # 5. Legacy main_force
+          # --------------------------------------------------------
+
+          print()
+          print("=" * 72)
+          print("3. Legacy main_force_*")
+          print("=" * 72)
+
+          legacy_hits = []
+
+          if chip_function is not None:
+              for node in ast.walk(chip_function):
+
+                  if isinstance(node, ast.Name):
+                      if node.id.startswith("main_force_"):
+                          legacy_hits.append(node.id)
+
+                  if isinstance(node, ast.Attribute):
+                      if node.attr.startswith("main_force_"):
+                          legacy_hits.append(node.attr)
+
+                  if isinstance(node, ast.Constant):
+                      if (
+                          isinstance(node.value, str)
+                          and "main_force_" in node.value
+                      ):
+                          legacy_hits.append(node.value)
+
+          if legacy_hits:
+              legacy_hits = sorted(set(legacy_hits))
+
+              print("❌ 發現 legacy main_force_* 引用：")
+
+              for item in legacy_hits:
+                  print(f"   - {item}")
+
+              errors += 1
+
+          else:
+              print("✓ calculate_chip_analysis() 未使用 main_force_*")
+
+          # --------------------------------------------------------
+          # 6. 新 institutional schema
+          # --------------------------------------------------------
+
+          print()
+          print("=" * 72)
+          print("4. Institutional Schema")
+          print("=" * 72)
+
+          institutional_fields = [
+              "institutional_1d",
+              "institutional_5d",
+              "institutional_10d",
+              "institutional_20d",
+          ]
+
+          source_lower = source.lower()
+
+          for field in institutional_fields:
+
+              if field in source_lower:
+                  print(f"✓ 程式碼存在 {field}")
+              else:
+                  print(f"❌ 程式碼未發現 {field}")
+                  errors += 1
+
+          # --------------------------------------------------------
+          # 7. calculate_chip_analysis 是否實際引用
+          # --------------------------------------------------------
+
+          print()
+          print("=" * 72)
+          print("5. calculate_chip_analysis() Institutional 引用")
+          print("=" * 72)
+
+          function_source = ""
+
+          if chip_function is not None:
+              lines = source.splitlines()
+
+              start = chip_function.lineno - 1
+              end = (
+                  chip_function.end_lineno
+                  if chip_function.end_lineno
+                  else start + 1
+              )
+
+              function_source = "\n".join(
+                  lines[start:end]
+              ).lower()
+
+          for field in institutional_fields:
+
+              if field in function_source:
+                  print(f"✓ calculate_chip_analysis() 使用 {field}")
+              else:
+                  print(
+                      f"❌ calculate_chip_analysis() "
+                      f"未使用 {field}"
+                  )
+                  errors += 1
+
+          # --------------------------------------------------------
+          # 8. Day Trading Schema
+          # --------------------------------------------------------
+
+          print()
+          print("=" * 72)
+          print("6. Day-Trading Schema")
+          print("=" * 72)
+
+          day_trading_fields = [
+              "day_trading_volume",
+              "day_trading_rate",
+          ]
+
+          for field in day_trading_fields:
+
+              if field in source_lower:
+                  print(f"✓ 程式碼存在 {field}")
+              else:
+                  print(f"❌ 程式碼未發現 {field}")
+                  errors += 1
+
+          print()
+          print("=" * 72)
+          print("7. calculate_chip_analysis() Day-Trading 引用")
+          print("=" * 72)
+
+          for field in day_trading_fields:
+
+              if field in function_source:
+                  print(
+                      f"✓ calculate_chip_analysis() 使用 {field}"
+                  )
+              else:
+                  print(
+                      f"⚠ calculate_chip_analysis() "
+                      f"未使用 {field}"
+                  )
+                  warnings += 1
+
+          # --------------------------------------------------------
+          # 9. 實際 chip.json schema
+          # --------------------------------------------------------
+
+          print()
+          print("=" * 72)
+          print("8. chip.json V9.4.3 Schema")
+          print("=" * 72)
+
+          try:
+              with CHIP.open(
+                  "r",
+                  encoding="utf-8-sig"
+              ) as f:
+                  chip = json.load(f)
+          except Exception as exc:
+              print(f"❌ chip.json 讀取失敗：{exc}")
+              sys.exit(1)
+
+          if not isinstance(chip, dict):
+              print("❌ chip.json 根結構不是 object")
+              sys.exit(1)
+
+          print(
+              f"schema_version："
+              f"{chip.get('schema_version')}"
+          )
+
+          stocks = chip.get("stocks", {})
+
+          if not isinstance(stocks, dict):
+              print("❌ chip.json stocks 不是 object")
+              sys.exit(1)
+
+          print(f"Chip 股票數：{len(stocks)}")
+
+          sample = None
+
+          for value in stocks.values():
+              if isinstance(value, dict):
+                  sample = value
+                  break
+
+          if sample is None:
+              print("❌ 找不到 chip stock sample")
+              errors += 1
+          else:
+
+              for field in institutional_fields:
+
+                  if field in sample:
+                      print(
+                          f"✓ chip.json sample "
+                          f"包含 {field}"
+                      )
+                  else:
+                      print(
+                          f"❌ chip.json sample "
+                          f"缺少 {field}"
+                      )
+                      errors += 1
+
+              for field in day_trading_fields:
+
+                  if field in sample:
+                      print(
+                          f"✓ chip.json sample "
+                          f"包含 {field}"
+                      )
+                  else:
+                      print(
+                          f"❌ chip.json sample "
+                          f"缺少 {field}"
+                      )
+                      errors += 1
+
+          # --------------------------------------------------------
+          # 10. 最終判定
+          # --------------------------------------------------------
+
+          print()
+          print("=" * 72)
+          print("FINAL CHIP ANALYSIS ALIGNMENT VERIFICATION")
+          print("=" * 72)
+
+          print(
+              f"Legacy main_force_*："
+              f"{len(legacy_hits)}"
+          )
+
+          print(
+              f"Errors：{errors}"
+          )
+
+          print(
+              f"Warnings：{warnings}"
+          )
+
+          if errors:
+              print()
+              print("❌ CHIP ANALYSIS ALIGNMENT FAILED")
+              print()
+              print("目前表示：")
+              print(
+                  "analyze_stocks.py 的籌碼分析層"
+                  "尚未完全對齊 chip.json V9.4.3。"
+              )
+              sys.exit(1)
+
+          print()
+          print("✓ CHIP ANALYSIS ALIGNMENT PASSED")
+
+          if warnings:
+              print(
+                  f"⚠ 存在 {warnings} 個警告"
+              )
+
+          PY
