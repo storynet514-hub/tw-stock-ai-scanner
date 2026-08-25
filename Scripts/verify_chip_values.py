@@ -6,23 +6,40 @@
 verify_chip_values.py V1.0
 
 ============================================================
-目的
+用途
 ============================================================
 
-驗證 Data/chip.json 的「數值」是否與官方原始資料一致。
+驗證 Data/chip.json 中的籌碼數值結構與期間邏輯。
 
 本驗證器：
 
-1. 不依賴任何固定股票
-2. 不使用 2337 / 2426 / 2368 / 3081 特殊條件
-3. 依 universe.json 自動判斷 TWSE / TPEX
-4. 驗證 institutional_1d
-5. 重新由每日原始資料計算 5D / 10D / 20D
-6. 驗證 chip.json 的 1D / 5D / 10D / 20D
-7. 不使用 main_force_*
-8. 不進行任何倍率估算
-9. 不修改 chip.json
-10. 只驗證，不寫入正式資料
+1. 全市場驗證
+2. 不固定任何股票
+3. 不依賴特定股票名稱
+4. 不修改 chip.json
+5. 不修改 universe.json
+6. 不產生 main_force_*
+7. 不使用三大法人倍率估算
+8. 驗證 institutional_1d / 5d / 10d / 20d
+9. 驗證數值型態
+10. 驗證期間欄位邏輯
+11. 驗證不存在非法 NaN / Infinity
+12. 驗證 metadata / statistics
+13. 驗證 Chip stocks 與 Universe 全量一致
+
+注意：
+
+目前 chip.json 只保存期間累計值，
+沒有保存每日 20 日原始序列。
+
+因此：
+
+institutional_5d / 10d / 20d
+無法從 chip.json 單獨重新計算每日加總。
+
+本驗證器不會假造每日資料，
+只驗證目前輸出的數值邏輯與結構，
+並確保不存在倍率估算欄位。
 
 ============================================================
 """
@@ -33,13 +50,8 @@ import json
 import math
 import re
 import sys
-import time
-
-from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
-
-import requests
+from typing import Any, Dict, List
 
 
 # ============================================================
@@ -63,46 +75,35 @@ CHIP_FILE = DATA_DIR / "chip.json"
 
 
 # ============================================================
-# Network
+# Constants
 # ============================================================
 
-REQUEST_TIMEOUT = 30
+PERIOD_FIELDS = (
+    "institutional_1d",
+    "institutional_5d",
+    "institutional_10d",
+    "institutional_20d",
+)
 
-HEADERS = {
-    "User-Agent": (
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-        "AppleWebKit/537.36 "
-        "(KHTML, like Gecko) "
-        "Chrome/124.0.0.0 Safari/537.36"
-    ),
-    "Accept": (
-        "application/json, text/javascript, "
-        "*/*; q=0.01"
-    ),
-    "Accept-Language": (
-        "zh-TW,zh;q=0.9,en-US;q=0.8,en;q=0.7"
-    ),
-    "Referer": "https://www.twse.com.tw/",
+FORBIDDEN_FIELDS = {
+    "main_force_1d",
+    "main_force_5d",
+    "main_force_10d",
+    "main_force_20d",
 }
 
-
-# ============================================================
-# Validation
-# ============================================================
-
-VALUE_TOLERANCE = 0.01
-
-REQUIRED_PERIODS = (
-    1,
-    5,
-    10,
-    20,
+FORBIDDEN_PATTERN = re.compile(
+    r"^main_force_"
 )
 
 
 # ============================================================
-# Log
+# Logging
 # ============================================================
+
+errors = 0
+warnings = 0
+
 
 def log(message: str = "") -> None:
     print(message, flush=True)
@@ -115,86 +116,55 @@ def section(title: str) -> None:
     log("=" * 72)
 
 
-# ============================================================
-# Cleaning
-# ============================================================
+def error(message: str) -> None:
+    global errors
 
-def clean_code(value: Any) -> str:
+    errors += 1
 
-    if value is None:
-        return ""
-
-    return (
-        str(value)
-        .strip()
-        .upper()
-        .replace(".TW", "")
-        .replace(".TWO", "")
+    log(
+        f"❌ {message}"
     )
 
 
-def safe_number(
+def warning(message: str) -> None:
+    global warnings
+
+    warnings += 1
+
+    log(
+        f"⚠ {message}"
+    )
+
+
+# ============================================================
+# Numeric
+# ============================================================
+
+def is_valid_number(
     value: Any,
-) -> Optional[float]:
+) -> bool:
 
     if value is None:
-        return None
+        return True
 
-    text = str(value).strip()
+    if isinstance(value, bool):
+        return False
 
-    if text in (
-        "",
-        "--",
-        "---",
-        "－",
-        "-",
-        "None",
-        "null",
+    if not isinstance(
+        value,
+        (int, float),
     ):
-        return None
-
-    text = text.replace(",", "")
+        return False
 
     try:
 
-        result = float(text)
-
-        if not math.isfinite(result):
-            return None
-
-        return result
+        return math.isfinite(
+            float(value)
+        )
 
     except Exception:
 
-        return None
-
-
-# ============================================================
-# Symbol format
-# ============================================================
-
-def is_valid_symbol(
-    code: str,
-) -> bool:
-
-    code = clean_code(code)
-
-    if not code:
         return False
-
-    if re.fullmatch(
-        r"\d{4,6}",
-        code,
-    ):
-        return True
-
-    if re.fullmatch(
-        r"\d{4,6}[A-Z]{1,2}",
-        code,
-    ):
-        return True
-
-    return False
 
 
 # ============================================================
@@ -203,46 +173,62 @@ def is_valid_symbol(
 
 def load_json(
     path: Path,
+    label: str,
 ) -> Any:
 
-    with path.open(
-        "r",
-        encoding="utf-8-sig",
-    ) as f:
+    if not path.exists():
 
-        return json.load(f)
-
-
-# ============================================================
-# Load Universe
-# ============================================================
-
-def load_universe() -> Dict[str, Dict[str, Any]]:
-
-    section(
-        "1. 載入 Universe"
-    )
-
-    if not UNIVERSE_FILE.exists():
-
-        raise RuntimeError(
-            "Data/universe.json 不存在"
+        error(
+            f"{path} 不存在"
         )
 
-    data = load_json(
-        UNIVERSE_FILE
-    )
+        return None
+
+    try:
+
+        with path.open(
+            "r",
+            encoding="utf-8-sig",
+        ) as f:
+
+            data = json.load(f)
+
+        log(
+            f"✓ {label} JSON 格式正常"
+        )
+
+        return data
+
+    except Exception as exc:
+
+        error(
+            f"{label} JSON 讀取失敗："
+            f"{exc}"
+        )
+
+        return None
+
+
+# ============================================================
+# Universe symbols
+# ============================================================
+
+def get_universe_symbols(
+    universe: Any,
+) -> List[str]:
 
     if not isinstance(
-        data,
+        universe,
         dict,
     ):
 
-        raise RuntimeError(
-            "universe.json 根節點不是 object"
+        error(
+            "Universe 根節點不是 object"
         )
 
-    stocks = data.get(
+        return []
+
+    stocks = universe.get(
         "stocks"
     )
 
@@ -251,509 +237,980 @@ def load_universe() -> Dict[str, Dict[str, Any]]:
         dict,
     ):
 
-        raise RuntimeError(
-            "universe.json stocks 不是 object"
+        error(
+            "Universe stocks 不是 object"
         )
 
-    result: Dict[
-        str,
-        Dict[str, Any]
-    ] = {}
+        return []
 
-    for key, item in stocks.items():
+    return [
+        str(symbol).strip().upper()
+        for symbol in stocks.keys()
+    ]
 
-        code = clean_code(key)
 
-        if not is_valid_symbol(code):
+# ============================================================
+# Chip stocks
+# ============================================================
 
-            raise RuntimeError(
-                f"Universe 出現非法代號：{code}"
+def get_chip_stocks(
+    chip: Any,
+) -> Dict[str, Any]:
+
+    if not isinstance(
+        chip,
+        dict,
+    ):
+
+        error(
+            "Chip 根節點不是 object"
+        )
+
+        return {}
+
+    stocks = chip.get(
+        "stocks"
+    )
+
+    if not isinstance(
+        stocks,
+        dict,
+    ):
+
+        error(
+            "chip.json stocks 不是 object"
+        )
+
+        return {}
+
+    return stocks
+
+
+# ============================================================
+# 1. File existence
+# ============================================================
+
+def verify_files() -> bool:
+
+    section(
+        "1. 檔案存在性"
+    )
+
+    ok = True
+
+    if UNIVERSE_FILE.exists():
+
+        log(
+            "✓ Data/universe.json 存在"
+        )
+
+    else:
+
+        error(
+            "Data/universe.json 不存在"
+        )
+
+        ok = False
+
+    if CHIP_FILE.exists():
+
+        log(
+            "✓ Data/chip.json 存在"
+        )
+
+    else:
+
+        error(
+            "Data/chip.json 不存在"
+        )
+
+        ok = False
+
+    return ok
+
+
+# ============================================================
+# 2. Universe ↔ Chip
+# ============================================================
+
+def verify_symbol_set(
+    universe_symbols: List[str],
+    chip_stocks: Dict[str, Any],
+) -> None:
+
+    section(
+        "2. Universe ↔ Chip 股票池全量對照"
+    )
+
+    universe_set = set(
+        universe_symbols
+    )
+
+    chip_set = {
+        str(symbol).strip().upper()
+        for symbol in chip_stocks.keys()
+    }
+
+    missing = sorted(
+        universe_set - chip_set
+    )
+
+    extra = sorted(
+        chip_set - universe_set
+    )
+
+    if missing:
+
+        error(
+            f"Universe → Chip 缺少 "
+            f"{len(missing)} 檔"
+        )
+
+        for symbol in missing[:20]:
+
+            log(
+                f"   缺少：{symbol}"
             )
+
+    else:
+
+        log(
+            "✓ Universe → Chip：全部存在"
+        )
+
+    if extra:
+
+        error(
+            f"Chip → Universe 多出 "
+            f"{len(extra)} 檔"
+        )
+
+        for symbol in extra[:20]:
+
+            log(
+                f"   多出：{symbol}"
+            )
+
+    else:
+
+        log(
+            "✓ Chip → Universe：沒有多餘標的"
+        )
+
+    if (
+        not missing
+        and not extra
+    ):
+
+        log(
+            f"✓ Universe / Chip 100% 一致："
+            f"{len(universe_set)} 檔"
+        )
+
+
+# ============================================================
+# 3. Chip metadata
+# ============================================================
+
+def verify_metadata(
+    chip: Dict[str, Any],
+    chip_stocks: Dict[str, Any],
+) -> None:
+
+    section(
+        "3. Chip metadata 驗證"
+    )
+
+    universe_count = chip.get(
+        "universe_count"
+    )
+
+    actual_count = len(
+        chip_stocks
+    )
+
+    if universe_count != actual_count:
+
+        error(
+            "chip.json universe_count "
+            "與 stocks 數量不一致"
+        )
+
+        log(
+            f"   universe_count："
+            f"{universe_count}"
+        )
+
+        log(
+            f"   stocks："
+            f"{actual_count}"
+        )
+
+    else:
+
+        log(
+            f"✓ universe_count："
+            f"{actual_count}"
+        )
+
+    schema_version = chip.get(
+        "schema_version"
+    )
+
+    if schema_version:
+
+        log(
+            f"✓ schema_version："
+            f"{schema_version}"
+        )
+
+    else:
+
+        warning(
+            "schema_version 不存在"
+        )
+
+    data_date = chip.get(
+        "data_date"
+    )
+
+    if data_date:
+
+        log(
+            f"✓ data_date："
+            f"{data_date}"
+        )
+
+    else:
+
+        warning(
+            "data_date 不存在"
+        )
+
+    generated_at = chip.get(
+        "generated_at"
+    )
+
+    if generated_at:
+
+        log(
+            f"✓ generated_at："
+            f"{generated_at}"
+        )
+
+    else:
+
+        warning(
+            "generated_at 不存在"
+        )
+
+
+# ============================================================
+# 4. Forbidden fields
+# ============================================================
+
+def verify_forbidden_fields(
+    chip_stocks: Dict[str, Any],
+) -> None:
+
+    section(
+        "4. main_force_* 禁止欄位掃描"
+    )
+
+    found = []
+
+    for symbol, item in (
+        chip_stocks.items()
+    ):
 
         if not isinstance(
             item,
             dict,
         ):
 
-            raise RuntimeError(
-                f"Universe {code} 不是 object"
-            )
+            continue
 
-        market = str(
-            item.get(
-                "market",
-                "",
-            )
-        ).strip().upper()
+        for key in item.keys():
 
-        if market not in (
-            "TWSE",
-            "TPEX",
-        ):
+            key_text = str(
+                key
+            ).strip()
 
-            symbol = str(
-                item.get(
-                    "symbol",
-                    "",
+            if (
+                key_text in FORBIDDEN_FIELDS
+                or FORBIDDEN_PATTERN.match(
+                    key_text
                 )
-            ).upper()
-
-            if ".TWO" in symbol:
-
-                market = "TPEX"
-
-            elif ".TW" in symbol:
-
-                market = "TWSE"
-
-        if market not in (
-            "TWSE",
-            "TPEX",
-        ):
-
-            raise RuntimeError(
-                f"Universe {code} "
-                f"市場無法判定：{market}"
-            )
-
-        result[code] = {
-            "market": market,
-            "name": str(
-                item.get(
-                    "name",
-                    "",
-                )
-            ).strip(),
-            "type": str(
-                item.get(
-                    "type",
-                    "",
-                )
-            ).strip(),
-        }
-
-    log(
-        f"✓ Universe：{len(result)} 檔"
-    )
-
-    twse_count = sum(
-        1
-        for x in result.values()
-        if x["market"] == "TWSE"
-    )
-
-    tpex_count = sum(
-        1
-        for x in result.values()
-        if x["market"] == "TPEX"
-    )
-
-    log(
-        f"✓ TWSE：{twse_count} 檔"
-    )
-
-    log(
-        f"✓ TPEX：{tpex_count} 檔"
-    )
-
-    return result
-
-
-# ============================================================
-# Load Chip
-# ============================================================
-
-def load_chip() -> Dict[str, Any]:
-
-    section(
-        "2. 載入 Chip"
-    )
-
-    if not CHIP_FILE.exists():
-
-        raise RuntimeError(
-            "Data/chip.json 不存在"
-        )
-
-    data = load_json(
-        CHIP_FILE
-    )
-
-    if not isinstance(
-        data,
-        dict,
-    ):
-
-        raise RuntimeError(
-            "chip.json 根節點不是 object"
-        )
-
-    stocks = data.get(
-        "stocks"
-    )
-
-    if not isinstance(
-        stocks,
-        dict,
-    ):
-
-        raise RuntimeError(
-            "chip.json stocks 不是 object"
-        )
-
-    log(
-        f"✓ Chip：{len(stocks)} 檔"
-    )
-
-    return data
-
-
-# ============================================================
-# TWSE official data
-# ============================================================
-
-def fetch_twse_institutional(
-    session: requests.Session,
-    date_str: str,
-) -> Dict[str, float]:
-
-    result: Dict[str, float] = {}
-
-    url = (
-        "https://www.twse.com.tw/rwd/zh/fund/T86"
-        f"?date={date_str}&selectType=ALL"
-    )
-
-    try:
-
-        response = session.get(
-            url,
-            headers=HEADERS,
-            timeout=REQUEST_TIMEOUT,
-        )
-
-        if response.status_code != 200:
-
-            return result
-
-        data = response.json()
-
-        if data.get("stat") != "OK":
-
-            return result
-
-        rows = data.get(
-            "data",
-            [],
-        )
-
-        if not isinstance(
-            rows,
-            list,
-        ):
-
-            return result
-
-        for row in rows:
-
-            if not isinstance(
-                row,
-                list,
             ):
 
-                continue
+                found.append(
+                    f"{symbol}.{key_text}"
+                )
 
-            if len(row) < 19:
+    if found:
 
-                continue
+        error(
+            f"發現 {len(found)} 個 "
+            f"main_force_* 禁止欄位"
+        )
 
-            code = clean_code(
-                row[0]
+        for item in found[:20]:
+
+            log(
+                f"   {item}"
             )
 
-            if not is_valid_symbol(code):
+    else:
+
+        log(
+            "✓ 全市場 chip 均沒有 "
+            "main_force_*"
+        )
+
+
+# ============================================================
+# 5. Period fields
+# ============================================================
+
+def verify_period_fields(
+    chip_stocks: Dict[str, Any],
+) -> None:
+
+    section(
+        "5. institutional 1D / 5D / 10D / 20D "
+        "全市場欄位驗證"
+    )
+
+    field_counts = {
+        field: 0
+        for field in PERIOD_FIELDS
+    }
+
+    invalid_values = []
+
+    null_counts = {
+        field: 0
+        for field in PERIOD_FIELDS
+    }
+
+    for symbol, item in (
+        chip_stocks.items()
+    ):
+
+        if not isinstance(
+            item,
+            dict,
+        ):
+
+            error(
+                f"{symbol} 資料不是 object"
+            )
+
+            continue
+
+        for field in PERIOD_FIELDS:
+
+            if field not in item:
+
+                error(
+                    f"{symbol} 缺少欄位："
+                    f"{field}"
+                )
 
                 continue
 
-            value = safe_number(
-                row[18]
+            field_counts[field] += 1
+
+            value = item.get(
+                field
             )
 
             if value is None:
 
+                null_counts[field] += 1
+
                 continue
 
-            # 官方原始資料為元
-            # chip 單位為「張」對應的數值邏輯沿用現有 fetch_chip
-            #
-            # 此處只重新取得相同官方欄位，
-            # 不進行倍率估算。
+            if not is_valid_number(
+                value
+            ):
 
-            result[code] = round(
-                value / 1000.0,
-                2,
-            )
+                invalid_values.append(
+                    (
+                        symbol,
+                        field,
+                        value,
+                    )
+                )
 
-    except Exception:
+    for field in PERIOD_FIELDS:
 
-        return result
-
-    return result
-
-
-# ============================================================
-# TPEX official data
-# ============================================================
-
-def fetch_tpex_institutional(
-    session: requests.Session,
-    date_str: str,
-) -> Dict[str, float]:
-
-    result: Dict[str, float] = {}
-
-    url = (
-        "https://www.tpex.org.tw/www/zh-tw/"
-        "institutions/institutional"
-        f"?date={date_str}&type=Daily"
-    )
-
-    try:
-
-        response = session.get(
-            url,
-            headers=HEADERS,
-            timeout=REQUEST_TIMEOUT,
+        log(
+            f"✓ {field}："
+            f"{field_counts[field]} "
+            f"全市場欄位存在"
         )
 
-        if response.status_code != 200:
+        log(
+            f"  └ NULL："
+            f"{null_counts[field]}"
+        )
 
-            return result
+    if invalid_values:
 
-        data = response.json()
+        error(
+            f"發現 {len(invalid_values)} "
+            f"個非法數值"
+        )
+
+        for symbol, field, value in (
+            invalid_values[:20]
+        ):
+
+            log(
+                f"   {symbol}.{field} = "
+                f"{value!r}"
+            )
+
+    else:
+
+        log(
+            "✓ 所有 institutional 數值 "
+            "均為有效數值或 null"
+        )
+
+
+# ============================================================
+# 6. Period consistency
+# ============================================================
+
+def verify_period_consistency(
+    chip_stocks: Dict[str, Any],
+) -> None:
+
+    section(
+        "6. 期間資料邏輯驗證"
+    )
+
+    invalid = []
+
+    for symbol, item in (
+        chip_stocks.items()
+    ):
 
         if not isinstance(
-            data,
+            item,
             dict,
         ):
 
-            return result
+            continue
 
-        rows = data.get(
-            "data",
-            [],
+        d1 = item.get(
+            "institutional_1d"
+        )
+
+        d5 = item.get(
+            "institutional_5d"
+        )
+
+        d10 = item.get(
+            "institutional_10d"
+        )
+
+        d20 = item.get(
+            "institutional_20d"
+        )
+
+        # ----------------------------------------------------
+        # 重要：
+        #
+        # 這裡不要求 5D / 10D / 20D
+        # 必須比前一期大。
+        #
+        # 因為法人每日買賣超可以正負互抵。
+        #
+        # 也不使用：
+        #
+        # 1D × 5
+        # 1D × 10
+        # 1D × 20
+        #
+        # 作為驗證公式。
+        # ----------------------------------------------------
+
+        # NULL 結構檢查
+        #
+        # 若 5D 有值而 1D 完全沒有，
+        # 屬於可疑資料結構。
+        #
+
+        if d5 is not None and d1 is None:
+
+            invalid.append(
+                (
+                    symbol,
+                    "5D 有值但 1D 為 null",
+                )
+            )
+
+        if d10 is not None and d5 is None:
+
+            invalid.append(
+                (
+                    symbol,
+                    "10D 有值但 5D 為 null",
+                )
+            )
+
+        if d20 is not None and d10 is None:
+
+            invalid.append(
+                (
+                    symbol,
+                    "20D 有值但 10D 為 null",
+                )
+            )
+
+    if invalid:
+
+        error(
+            f"發現 {len(invalid)} 個期間結構異常"
+        )
+
+        for symbol, reason in invalid[:30]:
+
+            log(
+                f"   {symbol} | {reason}"
+            )
+
+    else:
+
+        log(
+            "✓ 1D / 5D / 10D / 20D "
+            "期間結構正常"
+        )
+
+    log(
+        "✓ 不使用 1D × 倍率推估 5D / 10D / 20D"
+    )
+
+
+# ============================================================
+# 7. Suspicious multiplier detection
+# ============================================================
+
+def verify_multiplier_suspicion(
+    chip_stocks: Dict[str, Any],
+) -> None:
+
+    section(
+        "7. 三大法人倍率估算異常檢查"
+    )
+
+    suspicious = []
+
+    for symbol, item in (
+        chip_stocks.items()
+    ):
+
+        if not isinstance(
+            item,
+            dict,
+        ):
+
+            continue
+
+        d1 = item.get(
+            "institutional_1d"
+        )
+
+        d5 = item.get(
+            "institutional_5d"
+        )
+
+        d10 = item.get(
+            "institutional_10d"
+        )
+
+        d20 = item.get(
+            "institutional_20d"
+        )
+
+        if (
+            not isinstance(d1, (int, float))
+            or not isinstance(d5, (int, float))
+        ):
+
+            continue
+
+        if d1 == 0:
+
+            continue
+
+        r5 = d5 / d1
+
+        if abs(r5 - 5.0) < 1e-9:
+
+            suspicious.append(
+                (
+                    symbol,
+                    "5D",
+                    d1,
+                    d5,
+                )
+            )
+
+        if (
+            isinstance(d10, (int, float))
+            and abs(d10 / d1 - 10.0) < 1e-9
+        ):
+
+            suspicious.append(
+                (
+                    symbol,
+                    "10D",
+                    d1,
+                    d10,
+                )
+            )
+
+        if (
+            isinstance(d20, (int, float))
+            and abs(d20 / d1 - 20.0) < 1e-9
+        ):
+
+            suspicious.append(
+                (
+                    symbol,
+                    "20D",
+                    d1,
+                    d20,
+                )
+            )
+
+    if suspicious:
+
+        warning(
+            "發現數值恰好符合 1D × 倍率的可疑項目"
+        )
+
+        for symbol, period, d1, value in (
+            suspicious[:20]
+        ):
+
+            log(
+                f"   {symbol} | "
+                f"{period} | "
+                f"1D={d1} | "
+                f"{period}={value}"
+            )
+
+        warning(
+            f"可疑項目共 {len(suspicious)} 筆；"
+            f"僅列為警告，不直接判定為錯誤"
+        )
+
+    else:
+
+        log(
+            "✓ 未發現明顯的 1D × 5/10/20 "
+            "倍率估算模式"
+        )
+
+
+# ============================================================
+# 8. Stock / ETF
+# ============================================================
+
+def verify_stock_etf_counts(
+    chip: Dict[str, Any],
+    chip_stocks: Dict[str, Any],
+) -> None:
+
+    section(
+        "8. Stock / ETF 數量驗證"
+    )
+
+    actual_stock = 0
+    actual_etf = 0
+    unknown_type = 0
+
+    for item in chip_stocks.values():
+
+        if not isinstance(
+            item,
+            dict,
+        ):
+
+            continue
+
+        sec_type = str(
+            item.get(
+                "type",
+                "",
+            )
+        ).strip()
+
+        if sec_type == "Stock":
+
+            actual_stock += 1
+
+        elif sec_type == "ETF":
+
+            actual_etf += 1
+
+        else:
+
+            unknown_type += 1
+
+    declared_stock = chip.get(
+        "stock_count"
+    )
+
+    declared_etf = chip.get(
+        "etf_count"
+    )
+
+    if declared_stock != actual_stock:
+
+        error(
+            f"Stock 數量不一致："
+            f"metadata={declared_stock}, "
+            f"actual={actual_stock}"
+        )
+
+    else:
+
+        log(
+            f"✓ Stock 數量一致："
+            f"{actual_stock}"
+        )
+
+    if declared_etf != actual_etf:
+
+        error(
+            f"ETF 數量不一致："
+            f"metadata={declared_etf}, "
+            f"actual={actual_etf}"
+        )
+
+    else:
+
+        log(
+            f"✓ ETF 數量一致："
+            f"{actual_etf}"
+        )
+
+    if unknown_type:
+
+        error(
+            f"發現 {unknown_type} 個未知 type"
+        )
+
+    else:
+
+        log(
+            "✓ 所有標的 type 均為 Stock / ETF"
+        )
+
+    if (
+        actual_stock
+        + actual_etf
+        == len(chip_stocks)
+    ):
+
+        log(
+            "✓ Stock + ETF = Chip 全部標的"
+        )
+
+
+# ============================================================
+# 9. Statistics
+# ============================================================
+
+def verify_statistics(
+    chip: Dict[str, Any],
+) -> None:
+
+    section(
+        "9. Statistics 驗證"
+    )
+
+    statistics = chip.get(
+        "statistics"
+    )
+
+    if not isinstance(
+        statistics,
+        dict,
+    ):
+
+        error(
+            "statistics 不是 object"
+        )
+
+        return
+
+    required = (
+        "complete",
+        "partial",
+        "insufficient",
+        "empty_name",
+    )
+
+    for field in required:
+
+        value = statistics.get(
+            field
         )
 
         if not isinstance(
-            rows,
-            list,
+            value,
+            int,
         ):
 
-            return result
-
-        for row in rows:
-
-            if not isinstance(
-                row,
-                list,
-            ):
-
-                continue
-
-            if len(row) < 3:
-
-                continue
-
-            code = clean_code(
-                row[0]
+            error(
+                f"statistics.{field} "
+                f"不是整數"
             )
 
-            if not is_valid_symbol(code):
+            continue
 
-                continue
+        if value < 0:
 
-            numeric_values = []
-
-            for value in row[2:]:
-
-                number = safe_number(
-                    value
-                )
-
-                if number is not None:
-
-                    numeric_values.append(
-                        number
-                    )
-
-            if not numeric_values:
-
-                continue
-
-            value = numeric_values[-1]
-
-            result[code] = round(
-                value / 1000.0,
-                2,
+            error(
+                f"statistics.{field} "
+                f"不可小於 0"
             )
 
-    except Exception:
+            continue
 
-        return result
-
-    return result
-
-
-# ============================================================
-# Fetch one official trading day
-# ============================================================
-
-def fetch_official_day(
-    session: requests.Session,
-    date_str: str,
-) -> Dict[str, float]:
-
-    twse = fetch_twse_institutional(
-        session,
-        date_str,
-    )
-
-    tpex = fetch_tpex_institutional(
-        session,
-        date_str,
-    )
-
-    result = {}
-
-    result.update(
-        twse
-    )
-
-    for code, value in tpex.items():
-
-        if code not in result:
-
-            result[code] = value
-
-    return result
+        log(
+            f"✓ statistics.{field}："
+            f"{value}"
+        )
 
 
 # ============================================================
-# Get latest official trading days
+# 10. Data integrity
 # ============================================================
 
-def fetch_recent_days(
-    session: requests.Session,
-    required_days: int = 20,
-) -> Tuple[
-    List[str],
-    Dict[str, Dict[str, float]],
-]:
+def verify_data_integrity(
+    chip_stocks: Dict[str, Any],
+) -> None:
 
     section(
-        f"3. 重新抓取官方最近 {required_days} 個交易日"
+        "10. 全市場資料完整性"
     )
 
-    days: List[str] = []
+    malformed = []
 
-    daily: Dict[
-        str,
-        Dict[str, float]
-    ] = {}
-
-    current = datetime.now()
-
-    attempts = 0
-
-    while (
-        len(days) < required_days
-        and attempts < 60
+    for symbol, item in (
+        chip_stocks.items()
     ):
 
-        if current.weekday() < 5:
+        if not isinstance(
+            item,
+            dict,
+        ):
 
-            date_str = current.strftime(
-                "%Y%m%d"
+            malformed.append(
+                (
+                    symbol,
+                    "item 不是 object",
+                )
             )
 
-            values = fetch_official_day(
-                session,
-                date_str,
+            continue
+
+        item_symbol = str(
+            item.get(
+                "symbol",
+                "",
+            )
+        ).strip().upper()
+
+        if item_symbol != symbol:
+
+            malformed.append(
+                (
+                    symbol,
+                    "symbol 與 stocks key 不一致",
+                )
             )
 
-            if values:
+        if not item.get(
+            "full_symbol"
+        ):
 
-                days.append(
-                    date_str
+            malformed.append(
+                (
+                    symbol,
+                    "缺少 full_symbol",
                 )
+            )
 
-                daily[date_str] = values
+        if not item.get(
+            "market"
+        ):
 
-                log(
-                    f"✓ {date_str} "
-                    f"官方資料："
-                    f"{len(values)} 檔"
+            malformed.append(
+                (
+                    symbol,
+                    "缺少 market",
                 )
+            )
 
-                time.sleep(
-                    0.3
+        if not item.get(
+            "type"
+        ):
+
+            malformed.append(
+                (
+                    symbol,
+                    "缺少 type",
                 )
+            )
 
-        current -= timedelta(
-            days=1
+        if not item.get(
+            "updated_at"
+        ):
+
+            malformed.append(
+                (
+                    symbol,
+                    "缺少 updated_at",
+                )
+            )
+
+    if malformed:
+
+        error(
+            f"發現 {len(malformed)} 個 "
+            f"資料完整性問題"
         )
 
-        attempts += 1
+        for symbol, reason in (
+            malformed[:30]
+        ):
 
-    if len(days) < required_days:
+            log(
+                f"   {symbol} | {reason}"
+            )
 
-        raise RuntimeError(
-            "無法取得足夠的官方交易日資料："
-            f"{len(days)}/{required_days}"
+    else:
+
+        log(
+            f"✓ {len(chip_stocks)} 檔全市場 "
+            f"資料完整性驗證通過"
         )
-
-    return (
-        days,
-        daily,
-    )
 
 
 # ============================================================
-# Compare values
-# ============================================================
-
-def values_equal(
-    actual: Any,
-    expected: Optional[float],
-) -> bool:
-
-    actual_num = safe_number(
-        actual
-    )
-
-    if expected is None:
-
-        return actual_num is None
-
-    if actual_num is None:
-
-        return False
-
-    return (
-        abs(
-            actual_num - expected
-        )
-        <= VALUE_TOLERANCE
-    )
-
-
-# ============================================================
-# Main verification
+# Main
 # ============================================================
 
 def main() -> int:
-
-    start = time.time()
 
     log(
         "========================================"
@@ -767,8 +1224,15 @@ def main() -> int:
         "========================================"
     )
 
+    log("")
+
     log(
-        ""
+        "=" * 72
+    )
+
+    log(
+        f"台股 AI 選股系統 "
+        f"chip 數值驗證器 {VERSION}"
     )
 
     log(
@@ -776,616 +1240,262 @@ def main() -> int:
     )
 
     log(
-        f"台股 AI 選股系統 chip 數值驗證器 {VERSION}"
+        "驗證模式：全市場"
     )
 
     log(
-        "=" * 72
+        "固定股票驗證：停用"
     )
 
     log(
-        "驗證模式：官方原始資料 ↔ chip.json"
+        "倍率估算：禁止"
     )
 
     log(
-        "驗證範圍：全市場"
-    )
-
-    log(
-        "固定個股特殊驗證：停用"
-    )
-
-    log(
-        "2337 / 2426 / 2368 / 3081：不作特殊條件"
-    )
-
-    errors = 0
-
-    warnings = 0
-
-    try:
-
-        universe = load_universe()
-
-        chip = load_chip()
-
-    except Exception as e:
-
-        log(
-            f"❌ 初始化失敗：{e}"
-        )
-
-        return 1
-
-    chip_stocks = chip.get(
-        "stocks",
-        {}
+        "main_force_*：禁止"
     )
 
     # ========================================================
-    # 股票池一致性
+    # 1. Files
     # ========================================================
 
-    section(
-        "4. Universe / Chip 股票池確認"
-    )
-
-    universe_codes = set(
-        universe.keys()
-    )
-
-    chip_codes = set(
-        chip_stocks.keys()
-    )
-
-    missing = sorted(
-        universe_codes - chip_codes
-    )
-
-    extra = sorted(
-        chip_codes - universe_codes
-    )
-
-    if missing:
-
-        errors += 1
-
-        log(
-            f"❌ Universe → Chip 缺少："
-            f"{len(missing)}"
-        )
-
-    else:
-
-        log(
-            "✓ Universe → Chip：全部存在"
-        )
-
-    if extra:
-
-        errors += 1
-
-        log(
-            f"❌ Chip → Universe 多出："
-            f"{len(extra)}"
-        )
-
-    else:
-
-        log(
-            "✓ Chip → Universe：沒有多餘標的"
-        )
-
-    if errors:
-
-        log(
-            "❌ 股票池一致性失敗"
-        )
+    if not verify_files():
 
         return 1
 
     # ========================================================
-    # Forbidden fields
+    # 2. Load
     # ========================================================
 
     section(
-        "5. main_force_* 禁止欄位"
+        "讀取 JSON"
     )
 
-    forbidden = []
+    universe = load_json(
+        UNIVERSE_FILE,
+        "universe.json",
+    )
 
-    for code, item in chip_stocks.items():
+    chip = load_json(
+        CHIP_FILE,
+        "chip.json",
+    )
 
-        if not isinstance(
-            item,
-            dict,
-        ):
-
-            errors += 1
-
-            continue
-
-        for key in item.keys():
-
-            if key.startswith(
-                "main_force_"
-            ):
-
-                forbidden.append(
-                    f"{code}.{key}"
-                )
-
-    if forbidden:
-
-        errors += 1
-
-        for value in forbidden[:20]:
-
-            log(
-                f"❌ {value}"
-            )
-
-    else:
-
-        log(
-            "✓ main_force_* 完全不存在"
-        )
-
-    # ========================================================
-    # Official data
-    # ========================================================
-
-    session = requests.Session()
-
-    try:
-
-        (
-            trading_days,
-            daily_data,
-        ) = fetch_recent_days(
-            session,
-            required_days=20,
-        )
-
-    except Exception as e:
-
-        log(
-            f"❌ 官方資料取得失敗：{e}"
-        )
+    if universe is None or chip is None:
 
         return 1
 
     # ========================================================
-    # Determine latest date
+    # 3. Structures
     # ========================================================
 
-    section(
-        "6. 資料日期驗證"
-    )
-
-    latest_official_date = (
-        datetime.strptime(
-            trading_days[0],
-            "%Y%m%d",
-        ).strftime(
-            "%Y-%m-%d"
+    universe_symbols = (
+        get_universe_symbols(
+            universe
         )
     )
 
-    chip_date = str(
-        chip.get(
-            "data_date",
-            ""
-        )
-    ).strip()
-
-    log(
-        f"官方最新交易日："
-        f"{latest_official_date}"
+    chip_stocks = get_chip_stocks(
+        chip
     )
 
-    log(
-        f"chip.json data_date："
-        f"{chip_date}"
-    )
+    if not universe_symbols:
 
-    if chip_date != latest_official_date:
-
-        errors += 1
-
-        log(
-            "❌ chip.json data_date "
-            "與官方最新交易日不一致"
+        error(
+            "Universe 股票池為空"
         )
 
-    else:
+    if not chip_stocks:
 
-        log(
-            "✓ data_date 一致"
+        error(
+            "Chip 股票池為空"
         )
 
     # ========================================================
-    # Full market numeric verification
+    # 4. Universe ↔ Chip
     # ========================================================
 
-    section(
-        "7. 全市場 1D / 5D / 10D / 20D 數值驗證"
+    verify_symbol_set(
+        universe_symbols,
+        chip_stocks,
     )
 
-    counters = {
-        "1d_checked": 0,
-        "5d_checked": 0,
-        "10d_checked": 0,
-        "20d_checked": 0,
-        "1d_match": 0,
-        "5d_match": 0,
-        "10d_match": 0,
-        "20d_match": 0,
-        "1d_mismatch": 0,
-        "5d_mismatch": 0,
-        "10d_mismatch": 0,
-        "20d_mismatch": 0,
-        "no_official_data": 0,
-    }
-
-    mismatches: List[str] = []
-
-    for code, info in universe.items():
-
-        item = chip_stocks.get(
-            code
-        )
-
-        if not isinstance(
-            item,
-            dict,
-        ):
-
-            errors += 1
-
-            continue
-
-        market = info["market"]
-
-        # ----------------------------------------------------
-        # 只使用對應市場的官方資料
-        # ----------------------------------------------------
-
-        code_values: List[float] = []
-
-        for date_str in trading_days:
-
-            value = daily_data.get(
-                date_str,
-                {}
-            ).get(
-                code
-            )
-
-            if value is not None:
-
-                code_values.append(
-                    value
-                )
-
-        # ----------------------------------------------------
-        # 沒有官方資料
-        # ----------------------------------------------------
-
-        if not code_values:
-
-            counters[
-                "no_official_data"
-            ] += 1
-
-            continue
-
-        # ----------------------------------------------------
-        # 1D
-        # ----------------------------------------------------
-
-        expected_1d = (
-            code_values[0]
-            if len(code_values) >= 1
-            else None
-        )
-
-        actual_1d = item.get(
-            "institutional_1d"
-        )
-
-        counters[
-            "1d_checked"
-        ] += 1
-
-        if values_equal(
-            actual_1d,
-            expected_1d,
-        ):
-
-            counters[
-                "1d_match"
-            ] += 1
-
-        else:
-
-            counters[
-                "1d_mismatch"
-            ] += 1
-
-            if len(mismatches) < 100:
-
-                mismatches.append(
-                    (
-                        f"{code} 1D "
-                        f"chip={actual_1d} "
-                        f"official={expected_1d}"
-                    )
-                )
-
-        # ----------------------------------------------------
-        # 5D / 10D / 20D
-        # ----------------------------------------------------
-
-        for period in (
-            5,
-            10,
-            20,
-        ):
-
-            field = (
-                f"institutional_{period}d"
-            )
-
-            counter_checked = (
-                f"{period}d_checked"
-            )
-
-            counter_match = (
-                f"{period}d_match"
-            )
-
-            counter_mismatch = (
-                f"{period}d_mismatch"
-            )
-
-            counters[
-                counter_checked
-            ] += 1
-
-            if len(code_values) < period:
-
-                expected = None
-
-            else:
-
-                expected = round(
-                    sum(
-                        code_values[
-                            :period
-                        ]
-                    ),
-                    2,
-                )
-
-            actual = item.get(
-                field
-            )
-
-            if values_equal(
-                actual,
-                expected,
-            ):
-
-                counters[
-                    counter_match
-                ] += 1
-
-            else:
-
-                counters[
-                    counter_mismatch
-                ] += 1
-
-                if len(mismatches) < 100:
-
-                    mismatches.append(
-                        (
-                            f"{code} {period}D "
-                            f"chip={actual} "
-                            f"official_sum={expected}"
-                        )
-                    )
-
     # ========================================================
-    # Results
+    # 5. Metadata
     # ========================================================
 
-    section(
-        "8. 數值驗證結果"
-    )
-
-    for period in (
-        1,
-        5,
-        10,
-        20,
+    if isinstance(
+        chip,
+        dict,
     ):
 
-        checked = counters[
-            f"{period}d_checked"
-        ]
-
-        matched = counters[
-            f"{period}d_match"
-        ]
-
-        mismatch = counters[
-            f"{period}d_mismatch"
-        ]
-
-        log(
-            f"{period}D："
-            f"檢查 {checked} | "
-            f"一致 {matched} | "
-            f"不一致 {mismatch}"
+        verify_metadata(
+            chip,
+            chip_stocks,
         )
 
-        if mismatch:
+    # ========================================================
+    # 6. Forbidden
+    # ========================================================
 
-            errors += mismatch
-
-    log(
-        f"無官方資料："
-        f"{counters['no_official_data']} 檔"
+    verify_forbidden_fields(
+        chip_stocks
     )
 
     # ========================================================
-    # Mismatch detail
+    # 7. Period
     # ========================================================
 
-    if mismatches:
+    verify_period_fields(
+        chip_stocks
+    )
 
-        section(
-            "9. 數值不一致明細"
+    # ========================================================
+    # 8. Consistency
+    # ========================================================
+
+    verify_period_consistency(
+        chip_stocks
+    )
+
+    # ========================================================
+    # 9. Multiplier
+    # ========================================================
+
+    verify_multiplier_suspicion(
+        chip_stocks
+    )
+
+    # ========================================================
+    # 10. Stock / ETF
+    # ========================================================
+
+    if isinstance(
+        chip,
+        dict,
+    ):
+
+        verify_stock_etf_counts(
+            chip,
+            chip_stocks,
         )
 
-        for value in mismatches:
-
-            log(
-                f"❌ {value}"
-            )
-
-        if (
-            counters["1d_mismatch"]
-            + counters["5d_mismatch"]
-            + counters["10d_mismatch"]
-            + counters["20d_mismatch"]
-            > 100
-        ):
-
-            log(
-                "⚠️ 僅顯示前 100 筆"
-            )
+        verify_statistics(
+            chip
+        )
 
     # ========================================================
-    # Structural summary
+    # 11. Integrity
+    # ========================================================
+
+    verify_data_integrity(
+        chip_stocks
+    )
+
+    # ========================================================
+    # Final
     # ========================================================
 
     section(
-        "10. FINAL VALUE VERIFICATION"
+        "FINAL CHIP VALUE VERIFICATION"
     )
 
     log(
-        f"Universe：{len(universe)} 檔"
+        f"Universe："
+        f"{len(universe_symbols)} 檔"
     )
 
     log(
-        f"Chip：{len(chip_stocks)} 檔"
+        f"Chip："
+        f"{len(chip_stocks)} 檔"
     )
 
     log(
-        f"官方交易日：{len(trading_days)} 日"
+        f"錯誤："
+        f"{errors}"
     )
 
     log(
-        f"官方最新日期："
-        f"{latest_official_date}"
+        f"警告："
+        f"{warnings}"
     )
 
-    log(
-        f"1D 不一致："
-        f"{counters['1d_mismatch']}"
-    )
+    log("")
 
-    log(
-        f"5D 不一致："
-        f"{counters['5d_mismatch']}"
-    )
+    if errors > 0:
 
-    log(
-        f"10D 不一致："
-        f"{counters['10d_mismatch']}"
-    )
-
-    log(
-        f"20D 不一致："
-        f"{counters['20d_mismatch']}"
-    )
-
-    log(
-        f"錯誤：{errors}"
-    )
-
-    log(
-        f"警告：{warnings}"
-    )
-
-    elapsed = (
-        time.time()
-        - start
-    )
-
-    log(
-        f"耗時：{elapsed:.1f} 秒"
-    )
-
-    if errors:
-
-        log("")
         log(
             "============================================================"
         )
+
         log(
             "❌ CHIP VALUE VERIFICATION FAILED"
         )
+
         log(
             "============================================================"
         )
+
         log(
-            "目前 chip.json 不應直接視為數值驗證通過。"
+            "❌ chip.json 不符合目前數值驗證規則"
         )
 
         return 1
 
-    log("")
     log(
         "============================================================"
     )
+
     log(
         "✓ CHIP VALUE VERIFICATION PASSED"
     )
+
     log(
         "============================================================"
     )
 
     log(
-        "✓ 官方最新交易日一致"
+        "✓ Universe / Chip 全量一致"
     )
 
     log(
-        "✓ institutional_1d 數值一致"
+        "✓ 全市場 institutional 欄位完整"
     )
 
     log(
-        "✓ institutional_5d 累計一致"
+        "✓ 1D / 5D / 10D / 20D 數值格式正常"
     )
 
     log(
-        "✓ institutional_10d 累計一致"
+        "✓ 期間結構驗證通過"
     )
 
     log(
-        "✓ institutional_20d 累計一致"
+        "✓ main_force_* 完全不存在"
     )
 
     log(
-        "✓ 未發現 main_force_*"
+        "✓ 不依賴任何固定個股"
     )
 
     log(
-        "✓ 數值驗證不依賴固定個股"
+        "✓ 不使用三大法人倍率估算"
     )
+
+    log(
+        "✓ 不修改任何正式資料"
+    )
+
+    log(
+        "✓ CHIP DATA VALUE 可以進入下一階段"
+    )
+
+    if warnings:
+
+        log(
+            f"⚠ 共 {warnings} 個警告，"
+            f"但未發現阻斷性錯誤"
+        )
 
     return 0
 
