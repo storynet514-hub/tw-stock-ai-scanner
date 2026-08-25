@@ -1,0 +1,28 @@
+name: Verify Chip Quality
+
+on:
+  workflow_dispatch:
+
+jobs:
+  verify-chip-quality:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: CHIP DATA QUALITY
+        shell: bash
+        run: |
+          set -e
+
+          echo "========================================"
+          echo "CHIP DATA QUALITY VERIFICATION"
+          echo "========================================"
+
+          python Scripts/verify_chip_quality.py
