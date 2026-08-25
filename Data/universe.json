@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-08-25T07:50:56+08:00",
+  "generated_at": "2026-08-25T10:04:42+08:00",
   "source": [
     "TWSE_CURRENT",
     "TPEX_CURRENT",
@@ -22,15 +22,15 @@
     "hardcoded_test_symbols": false,
     "old_universe_for_count": false
   },
-  "universe_count": 2388,
-  "stock_count": 2372,
+  "universe_count": 2389,
+  "stock_count": 2373,
   "etf_count": 0,
   "etn_count": 0,
   "tdr_count": 0,
   "warrant_count": 0,
   "bond_count": 16,
   "twse_count": 1378,
-  "tpex_count": 1010,
+  "tpex_count": 1011,
   "stocks": {
     "00400A": {
       "symbol": "00400A",
@@ -18396,6 +18396,15 @@
       "symbol": "6240",
       "full_symbol": "6240.TWO",
       "name": "松崗",
+      "market": "TPEX",
+      "type": "STOCK",
+      "instrument_type": "COMMON_STOCK",
+      "status": "active"
+    },
+    "6241": {
+      "symbol": "6241",
+      "full_symbol": "6241.TWO",
+      "name": "鑫永洋",
       "market": "TPEX",
       "type": "STOCK",
       "instrument_type": "COMMON_STOCK",
