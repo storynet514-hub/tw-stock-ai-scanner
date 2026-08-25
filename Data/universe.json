@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-08-24T18:15:33+08:00",
+  "generated_at": "2026-08-25T07:50:56+08:00",
   "source": [
     "TWSE_CURRENT",
     "TPEX_CURRENT",
@@ -22,14 +22,14 @@
     "hardcoded_test_symbols": false,
     "old_universe_for_count": false
   },
-  "universe_count": 2387,
-  "stock_count": 2371,
+  "universe_count": 2388,
+  "stock_count": 2372,
   "etf_count": 0,
   "etn_count": 0,
   "tdr_count": 0,
   "warrant_count": 0,
   "bond_count": 16,
-  "twse_count": 1377,
+  "twse_count": 1378,
   "tpex_count": 1010,
   "stocks": {
     "00400A": {
@@ -9693,6 +9693,15 @@
       "symbol": "6168",
       "full_symbol": "6168.TW",
       "name": "宏齊",
+      "market": "TWSE",
+      "type": "STOCK",
+      "instrument_type": "COMMON_STOCK",
+      "status": "active"
+    },
+    "6176": {
+      "symbol": "6176",
+      "full_symbol": "6176.TW",
+      "name": "瑞儀",
       "market": "TWSE",
       "type": "STOCK",
       "instrument_type": "COMMON_STOCK",
