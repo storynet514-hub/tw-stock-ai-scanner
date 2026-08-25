@@ -1348,32 +1348,94 @@ def calculate_chip_analysis(
     chip: Dict[str, Any]
 ) -> Dict[str, Any]:
 
-    mf1 = chip_value(chip, "main_force_1d")
-    mf5 = chip_value(chip, "main_force_5d")
-    mf10 = chip_value(chip, "main_force_10d")
-    mf20 = chip_value(chip, "main_force_20d")
+    # ========================================================
+    # Institutional Schema V9.4.3
+    # ========================================================
+    # 正式來源：
+    # Data/chip.json
+    #
+    # 禁止再使用 legacy main_force_*。
+    # 1D / 5D / 10D / 20D 全部直接對應
+    # institutional_* 正式欄位。
 
-    values = [
+    institutional_1d = safe_float(
+        chip.get("institutional_1d")
+    )
+
+    institutional_5d = safe_float(
+        chip.get("institutional_5d")
+    )
+
+    institutional_10d = safe_float(
+        chip.get("institutional_10d")
+    )
+
+    institutional_20d = safe_float(
+        chip.get("institutional_20d")
+    )
+
+    # ========================================================
+    # Day-Trading Schema V9.4.3
+    # ========================================================
+
+    day_trading_volume = safe_float(
+        chip.get("day_trading_volume")
+    )
+
+    day_trading_rate = safe_float(
+        chip.get("day_trading_rate")
+    )
+
+    # ========================================================
+    # 四週期法人方向
+    # ========================================================
+
+    institutional_values = [
         value
-        for value in (mf1, mf5, mf10, mf20)
+        for value in (
+            institutional_1d,
+            institutional_5d,
+            institutional_10d,
+            institutional_20d,
+        )
         if value is not None
     ]
 
-    positive = sum(value > 0 for value in values)
-    negative = sum(value < 0 for value in values)
+    positive = sum(
+        value > 0
+        for value in institutional_values
+    )
 
-    if not values:
+    negative = sum(
+        value < 0
+        for value in institutional_values
+    )
+
+    if not institutional_values:
         direction = "資料不足"
+
     elif positive >= 3:
         direction = "偏多"
+
     elif negative >= 3:
         direction = "偏空"
+
     else:
         direction = "分歧"
 
+    # ========================================================
+    # 中期方向
+    #
+    # 5D / 10D / 20D
+    # ========================================================
+
     medium_values = [
         value
-        for value in (mf5, mf10, mf20)
+        for value in (
+            institutional_5d,
+            institutional_10d,
+            institutional_20d,
+        )
         if value is not None
     ]
 
@@ -1389,36 +1451,96 @@ def calculate_chip_analysis(
 
     if not medium_values:
         medium_direction = "資料不足"
+
     elif medium_positive >= 2:
         medium_direction = "中期偏多"
+
     elif medium_negative >= 2:
         medium_direction = "中期偏空"
+
     else:
         medium_direction = "中期分歧"
 
-    if mf10 is None:
+    # ========================================================
+    # 10D 方向
+    #
+    # 10D 明確保留。
+    # ========================================================
+
+    if institutional_10d is None:
         ten_day_direction = "資料不足"
-    elif mf10 > 0:
+
+    elif institutional_10d > 0:
         ten_day_direction = "偏多"
-    elif mf10 < 0:
+
+    elif institutional_10d < 0:
         ten_day_direction = "偏空"
+
     else:
         ten_day_direction = "中性"
 
+    # ========================================================
+    # Day Trading 狀態
+    # ========================================================
+
+    day_trading_available = (
+        day_trading_volume is not None
+        or day_trading_rate is not None
+    )
+
+    # ========================================================
+    # 正式輸出 Schema
+    # ========================================================
+
     return {
-        "main_force_1d": mf1,
-        "main_force_5d": mf5,
-        "main_force_10d": mf10,
-        "main_force_20d": mf20,
+
+        # ----------------------------------------------------
+        # Institutional
+        # ----------------------------------------------------
+
+        "institutional_1d": institutional_1d,
+
+        "institutional_5d": institutional_5d,
+
+        "institutional_10d": institutional_10d,
+
+        "institutional_20d": institutional_20d,
+
+        # ----------------------------------------------------
+        # Day Trading
+        # ----------------------------------------------------
+
+        "day_trading_volume": day_trading_volume,
+
+        "day_trading_rate": day_trading_rate,
+
+        "day_trading_available": (
+            day_trading_available
+        ),
+
+        # ----------------------------------------------------
+        # Direction
+        # ----------------------------------------------------
 
         "positive_count": positive,
+
         "negative_count": negative,
 
         "direction": direction,
+
         "medium_direction": medium_direction,
+
         "ten_day_direction": ten_day_direction,
 
+        # ----------------------------------------------------
+        # 10D 明確標記
+        # ----------------------------------------------------
+
         "ten_day_used": True,
+
+        # ----------------------------------------------------
+        # Analysis basis
+        # ----------------------------------------------------
 
         "analysis_basis": [
             "1D",
@@ -1433,7 +1555,6 @@ def calculate_chip_analysis(
             "20D",
         ],
     }
-
 
 # ============================================================
 # 五項核心判定
