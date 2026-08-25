@@ -1,0 +1,41 @@
+name: Verify CHIP Logic
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify-chip-logic:
+    name: verify-chip-logic
+    runs-on: ubuntu-latest
+
+    steps:
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Verify CHIP logic
+        shell: bash
+        run: |
+          set -e
+
+          echo "========================================"
+          echo "CHIP DATA LOGIC VERIFICATION"
+          echo "========================================"
+
+          python Scripts/verify_chip_logic.py
+
+      - name: Upload CHIP logic report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: chip-logic-report
+          path: Data/chip_logic_report.json
+          if-no-files-found: warn
