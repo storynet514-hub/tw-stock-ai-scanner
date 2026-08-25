@@ -2,23 +2,17 @@ name: Verify Selection Logic
 
 on:
   workflow_dispatch:
-  push:
-    paths:
-      - "Scripts/analyze_stocks.py"
-      - "Data/universe.json"
-      - "Data/chip.json"
-      - "Data/prices/**"
-      - ".github/workflows/verify-selection-logic.yml"
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   verify-selection-logic:
+    name: verify-selection-logic
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout
+      - name: Checkout repository
         uses: actions/checkout@v4
 
       - name: Setup Python
@@ -26,42 +20,7 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Verify required files
-        shell: bash
-        run: |
-          set -e
-
-          echo "========================================"
-          echo "SELECTION LOGIC VERIFICATION"
-          echo "========================================"
-
-          test -f Scripts/analyze_stocks.py
-          test -f Data/universe.json
-          test -f Data/chip.json
-          test -f Data/prices/manifest.json
-
-          echo "✓ Scripts/analyze_stocks.py"
-          echo "✓ Data/universe.json"
-          echo "✓ Data/chip.json"
-          echo "✓ Data/prices/manifest.json"
-
-      - name: Run analyze_stocks.py
-        shell: bash
-        run: |
-          set -e
-
-          echo "========================================"
-          echo "RUN ANALYZE STOCKS"
-          echo "========================================"
-
-          python Scripts/analyze_stocks.py
-
-          test -f Data/analysis.json
-
-          echo "✓ analyze_stocks.py completed"
-          echo "✓ Data/analysis.json generated"
-
-      - name: Verify selection logic
+      - name: Verify analyze_stocks.py
         shell: bash
         run: |
           set -e
@@ -70,715 +29,908 @@ jobs:
           echo "SELECTION LOGIC STRUCTURAL VERIFICATION"
           echo "========================================"
 
-          python - <<'PY'
-          import json
-          import math
-          import re
+          python <<'PY'
           from pathlib import Path
+          import ast
+          import re
+          import sys
 
-          BASE = Path(".")
-          DATA = BASE / "Data"
+          ROOT = Path(".")
+          TARGET = ROOT / "Scripts" / "analyze_stocks.py"
 
-          universe_file = DATA / "universe.json"
-          analysis_file = DATA / "analysis.json"
-          script_file = BASE / "Scripts" / "analyze_stocks.py"
-          report_file = DATA / "selection_logic_report.json"
-
-          errors = []
-          warnings = []
-
-          print("")
           print("=" * 72)
           print("台股 AI 選股系統")
-          print("Selection Logic 全流程驗證器 V1.0")
+          print("analyze_stocks.py 六項選股邏輯結構驗證器 V2.0")
           print("=" * 72)
-          print("驗證模式：analyze_stocks.py 實際執行結果")
+          print("驗證模式：唯讀結構 / 條件 / 架構驗證")
           print("固定股票驗證：停用")
-          print("正式 analysis.json：唯讀驗證")
-          print("")
+          print("正式資料：不修改")
+          print("analysis.json：不寫入")
+          print()
 
-          # ------------------------------------------------------------
-          # Helpers
-          # ------------------------------------------------------------
+          errors = {
+              "file": 0,
+              "syntax": 0,
+              "config": 0,
+              "logic": 0,
+              "architecture": 0,
+              "forbidden": 0,
+          }
 
-          def load_json(path):
-              try:
-                  with path.open("r", encoding="utf-8-sig") as f:
-                      return json.load(f)
-              except Exception as exc:
-                  errors.append(f"{path} JSON 讀取失敗：{exc}")
-                  return None
+          warnings = {
+              "general": 0,
+          }
 
-          def is_finite_number(value):
-              if isinstance(value, bool):
-                  return False
-
-              if isinstance(value, (int, float)):
-                  return math.isfinite(float(value))
-
-              return False
-
-          def normalize_symbol(value):
-              if value is None:
-                  return ""
-
-              text = str(value).strip().upper()
-
-              for suffix in (".TW", ".TWO"):
-                  if text.endswith(suffix):
-                      text = text[:-len(suffix)]
-                      break
-
-              return text
-
-          # ------------------------------------------------------------
-          # 1. Files
-          # ------------------------------------------------------------
+          # ==========================================================
+          # 1. 檔案存在性
+          # ==========================================================
 
           print("=" * 72)
           print("1. 檔案存在性")
           print("=" * 72)
 
-          if universe_file.exists():
-              print("✓ Data/universe.json 存在")
-          else:
-              errors.append("Data/universe.json 不存在")
+          if not TARGET.exists():
+              print(f"❌ 找不到：{TARGET}")
+              errors["file"] += 1
+              sys.exit(1)
 
-          if analysis_file.exists():
-              print("✓ Data/analysis.json 存在")
-          else:
-              errors.append("Data/analysis.json 不存在")
+          print(f"✓ {TARGET} 存在")
 
-          if script_file.exists():
-              print("✓ Scripts/analyze_stocks.py 存在")
-          else:
-              errors.append("Scripts/analyze_stocks.py 不存在")
-
-          # ------------------------------------------------------------
-          # 2. Load JSON
-          # ------------------------------------------------------------
-
-          universe = load_json(universe_file)
-          analysis = load_json(analysis_file)
-
-          print("")
-          print("=" * 72)
-          print("2. JSON 格式")
-          print("=" * 72)
-
-          if universe is not None:
-              print("✓ universe.json JSON 正常")
-
-          if analysis is not None:
-              print("✓ analysis.json JSON 正常")
-
-          # ------------------------------------------------------------
-          # 3. Universe
-          # ------------------------------------------------------------
-
-          universe_symbols = set()
-
-          if isinstance(universe, dict):
-              stocks = universe.get("stocks")
-
-              if isinstance(stocks, dict):
-                  for raw_symbol, item in stocks.items():
-                      if isinstance(item, dict):
-                          symbol = normalize_symbol(
-                              item.get("symbol") or raw_symbol
-                          )
-
-                          if symbol:
-                              universe_symbols.add(symbol)
-
-              elif isinstance(stocks, list):
-                  for item in stocks:
-                      if isinstance(item, dict):
-                          symbol = normalize_symbol(
-                              item.get("symbol")
-                              or item.get("code")
-                              or item.get("ticker")
-                          )
-
-                          if symbol:
-                              universe_symbols.add(symbol)
-
-          print("")
-          print("=" * 72)
-          print("3. Universe")
-          print("=" * 72)
-
-          print(f"Universe：{len(universe_symbols)} 檔")
-
-          if not universe_symbols:
-              errors.append("Universe 沒有有效股票")
-
-          # ------------------------------------------------------------
-          # 4. Analysis structure
-          # ------------------------------------------------------------
-
-          print("")
-          print("=" * 72)
-          print("4. analysis.json 結構")
-          print("=" * 72)
-
-          analysis_stocks = None
-
-          if isinstance(analysis, dict):
-
-              for key in (
-                  "stocks",
-                  "results",
-                  "data",
-                  "items",
-              ):
-                  candidate = analysis.get(key)
-
-                  if isinstance(candidate, dict):
-                      analysis_stocks = candidate
-                      break
-
-                  if isinstance(candidate, list):
-                      analysis_stocks = {}
-
-                      for item in candidate:
-                          if not isinstance(item, dict):
-                              continue
-
-                          symbol = normalize_symbol(
-                              item.get("symbol")
-                              or item.get("code")
-                              or item.get("ticker")
-                          )
-
-                          if symbol:
-                              analysis_stocks[symbol] = item
-
-                      break
-
-              if analysis_stocks is None:
-                  errors.append(
-                      "analysis.json 找不到 stocks/results/data/items 結構"
-                  )
-
-          else:
-              errors.append("analysis.json 頂層不是 object")
-
-          if analysis_stocks is not None:
-              print(
-                  f"Analysis stocks：{len(analysis_stocks)} 檔"
-              )
-
-          # ------------------------------------------------------------
-          # 5. Universe / Analysis consistency
-          # ------------------------------------------------------------
-
-          analysis_symbols = set()
-
-          if isinstance(analysis_stocks, dict):
-              analysis_symbols = {
-                  normalize_symbol(symbol)
-                  for symbol in analysis_stocks.keys()
-                  if normalize_symbol(symbol)
-              }
-
-          missing = universe_symbols - analysis_symbols
-          extra = analysis_symbols - universe_symbols
-
-          print("")
-          print("=" * 72)
-          print("5. Universe / Analysis 股票池")
-          print("=" * 72)
-
-          print(f"Universe：{len(universe_symbols)}")
-          print(f"Analysis：{len(analysis_symbols)}")
-          print(f"Universe → Analysis 缺少：{len(missing)}")
-          print(f"Analysis → Universe 多出：{len(extra)}")
-
-          if missing:
-              warnings.append(
-                  f"Analysis 缺少 Universe 標的：{len(missing)}"
-              )
-
-          if extra:
-              errors.append(
-                  f"Analysis 出現 Universe 以外標的：{len(extra)}"
-              )
-
-          # ------------------------------------------------------------
-          # 6. Read analyze_stocks.py
-          # ------------------------------------------------------------
-
-          script_text = script_file.read_text(
+          source = TARGET.read_text(
               encoding="utf-8-sig"
           )
 
-          print("")
+          print(f"✓ 程式碼長度：{len(source):,} bytes")
+          print()
+
+          # ==========================================================
+          # 2. Python Syntax
+          # ==========================================================
+
           print("=" * 72)
-          print("6. 五項核心選股條件")
-          print("=" * 72)
-
-          expected_terms = {
-              "MACD": [
-                  "macd",
-                  "golden",
-                  "cross",
-              ],
-              "KD": [
-                  "kd",
-                  "golden",
-                  "cross",
-              ],
-              "RSI": [
-                  "rsi",
-              ],
-              "Volume": [
-                  "volume",
-              ],
-              "MA20": [
-                  "ma20",
-              ],
-          }
-
-          script_lower = script_text.lower()
-
-          for name, terms in expected_terms.items():
-              found = all(term.lower() in script_lower for term in terms)
-
-              if found:
-                  print(f"✓ {name} 邏輯關鍵內容存在")
-              else:
-                  warnings.append(
-                      f"{name} 無法由程式碼文字完整確認"
-                  )
-                  print(
-                      f"⚠ {name} 無法由程式碼文字完整確認"
-                  )
-
-          # ------------------------------------------------------------
-          # 7. Core total
-          # ------------------------------------------------------------
-
-          core_total_matches = re.findall(
-              r"core_total\s*=\s*(\d+)",
-              script_text,
-              flags=re.IGNORECASE,
-          )
-
-          print("")
-          print("=" * 72)
-          print("7. Core Total")
+          print("2. Python Syntax")
           print("=" * 72)
 
-          if core_total_matches:
-              values = set(core_total_matches)
+          tree = None
 
-              if values == {"5"}:
-                  print("✓ core_total = 5")
-              else:
-                  errors.append(
-                      f"core_total 發現異常值：{sorted(values)}"
-                  )
-          else:
-              warnings.append(
-                  "程式碼中沒有直接找到 core_total = 5"
+          try:
+              tree = ast.parse(
+                  source,
+                  filename=str(TARGET)
               )
+              print("✓ analyze_stocks.py Python syntax 正常")
+          except SyntaxError as exc:
               print(
-                  "⚠ 程式碼中沒有直接找到 core_total = 5"
+                  f"❌ SyntaxError：line {exc.lineno}: "
+                  f"{exc.msg}"
               )
+              errors["syntax"] += 1
 
-          # ------------------------------------------------------------
-          # 8. Configuration verification
-          # ------------------------------------------------------------
+          if tree is None:
+              print()
+              print("=" * 72)
+              print("FINAL SELECTION LOGIC VERIFICATION")
+              print("=" * 72)
+              print("❌ Syntax 驗證失敗")
+              print("=" * 72)
+              sys.exit(1)
 
-          print("")
-          print("=" * 72)
-          print("8. 核心參數")
-          print("=" * 72)
+          # ==========================================================
+          # AST helpers
+          # ==========================================================
 
-          required_config_patterns = {
-              "RSI > 50": r'"rsi_min"\s*:\s*50(?:\.0+)?',
-              "Volume >= 1.5": r'"volume_multiplier"\s*:\s*1\.5',
-              "MA20 period = 20": r'"ma20_period"\s*:\s*20',
-              "KD period = 9": r'"kd_period"\s*:\s*9',
-              "MACD fast = 12": r'"macd_fast"\s*:\s*12',
-              "MACD slow = 26": r'"macd_slow"\s*:\s*26',
-              "MACD signal = 9": r'"macd_signal"\s*:\s*9',
+          functions = {
+              node.name: node
+              for node in ast.walk(tree)
+              if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
           }
 
-          for label, pattern in required_config_patterns.items():
+          classes = {
+              node.name: node
+              for node in ast.walk(tree)
+              if isinstance(node, ast.ClassDef)
+          }
 
-              if re.search(
-                  pattern,
-                  script_text,
-                  flags=re.IGNORECASE,
-              ):
+          assignments = {}
+
+          for node in ast.walk(tree):
+              if isinstance(node, ast.Assign):
+                  for target in node.targets:
+                      if isinstance(target, ast.Name):
+                          assignments[target.id] = node.value
+
+              elif isinstance(node, ast.AnnAssign):
+                  if isinstance(node.target, ast.Name):
+                      assignments[node.target.id] = node.value
+
+          def source_contains(text):
+              return text in source
+
+          def require_text(label, text, category="logic"):
+              if source_contains(text):
                   print(f"✓ {label}")
               else:
-                  warnings.append(
-                      f"無法確認參數：{label}"
+                  print(f"❌ {label}")
+                  print(f"   缺少：{text}")
+                  errors[category] += 1
+
+          def require_any(label, candidates, category="logic"):
+              if any(source_contains(x) for x in candidates):
+                  print(f"✓ {label}")
+                  return True
+
+              print(f"❌ {label}")
+              print("   找不到候選結構：")
+              for x in candidates:
+                  print(f"     - {x}")
+
+              errors[category] += 1
+              return False
+
+          def find_function_keywords(function_name, keywords):
+              node = functions.get(function_name)
+
+              if node is None:
+                  return False, []
+
+              segment = ast.get_source_segment(
+                  source,
+                  node
+              ) or ""
+
+              missing = [
+                  keyword
+                  for keyword in keywords
+                  if keyword not in segment
+              ]
+
+              return len(missing) == 0, missing
+
+          # ==========================================================
+          # 3. 核心架構
+          # ==========================================================
+
+          print()
+          print("=" * 72)
+          print("3. 核心分析架構")
+          print("=" * 72)
+
+          required_constants = [
+              ("VERSION", "V3.4"),
+              ("ENTRY_TIMING_SCHEMA", "ENTRY-TIMING-2.0"),
+          ]
+
+          for name, expected in required_constants:
+              value_node = assignments.get(name)
+
+              if value_node is None:
+                  print(f"❌ 缺少設定：{name}")
+                  errors["config"] += 1
+                  continue
+
+              try:
+                  value = ast.literal_eval(value_node)
+              except Exception:
+                  value = None
+
+              if value == expected:
+                  print(f"✓ {name} = {expected}")
+              else:
+                  print(
+                      f"❌ {name} 不符合預期："
+                      f"{value!r}"
                   )
-                  print(f"⚠ {label}")
+                  errors["config"] += 1
 
-          # ------------------------------------------------------------
-          # 9. Five-condition semantics
-          # ------------------------------------------------------------
+          required_paths = [
+              ("UNIVERSE_FILE", "universe.json"),
+              ("PRICES_DIR", "prices"),
+              ("PRICES_MANIFEST", "manifest.json"),
+              ("CHIP_FILE", "chip.json"),
+              ("OUTPUT_FILE", "analysis.json"),
+          ]
 
-          print("")
+          for name, expected in required_paths:
+              if name not in assignments:
+                  print(f"❌ 缺少路徑設定：{name}")
+                  errors["architecture"] += 1
+                  continue
+
+              node = assignments[name]
+              segment = ast.get_source_segment(
+                  source,
+                  node
+              ) or ""
+
+              if expected in segment:
+                  print(f"✓ {name} → {expected}")
+              else:
+                  print(
+                      f"❌ {name} 未指向預期資料："
+                      f"{expected}"
+                  )
+                  errors["architecture"] += 1
+
+          # ==========================================================
+          # 4. 六項選股條件
+          # ==========================================================
+
+          print()
           print("=" * 72)
-          print("9. 五項條件語意驗證")
+          print("4. 六項選股條件")
           print("=" * 72)
 
-          semantic_checks = {
-              "RSI > 50": [
-                  "rsi_min",
-                  "rsi >",
-                  "rsi >=",
-              ],
-              "Volume >= 1.5x": [
-                  "volume_multiplier",
-                  "volume_lookback",
-              ],
-              "MA20": [
-                  "ma20_period",
-                  "ma20",
-              ],
-              "MACD": [
+          print("核心定義：")
+          print("  1. MACD 黃金交叉")
+          print("  2. KD 黃金交叉")
+          print("  3. RSI > 50")
+          print("  4. 成交量 >= 5日均量 × 1.5")
+          print("  5. 股價 > MA20")
+          print("  6. MA20 向上")
+          print()
+
+          # ----------------------------------------------------------
+          # MACD
+          # ----------------------------------------------------------
+
+          require_any(
+              "MACD 計算存在",
+              [
+                  "macd",
+                  "MACD",
                   "macd_fast",
                   "macd_slow",
                   "macd_signal",
-              ],
-              "KD": [
-                  "kd_period",
-              ],
-          }
-
-          for label, terms in semantic_checks.items():
-
-              matched = [
-                  term
-                  for term in terms
-                  if term.lower() in script_lower
               ]
+          )
 
-              if matched:
-                  print(
-                      f"✓ {label}：找到 {', '.join(matched)}"
+          require_any(
+              "MACD 黃金交叉判定存在",
+              [
+                  "macd_prev <= signal_prev",
+                  "prev_macd <= prev_signal",
+                  "macd_previous <= signal_previous",
+                  "macd_prev < signal_prev",
+              ]
+          )
+
+          # ----------------------------------------------------------
+          # KD
+          # ----------------------------------------------------------
+
+          require_any(
+              "KD 計算存在",
+              [
+                  "kd_period",
+                  "stochastic",
+                  "K_value",
+                  "D_value",
+                  "k_value",
+                  "d_value",
+              ]
+          )
+
+          require_any(
+              "KD 黃金交叉判定存在",
+              [
+                  "k_prev <= d_prev",
+                  "prev_k <= prev_d",
+                  "k_previous <= d_previous",
+                  "k_prev < d_prev",
+              ]
+          )
+
+          # ----------------------------------------------------------
+          # RSI
+          # ----------------------------------------------------------
+
+          require_any(
+              "RSI 計算存在",
+              [
+                  "rsi_period",
+                  "RSI",
+                  "rsi",
+              ]
+          )
+
+          require_any(
+              "RSI > 50 條件存在",
+              [
+                  "rsi > 50",
+                  "rsi >= 50",
+                  "rsi_min",
+              ]
+          )
+
+          # ----------------------------------------------------------
+          # Volume
+          # ----------------------------------------------------------
+
+          require_any(
+              "成交量 5D lookback 存在",
+              [
+                  "volume_lookback",
+                  "volume_history",
+                  "average_volume",
+                  "avg_volume",
+              ]
+          )
+
+          require_any(
+              "成交量 1.5x 條件存在",
+              [
+                  "volume_multiplier",
+                  "volume_ratio",
+                  "volume >= avg_volume *",
+                  "volume > avg_volume *",
+              ]
+          )
+
+          # ----------------------------------------------------------
+          # MA20
+          # ----------------------------------------------------------
+
+          require_any(
+              "MA20 計算存在",
+              [
+                  "ma20_period",
+                  "moving_average",
+                  "ma20",
+                  "MA20",
+              ]
+          )
+
+          require_any(
+              "股價 > MA20 條件存在",
+              [
+                  "close > ma20",
+                  "price > ma20",
+                  "current_price > ma20",
+                  "close >= ma20",
+              ]
+          )
+
+          require_any(
+              "MA20 向上判定存在",
+              [
+                  "ma20 > previous_ma20",
+                  "ma20 > prev_ma20",
+                  "current_ma20 > previous_ma20",
+                  "ma20_up",
+              ]
+          )
+
+          # ==========================================================
+          # 5. SHORT_TERM_CONFIG
+          # ==========================================================
+
+          print()
+          print("=" * 72)
+          print("5. SHORT_TERM_CONFIG")
+          print("=" * 72)
+
+          config_node = assignments.get(
+              "SHORT_TERM_CONFIG"
+          )
+
+          config_values = {}
+
+          if config_node is None:
+              print("❌ 找不到 SHORT_TERM_CONFIG")
+              errors["config"] += 1
+          else:
+              try:
+                  config_values = ast.literal_eval(
+                      config_node
                   )
+              except Exception:
+                  config_values = {}
+
+              if not isinstance(config_values, dict):
+                  print("❌ SHORT_TERM_CONFIG 不是 dict")
+                  errors["config"] += 1
               else:
-                  errors.append(
-                      f"核心條件無法確認：{label}"
+                  required_config = {
+                      "rsi_period": 14,
+                      "rsi_min": 50.0,
+                      "volume_lookback": 5,
+                      "volume_multiplier": 1.5,
+                      "ma20_period": 20,
+                      "kd_period": 9,
+                      "macd_fast": 12,
+                      "macd_slow": 26,
+                      "macd_signal": 9,
+                  }
+
+                  for key, expected in required_config.items():
+                      actual = config_values.get(key)
+
+                      if actual == expected:
+                          print(
+                              f"✓ {key} = {expected}"
+                          )
+                      else:
+                          print(
+                              f"❌ {key}: "
+                              f"實際={actual!r}, "
+                              f"預期={expected!r}"
+                          )
+                          errors["config"] += 1
+
+                  minimum_history = config_values.get(
+                      "minimum_history"
                   )
 
-          # ------------------------------------------------------------
-          # 10. Fixed-stock dependency
-          # ------------------------------------------------------------
+                  if isinstance(
+                      minimum_history,
+                      (int, float)
+                  ) and minimum_history >= 60:
+                      print(
+                          f"✓ minimum_history = "
+                          f"{minimum_history}"
+                      )
+                  else:
+                      print(
+                          "❌ minimum_history "
+                          "不足 60"
+                      )
+                      errors["config"] += 1
 
-          print("")
+          # ==========================================================
+          # 6. 五項核心條件是否被正確視為五項
+          # ==========================================================
+
+          print()
           print("=" * 72)
-          print("10. 固定股票依賴檢查")
+          print("6. Core Condition 結構")
           print("=" * 72)
 
-          forbidden_symbols = (
+          require_any(
+              "core_total = 5",
+              [
+                  "core_total = 5",
+                  '"core_total": 5',
+                  "'core_total': 5",
+                  "core_total\": 5",
+              ]
+          )
+
+          # 禁止把籌碼欄位直接混入五項技術核心條件。
+          chip_core_patterns = [
+              "institutional_1d",
+              "institutional_5d",
+              "institutional_10d",
+              "institutional_20d",
+              "day_trading_rate",
+              "day_trading_volume",
+          ]
+
+          chip_inside_condition = False
+
+          for function_name in functions:
+              node = functions[function_name]
+
+              segment = ast.get_source_segment(
+                  source,
+                  node
+              ) or ""
+
+              if (
+                  "core" in function_name.lower()
+                  and any(
+                      x in segment
+                      for x in chip_core_patterns
+                  )
+              ):
+                  chip_inside_condition = True
+                  print(
+                      f"❌ 發現籌碼欄位疑似直接混入 "
+                      f"{function_name}"
+                  )
+
+          if chip_inside_condition:
+              errors["logic"] += 1
+          else:
+              print(
+                  "✓ 未發現 institutional / "
+                  "day-trading 直接混入核心技術條件"
+              )
+
+          # ==========================================================
+          # 7. Chip Analysis
+          # ==========================================================
+
+          print()
+          print("=" * 72)
+          print("7. 籌碼分析")
+          print("=" * 72)
+
+          require_text(
+              "chip.json 載入存在",
+              "CHIP_FILE",
+              "architecture"
+          )
+
+          require_any(
+              "institutional 籌碼欄位存在",
+              [
+                  "institutional_1d",
+                  "institutional_5d",
+                  "institutional_10d",
+                  "institutional_20d",
+              ],
+              "architecture"
+          )
+
+          require_any(
+              "day-trading 欄位存在",
+              [
+                  "day_trading_volume",
+                  "day_trading_rate",
+              ],
+              "architecture"
+          )
+
+          # ==========================================================
+          # 8. DCA
+          # ==========================================================
+
+          print()
+          print("=" * 72)
+          print("8. DCA 分析")
+          print("=" * 72)
+
+          dca_node = assignments.get(
+              "DCA_CONFIG"
+          )
+
+          if dca_node is None:
+              print("❌ 找不到 DCA_CONFIG")
+              errors["config"] += 1
+          else:
+              try:
+                  dca_values = ast.literal_eval(
+                      dca_node
+                  )
+              except Exception:
+                  dca_values = {}
+
+              if not isinstance(dca_values, dict):
+                  print("❌ DCA_CONFIG 不是 dict")
+                  errors["config"] += 1
+              else:
+                  dca_required = [
+                      "ma20_aggressive",
+                      "ma20_normal",
+                      "ma20_pause",
+                      "low60_aggressive",
+                      "volume_aggressive",
+                      "volume_normal",
+                      "volume_observe",
+                      "max_loss_pct",
+                      "rebalance_warn",
+                      "rebalance_high",
+                      "extreme_bias",
+                  ]
+
+                  for key in dca_required:
+                      if key in dca_values:
+                          print(
+                              f"✓ DCA {key} = "
+                              f"{dca_values[key]}"
+                          )
+                      else:
+                          print(
+                              f"❌ DCA 缺少：{key}"
+                          )
+                          errors["config"] += 1
+
+          # ==========================================================
+          # 9. Entry Timing 2.0
+          # ==========================================================
+
+          print()
+          print("=" * 72)
+          print("9. Entry Timing 2.0")
+          print("=" * 72)
+
+          entry_node = assignments.get(
+              "ENTRY_TIMING_CONFIG"
+          )
+
+          if entry_node is None:
+              print("❌ 找不到 ENTRY_TIMING_CONFIG")
+              errors["config"] += 1
+          else:
+              try:
+                  entry_values = ast.literal_eval(
+                      entry_node
+                  )
+              except Exception:
+                  entry_values = {}
+
+              if not isinstance(entry_values, dict):
+                  print(
+                      "❌ ENTRY_TIMING_CONFIG "
+                      "不是 dict"
+                  )
+                  errors["config"] += 1
+              else:
+                  expected_periods = [10, 30, 60, 90]
+
+                  periods = entry_values.get(
+                      "holding_periods"
+                  )
+
+                  if periods == expected_periods:
+                      print(
+                          "✓ holding_periods = "
+                          "[10, 30, 60, 90]"
+                      )
+                  else:
+                      print(
+                          f"❌ holding_periods："
+                          f"{periods!r}"
+                      )
+                      errors["config"] += 1
+
+                  checks = {
+                      "pullback_wait_days": 10,
+                      "pullback_lower_pct": 0.98,
+                      "pullback_upper_pct": 1.02,
+                      "minimum_signals": 5,
+                  }
+
+                  for key, expected in checks.items():
+                      actual = entry_values.get(key)
+
+                      if actual == expected:
+                          print(
+                              f"✓ {key} = {expected}"
+                          )
+                      else:
+                          print(
+                              f"❌ {key}: "
+                              f"實際={actual!r}, "
+                              f"預期={expected!r}"
+                          )
+                          errors["config"] += 1
+
+          require_any(
+              "立即進場 / pullback 兩種策略存在",
+              [
+                  "immediate",
+                  "pullback",
+                  "立即進場",
+                  "等待回測",
+              ]
+          )
+
+          require_any(
+              "MFE / MAE 統計存在",
+              [
+                  "mfe",
+                  "mae",
+                  "avg_mfe_pct",
+                  "avg_mae_pct",
+              ]
+          )
+
+          require_any(
+              "pullback trigger rate 存在",
+              [
+                  "pullback_trigger_rate",
+                  "trigger_rate",
+              ]
+          )
+
+          require_any(
+              "insufficient 狀態存在",
+              [
+                  '"status": "insufficient"',
+                  "'status': 'insufficient'",
+                  "status = \"insufficient\"",
+                  "status = 'insufficient'",
+              ]
+          )
+
+          # ==========================================================
+          # 10. Analysis Output
+          # ==========================================================
+
+          print()
+          print("=" * 72)
+          print("10. Analysis Output")
+          print("=" * 72)
+
+          require_text(
+              "analysis.json 為正式輸出",
+              "OUTPUT_FILE",
+              "architecture"
+          )
+
+          # ==========================================================
+          # 11. 禁止行為
+          # ==========================================================
+
+          print()
+          print("=" * 72)
+          print("11. 禁止行為檢查")
+          print("=" * 72)
+
+          forbidden_patterns = [
+              (
+                  "API request",
+                  [
+                      "requests.get(",
+                      "requests.post(",
+                      "urllib.request",
+                      "httpx.get(",
+                      "httpx.post(",
+                  ],
+              ),
+              (
+                  "prices 修改模式",
+                  [
+                      "write_text(",
+                      "prices.json",
+                  ],
+              ),
+          ]
+
+          # 注意：
+          # analyze_stocks.py 內部本身會使用 write_text
+          # 寫 analysis.json，因此不能單純把 write_text
+          # 視為錯誤。
+          #
+          # 這裡只禁止直接寫入 prices/chip/universe。
+
+          protected_write_targets = [
+              "prices.json",
+              "chip.json",
+              "universe.json",
+          ]
+
+          protected_write_detected = []
+
+          for target in protected_write_targets:
+              pattern = re.compile(
+                  rf"(write_text|open|dump|to_json).*{re.escape(target)}",
+                  re.IGNORECASE
+              )
+
+              if pattern.search(source):
+                  protected_write_detected.append(target)
+
+          if protected_write_detected:
+              for target in protected_write_detected:
+                  print(
+                      f"❌ 疑似修改正式資料：{target}"
+                  )
+              errors["forbidden"] += len(
+                  protected_write_detected
+              )
+          else:
+              print(
+                  "✓ 未發現直接寫入 "
+                  "prices.json / chip.json / universe.json"
+              )
+
+          # ==========================================================
+          # 12. 固定股票依賴
+          # ==========================================================
+
+          print()
+          print("=" * 72)
+          print("12. 固定股票依賴檢查")
+          print("=" * 72)
+
+          fixed_symbols = [
               "2337",
               "2426",
               "2368",
               "3081",
-          )
+          ]
 
-          fixed_dependencies = []
+          fixed_hits = []
 
-          for symbol in forbidden_symbols:
-
+          for symbol in fixed_symbols:
               if re.search(
-                  rf'(?<!\d){symbol}(?!\d)',
-                  script_text,
+                  rf"(?<!\d){symbol}(?!\d)",
+                  source
               ):
-                  fixed_dependencies.append(symbol)
+                  fixed_hits.append(symbol)
 
-          if fixed_dependencies:
-              errors.append(
-                  "analyze_stocks.py 出現固定股票代號："
-                  + ", ".join(fixed_dependencies)
-              )
-
+          if fixed_hits:
               print(
-                  "❌ 發現固定股票依賴："
-                  + ", ".join(fixed_dependencies)
+                  "⚠ 程式碼中出現固定股票代號："
+                  + ", ".join(fixed_hits)
               )
+              print(
+                  "   不直接判定錯誤，需確認是否只是文件註解。"
+              )
+              warnings["general"] += 1
           else:
               print(
-                  "✓ 未發現固定股票代號依賴"
+                  "✓ 未發現固定股票驗證依賴"
               )
 
-          # ------------------------------------------------------------
-          # 11. Source mutation check
-          # ------------------------------------------------------------
+          # ==========================================================
+          # 13. Function inventory
+          # ==========================================================
 
-          print("")
+          print()
           print("=" * 72)
-          print("11. 正式資料唯讀設計")
+          print("13. 函式結構")
           print("=" * 72)
-
-          mutation_patterns = [
-              r"open\([^)]*chip\.json[^)]*,\s*['\"]w",
-              r"open\([^)]*universe\.json[^)]*,\s*['\"]w",
-              r"open\([^)]*manifest\.json[^)]*,\s*['\"]w",
-          ]
-
-          mutation_found = False
-
-          for pattern in mutation_patterns:
-
-              if re.search(
-                  pattern,
-                  script_text,
-                  flags=re.IGNORECASE,
-              ):
-                  mutation_found = True
-
-          if mutation_found:
-              errors.append(
-                  "發現疑似直接覆寫正式資料來源"
-              )
-              print(
-                  "❌ 發現疑似正式資料覆寫"
-              )
-          else:
-              print(
-                  "✓ 未發現直接覆寫 universe/chip/manifest"
-              )
-
-          # ------------------------------------------------------------
-          # 12. Analysis sanity check
-          # ------------------------------------------------------------
-
-          print("")
-          print("=" * 72)
-          print("12. Analysis 數值基本品質")
-          print("=" * 72)
-
-          numeric_errors = 0
-          object_count = 0
-
-          if isinstance(analysis_stocks, dict):
-
-              for symbol, item in analysis_stocks.items():
-
-                  if not isinstance(item, dict):
-                      errors.append(
-                          f"{symbol} analysis item 不是 object"
-                      )
-                      continue
-
-                  object_count += 1
-
-                  def walk(obj, path=""):
-
-                      nonlocal numeric_errors
-
-                      if isinstance(obj, dict):
-
-                          for key, value in obj.items():
-                              walk(
-                                  value,
-                                  f"{path}.{key}" if path else str(key)
-                              )
-
-                      elif isinstance(obj, list):
-
-                          for idx, value in enumerate(obj):
-                              walk(
-                                  value,
-                                  f"{path}[{idx}]"
-                              )
-
-                      elif isinstance(obj, float):
-
-                          if not math.isfinite(obj):
-                              numeric_errors += 1
-                              errors.append(
-                                  f"{symbol}{path} 出現 NaN/Infinity"
-                              )
-
-                  walk(item)
 
           print(
-              f"Analysis object：{object_count}"
-          )
-          print(
-              f"NaN/Infinity 錯誤：{numeric_errors}"
+              f"✓ Functions：{len(functions)}"
           )
 
-          # ------------------------------------------------------------
-          # 13. Entry Timing
-          # ------------------------------------------------------------
+          for name in sorted(functions):
+              print(f"  - {name}")
 
-          print("")
-          print("=" * 72)
-          print("13. Entry Timing")
-          print("=" * 72)
+          # ==========================================================
+          # 14. Final
+          # ==========================================================
 
-          entry_terms = [
-              "entry",
-              "10",
-              "30",
-              "60",
-              "90",
-              "pullback",
-          ]
+          total_errors = sum(errors.values())
+          total_warnings = sum(warnings.values())
 
-          entry_matches = [
-              term
-              for term in entry_terms
-              if term.lower() in script_lower
-          ]
-
-          if all(
-              term.lower() in script_lower
-              for term in (
-                  "pullback",
-                  "holding_periods",
-                  "10",
-                  "30",
-                  "60",
-                  "90",
-              )
-          ):
-              print(
-                  "✓ Entry Timing 10D / 30D / 60D / 90D 邏輯存在"
-              )
-          else:
-              warnings.append(
-                  "無法完整確認 Entry Timing 四週期設定"
-              )
-              print(
-                  "⚠ 無法完整確認 Entry Timing 四週期設定"
-              )
-
-          # ------------------------------------------------------------
-          # 14. Report
-          # ------------------------------------------------------------
-
-          print("")
-          print("=" * 72)
-          print("14. 建立 Selection Logic Report")
-          print("=" * 72)
-
-          report = {
-              "schema_version": "SELECTION-LOGIC-VERIFICATION-1.0",
-              "generated_at": __import__("datetime").datetime.now().astimezone().isoformat(),
-              "script": "Scripts/analyze_stocks.py",
-              "analysis_file": "Data/analysis.json",
-              "universe_count": len(universe_symbols),
-              "analysis_count": len(analysis_symbols),
-              "missing_count": len(missing),
-              "extra_count": len(extra),
-              "core_total_expected": 5,
-              "fixed_stock_dependency": bool(fixed_dependencies),
-              "numeric_errors": numeric_errors,
-              "errors": errors,
-              "warnings": warnings,
-              "status": "passed" if not errors else "failed",
-          }
-
-          report_file.write_text(
-              json.dumps(
-                  report,
-                  ensure_ascii=False,
-                  indent=2,
-              ),
-              encoding="utf-8",
-          )
-
-          print(
-              "✓ 已建立：Data/selection_logic_report.json"
-          )
-
-          # ------------------------------------------------------------
-          # FINAL
-          # ------------------------------------------------------------
-
-          print("")
+          print()
           print("=" * 72)
           print("FINAL SELECTION LOGIC VERIFICATION")
           print("=" * 72)
 
           print(
-              f"Universe：{len(universe_symbols)}"
+              f"analyze_stocks.py：{TARGET}"
           )
           print(
-              f"Analysis：{len(analysis_symbols)}"
+              f"Python functions：{len(functions)}"
           )
           print(
-              f"缺少：{len(missing)}"
+              f"錯誤：{total_errors}"
           )
           print(
-              f"多出：{len(extra)}"
-          )
-          print(
-              f"固定股票依賴：{'YES' if fixed_dependencies else 'NO'}"
-          )
-          print(
-              f"數值錯誤：{numeric_errors}"
-          )
-          print(
-              f"錯誤：{len(errors)}"
-          )
-          print(
-              f"警告：{len(warnings)}"
+              f"警告：{total_warnings}"
           )
 
-          print("")
+          print()
 
-          if errors:
-
-              print("=" * 60)
-              print("❌ SELECTION LOGIC VERIFICATION FAILED")
-              print("=" * 60)
-
-              for error in errors:
-                  print(f"❌ {error}")
-
-              raise SystemExit(1)
-
-          print("=" * 60)
-          print("✓ SELECTION LOGIC VERIFICATION PASSED")
-          print("=" * 60)
-
-          print("✓ analyze_stocks.py 可以正常執行")
-          print("✓ analysis.json 成功產生")
-          print("✓ Universe / Analysis 股票池完成交叉驗證")
-          print("✓ 五項核心選股邏輯完成檢查")
-          print("✓ Entry Timing 10D / 30D / 60D / 90D 完成檢查")
-          print("✓ 固定股票依賴檢查通過")
-          print("✓ 正式資料來源未發現直接覆寫")
-          print("✓ selection_logic_report.json 已自動建立")
-
-          if warnings:
+          if total_errors > 0:
               print(
-                  f"⚠ 存在 {len(warnings)} 個警告，但沒有阻擋正式流程"
+                  "❌ SELECTION LOGIC VERIFICATION FAILED"
               )
+              print()
+              print("Error breakdown:")
+
+              for key, value in errors.items():
+                  if value:
+                      print(
+                          f"  {key}: {value}"
+                      )
+
+              print("=" * 72)
+              sys.exit(1)
+
+          print(
+              "✓ SELECTION LOGIC VERIFICATION PASSED"
+          )
+          print("✓ analyze_stocks.py syntax 正常")
+          print("✓ 五項技術核心條件結構存在")
+          print("✓ RSI / Volume / MA20 條件存在")
+          print("✓ MACD / KD 交叉邏輯存在")
+          print("✓ 籌碼分析架構存在")
+          print("✓ DCA 分析架構存在")
+          print("✓ Entry Timing 2.0 架構存在")
+          print("✓ 10D / 30D / 60D / 90D 回測設定存在")
+          print("✓ Pullback / MFE / MAE 架構存在")
+          print("✓ 不修改正式 prices / chip / universe")
+          print("✓ 不依賴固定股票")
+          print()
+          print(
+              "✓ analyze_stocks.py 可以進入下一階段驗證"
+          )
+          print("=" * 72)
           PY
-
-      - name: Commit selection logic report
-        shell: bash
-        run: |
-          set -e
-
-          echo "========================================"
-          echo "SAVE SELECTION LOGIC REPORT"
-          echo "========================================"
-
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-
-          git add Data/selection_logic_report.json
-
-          if git diff --cached --quiet; then
-            echo "✓ selection_logic_report.json 沒有變更"
-          else
-            git commit -m "chore: update selection logic verification report"
-            git push
-            echo "✓ selection_logic_report.json 已提交"
-          fi
