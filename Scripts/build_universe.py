@@ -156,24 +156,11 @@ TPEX_BASE = (
 # CURRENT UNIVERSE SOURCES
 # ============================================================
 
-# TWSE 官方全市場目前日行情
 TWSE_CURRENT_ENDPOINTS = [
     "/exchangeReport/STOCK_DAY_ALL",
 ]
 
 
-# TPEx 官方：
-#
-# tpex_mainboard_daily_close_quotes
-#
-# 這是目前使用的主 Universe 來源。
-#
-# 不再使用：
-#
-# /tpex_mainboard_quotes
-#
-# 因為該 endpoint 在 GitHub Actions 實際執行時
-# 已經出現 HTTP 520。
 TPEX_CURRENT_ENDPOINTS = [
     "/tpex_mainboard_daily_close_quotes",
 ]
@@ -682,8 +669,6 @@ def classify_instrument(
             "OTHER",
         )
 
-    # Default:
-    # 目前交易行情中的普通證券
     return (
         "STOCK",
         "COMMON_STOCK",
@@ -973,13 +958,11 @@ def load_old_universe_names() -> Dict[str, Dict[str, Any]]:
     """
     舊 Universe 僅作名稱 / metadata cache。
 
-    重要：
     舊 Universe 不可以增加新的 symbol。
 
-    也就是：
-        current official candidate
-            ↓
-        才能進 Universe
+    current official candidate
+        ↓
+    才能進 Universe
 
     舊 Universe：
         只能補：
@@ -1254,8 +1237,6 @@ def collect_tpex_current() -> Dict[
                 "TPEX",
             )
 
-            # 這個 endpoint 本身就是 TPEx
-            # 主板資料。
             if market not in {
                 "TPEX",
                 "",
@@ -1330,8 +1311,6 @@ def merge_current_candidates(
 
         if symbol in merged:
 
-            # 同代號跨市場不應直接覆蓋。
-            # 以官方市場來源判定。
             existing_market = merged[
                 symbol
             ].get(
@@ -1437,8 +1416,6 @@ def build_record(
         )
     )
 
-    # 舊 Universe 可以補分類，
-    # 但不能推翻目前官方資料。
     if (
         type_name == "STOCK"
         and instrument_type == "COMMON_STOCK"
@@ -1460,8 +1437,6 @@ def build_record(
 
         if old_type in ALLOWED_TYPES:
 
-            # 僅補充資訊，
-            # 不把 active universe 變成歷史 universe。
             if old_type != "STOCK":
 
                 type_name = old_type
@@ -2518,6 +2493,14 @@ def main() -> int:
             - start
         )
 
+        active_count = sum(
+            1
+            for item in stocks.values()
+            if item.get(
+                "status"
+            ) == ACTIVE_STATUS
+        )
+
         section(
             "BUILD RESULT"
         )
@@ -2543,11 +2526,7 @@ def main() -> int:
 
         log(
             f"✓ Active："
-            f"{sum("
-                "1 "
-                "for item in stocks.values() "
-                "if item.get('status') == 'active'"
-            )}"
+            f"{active_count}"
         )
 
         log(
