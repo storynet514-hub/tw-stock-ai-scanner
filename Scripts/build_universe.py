@@ -2,29 +2,44 @@
 # -*- coding: utf-8 -*-
 
 """
-台股 AI 選股系統 - build_universe.py
+台股 AI 選股系統
+Scripts/build_universe.py
 
 UNIVERSE-REBUILD-V4
 
+============================================================
 核心契約
-------------------------------------------------------------
-1. Data/universe.json 是後續資料流程唯一 Universe 來源
+============================================================
+
+1. Data/universe.json 是唯一 Universe 來源
 2. stocks 必須是 dict
-3. 只建立普通股 STOCK
-4. TWSE / TPEx 使用各自官方來源與解析器
-5. 不依賴單一 API endpoint
-6. 官方 endpoint 非 JSON / 空資料時自動嘗試下一來源
-7. 不探測 CMoney
-8. 不寫死 Universe 數量
-9. 不使用既有 Universe 補造不存在的股票
-10. 不把 ETF / ETN / 權證 / 債券 / TDR 等混入 STOCK
-11. 每一檔必須具備完整核心 schema
-12. status == active
-13. instrument_type == "STOCK"
-14. TWSE / TPEx 官方來源 Gate 必須通過
-15. Universe 採 Atomic Write
-16. 寫入後重新讀取並驗證
-17. 不讓舊 Universe 污染官方核心資料
+3. Universe 只允許普通股
+4. TWSE / TPEX 分開解析
+5. 只使用官方來源
+6. 不使用 CMoney
+7. 不依賴既有 Universe 製造股票
+8. 不固定 Universe 數量
+9. 每一檔必須具有：
+       symbol
+       full_symbol
+       name
+       market
+       type
+       instrument_type
+       status
+10. status 必須為 "active"
+11. type 必須為 "STOCK"
+12. instrument_type 必須為 "COMMON_STOCK"
+13. symbol 必須為四碼數字
+14. full_symbol：
+       TWSE -> XXXX.TW
+       TPEX -> XXXX.TWO
+15. TWSE / TPEX 官方來源都必須成功取得有效普通股
+16. Atomic Write
+17. 寫入後重新讀取驗證
+18. Build 失敗時不得破壞原 Universe
+19. 不使用巢狀 f-string
+20. 所有核心資料重新建立，不讓舊 Universe 覆蓋官方核心欄位
 """
 
 from __future__ import annotations
@@ -54,7 +69,9 @@ VERSION = "UNIVERSE-REBUILD-V4"
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 DATA_DIR = BASE_DIR / "Data"
+
 UNIVERSE_FILE = DATA_DIR / "universe.json"
+TEMP_FILE = DATA_DIR / "universe.json.tmp"
 
 
 # ============================================================
@@ -64,6 +81,7 @@ UNIVERSE_FILE = DATA_DIR / "universe.json"
 TIMEOUT = 40
 RETRIES = 4
 RETRY_SLEEP = 1.5
+
 
 HEADERS = {
     "User-Agent": (
@@ -76,6 +94,7 @@ HEADERS = {
     "Accept": (
         "application/json,"
         "text/plain,"
+        "text/html,"
         "*/*"
     ),
     "Accept-Language": (
@@ -90,54 +109,68 @@ session.headers.update(HEADERS)
 
 
 # ============================================================
-# OFFICIAL SOURCES
+# OFFICIAL TWSE SOURCES
 # ============================================================
 
 TWSE_SOURCES = [
-    (
-        "STOCK_DAY_ALL",
-        "https://openapi.twse.com.tw/v1/"
-        "exchangeReport/STOCK_DAY_ALL",
-        {},
-    ),
-    (
-        "STOCK_DAY_AVG_ALL",
-        "https://openapi.twse.com.tw/v1/"
-        "exchangeReport/STOCK_DAY_AVG_ALL",
-        {},
-    ),
-    (
-        "BWIBBU_d",
-        "https://www.twse.com.tw/rwd/zh/"
-        "afterTrading/BWIBBU_d",
-        {
+    {
+        "name": "STOCK_DAY_ALL",
+        "url": (
+            "https://openapi.twse.com.tw/v1/"
+            "exchangeReport/STOCK_DAY_ALL"
+        ),
+        "params": {},
+    },
+    {
+        "name": "STOCK_DAY_AVG_ALL",
+        "url": (
+            "https://openapi.twse.com.tw/v1/"
+            "exchangeReport/STOCK_DAY_AVG_ALL"
+        ),
+        "params": {},
+    },
+    {
+        "name": "BWIBBU_d",
+        "url": (
+            "https://www.twse.com.tw/rwd/zh/"
+            "afterTrading/BWIBBU_d"
+        ),
+        "params": {
             "response": "json",
             "selectType": "ALL",
         },
-    ),
-]
-
-
-TPEX_SOURCES = [
-    (
-        "TPEX_DAILY_QUOTES",
-        "https://www.tpex.org.tw/openapi/v1/"
-        "tpex_mainboard_daily_close_quotes",
-        {},
-    ),
-    (
-        "TPEX_DAILY_QUOTES_ZH",
-        "https://www.tpex.org.tw/openapi/v1/"
-        "tpex_mainboard_daily_close_quotes",
-        {
-            "l": "zh-tw",
-        },
-    ),
+    },
 ]
 
 
 # ============================================================
-# LOG
+# OFFICIAL TPEX SOURCES
+# ============================================================
+
+TPEX_SOURCES = [
+    {
+        "name": "TPEX_DAILY_QUOTES",
+        "url": (
+            "https://www.tpex.org.tw/openapi/v1/"
+            "tpex_mainboard_daily_close_quotes"
+        ),
+        "params": {},
+    },
+    {
+        "name": "TPEX_DAILY_QUOTES_ZH",
+        "url": (
+            "https://www.tpex.org.tw/openapi/v1/"
+            "tpex_mainboard_daily_close_quotes"
+        ),
+        "params": {
+            "l": "zh-tw",
+        },
+    },
+]
+
+
+# ============================================================
+# LOGGING
 # ============================================================
 
 def log(message: str = "") -> None:
@@ -177,22 +210,25 @@ def clean_text(value: Any) -> str:
 def clean_code(value: Any) -> str:
     text = clean_text(value).upper()
 
-    text = (
-        text
-        .replace(".TW", "")
-        .replace(".TWO", "")
-        .replace(" ", "")
-        .replace("\u3000", "")
+    text = text.replace(
+        ".TW",
+        "",
     )
 
-    # 某些資料可能是：
-    # 1101 台泥
-    # 1101
-    # 1101.0
-    #
-    # 先處理純數字字串。
-    if re.fullmatch(r"\d+\.0", text):
-        text = text[:-2]
+    text = text.replace(
+        ".TWO",
+        "",
+    )
+
+    text = text.replace(
+        " ",
+        "",
+    )
+
+    text = text.replace(
+        "\u3000",
+        "",
+    )
 
     return text
 
@@ -201,14 +237,14 @@ def normalize_key(value: Any) -> str:
     text = clean_text(value).lower()
 
     return re.sub(
-        r"[\s_\-\/\(\)（）:：\[\]\{\}]+",
+        r"[\s_\-\/\(\)（）:：]+",
         "",
         text,
     )
 
 
 # ============================================================
-# JSON
+# HTTP / JSON
 # ============================================================
 
 def parse_json_response(
@@ -227,17 +263,15 @@ def parse_json_response(
         pass
 
     try:
-        cleaned = text.lstrip("\ufeff")
+        text = text.lstrip("\ufeff")
 
-        return json.loads(cleaned)
+        return json.loads(
+            text
+        )
 
     except Exception:
         return None
 
-
-# ============================================================
-# HTTP
-# ============================================================
 
 def request_official_json(
     name: str,
@@ -253,7 +287,6 @@ def request_official_json(
     ):
 
         try:
-
             response = session.get(
                 url,
                 params=params or {},
@@ -263,7 +296,8 @@ def request_official_json(
             if response.status_code != 200:
 
                 last_error = (
-                    f"HTTP {response.status_code}"
+                    "HTTP "
+                    + str(response.status_code)
                 )
 
             else:
@@ -288,7 +322,11 @@ def request_official_json(
 
         except Exception as exc:
 
-            last_error = str(exc)
+            last_error = (
+                type(exc).__name__
+                + ": "
+                + str(exc)
+            )
 
         if attempt < RETRIES:
             time.sleep(
@@ -296,17 +334,20 @@ def request_official_json(
             )
 
     log(
-        f"❌ {name}：{last_error}"
+        "❌ "
+        + name
+        + "："
+        + last_error
     )
 
     return None
 
 
 # ============================================================
-# GENERIC ROW EXTRACTION
+# GENERIC JSON NORMALIZER
 # ============================================================
 
-def rows_from_fields_data(
+def fields_data_to_rows(
     fields: Any,
     data: Any,
 ) -> List[Dict[str, Any]]:
@@ -316,11 +357,6 @@ def rows_from_fields_data(
 
     if not isinstance(data, list):
         return []
-
-    fields_clean = [
-        clean_text(field)
-        for field in fields
-    ]
 
     result: List[Dict[str, Any]] = []
 
@@ -335,15 +371,17 @@ def rows_from_fields_data(
 
         row: Dict[str, Any] = {}
 
-        for index, value in enumerate(raw):
+        for index, field in enumerate(fields):
 
-            if index >= len(fields_clean):
+            if index >= len(raw):
                 break
 
-            key = fields_clean[index]
+            key = clean_text(field)
 
-            if key:
-                row[key] = value
+            if not key:
+                continue
+
+            row[key] = raw[index]
 
         if row:
             result.append(row)
@@ -354,40 +392,9 @@ def rows_from_fields_data(
 def normalize_records(
     payload: Any,
 ) -> List[Dict[str, Any]]:
-    """
-    統一處理官方 API 常見格式。
-
-    支援：
-
-    1. list[dict]
-
-    2. {
-         "fields": [...],
-         "data": [...]
-       }
-
-    3. {
-         "tables": [...]
-       }
-
-    4. {
-         "data": [...]
-       }
-
-    5. {
-         "records": [...]
-       }
-
-    6. 某些 API 回傳：
-       {
-         "0": {...},
-         "1": {...}
-       }
-
-    """
 
     # --------------------------------------------------------
-    # 直接 list
+    # JSON array
     # --------------------------------------------------------
 
     if isinstance(payload, list):
@@ -405,7 +412,7 @@ def normalize_records(
     # fields + data
     # --------------------------------------------------------
 
-    rows = rows_from_fields_data(
+    rows = fields_data_to_rows(
         payload.get("fields"),
         payload.get("data"),
     )
@@ -425,37 +432,26 @@ def normalize_records(
 
         for table in tables:
 
-            if not isinstance(table, dict):
+            if not isinstance(
+                table,
+                dict,
+            ):
                 continue
 
-            table_rows = rows_from_fields_data(
+            table_rows = fields_data_to_rows(
                 table.get("fields"),
                 table.get("data"),
             )
 
-            result.extend(table_rows)
-
-            for key in (
-                "data",
-                "records",
-                "rows",
-            ):
-
-                value = table.get(key)
-
-                if isinstance(value, list):
-
-                    result.extend(
-                        row
-                        for row in value
-                        if isinstance(row, dict)
-                    )
+            result.extend(
+                table_rows
+            )
 
         if result:
             return result
 
     # --------------------------------------------------------
-    # common array keys
+    # common result containers
     # --------------------------------------------------------
 
     for key in (
@@ -465,73 +461,26 @@ def normalize_records(
         "results",
         "records",
         "Records",
-        "rows",
-        "Rows",
         "items",
         "Items",
     ):
 
         value = payload.get(key)
 
-        if not isinstance(value, list):
+        if not isinstance(
+            value,
+            list,
+        ):
             continue
 
-        rows = [
+        dict_rows = [
             row
             for row in value
             if isinstance(row, dict)
         ]
 
-        if rows:
-            return rows
-
-        # list[list] + fields
-        if value and all(
-            isinstance(item, list)
-            for item in value
-        ):
-
-            fields = (
-                payload.get("fields")
-                or payload.get("columns")
-                or payload.get("Columns")
-            )
-
-            rows = rows_from_fields_data(
-                fields,
-                value,
-            )
-
-            if rows:
-                return rows
-
-    # --------------------------------------------------------
-    # dict-of-records
-    # --------------------------------------------------------
-
-    dict_rows: List[Dict[str, Any]] = []
-
-    for value in payload.values():
-
-        if isinstance(value, dict):
-
-            # 只接受看起來像資料列的 dict
-            if any(
-                normalize_key(k) in {
-                    "證券代號",
-                    "代號",
-                    "code",
-                    "symbol",
-                    "securitiescompanycode",
-                    "stockcode",
-                }
-                for k in value.keys()
-            ):
-
-                dict_rows.append(value)
-
-    if dict_rows:
-        return dict_rows
+        if dict_rows:
+            return dict_rows
 
     return []
 
@@ -545,50 +494,55 @@ def field_value(
     aliases: List[str],
 ) -> Any:
 
-    normalized = {
-        normalize_key(key): value
-        for key, value in row.items()
-    }
+    normalized = {}
+
+    for key, value in row.items():
+
+        normalized[
+            normalize_key(key)
+        ] = value
 
     for alias in aliases:
 
-        key = normalize_key(alias)
+        alias_key = normalize_key(
+            alias
+        )
 
-        if key in normalized:
-            return normalized[key]
+        if alias_key in normalized:
+
+            return normalized[
+                alias_key
+            ]
 
     return None
 
 
 # ============================================================
-# CODE EXTRACTION
+# CODE / NAME ALIASES
 # ============================================================
 
 CODE_ALIASES = [
     "證券代號",
     "證券代碼",
     "股票代號",
-    "股票代碼",
     "有價證券代號",
-    "有價證券代碼",
+    "代號",
     "SecuritiesCompanyCode",
     "SecurityCode",
     "StockCode",
-    "LocalCode",
     "Code",
     "code",
     "symbol",
     "Symbol",
     "ticker",
-    "Ticker",
 ]
 
 
 NAME_ALIASES = [
     "證券名稱",
+    "證券簡稱",
     "名稱",
     "股票名稱",
-    "股票簡稱",
     "有價證券名稱",
     "SecuritiesCompanyName",
     "SecurityName",
@@ -599,6 +553,10 @@ NAME_ALIASES = [
 ]
 
 
+# ============================================================
+# EXTRACTION
+# ============================================================
+
 def extract_code(
     row: Dict[str, Any],
 ) -> str:
@@ -608,59 +566,37 @@ def extract_code(
         CODE_ALIASES,
     )
 
-    code = clean_code(value)
+    code = clean_code(
+        value
+    )
 
-    if re.fullmatch(
-        r"\d{4}",
-        code,
-    ):
+    if code:
         return code
-
-    # --------------------------------------------------------
-    # 第二層：掃描所有欄位名稱
-    # --------------------------------------------------------
 
     for key, value in row.items():
 
-        key_normalized = normalize_key(key)
+        normalized = normalize_key(
+            key
+        )
 
         if not any(
-            token in key_normalized
+            token in normalized
             for token in (
                 "代號",
                 "代碼",
                 "code",
                 "symbol",
                 "ticker",
-                "localcode",
-                "securitiescompanycode",
             )
         ):
             continue
 
-        text = clean_code(value)
+        text = clean_text(
+            value
+        )
 
         match = re.search(
             r"(?<!\d)(\d{4})(?!\d)",
-            text,
-        )
-
-        if match:
-            return match.group(1)
-
-    # --------------------------------------------------------
-    # 第三層：掃描資料列本身
-    #
-    # TPEx 某些格式欄位名稱變化較大。
-    # 只接受明確 4 碼數字，不接受 5/6 碼。
-    # --------------------------------------------------------
-
-    for value in row.values():
-
-        text = clean_text(value)
-
-        match = re.fullmatch(
-            r"\s*(\d{4})\s*",
             text,
         )
 
@@ -679,7 +615,9 @@ def extract_name(
         NAME_ALIASES,
     )
 
-    return clean_text(value)
+    return clean_text(
+        value
+    )
 
 
 # ============================================================
@@ -690,8 +628,8 @@ NON_STOCK_KEYWORDS = (
     "ETF",
     "ETN",
     "權證",
-    "認購",
-    "認售",
+    "認購權證",
+    "認售權證",
     "債券",
     "公司債",
     "政府債",
@@ -704,7 +642,6 @@ NON_STOCK_KEYWORDS = (
     "牛熊證",
     "可轉換公司債",
     "轉換公司債",
-    "CB",
 )
 
 
@@ -714,18 +651,34 @@ def looks_like_ordinary_stock(
     row: Dict[str, Any],
 ) -> bool:
 
+    # --------------------------------------------------------
+    # 必須四碼
+    # --------------------------------------------------------
+
     if not re.fullmatch(
         r"\d{4}",
         code,
     ):
         return False
 
-    combined = (
-        f"{name} "
-        f"{' '.join(
-            clean_text(v)
-            for v in row.values()
-        )}"
+    # --------------------------------------------------------
+    # 名稱 / 欄位內容排除商品
+    # --------------------------------------------------------
+
+    values = []
+
+    values.append(
+        name
+    )
+
+    for value in row.values():
+
+        values.append(
+            clean_text(value)
+        )
+
+    combined = " ".join(
+        values
     ).upper()
 
     for keyword in NON_STOCK_KEYWORDS:
@@ -745,14 +698,27 @@ def parse_twse_candidates(
     payload: Any,
 ) -> Dict[str, Dict[str, str]]:
 
-    rows = normalize_records(payload)
+    rows = normalize_records(
+        payload
+    )
 
-    result: Dict[str, Dict[str, str]] = {}
+    result: Dict[
+        str,
+        Dict[str, str],
+    ] = {}
 
     for row in rows:
 
-        code = extract_code(row)
-        name = extract_name(row)
+        code = extract_code(
+            row
+        )
+
+        if not code:
+            continue
+
+        name = extract_name(
+            row
+        )
 
         if not looks_like_ordinary_stock(
             code,
@@ -766,7 +732,7 @@ def parse_twse_candidates(
             "name": name or code,
             "market": "TWSE",
             "type": "STOCK",
-            "instrument_type": "STOCK",
+            "instrument_type": "COMMON_STOCK",
             "source": source_name,
         }
 
@@ -774,7 +740,7 @@ def parse_twse_candidates(
 
 
 # ============================================================
-# TPEx PARSER
+# TPEX PARSER
 # ============================================================
 
 def parse_tpex_candidates(
@@ -782,36 +748,27 @@ def parse_tpex_candidates(
     payload: Any,
 ) -> Dict[str, Dict[str, str]]:
 
-    """
-    TPEx 專用解析器。
+    rows = normalize_records(
+        payload
+    )
 
-    不假設資料一定使用：
-        證券代號
-
-    同時支援：
-        SecuritiesCompanyCode
-        證券代碼
-        代號
-        Code
-        code
-        LocalCode
-        symbol
-        ticker
-
-    並在最後才使用 row-level fallback。
-    """
-
-    rows = normalize_records(payload)
-
-    result: Dict[str, Dict[str, str]] = {}
+    result: Dict[
+        str,
+        Dict[str, str],
+    ] = {}
 
     for row in rows:
 
-        code = extract_code(row)
-        name = extract_name(row)
+        code = extract_code(
+            row
+        )
 
         if not code:
             continue
+
+        name = extract_name(
+            row
+        )
 
         if not looks_like_ordinary_stock(
             code,
@@ -825,7 +782,7 @@ def parse_tpex_candidates(
             "name": name or code,
             "market": "TPEX",
             "type": "STOCK",
-            "instrument_type": "STOCK",
+            "instrument_type": "COMMON_STOCK",
             "source": source_name,
         }
 
@@ -833,62 +790,27 @@ def parse_tpex_candidates(
 
 
 # ============================================================
-# DEBUG SAMPLE
-# ============================================================
-
-def print_sample_rows(
-    payload: Any,
-    market: str,
-) -> None:
-
-    rows = normalize_records(payload)
-
-    if not rows:
-        return
-
-    log("")
-    log(
-        f"{market} parser sample："
-    )
-
-    for index, row in enumerate(
-        rows[:3]
-    ):
-
-        log(
-            f"  row[{index}] keys="
-            f"{list(row.keys())[:12]}"
-        )
-
-        log(
-            f"  row[{index}] code="
-            f"{extract_code(row)!r} "
-            f"name="
-            f"{extract_name(row)!r}"
-        )
-
-
-# ============================================================
 # EXISTING METADATA
 # ============================================================
 
-def load_existing_metadata() -> Dict[
-    str,
-    Dict[str, Any],
-]:
+def load_existing_metadata(
+) -> Dict[str, Dict[str, Any]]:
 
     if not UNIVERSE_FILE.exists():
         return {}
 
     try:
 
+        text = UNIVERSE_FILE.read_text(
+            encoding="utf-8-sig"
+        )
+
         payload = json.loads(
-            UNIVERSE_FILE.read_text(
-                encoding="utf-8-sig"
-            )
+            text
         )
 
     except Exception:
+
         return {}
 
     if not isinstance(
@@ -927,20 +849,20 @@ def load_existing_metadata() -> Dict[
             )
         )
 
-        if code:
-            result[code] = value
+        if not code:
+            continue
+
+        result[code] = value
 
     return result
 
 
 # ============================================================
-# TWSE COLLECTION
+# COLLECT TWSE
 # ============================================================
 
-def collect_twse() -> Dict[
-    str,
-    Dict[str, str],
-]:
+def collect_twse(
+) -> Dict[str, Dict[str, str]]:
 
     section(
         "TWSE 官方來源"
@@ -956,20 +878,20 @@ def collect_twse() -> Dict[
         int,
     ] = {}
 
-    for (
-        source_name,
-        url,
-        params,
-    ) in TWSE_SOURCES:
+    for source in TWSE_SOURCES:
+
+        name = source["name"]
+        url = source["url"]
+        params = source["params"]
 
         log("")
         log(
-            f"TWSE 官方來源："
-            f"{source_name}"
+            "TWSE 官方來源："
+            + name
         )
 
         payload = request_official_json(
-            source_name,
+            name,
             url,
             params,
         )
@@ -982,27 +904,30 @@ def collect_twse() -> Dict[
         )
 
         log(
-            f"✓ {source_name}："
-            f"{len(rows)} rows"
+            "✓ "
+            + name
+            + " rows："
+            + str(len(rows))
         )
 
         parsed = parse_twse_candidates(
-            source_name,
+            name,
             payload,
         )
 
-        source_counts[
-            source_name
-        ] = len(parsed)
+        source_counts[name] = len(
+            parsed
+        )
 
         log(
-            f"  可解析普通股："
-            f"{len(parsed)}"
+            "  可解析普通股："
+            + str(len(parsed))
         )
 
         for code, item in parsed.items():
 
             if code not in combined:
+
                 combined[code] = item
 
     log("")
@@ -1013,25 +938,26 @@ def collect_twse() -> Dict[
     for name, count in source_counts.items():
 
         log(
-            f"  {name}：{count}"
+            "  "
+            + name
+            + "："
+            + str(count)
         )
 
     log(
-        f"✓ TWSE unique ordinary stocks："
-        f"{len(combined)}"
+        "✓ TWSE unique ordinary stocks："
+        + str(len(combined))
     )
 
     return combined
 
 
 # ============================================================
-# TPEx COLLECTION
+# COLLECT TPEX
 # ============================================================
 
-def collect_tpex() -> Dict[
-    str,
-    Dict[str, str],
-]:
+def collect_tpex(
+) -> Dict[str, Dict[str, str]]:
 
     section(
         "TPEx 官方來源"
@@ -1047,20 +973,20 @@ def collect_tpex() -> Dict[
         int,
     ] = {}
 
-    for (
-        source_name,
-        url,
-        params,
-    ) in TPEX_SOURCES:
+    for source in TPEX_SOURCES:
+
+        name = source["name"]
+        url = source["url"]
+        params = source["params"]
 
         log("")
         log(
-            f"TPEx 官方來源："
-            f"{source_name}"
+            "TPEx 官方來源："
+            + name
         )
 
         payload = request_official_json(
-            source_name,
+            name,
             url,
             params,
         )
@@ -1073,38 +999,30 @@ def collect_tpex() -> Dict[
         )
 
         log(
-            f"✓ {source_name}："
-            f"{len(rows)} rows"
+            "✓ "
+            + name
+            + " rows："
+            + str(len(rows))
         )
 
-        # ----------------------------------------------------
-        # 第一個來源失敗解析時輸出樣本。
-        # 不影響正式流程。
-        # ----------------------------------------------------
-
-        if not rows:
-
-            log(
-                "⚠ TPEx 無法標準化資料列"
-            )
-
         parsed = parse_tpex_candidates(
-            source_name,
+            name,
             payload,
         )
 
-        source_counts[
-            source_name
-        ] = len(parsed)
+        source_counts[name] = len(
+            parsed
+        )
 
         log(
-            f"  可解析普通股："
-            f"{len(parsed)}"
+            "  可解析普通股："
+            + str(len(parsed))
         )
 
         for code, item in parsed.items():
 
             if code not in combined:
+
                 combined[code] = item
 
     log("")
@@ -1115,12 +1033,15 @@ def collect_tpex() -> Dict[
     for name, count in source_counts.items():
 
         log(
-            f"  {name}：{count}"
+            "  "
+            + name
+            + "："
+            + str(count)
         )
 
     log(
-        f"✓ TPEx unique ordinary stocks："
-        f"{len(combined)}"
+        "✓ TPEx unique ordinary stocks："
+        + str(len(combined))
     )
 
     return combined
@@ -1142,7 +1063,7 @@ def official_source_gate(
     if not twse:
 
         log(
-            "❌ TWSE 官方來源無法解析普通股"
+            "❌ TWSE 官方來源沒有解析出普通股"
         )
 
         return False
@@ -1150,19 +1071,19 @@ def official_source_gate(
     if not tpex:
 
         log(
-            "❌ TPEx 官方來源無法解析普通股"
+            "❌ TPEx 官方來源沒有解析出普通股"
         )
 
         return False
 
     log(
-        f"✓ TWSE 官方普通股："
-        f"{len(twse)}"
+        "✓ TWSE 官方普通股："
+        + str(len(twse))
     )
 
     log(
-        f"✓ TPEx 官方普通股："
-        f"{len(tpex)}"
+        "✓ TPEx 官方普通股："
+        + str(len(tpex))
     )
 
     log(
@@ -1173,7 +1094,7 @@ def official_source_gate(
 
 
 # ============================================================
-# BUILD UNIVERSE
+# BUILD
 # ============================================================
 
 def build_universe(
@@ -1186,18 +1107,23 @@ def build_universe(
         "建立 Universe"
     )
 
-    stocks: Dict[
-        str,
-        Dict[str, Any],
-    ] = {}
-
     combined: Dict[
         str,
         Dict[str, str],
     ] = {}
 
-    combined.update(twse)
-    combined.update(tpex)
+    combined.update(
+        twse
+    )
+
+    combined.update(
+        tpex
+    )
+
+    stocks: Dict[
+        str,
+        Dict[str, Any],
+    ] = {}
 
     for code in sorted(
         combined.keys()
@@ -1217,7 +1143,7 @@ def build_universe(
         }:
             continue
 
-        official_name = clean_text(
+        name = clean_text(
             item.get(
                 "name"
             )
@@ -1234,40 +1160,48 @@ def build_universe(
         ):
             old = {}
 
-        # ====================================================
-        # 核心欄位全部重新建立
-        # 舊資料不得覆蓋
-        # ====================================================
+        if not name:
+
+            name = clean_text(
+                old.get(
+                    "name"
+                )
+            )
+
+        if not name:
+            name = code
+
+        if market == "TWSE":
+
+            full_symbol = (
+                code
+                + ".TW"
+            )
+
+        else:
+
+            full_symbol = (
+                code
+                + ".TWO"
+            )
+
+        # ----------------------------------------------------
+        # 核心欄位完全重新建立
+        # ----------------------------------------------------
 
         stock: Dict[str, Any] = {
             "symbol": code,
-
-            "full_symbol": (
-                f"{code}.TW"
-                if market == "TWSE"
-                else f"{code}.TWO"
-            ),
-
-            "name": (
-                official_name
-                or clean_text(
-                    old.get("name")
-                )
-                or code
-            ),
-
+            "full_symbol": full_symbol,
+            "name": name,
             "market": market,
-
             "type": "STOCK",
-
-            "instrument_type": "STOCK",
-
+            "instrument_type": "COMMON_STOCK",
             "status": "active",
         }
 
-        # ====================================================
-        # 非核心 metadata 可以保留
-        # ====================================================
+        # ----------------------------------------------------
+        # 只保留非核心 metadata
+        # ----------------------------------------------------
 
         for key in (
             "industry",
@@ -1275,14 +1209,17 @@ def build_universe(
             "category",
         ):
 
-            value = old.get(key)
+            value = old.get(
+                key
+            )
 
-            if value not in (
-                None,
-                "",
-            ):
+            if value is None:
+                continue
 
-                stock[key] = value
+            if clean_text(value) == "":
+                continue
+
+            stock[key] = value
 
         stocks[code] = stock
 
@@ -1321,9 +1258,11 @@ def validate_universe_structure(
         return False
 
     errors = 0
+
+    symbols = set()
     full_symbols = set()
 
-    required = {
+    required_fields = {
         "symbol",
         "full_symbol",
         "name",
@@ -1341,34 +1280,31 @@ def validate_universe_structure(
         ):
 
             log(
-                f"❌ {code}: item 非 dict"
+                "❌ "
+                + code
+                + " item 不是 dict"
             )
 
             errors += 1
             continue
 
-        # ----------------------------------------------------
-        # Required fields
-        # ----------------------------------------------------
-
         missing = (
-            required
+            required_fields
             - set(item.keys())
         )
 
         if missing:
 
             log(
-                f"❌ {code}: 缺少欄位 "
-                f"{sorted(missing)}"
+                "❌ "
+                + code
+                + " 缺少欄位："
+                + str(
+                    sorted(missing)
+                )
             )
 
             errors += 1
-            continue
-
-        # ----------------------------------------------------
-        # Symbol
-        # ----------------------------------------------------
 
         symbol = clean_code(
             item.get(
@@ -1379,10 +1315,26 @@ def validate_universe_structure(
         if symbol != code:
 
             log(
-                f"❌ {code}: symbol mismatch"
+                "❌ "
+                + code
+                + " symbol mismatch："
+                + symbol
             )
 
             errors += 1
+
+        if symbol in symbols:
+
+            log(
+                "❌ symbol duplicate："
+                + symbol
+            )
+
+            errors += 1
+
+        symbols.add(
+            symbol
+        )
 
         if not re.fullmatch(
             r"\d{4}",
@@ -1390,109 +1342,9 @@ def validate_universe_structure(
         ):
 
             log(
-                f"❌ {code}: 非四碼普通股"
-            )
-
-            errors += 1
-
-        # ----------------------------------------------------
-        # Name
-        # ----------------------------------------------------
-
-        if not clean_text(
-            item.get("name")
-        ):
-
-            log(
-                f"❌ {code}: name 空白"
-            )
-
-            errors += 1
-
-        # ----------------------------------------------------
-        # Market
-        # ----------------------------------------------------
-
-        market = clean_text(
-            item.get(
-                "market"
-            )
-        ).upper()
-
-        if market not in {
-            "TWSE",
-            "TPEX",
-        }:
-
-            log(
-                f"❌ {code}: market={market}"
-            )
-
-            errors += 1
-
-        # ----------------------------------------------------
-        # Type
-        # ----------------------------------------------------
-
-        if item.get(
-            "type"
-        ) != "STOCK":
-
-            log(
-                f"❌ {code}: type != STOCK"
-            )
-
-            errors += 1
-
-        # ----------------------------------------------------
-        # Instrument type
-        # ----------------------------------------------------
-
-        if item.get(
-            "instrument_type"
-        ) != "STOCK":
-
-            log(
-                f"❌ {code}: "
-                f"instrument_type != STOCK"
-            )
-
-            errors += 1
-
-        # ----------------------------------------------------
-        # Status
-        # ----------------------------------------------------
-
-        if item.get(
-            "status"
-        ) != "active":
-
-            log(
-                f"❌ {code}: "
-                f"status != active"
-            )
-
-            errors += 1
-
-        # ----------------------------------------------------
-        # Full symbol
-        # ----------------------------------------------------
-
-        expected_full = (
-            f"{code}.TW"
-            if market == "TWSE"
-            else f"{code}.TWO"
-        )
-
-        if item.get(
-            "full_symbol"
-        ) != expected_full:
-
-            log(
-                f"❌ {code}: "
-                f"full_symbol 錯誤："
-                f"{item.get('full_symbol')} "
-                f"!= {expected_full}"
+                "❌ "
+                + code
+                + " 不是四碼普通股"
             )
 
             errors += 1
@@ -1506,8 +1358,8 @@ def validate_universe_structure(
         if full_symbol in full_symbols:
 
             log(
-                f"❌ full_symbol duplicate："
-                f"{full_symbol}"
+                "❌ full_symbol duplicate："
+                + full_symbol
             )
 
             errors += 1
@@ -1516,18 +1368,158 @@ def validate_universe_structure(
             full_symbol
         )
 
+        market = clean_text(
+            item.get(
+                "market"
+            )
+        ).upper()
+
+        if market not in {
+            "TWSE",
+            "TPEX",
+        }:
+
+            log(
+                "❌ "
+                + code
+                + " market 錯誤："
+                + market
+            )
+
+            errors += 1
+
+        expected_full_symbol = ""
+
+        if market == "TWSE":
+
+            expected_full_symbol = (
+                code
+                + ".TW"
+            )
+
+        elif market == "TPEX":
+
+            expected_full_symbol = (
+                code
+                + ".TWO"
+            )
+
+        if full_symbol != expected_full_symbol:
+
+            log(
+                "❌ "
+                + code
+                + " full_symbol 錯誤："
+                + full_symbol
+            )
+
+            errors += 1
+
+        item_type = clean_text(
+            item.get(
+                "type"
+            )
+        ).upper()
+
+        if item_type != "STOCK":
+
+            log(
+                "❌ "
+                + code
+                + " type != STOCK"
+            )
+
+            errors += 1
+
+        instrument_type = clean_text(
+            item.get(
+                "instrument_type"
+            )
+        )
+
+        if instrument_type != "COMMON_STOCK":
+
+            log(
+                "❌ "
+                + code
+                + " instrument_type != COMMON_STOCK"
+            )
+
+            errors += 1
+
+        status = clean_text(
+            item.get(
+                "status"
+            )
+        ).lower()
+
+        if status != "active":
+
+            log(
+                "❌ "
+                + code
+                + " status != active"
+            )
+
+            errors += 1
+
+        name = clean_text(
+            item.get(
+                "name"
+            )
+        )
+
+        if not name:
+
+            log(
+                "❌ "
+                + code
+                + " name 空白"
+            )
+
+            errors += 1
+
     if errors:
 
         log(
-            f"❌ Universe Structure Gate FAIL："
-            f"{errors}"
+            "❌ Universe Structure Gate FAIL："
+            + str(errors)
+            + " errors"
         )
 
         return False
 
     log(
-        f"✓ Universe Structure Gate PASS："
-        f"{len(stocks)}"
+        "✓ Required fields"
+    )
+
+    log(
+        "✓ symbol uniqueness"
+    )
+
+    log(
+        "✓ full_symbol uniqueness"
+    )
+
+    log(
+        "✓ market validation"
+    )
+
+    log(
+        "✓ type=STOCK"
+    )
+
+    log(
+        "✓ instrument_type=COMMON_STOCK"
+    )
+
+    log(
+        "✓ status=active"
+    )
+
+    log(
+        "✓ Universe Structure Gate PASS："
+        + str(len(stocks))
     )
 
     return True
@@ -1547,36 +1539,47 @@ def validate_market_balance(
         "Market Balance Gate"
     )
 
-    twse_count = sum(
-        1
-        for item in stocks.values()
-        if item.get(
-            "market"
-        ) == "TWSE"
-    )
+    twse_count = 0
+    tpex_count = 0
 
-    tpex_count = sum(
-        1
-        for item in stocks.values()
+    for item in stocks.values():
+
         if item.get(
             "market"
-        ) == "TPEX"
+        ) == "TWSE":
+
+            twse_count += 1
+
+        elif item.get(
+            "market"
+        ) == "TPEX":
+
+            tpex_count += 1
+
+    log(
+        "TWSE Universe："
+        + str(twse_count)
     )
 
     log(
-        f"TWSE Universe："
-        f"{twse_count}"
+        "TPEx Universe："
+        + str(tpex_count)
     )
 
     log(
-        f"TPEx Universe："
-        f"{tpex_count}"
+        "TWSE official parsed："
+        + str(twse_source_count)
+    )
+
+    log(
+        "TPEx official parsed："
+        + str(tpex_source_count)
     )
 
     if twse_source_count <= 0:
 
         log(
-            "❌ TWSE 官方解析數為 0"
+            "❌ TWSE 官方來源解析數為 0"
         )
 
         return False
@@ -1584,7 +1587,7 @@ def validate_market_balance(
     if tpex_source_count <= 0:
 
         log(
-            "❌ TPEx 官方解析數為 0"
+            "❌ TPEx 官方來源解析數為 0"
         )
 
         return False
@@ -1622,53 +1625,41 @@ def make_payload(
     tpex_source_count: int,
 ) -> Dict[str, Any]:
 
+    generated_at = now_tw().isoformat()
+
     return {
         "version": VERSION,
-
-        "generated_at":
-            now_tw().isoformat(),
-
-        "universe_count":
-            len(stocks),
+        "generated_at": generated_at,
+        "universe_count": len(stocks),
 
         "source": {
-            "policy":
-                "TWSE / TPEx official sources only",
-
-            "twse_official_candidates":
-                twse_source_count,
-
-            "tpex_official_candidates":
-                tpex_source_count,
+            "policy": (
+                "TWSE / TPEX official sources only"
+            ),
+            "twse_official_candidates": (
+                twse_source_count
+            ),
+            "tpex_official_candidates": (
+                tpex_source_count
+            ),
         },
 
         "contract": {
-            "root":
-                "dict",
-
-            "stocks":
-                "dict",
-
-            "active_status":
-                "status == active",
-
-            "ordinary_stock_only":
-                True,
-
+            "root": "dict",
+            "stocks": "dict",
+            "active_status": (
+                "status == active"
+            ),
+            "ordinary_stock_only": True,
             "allowed_markets": [
                 "TWSE",
                 "TPEX",
             ],
-
-            "allowed_type":
-                "STOCK",
-
-            "instrument_type":
-                "STOCK",
+            "allowed_type": "STOCK",
+            "instrument_type": "COMMON_STOCK",
         },
 
-        "stocks":
-            stocks,
+        "stocks": stocks,
     }
 
 
@@ -1696,10 +1687,16 @@ def validate_payload(
     ):
         return False
 
-    if payload.get(
+    universe_count = payload.get(
         "universe_count"
-    ) != len(stocks):
+    )
 
+    if universe_count != len(
+        stocks
+    ):
+        return False
+
+    if universe_count <= 0:
         return False
 
     contract = payload.get(
@@ -1741,7 +1738,7 @@ def validate_payload(
 
     if contract.get(
         "instrument_type"
-    ) != "STOCK":
+    ) != "COMMON_STOCK":
 
         return False
 
@@ -1763,10 +1760,6 @@ def atomic_write(
         exist_ok=True,
     )
 
-    temp_file = DATA_DIR / (
-        "universe.json.tmp"
-    )
-
     try:
 
         text = json.dumps(
@@ -1775,26 +1768,32 @@ def atomic_write(
             indent=2,
         )
 
-        temp_file.write_text(
+        # ----------------------------------------------------
+        # 先寫 temporary file
+        # ----------------------------------------------------
+
+        TEMP_FILE.write_text(
             text,
             encoding="utf-8",
         )
 
         # ----------------------------------------------------
-        # 寫入前 parse
+        # temporary file 必須能重新解析
         # ----------------------------------------------------
 
+        check_text = TEMP_FILE.read_text(
+            encoding="utf-8"
+        )
+
         json.loads(
-            temp_file.read_text(
-                encoding="utf-8"
-            )
+            check_text
         )
 
         # ----------------------------------------------------
-        # Atomic replace
+        # replace 是 atomic rename
         # ----------------------------------------------------
 
-        temp_file.replace(
+        TEMP_FILE.replace(
             UNIVERSE_FILE
         )
 
@@ -1803,13 +1802,15 @@ def atomic_write(
     except Exception as exc:
 
         log(
-            f"❌ Atomic Write FAIL："
-            f"{exc}"
+            "❌ Atomic Write FAIL："
+            + type(exc).__name__
+            + ": "
+            + str(exc)
         )
 
         try:
 
-            temp_file.unlink(
+            TEMP_FILE.unlink(
                 missing_ok=True
             )
 
@@ -1839,17 +1840,21 @@ def post_write_verify() -> bool:
 
     try:
 
+        text = UNIVERSE_FILE.read_text(
+            encoding="utf-8-sig"
+        )
+
         payload = json.loads(
-            UNIVERSE_FILE.read_text(
-                encoding="utf-8-sig"
-            )
+            text
         )
 
     except Exception as exc:
 
         log(
-            f"❌ JSON 重新讀取失敗："
-            f"{exc}"
+            "❌ JSON 重新讀取失敗："
+            + type(exc).__name__
+            + ": "
+            + str(exc)
         )
 
         return False
@@ -1869,12 +1874,30 @@ def post_write_verify() -> bool:
     )
 
     log(
-        f"✓ universe.json 重新讀取："
-        f"{len(stocks)} 檔"
+        "✓ universe.json 重新讀取："
+        + str(len(stocks))
+        + " 檔"
     )
 
     log(
-        "✓ instrument_type=STOCK"
+        "✓ universe_count："
+        + str(
+            payload.get(
+                "universe_count"
+            )
+        )
+    )
+
+    log(
+        "✓ stocks object"
+    )
+
+    log(
+        "✓ required fields"
+    )
+
+    log(
+        "✓ instrument_type=COMMON_STOCK"
     )
 
     log(
@@ -1900,78 +1923,82 @@ def print_summary(
     stocks: Dict[str, Dict[str, Any]],
 ) -> None:
 
-    twse = sum(
-        1
-        for item in stocks.values()
+    twse = 0
+    tpex = 0
+    active = 0
+    common_stock = 0
+
+    for item in stocks.values():
+
         if item.get(
             "market"
-        ) == "TWSE"
-    )
+        ) == "TWSE":
 
-    tpex = sum(
-        1
-        for item in stocks.values()
+            twse += 1
+
         if item.get(
             "market"
-        ) == "TPEX"
-    )
+        ) == "TPEX":
 
-    active = sum(
-        1
-        for item in stocks.values()
+            tpex += 1
+
         if item.get(
             "status"
-        ) == "active"
-    )
+        ) == "active":
 
-    instrument_stock = sum(
-        1
-        for item in stocks.values()
+            active += 1
+
         if item.get(
             "instrument_type"
-        ) == "STOCK"
-    )
+        ) == "COMMON_STOCK":
+
+            common_stock += 1
 
     section(
         "UNIVERSE BUILD RESULT"
     )
 
     log(
-        f"✓ Version：{VERSION}"
+        "Version："
+        + VERSION
     )
 
     log(
-        f"✓ Total：{len(stocks)}"
+        "Total："
+        + str(len(stocks))
     )
 
     log(
-        f"✓ TWSE：{twse}"
+        "TWSE："
+        + str(twse)
     )
 
     log(
-        f"✓ TPEx：{tpex}"
+        "TPEX："
+        + str(tpex)
     )
 
     log(
-        f"✓ active：{active}"
+        "active："
+        + str(active)
     )
 
     log(
-        f"✓ instrument_type=STOCK："
-        f"{instrument_stock}"
+        "COMMON_STOCK："
+        + str(common_stock)
     )
 
     log(
-        "✓ ordinary STOCK only"
+        "ordinary STOCK only"
     )
 
     log(
-        "✓ official sources only"
+        "official sources only"
     )
 
     log(
-        f"✓ Output："
-        f"{UNIVERSE_FILE}"
+        "Output："
+        + str(UNIVERSE_FILE)
     )
 
 
@@ -1984,20 +2011,21 @@ def main() -> int:
     started = time.time()
 
     section(
-        f"台股 AI 選股系統 "
-        f"Universe Builder {VERSION}"
+        "台股 AI 選股系統 "
+        + "Universe Builder "
+        + VERSION
     )
 
     log(
-        f"開始時間："
-        f"{now_tw().isoformat()}"
+        "開始時間："
+        + now_tw().isoformat()
     )
 
     existing = load_existing_metadata()
 
     log(
-        f"既有 Universe metadata："
-        f"{len(existing)}"
+        "既有 Universe metadata："
+        + str(len(existing))
     )
 
     # ========================================================
@@ -2007,13 +2035,13 @@ def main() -> int:
     twse = collect_twse()
 
     # ========================================================
-    # 2. TPEx
+    # 2. TPEX
     # ========================================================
 
     tpex = collect_tpex()
 
     # ========================================================
-    # 3. Official Source Gate
+    # 3. OFFICIAL SOURCE GATE
     # ========================================================
 
     if not official_source_gate(
@@ -2028,7 +2056,7 @@ def main() -> int:
         return 1
 
     # ========================================================
-    # 4. Build
+    # 4. BUILD
     # ========================================================
 
     stocks = build_universe(
@@ -2038,7 +2066,7 @@ def main() -> int:
     )
 
     # ========================================================
-    # 5. Structure
+    # 5. STRUCTURE
     # ========================================================
 
     if not validate_universe_structure(
@@ -2048,7 +2076,7 @@ def main() -> int:
         return 1
 
     # ========================================================
-    # 6. Market Balance
+    # 6. MARKET BALANCE
     # ========================================================
 
     if not validate_market_balance(
@@ -2060,7 +2088,7 @@ def main() -> int:
         return 1
 
     # ========================================================
-    # 7. Payload
+    # 7. PAYLOAD
     # ========================================================
 
     payload = make_payload(
@@ -2084,7 +2112,7 @@ def main() -> int:
     )
 
     # ========================================================
-    # 8. Atomic Write
+    # 8. ATOMIC WRITE
     # ========================================================
 
     if not atomic_write(
@@ -2098,7 +2126,7 @@ def main() -> int:
     )
 
     # ========================================================
-    # 9. Post Write Verify
+    # 9. POST WRITE VERIFY
     # ========================================================
 
     if not post_write_verify():
@@ -2110,32 +2138,35 @@ def main() -> int:
         return 1
 
     # ========================================================
-    # 10. Summary
+    # 10. SUMMARY
     # ========================================================
 
     print_summary(
         stocks
     )
 
-    elapsed = (
-        time.time()
-        - started
-    )
+    elapsed = time.time() - started
 
     log(
-        f"✓ elapsed："
-        f"{elapsed:.1f}s"
+        "elapsed："
+        + str(
+            round(
+                elapsed,
+                1,
+            )
+        )
+        + "s"
     )
 
     log("")
     log(
-        "========================================"
+        "============================================================"
     )
     log(
         "UNIVERSE BUILD SUCCESS"
     )
     log(
-        "========================================"
+        "============================================================"
     )
 
     return 0
@@ -2146,4 +2177,6 @@ def main() -> int:
 # ============================================================
 
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(
+        main()
+    )
