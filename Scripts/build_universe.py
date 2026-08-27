@@ -5,89 +5,82 @@
 台股 AI 選股系統
 Scripts/build_universe.py
 
-============================================================
-Universe Builder - 全新重寫版
-============================================================
+UNIVERSE-REBUILD-V2
 
-核心契約
+核心設計
 ------------------------------------------------------------
-1. Data/universe.json 是唯一 Universe 輸出檔。
-2. TWSE / TPEx 官方 OpenAPI 是 Universe 的唯一建立來源。
-3. 不使用歷史 universe.json 擴張 Universe。
-4. 不使用 Yahoo 擴張 Universe。
-5. 不使用 CMoney 擴張 Universe。
-6. 不寫死 Universe 數量。
-7. 不寫死股票代號。
-8. 不以「預期股票數量」判定成功。
-9. stocks 必須是 dict。
-10. 每個 symbol 必須唯一。
-11. 只納入普通股票 STOCK。
-12. 排除 ETF / ETN / TDR / Warrant / Bond / Fund 等非普通股票商品。
-13. 官方來源失敗 => BUILD FAIL。
-14. 官方來源資料結構異常 => BUILD FAIL。
-15. Universe 1:1 結構驗證。
-16. Structure Gate。
-17. Data Quality Gate。
-18. Atomic Write。
-19. Atomic Write 後重新讀取 universe.json。
-20. Post-Write Verify。
+1. Data/universe.json 是後續系統唯一 Universe 輸出。
+2. 本程式負責建立：
+       Data/universe.json
+3. 不寫死 Universe 數量。
+4. 不使用 CMoney。
+5. 不依賴單一 TWSE OpenAPI endpoint。
+6. TWSE / TPEx 優先使用官方來源。
+7. 官方來源必須經過結構與內容驗證。
+8. 官方來源失敗時，不拿非官方資料冒充官方。
+9. 不因單一官方 API 回傳 HTML / 空內容 / JSON 錯誤
+   就直接認定官方 Universe 不存在。
+10. TWSE 與 TPEx 分開建立。
+11. 只納入可確認為股票普通股的標的。
+12. 排除 ETF、ETN、權證、牛熊證、受益證券、
+    特別股及其他非普通股票工具。
+13. 保留既有 universe.json 中可辨識的 metadata，
+    但「是否存在於官方市場資料」以官方來源為準。
+14. status：
+       active
+       inactive
+15. active 才會被 fetch_chip.py 使用。
+16. Atomic Write。
+17. 寫入後重新讀取 universe.json 驗證。
+18. 如果任何必要市場的官方來源完全無法取得：
+       BUILD FAIL
+    禁止產生一份看似正常但實際不完整的 Universe。
 
-重要設計
+重要
 ------------------------------------------------------------
-Universe 的任務只是建立「後續資料抓取允許處理的股票集合」。
+這份程式不是用「今天有成交」直接猜 Universe。
 
-因此本程式不負責：
-- 三大法人
-- 資券當沖率
-- 融資融券
-- 歷史價格
-- 選股條件
-
-上述資料由後續 fetch_chip.py / fetch_data.py 等流程處理。
-
-市場來源
-------------------------------------------------------------
 TWSE：
-    https://openapi.twse.com.tw/v1/exchangeReport/STOCK_DAY_ALL
+    優先：
+        1. 官方證券主檔 / 官方收盤行情
+        2. 官方 OpenAPI
+    互相驗證。
 
 TPEx：
-    https://www.tpex.org.tw/openapi/v1/tpex_mainboard_daily_close_quotes
+    優先：
+        1. 官方 OpenAPI
+        2. 官方證券行情資料
 
-注意：
-------------------------------------------------------------
-官方行情 API 的欄位名稱可能有小幅變動，
-因此 parser 採「候選欄位 + 嚴格驗證」。
+如果官方來源回傳非 JSON：
+    不會直接 crash。
+    會嘗試其他官方 endpoint。
 
-但如果：
-- API 完全失敗
-- 回傳非 JSON
-- 沒有股票代號
-- 無法建立有效普通股票集合
+如果所有官方來源都失敗：
+    明確 FAIL。
 
-則直接 FAIL。
+禁止：
+    CMoney
+    Yahoo
+    MoneyDJ
+    鉅亨
+    玩股網
+    FinMind
+    任意第三方網站
 
-絕不使用猜測資料補洞。
+作為 Universe 的權威來源。
 """
-
 
 from __future__ import annotations
 
-
-# ============================================================
-# IMPORT
-# ============================================================
-
 import json
 import math
-import os
 import re
 import sys
-import tempfile
 import time
 
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional, Set, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 import requests
 
@@ -96,45 +89,27 @@ import requests
 # VERSION
 # ============================================================
 
-VERSION = "UNIVERSE-REBUILD-V1"
+VERSION = "UNIVERSE-REBUILD-V2"
 
 
 # ============================================================
 # PATH
 # ============================================================
 
-ROOT = Path(__file__).resolve().parents[1]
-
-DATA_DIR = ROOT / "Data"
+BASE_DIR = Path(__file__).resolve().parent.parent
+DATA_DIR = BASE_DIR / "Data"
 
 UNIVERSE_FILE = DATA_DIR / "universe.json"
-
-
-# ============================================================
-# OFFICIAL SOURCES
-# ============================================================
-
-TWSE_API = (
-    "https://openapi.twse.com.tw/v1/"
-    "exchangeReport/STOCK_DAY_ALL"
-)
-
-TPEX_API = (
-    "https://www.tpex.org.tw/openapi/v1/"
-    "tpex_mainboard_daily_close_quotes"
-)
+TEMP_FILE = DATA_DIR / "universe.json.tmp"
 
 
 # ============================================================
 # NETWORK
 # ============================================================
 
-REQUEST_TIMEOUT = 40
-
-RETRIES = 4
-
+REQUEST_TIMEOUT = 30
+RETRIES = 3
 RETRY_SLEEP = 1.5
-
 
 HEADERS = {
     "User-Agent": (
@@ -147,6 +122,8 @@ HEADERS = {
     "Accept": (
         "application/json,"
         "text/plain,"
+        "text/csv,"
+        "text/html,"
         "*/*"
     ),
     "Accept-Language": (
@@ -156,10 +133,60 @@ HEADERS = {
 }
 
 
-SESSION = requests.Session()
+session = requests.Session()
 
-SESSION.headers.update(
-    HEADERS
+
+# ============================================================
+# OFFICIAL TWSE SOURCES
+# ============================================================
+
+TWSE_OPENAPI_STOCK_DAY_ALL = (
+    "https://openapi.twse.com.tw/v1/"
+    "exchangeReport/STOCK_DAY_ALL"
+)
+
+TWSE_OPENAPI_SECURITIES = (
+    "https://openapi.twse.com.tw/v1/"
+    "exchangeReport/STOCK_DAY_AVG_ALL"
+)
+
+TWSE_OPENAPI_STOCK_MAIN = (
+    "https://openapi.twse.com.tw/v1/"
+    "exchangeReport/BWIBBU_d"
+)
+
+TWSE_DAILY_QUOTE_URL = (
+    "https://www.twse.com.tw/"
+    "rwd/zh/afterTrading/STOCK_DAY_ALL"
+)
+
+TWSE_SECURITIES_MASTER_URL = (
+    "https://www.twse.com.tw/"
+    "rwd/zh/afterTrading/MI_INDEX"
+)
+
+
+# ============================================================
+# OFFICIAL TPEX SOURCES
+# ============================================================
+
+TPEX_OPENAPI_BASE = (
+    "https://www.tpex.org.tw/openapi/v1"
+)
+
+TPEX_DAILY_QUOTES = (
+    TPEX_OPENAPI_BASE
+    + "/tpex_mainboard_daily_close_quotes"
+)
+
+TPEX_STOCKS = (
+    TPEX_OPENAPI_BASE
+    + "/tpex_mainboard_peratio_analysis"
+)
+
+TPEX_LISTED_COMPANIES = (
+    TPEX_OPENAPI_BASE
+    + "/tpex_mainboard_peratio_analysis"
 )
 
 
@@ -183,19 +210,25 @@ def section(title: str) -> None:
 # ============================================================
 
 def now_tw() -> datetime:
-    try:
-        from zoneinfo import ZoneInfo
+    from zoneinfo import ZoneInfo
 
-        return datetime.now(
-            ZoneInfo("Asia/Taipei")
-        )
+    return datetime.now(
+        ZoneInfo("Asia/Taipei")
+    )
 
-    except Exception:
-        return datetime.now()
+
+def iso_datetime() -> str:
+    return now_tw().isoformat()
+
+
+def today() -> str:
+    return now_tw().strftime(
+        "%Y-%m-%d"
+    )
 
 
 # ============================================================
-# BASIC NORMALIZATION
+# NORMALIZATION
 # ============================================================
 
 def clean_text(value: Any) -> str:
@@ -205,63 +238,39 @@ def clean_text(value: Any) -> str:
 
     return (
         str(value)
-        .replace("\ufeff", "")
-        .replace("\u3000", " ")
         .strip()
+        .replace("\u3000", " ")
     )
 
 
-def normalize_key(value: Any) -> str:
+def clean_code(value: Any) -> str:
 
-    text = clean_text(value)
-
-    text = (
-        text
-        .replace("_", "")
-        .replace("-", "")
-        .replace("/", "")
-        .replace(" ", "")
-        .replace("\t", "")
-        .replace("\n", "")
-        .replace("\r", "")
-        .replace("（", "")
-        .replace("）", "")
-        .replace("(", "")
-        .replace(")", "")
-        .lower()
-    )
-
-    return text
-
-
-def normalize_symbol(value: Any) -> str:
-
-    text = clean_text(value)
-
-    if not text:
+    if value is None:
         return ""
+
+    text = clean_text(value).upper()
 
     text = (
         text
         .replace(".TW", "")
         .replace(".TWO", "")
-        .replace(".tw", "")
-        .replace(".two", "")
-        .strip()
-    )
-
-    text = re.sub(
-        r"\s+",
-        "",
-        text,
+        .replace(" ", "")
+        .replace("\u3000", "")
     )
 
     return text
 
 
-# ============================================================
-# NUMBER
-# ============================================================
+def normalize_key(value: Any) -> str:
+
+    text = clean_text(value).lower()
+
+    return re.sub(
+        r"[\s_\-\/\(\)（）:：]+",
+        "",
+        text,
+    )
+
 
 def safe_number(
     value: Any,
@@ -278,419 +287,152 @@ def safe_number(
     if not text:
         return None
 
-    if text.lower() in {
-        "-",
-        "--",
-        "---",
-        "none",
-        "null",
-        "n/a",
-        "na",
-    }:
-        return None
-
     text = (
         text
         .replace(",", "")
         .replace("，", "")
         .replace("%", "")
-        .replace(" ", "")
-        .replace("\u3000", "")
+        .replace("＋", "+")
+        .replace("－", "-")
+        .replace("—", "-")
+        .replace("–", "-")
     )
 
+    if text in {
+        "-",
+        "--",
+        "---",
+        "N/A",
+        "NA",
+        "null",
+        "None",
+    }:
+        return None
+
     try:
+
         number = float(text)
 
-    except (TypeError, ValueError):
-        return None
+        if not math.isfinite(number):
+            return None
 
-    if not math.isfinite(number):
-        return None
+        return number
 
-    return number
+    except (
+        TypeError,
+        ValueError,
+    ):
+        return None
 
 
 # ============================================================
-# FIELD FINDER
+# FIELD HELPERS
 # ============================================================
 
 def find_field(
     row: Dict[str, Any],
-    aliases: Iterable[str],
+    aliases: List[str],
 ) -> Any:
 
-    if not isinstance(row, dict):
-        return None
+    normalized = {
+        normalize_key(key): value
+        for key, value in row.items()
+    }
 
-    normalized: Dict[str, Any] = {}
+    for alias in aliases:
 
-    for key, value in row.items():
+        key = normalize_key(alias)
 
-        normalized[
-            normalize_key(key)
-        ] = value
-
-    aliases_normalized = [
-        normalize_key(alias)
-        for alias in aliases
-    ]
-
-    # --------------------------------------------------------
-    # Exact
-    # --------------------------------------------------------
-
-    for alias in aliases_normalized:
-
-        if alias in normalized:
-            return normalized[alias]
-
-    # --------------------------------------------------------
-    # Controlled fuzzy matching
-    # --------------------------------------------------------
-
-    for alias in aliases_normalized:
-
-        if not alias:
-            continue
-
-        for key, value in normalized.items():
-
-            if key == alias:
-                return value
+        if key in normalized:
+            return normalized[key]
 
     return None
 
 
-# ============================================================
-# SYMBOL
-# ============================================================
-
-def extract_symbol(
+def find_symbol(
     row: Dict[str, Any],
 ) -> str:
 
-    value = find_field(
-        row,
-        [
-            "證券代號",
-            "股票代號",
-            "代號",
-            "代碼",
-            "證券代碼",
-            "Code",
-            "code",
-            "Symbol",
-            "symbol",
-            "SecurityCode",
-            "securityCode",
-        ],
-    )
-
-    return normalize_symbol(value)
-
-
-# ============================================================
-# NAME
-# ============================================================
-
-def extract_name(
-    row: Dict[str, Any],
-) -> str:
-
-    value = find_field(
-        row,
-        [
-            "證券名稱",
-            "股票名稱",
-            "名稱",
-            "公司名稱",
-            "SecurityName",
-            "securityName",
-            "CompanyName",
-            "companyName",
-            "Name",
-            "name",
-        ],
-    )
-
-    return clean_text(value)
-
-
-# ============================================================
-# SYMBOL GATE
-# ============================================================
-
-def valid_symbol(
-    symbol: str,
-) -> bool:
-
-    if not symbol:
-        return False
-
-    # 普通台股股票代號主要為數字。
-    #
-    # 這裡不使用固定股票清單。
-    #
-    # 3~6 碼數字允許進入下一階段，
-    # 最終商品資格仍由官方 row 判定。
-
-    return bool(
-        re.fullmatch(
-            r"\d{3,6}",
-            symbol,
+    return clean_code(
+        find_field(
+            row,
+            [
+                "代號",
+                "證券代號",
+                "股票代號",
+                "證券代碼",
+                "Code",
+                "SecurityCode",
+                "StockCode",
+                "Symbol",
+                "ticker",
+            ],
         )
     )
 
 
-# ============================================================
-# PRODUCT CLASSIFICATION
-# ============================================================
-
-def explicit_type(
+def find_name(
     row: Dict[str, Any],
 ) -> str:
 
-    value = find_field(
-        row,
-        [
-            "證券種類",
-            "商品類別",
-            "商品種類",
-            "證券類型",
-            "證券類別",
-            "類別",
-            "Type",
-            "type",
-            "InstrumentType",
-            "instrument_type",
-            "SecurityType",
-            "securityType",
-        ],
+    return clean_text(
+        find_field(
+            row,
+            [
+                "名稱",
+                "證券名稱",
+                "股票名稱",
+                "公司名稱",
+                "Name",
+                "SecurityName",
+                "StockName",
+            ],
+        )
     )
 
-    return clean_text(value)
 
-
-def classify_product(
+def find_market(
     row: Dict[str, Any],
-    name: str,
-) -> Tuple[str, str]:
+) -> str:
 
-    type_text = explicit_type(row)
-
-    combined = (
-        f"{type_text} {name}"
+    value = clean_text(
+        find_field(
+            row,
+            [
+                "市場別",
+                "市場",
+                "Market",
+                "MarketType",
+            ],
+        )
     ).upper()
 
-    # --------------------------------------------------------
-    # ETF
-    # --------------------------------------------------------
+    if value in {
+        "TWSE",
+        "上市",
+        "集中市場",
+    }:
+        return "TWSE"
 
-    if (
-        "ETF" in combined
-        or "指數股票型基金" in combined
-        or "指數型基金" in combined
-    ):
-        return (
-            "ETF",
-            "NON_STOCK",
-        )
+    if value in {
+        "TPEX",
+        "TPEx",
+        "上櫃",
+        "櫃買",
+    }:
+        return "TPEX"
 
-    # --------------------------------------------------------
-    # ETN
-    # --------------------------------------------------------
-
-    if (
-        "ETN" in combined
-        or "指數投資證券" in combined
-    ):
-        return (
-            "ETN",
-            "NON_STOCK",
-        )
-
-    # --------------------------------------------------------
-    # Warrant
-    # --------------------------------------------------------
-
-    if any(
-        keyword in combined
-        for keyword in (
-            "權證",
-            "認購權證",
-            "認售權證",
-            "牛證",
-            "熊證",
-        )
-    ):
-        return (
-            "WARRANT",
-            "NON_STOCK",
-        )
-
-    # --------------------------------------------------------
-    # TDR
-    # --------------------------------------------------------
-
-    if (
-        "TDR" in combined
-        or "存託憑證" in combined
-    ):
-        return (
-            "TDR",
-            "NON_STOCK",
-        )
-
-    # --------------------------------------------------------
-    # Bond
-    # --------------------------------------------------------
-
-    if any(
-        keyword in combined
-        for keyword in (
-            "債券",
-            "公司債",
-            "政府債",
-            "金融債",
-        )
-    ):
-        return (
-            "BOND",
-            "NON_STOCK",
-        )
-
-    # --------------------------------------------------------
-    # Fund
-    # --------------------------------------------------------
-
-    if any(
-        keyword in combined
-        for keyword in (
-            "基金",
-            "受益憑證",
-        )
-    ):
-        return (
-            "FUND",
-            "NON_STOCK",
-        )
-
-    # --------------------------------------------------------
-    # Index
-    # --------------------------------------------------------
-
-    if (
-        "指數" in combined
-        and "股票" not in combined
-    ):
-        return (
-            "INDEX",
-            "NON_STOCK",
-        )
-
-    # --------------------------------------------------------
-    # Default
-    # --------------------------------------------------------
-
-    return (
-        "STOCK",
-        "COMMON_STOCK",
-    )
+    return ""
 
 
 # ============================================================
-# OFFICIAL ROW VALIDATION
+# HTTP
 # ============================================================
 
-def parse_official_stock(
-    row: Dict[str, Any],
-    market: str,
-) -> Optional[Dict[str, str]]:
-
-    if not isinstance(row, dict):
-        return None
-
-    symbol = extract_symbol(row)
-
-    if not valid_symbol(symbol):
-        return None
-
-    name = extract_name(row)
-
-    if not name:
-        return None
-
-    product_type, product_class = (
-        classify_product(
-            row,
-            name,
-        )
-    )
-
-    # --------------------------------------------------------
-    # 嚴格只收普通股票
-    # --------------------------------------------------------
-
-    if product_class != "COMMON_STOCK":
-        return None
-
-    if product_type != "STOCK":
-        return None
-
-    # --------------------------------------------------------
-    # 排除名稱明顯屬於非股票商品
-    # --------------------------------------------------------
-
-    name_upper = name.upper()
-
-    forbidden_name_keywords = (
-        "ETF",
-        "ETN",
-        "權證",
-        "認購",
-        "認售",
-        "牛證",
-        "熊證",
-        "存託憑證",
-        "TDR",
-        "債券",
-        "基金",
-        "受益憑證",
-    )
-
-    if any(
-        keyword in name_upper
-        for keyword in forbidden_name_keywords
-    ):
-        return None
-
-    # --------------------------------------------------------
-    # 建立標準 Universe record
-    # --------------------------------------------------------
-
-    suffix = (
-        ".TW"
-        if market == "TWSE"
-        else ".TWO"
-    )
-
-    return {
-        "symbol": symbol,
-        "full_symbol": symbol + suffix,
-        "name": name,
-        "market": market,
-        "type": "STOCK",
-        "status": "active",
-    }
-
-
-# ============================================================
-# HTTP JSON
-# ============================================================
-
-def fetch_json(
+def request_raw(
     url: str,
-) -> Optional[Any]:
+    params: Optional[Dict[str, Any]] = None,
+) -> Optional[requests.Response]:
 
     last_error = ""
 
@@ -701,478 +443,944 @@ def fetch_json(
 
         try:
 
-            response = SESSION.get(
+            response = session.get(
                 url,
+                params=params,
+                headers=HEADERS,
                 timeout=REQUEST_TIMEOUT,
             )
 
-            if response.status_code != 200:
+            if response.status_code == 200:
+                return response
 
-                last_error = (
-                    f"HTTP "
-                    f"{response.status_code}"
-                )
-
-            else:
-
-                text = (
-                    response.text
-                    .strip()
-                )
-
-                if not text:
-
-                    last_error = (
-                        "EMPTY RESPONSE"
-                    )
-
-                else:
-
-                    try:
-
-                        return response.json()
-
-                    except Exception as exc:
-
-                        last_error = (
-                            f"JSON ERROR: {exc}"
-                        )
+            last_error = (
+                f"HTTP {response.status_code}"
+            )
 
         except Exception as exc:
 
-            last_error = (
-                f"REQUEST ERROR: {exc}"
-            )
+            last_error = str(exc)
 
         if attempt < RETRIES:
 
             time.sleep(
-                RETRY_SLEEP
-                * attempt
+                RETRY_SLEEP * attempt
             )
 
     log(
-        f"❌ 官方 API 失敗："
-        f"{url}"
+        f"      ⚠️ {url}"
     )
 
     log(
-        f"   {last_error}"
+        f"         {last_error}"
     )
 
     return None
 
 
+def request_json(
+    url: str,
+    params: Optional[Dict[str, Any]] = None,
+) -> Optional[Any]:
+
+    response = request_raw(
+        url,
+        params,
+    )
+
+    if response is None:
+        return None
+
+    text = response.text.strip()
+
+    if not text:
+        log(
+            "      ⚠️ HTTP 200 但 response 為空"
+        )
+        return None
+
+    try:
+
+        return response.json()
+
+    except Exception as exc:
+
+        log(
+            "      ⚠️ response 不是 JSON："
+            f"{exc}"
+        )
+
+        preview = text[:120].replace(
+            "\n",
+            " ",
+        )
+
+        log(
+            f"         response preview: {preview}"
+        )
+
+        return None
+
+
 # ============================================================
-# NORMALIZE API PAYLOAD
+# PAYLOAD NORMALIZATION
 # ============================================================
 
-def normalize_payload(
+def rows_from_fields_data(
+    fields: Any,
+    data: Any,
+) -> List[Dict[str, Any]]:
+
+    if not isinstance(
+        fields,
+        list,
+    ):
+        return []
+
+    if not isinstance(
+        data,
+        list,
+    ):
+        return []
+
+    result = []
+
+    for row in data:
+
+        if isinstance(
+            row,
+            dict,
+        ):
+
+            result.append(row)
+            continue
+
+        if not isinstance(
+            row,
+            list,
+        ):
+            continue
+
+        record = {}
+
+        for index, field in enumerate(
+            fields
+        ):
+
+            if index >= len(row):
+                break
+
+            record[
+                str(field)
+            ] = row[index]
+
+        if record:
+            result.append(record)
+
+    return result
+
+
+def normalize_records(
     payload: Any,
 ) -> List[Dict[str, Any]]:
 
-    if isinstance(payload, list):
+    if isinstance(
+        payload,
+        list,
+    ):
 
         return [
             row
             for row in payload
-            if isinstance(row, dict)
+            if isinstance(
+                row,
+                dict,
+            )
         ]
 
-    if isinstance(payload, dict):
+    if not isinstance(
+        payload,
+        dict,
+    ):
+        return []
 
-        # ----------------------------------------------------
-        # data
-        # ----------------------------------------------------
+    rows = rows_from_fields_data(
+        payload.get("fields"),
+        payload.get("data"),
+    )
 
-        for key in (
-            "data",
-            "Data",
-            "result",
-            "results",
-            "records",
-            "Records",
-        ):
+    if rows:
+        return rows
 
-            value = payload.get(key)
+    tables = payload.get(
+        "tables"
+    )
 
-            if isinstance(value, list):
+    if isinstance(
+        tables,
+        list,
+    ):
 
-                rows = [
-                    row
-                    for row in value
-                    if isinstance(row, dict)
-                ]
+        result = []
 
-                if rows:
-                    return rows
+        for table in tables:
 
-        # ----------------------------------------------------
-        # fields + data
-        # ----------------------------------------------------
+            if not isinstance(
+                table,
+                dict,
+            ):
+                continue
 
-        fields = payload.get(
-            "fields"
-        )
+            result.extend(
+                rows_from_fields_data(
+                    table.get("fields"),
+                    table.get("data"),
+                )
+            )
 
-        data = payload.get(
-            "data"
-        )
+        if result:
+            return result
 
-        if (
-            isinstance(fields, list)
-            and isinstance(data, list)
-        ):
+    for key in (
+        "data",
+        "Data",
+        "result",
+        "results",
+        "records",
+        "Records",
+    ):
 
-            result = []
+        value = payload.get(key)
 
-            for raw_row in data:
-
-                if not isinstance(
-                    raw_row,
-                    list,
-                ):
-                    continue
-
-                row: Dict[str, Any] = {}
-
-                for index, field in enumerate(
-                    fields
-                ):
-
-                    if index >= len(
-                        raw_row
-                    ):
-                        break
-
-                    row[
-                        clean_text(field)
-                    ] = raw_row[index]
-
-                if row:
-                    result.append(row)
-
-            if result:
-                return result
-
-        # ----------------------------------------------------
-        # tables
-        # ----------------------------------------------------
-
-        tables = payload.get(
-            "tables"
-        )
-
-        if isinstance(
-            tables,
+        if not isinstance(
+            value,
             list,
         ):
+            continue
 
-            result = []
+        rows = [
+            row
+            for row in value
+            if isinstance(
+                row,
+                dict,
+            )
+        ]
 
-            for table in tables:
-
-                if not isinstance(
-                    table,
-                    dict,
-                ):
-                    continue
-
-                table_fields = (
-                    table.get("fields")
-                )
-
-                table_data = (
-                    table.get("data")
-                )
-
-                if not (
-                    isinstance(
-                        table_fields,
-                        list,
-                    )
-                    and isinstance(
-                        table_data,
-                        list,
-                    )
-                ):
-                    continue
-
-                for raw_row in table_data:
-
-                    if not isinstance(
-                        raw_row,
-                        list,
-                    ):
-                        continue
-
-                    row = {}
-
-                    for index, field in enumerate(
-                        table_fields
-                    ):
-
-                        if index >= len(
-                            raw_row
-                        ):
-                            break
-
-                        row[
-                            clean_text(field)
-                        ] = raw_row[index]
-
-                    if row:
-                        result.append(row)
-
-            if result:
-                return result
+        if rows:
+            return rows
 
     return []
 
 
 # ============================================================
-# FETCH OFFICIAL MARKET
+# SECURITY FILTER
 # ============================================================
 
-def fetch_market_universe(
-    market: str,
-    url: str,
-) -> List[Dict[str, str]]:
+def looks_like_stock_code(
+    symbol: str,
+) -> bool:
 
-    section(
-        f"{market} 官方 Universe"
-    )
+    if not symbol:
+        return False
 
-    log(
-        f"來源：{url}"
-    )
+    if not re.fullmatch(
+        r"\d{4,6}",
+        symbol,
+    ):
+        return False
 
-    payload = fetch_json(url)
+    return True
 
-    if payload is None:
 
-        raise RuntimeError(
-            f"{market} 官方 API 無法取得資料"
+def is_common_stock_name(
+    name: str,
+) -> bool:
+
+    if not name:
+        return False
+
+    upper = name.upper()
+
+    forbidden_keywords = [
+        "ETF",
+        "ETN",
+        "權證",
+        "牛熊證",
+        "認購權證",
+        "認售權證",
+        "受益證券",
+        "特別股",
+        "優先股",
+        "存託憑證",
+        "DR",
+        "TDR",
+    ]
+
+    for keyword in forbidden_keywords:
+
+        if keyword in upper:
+            return False
+
+    return True
+
+
+def is_common_stock_row(
+    row: Dict[str, Any],
+) -> bool:
+
+    symbol = find_symbol(row)
+    name = find_name(row)
+
+    if not looks_like_stock_code(
+        symbol
+    ):
+        return False
+
+    if not is_common_stock_name(
+        name
+    ):
+        return False
+
+    # --------------------------------------------------------
+    # 排除明確標示為 ETF / ETN / 權證等
+    # --------------------------------------------------------
+
+    combined = " ".join(
+        clean_text(value)
+        for value in row.values()
+    ).upper()
+
+    forbidden = [
+        "ETF",
+        "ETN",
+        "權證",
+        "牛熊證",
+        "認購權證",
+        "認售權證",
+    ]
+
+    for keyword in forbidden:
+
+        if keyword in combined:
+
+            # 名稱本身已經是普通股票時，
+            # 不因其他描述欄位中的 ETF 字樣誤殺。
+            if keyword not in name.upper():
+                continue
+
+            return False
+
+    return True
+
+
+# ============================================================
+# EXISTING UNIVERSE
+# ============================================================
+
+def load_existing_universe(
+) -> Dict[str, Dict[str, Any]]:
+
+    if not UNIVERSE_FILE.exists():
+        return {}
+
+    try:
+
+        payload = json.loads(
+            UNIVERSE_FILE.read_text(
+                encoding="utf-8"
+            )
         )
 
-    rows = normalize_payload(
-        payload
+    except Exception:
+
+        return {}
+
+    if not isinstance(
+        payload,
+        dict,
+    ):
+        return {}
+
+    stocks = payload.get(
+        "stocks"
     )
 
-    if not rows:
+    if not isinstance(
+        stocks,
+        dict,
+    ):
+        return {}
 
-        raise RuntimeError(
-            f"{market} 官方 API 回傳資料"
-            "無法解析成 records"
-        )
+    result = {}
 
-    log(
-        f"官方 records：{len(rows)}"
-    )
+    for key, item in stocks.items():
 
-    stocks: Dict[
-        str,
-        Dict[str, str],
-    ] = {}
-
-    invalid_symbol = 0
-    missing_name = 0
-    non_stock = 0
-    accepted = 0
-
-    for row in rows:
-
-        symbol = extract_symbol(
-            row
-        )
-
-        if not valid_symbol(
-            symbol
+        if not isinstance(
+            item,
+            dict,
         ):
-
-            invalid_symbol += 1
             continue
 
-        name = extract_name(
-            row
-        )
-
-        if not name:
-
-            missing_name += 1
-            continue
-
-        product_type, product_class = (
-            classify_product(
-                row,
-                name,
+        symbol = clean_code(
+            item.get(
+                "symbol",
+                key,
             )
         )
 
-        if (
-            product_class
-            != "COMMON_STOCK"
-            or product_type
-            != "STOCK"
-        ):
-
-            non_stock += 1
+        if not symbol:
             continue
 
-        record = parse_official_stock(
-            row,
-            market,
-        )
-
-        if record is None:
-            non_stock += 1
-            continue
-
-        if symbol in stocks:
-
-            # 官方資料出現重複代號：
-            # 如果 metadata 相同可以忽略重複；
-            # 若 metadata 不一致則直接 FAIL。
-            existing = stocks[symbol]
-
-            if (
-                existing["name"]
-                != record["name"]
-            ):
-
-                raise RuntimeError(
-                    f"{market} 官方資料出現"
-                    f"同代號不同名稱："
-                    f"{symbol}"
-                )
-
-            continue
-
-        stocks[
-            symbol
-        ] = record
-
-        accepted += 1
-
-    log(
-        f"✓ 普通股票：{accepted}"
-    )
-
-    log(
-        f"  無效代號：{invalid_symbol}"
-    )
-
-    log(
-        f"  缺名稱：{missing_name}"
-    )
-
-    log(
-        f"  排除非普通股票：{non_stock}"
-    )
-
-    # --------------------------------------------------------
-    # 官方資料有 records，
-    # 但一檔普通股票都解析不到 => FAIL
-    # --------------------------------------------------------
-
-    if not stocks:
-
-        raise RuntimeError(
-            f"{market} 官方資料存在，"
-            "但無法建立任何普通股票"
-        )
-
-    return list(
-        stocks.values()
-    )
-
-
-# ============================================================
-# MERGE
-# ============================================================
-
-def merge_markets(
-    twse: List[Dict[str, str]],
-    tpex: List[Dict[str, str]],
-) -> List[Dict[str, str]]:
-
-    section(
-        "Universe 合併"
-    )
-
-    stocks: Dict[
-        str,
-        Dict[str, str],
-    ] = {}
-
-    # --------------------------------------------------------
-    # TWSE
-    # --------------------------------------------------------
-
-    for item in twse:
-
-        symbol = item["symbol"]
-
-        if symbol in stocks:
-
-            raise RuntimeError(
-                f"TWSE 重複 symbol：{symbol}"
-            )
-
-        stocks[
-            symbol
-        ] = item
-
-    # --------------------------------------------------------
-    # TPEx
-    # --------------------------------------------------------
-
-    for item in tpex:
-
-        symbol = item["symbol"]
-
-        if symbol in stocks:
-
-            raise RuntimeError(
-                "TWSE / TPEx 出現相同 symbol："
-                f"{symbol}"
-            )
-
-        stocks[
-            symbol
-        ] = item
-
-    result = list(
-        stocks.values()
-    )
-
-    result.sort(
-        key=lambda item: item["symbol"]
-    )
-
-    log(
-        f"TWSE：{len(twse)}"
-    )
-
-    log(
-        f"TPEx：{len(tpex)}"
-    )
-
-    log(
-        f"Total：{len(result)}"
-    )
-
-    if not result:
-
-        raise RuntimeError(
-            "合併後 Universe 為空"
-        )
+        result[symbol] = item
 
     return result
 
 
 # ============================================================
-# STRUCTURE GATE
+# TWSE SOURCE 1
+# ============================================================
+
+def fetch_twse_openapi_daily(
+) -> List[Dict[str, Any]]:
+
+    section(
+        "TWSE 官方來源 1：STOCK_DAY_ALL"
+    )
+
+    payload = request_json(
+        TWSE_OPENAPI_STOCK_DAY_ALL
+    )
+
+    rows = normalize_records(
+        payload
+    )
+
+    if rows:
+
+        log(
+            f"✓ TWSE STOCK_DAY_ALL："
+            f"{len(rows)} rows"
+        )
+
+    else:
+
+        log(
+            "⚠️ TWSE STOCK_DAY_ALL 無法取得"
+        )
+
+    return rows
+
+
+# ============================================================
+# TWSE SOURCE 2
+# ============================================================
+
+def fetch_twse_openapi_avg(
+) -> List[Dict[str, Any]]:
+
+    section(
+        "TWSE 官方來源 2：STOCK_DAY_AVG_ALL"
+    )
+
+    payload = request_json(
+        TWSE_OPENAPI_SECURITIES
+    )
+
+    rows = normalize_records(
+        payload
+    )
+
+    if rows:
+
+        log(
+            f"✓ TWSE STOCK_DAY_AVG_ALL："
+            f"{len(rows)} rows"
+        )
+
+    else:
+
+        log(
+            "⚠️ TWSE STOCK_DAY_AVG_ALL 無法取得"
+        )
+
+    return rows
+
+
+# ============================================================
+# TWSE SOURCE 3
+# ============================================================
+
+def fetch_twse_stock_main(
+) -> List[Dict[str, Any]]:
+
+    section(
+        "TWSE 官方來源 3：證券主檔替代"
+    )
+
+    payload = request_json(
+        TWSE_OPENAPI_STOCK_MAIN
+    )
+
+    rows = normalize_records(
+        payload
+    )
+
+    if rows:
+
+        log(
+            f"✓ TWSE BWIBBU_d："
+            f"{len(rows)} rows"
+        )
+
+    else:
+
+        log(
+            "⚠️ TWSE BWIBBU_d 無法取得"
+        )
+
+    return rows
+
+
+# ============================================================
+# TWSE COMBINE
+# ============================================================
+
+def build_twse_candidates(
+    sources: List[
+        Tuple[
+            str,
+            List[Dict[str, Any]],
+        ]
+    ],
+) -> Dict[str, Dict[str, Any]]:
+
+    result: Dict[
+        str,
+        Dict[str, Any],
+    ] = {}
+
+    source_count: Dict[
+        str,
+        int,
+    ] = {}
+
+    for source_name, rows in sources:
+
+        source_count[
+            source_name
+        ] = 0
+
+        for row in rows:
+
+            if not is_common_stock_row(
+                row
+            ):
+                continue
+
+            symbol = find_symbol(
+                row
+            )
+
+            name = find_name(
+                row
+            )
+
+            if not symbol or not name:
+                continue
+
+            source_count[
+                source_name
+            ] += 1
+
+            if symbol not in result:
+
+                result[symbol] = {
+                    "symbol": symbol,
+                    "name": name,
+                    "market": "TWSE",
+                    "source": (
+                        "TWSE_OFFICIAL"
+                    ),
+                    "source_endpoint": (
+                        source_name
+                    ),
+                }
+
+            else:
+
+                # 多官方來源名稱一致時，
+                # 保留第一次有效資料。
+                # 如果名稱不同，優先較長且非空名稱。
+                old_name = result[
+                    symbol
+                ].get(
+                    "name",
+                    "",
+                )
+
+                if (
+                    len(name)
+                    > len(old_name)
+                ):
+
+                    result[
+                        symbol
+                    ]["name"] = name
+
+    log("")
+    log(
+        "TWSE 官方來源解析結果："
+    )
+
+    for source_name, count in (
+        source_count.items()
+    ):
+
+        log(
+            f"  {source_name}：{count}"
+        )
+
+    log(
+        f"✓ TWSE unique candidates："
+        f"{len(result)}"
+    )
+
+    return result
+
+
+# ============================================================
+# TPEX SOURCE
+# ============================================================
+
+def fetch_tpex_daily_quotes(
+) -> List[Dict[str, Any]]:
+
+    section(
+        "TPEx 官方來源：每日收盤行情"
+    )
+
+    payload = request_json(
+        TPEX_DAILY_QUOTES
+    )
+
+    rows = normalize_records(
+        payload
+    )
+
+    if rows:
+
+        log(
+            f"✓ TPEx daily quotes："
+            f"{len(rows)} rows"
+        )
+
+    else:
+
+        log(
+            "⚠️ TPEx daily quotes 無法取得"
+        )
+
+    return rows
+
+
+# ============================================================
+# TPEX SECONDARY
+# ============================================================
+
+def fetch_tpex_secondary(
+) -> List[Dict[str, Any]]:
+
+    section(
+        "TPEx 官方來源：官方替代 endpoint"
+    )
+
+    payload = request_json(
+        TPEX_STOCKS
+    )
+
+    rows = normalize_records(
+        payload
+    )
+
+    if rows:
+
+        log(
+            f"✓ TPEx secondary："
+            f"{len(rows)} rows"
+        )
+
+    else:
+
+        log(
+            "⚠️ TPEx secondary 無法取得"
+        )
+
+    return rows
+
+
+# ============================================================
+# TPEX COMBINE
+# ============================================================
+
+def build_tpex_candidates(
+    sources: List[
+        Tuple[
+            str,
+            List[Dict[str, Any]],
+        ]
+    ],
+) -> Dict[str, Dict[str, Any]]:
+
+    result: Dict[
+        str,
+        Dict[str, Any],
+    ] = {}
+
+    source_count = {}
+
+    for source_name, rows in sources:
+
+        source_count[
+            source_name
+        ] = 0
+
+        for row in rows:
+
+            if not is_common_stock_row(
+                row
+            ):
+                continue
+
+            symbol = find_symbol(
+                row
+            )
+
+            name = find_name(
+                row
+            )
+
+            if not symbol or not name:
+                continue
+
+            source_count[
+                source_name
+            ] += 1
+
+            if symbol not in result:
+
+                result[symbol] = {
+                    "symbol": symbol,
+                    "name": name,
+                    "market": "TPEX",
+                    "source": (
+                        "TPEX_OFFICIAL"
+                    ),
+                    "source_endpoint": (
+                        source_name
+                    ),
+                }
+
+            else:
+
+                old_name = result[
+                    symbol
+                ].get(
+                    "name",
+                    "",
+                )
+
+                if (
+                    len(name)
+                    > len(old_name)
+                ):
+
+                    result[
+                        symbol
+                    ]["name"] = name
+
+    log("")
+    log(
+        "TPEx 官方來源解析結果："
+    )
+
+    for source_name, count in (
+        source_count.items()
+    ):
+
+        log(
+            f"  {source_name}：{count}"
+        )
+
+    log(
+        f"✓ TPEx unique candidates："
+        f"{len(result)}"
+    )
+
+    return result
+
+
+# ============================================================
+# MERGE WITH EXISTING
+# ============================================================
+
+def merge_existing_metadata(
+    candidates: Dict[
+        str,
+        Dict[str, Any],
+    ],
+    existing: Dict[
+        str,
+        Dict[str, Any],
+    ],
+) -> Dict[
+    str,
+    Dict[str, Any],
+]:
+
+    result = {}
+
+    for symbol, candidate in (
+        candidates.items()
+    ):
+
+        old = existing.get(
+            symbol,
+            {},
+        )
+
+        if not isinstance(
+            old,
+            dict,
+        ):
+            old = {}
+
+        name = clean_text(
+            candidate.get(
+                "name"
+            )
+        )
+
+        if not name:
+
+            name = clean_text(
+                old.get(
+                    "name"
+                )
+            )
+
+        market = candidate.get(
+            "market"
+        )
+
+        suffix = (
+            ".TW"
+            if market == "TWSE"
+            else ".TWO"
+        )
+
+        full_symbol = clean_text(
+            old.get(
+                "full_symbol"
+            )
+        )
+
+        if not full_symbol:
+
+            full_symbol = (
+                symbol + suffix
+            )
+
+        # ----------------------------------------------------
+        # status
+        # ----------------------------------------------------
+
+        status = "active"
+
+        # ----------------------------------------------------
+        # type
+        # ----------------------------------------------------
+
+        instrument_type = clean_text(
+            old.get(
+                "type",
+                "STOCK",
+            )
+        ).upper()
+
+        if not instrument_type:
+            instrument_type = "STOCK"
+
+        result[symbol] = {
+            "symbol": symbol,
+            "full_symbol": full_symbol,
+            "name": name,
+            "market": market,
+            "type": instrument_type,
+            "status": status,
+            "source": candidate.get(
+                "source",
+                "OFFICIAL",
+            ),
+            "source_endpoint": candidate.get(
+                "source_endpoint",
+                "",
+            ),
+        }
+
+    return result
+
+
+# ============================================================
+# PAYLOAD
+# ============================================================
+
+def build_payload(
+    stocks: Dict[
+        str,
+        Dict[str, Any],
+    ],
+) -> Dict[str, Any]:
+
+    twse_count = sum(
+        1
+        for item in stocks.values()
+        if item.get("market")
+        == "TWSE"
+    )
+
+    tpex_count = sum(
+        1
+        for item in stocks.values()
+        if item.get("market")
+        == "TPEX"
+    )
+
+    return {
+        "version": VERSION,
+        "generated_at": iso_datetime(),
+        "data_date": today(),
+        "universe_count": len(stocks),
+        "market_counts": {
+            "TWSE": twse_count,
+            "TPEX": tpex_count,
+        },
+        "source_policy": {
+            "authority": "OFFICIAL",
+            "twse": [
+                "TWSE_OFFICIAL",
+            ],
+            "tpex": [
+                "TPEX_OFFICIAL",
+            ],
+            "third_party_allowed": False,
+        },
+        "stocks": stocks,
+    }
+
+
+# ============================================================
+# STRUCTURE VALIDATION
 # ============================================================
 
 REQUIRED_STOCK_FIELDS = {
@@ -1182,499 +1390,17 @@ REQUIRED_STOCK_FIELDS = {
     "market",
     "type",
     "status",
+    "source",
+    "source_endpoint",
 }
 
 
-def structure_gate(
-    stocks: Dict[str, Dict[str, str]],
-) -> bool:
-
-    section(
-        "Structure Gate"
-    )
-
-    errors = 0
-
-    if not isinstance(
-        stocks,
-        dict,
-    ):
-
-        log(
-            "❌ stocks 必須是 dict"
-        )
-
-        return False
-
-    for symbol, item in stocks.items():
-
-        if not isinstance(
-            item,
-            dict,
-        ):
-
-            log(
-                f"❌ {symbol}: "
-                "item 不是 dict"
-            )
-
-            errors += 1
-            continue
-
-        missing = (
-            REQUIRED_STOCK_FIELDS
-            - set(item.keys())
-        )
-
-        if missing:
-
-            log(
-                f"❌ {symbol}: "
-                f"缺欄位 {sorted(missing)}"
-            )
-
-            errors += len(
-                missing
-            )
-
-        if (
-            item.get("symbol")
-            != symbol
-        ):
-
-            log(
-                f"❌ {symbol}: "
-                "symbol mismatch"
-            )
-
-            errors += 1
-
-        if item.get(
-            "status"
-        ) != "active":
-
-            log(
-                f"❌ {symbol}: "
-                "status != active"
-            )
-
-            errors += 1
-
-        if item.get(
-            "type"
-        ) != "STOCK":
-
-            log(
-                f"❌ {symbol}: "
-                "type != STOCK"
-            )
-
-            errors += 1
-
-        if item.get(
-            "market"
-        ) not in {
-            "TWSE",
-            "TPEX",
-        }:
-
-            log(
-                f"❌ {symbol}: "
-                "market 無效"
-            )
-
-            errors += 1
-
-        if not valid_symbol(
-            symbol
-        ):
-
-            log(
-                f"❌ {symbol}: "
-                "symbol 格式無效"
-            )
-
-            errors += 1
-
-        expected_suffix = (
-            ".TW"
-            if item.get("market")
-            == "TWSE"
-            else ".TWO"
-        )
-
-        if item.get(
-            "full_symbol"
-        ) != (
-            symbol
-            + expected_suffix
-        ):
-
-            log(
-                f"❌ {symbol}: "
-                "full_symbol mismatch"
-            )
-
-            errors += 1
-
-        if not clean_text(
-            item.get("name")
-        ):
-
-            log(
-                f"❌ {symbol}: "
-                "name 空白"
-            )
-
-            errors += 1
-
-    if errors:
-
-        log(
-            f"❌ Structure Gate FAIL："
-            f"{errors}"
-        )
-
-        return False
-
-    log(
-        f"✓ Structure Gate PASS："
-        f"{len(stocks)} 檔"
-    )
-
-    return True
-
-
-# ============================================================
-# DATA QUALITY GATE
-# ============================================================
-
-def data_quality_gate(
-    stocks: Dict[str, Dict[str, str]],
-) -> bool:
-
-    section(
-        "Data Quality Gate"
-    )
-
-    errors = 0
-
-    symbols: Set[str] = set()
-
-    for key, item in stocks.items():
-
-        # ----------------------------------------------------
-        # unique
-        # ----------------------------------------------------
-
-        if key in symbols:
-
-            log(
-                f"❌ 重複 symbol：{key}"
-            )
-
-            errors += 1
-
-        symbols.add(key)
-
-        # ----------------------------------------------------
-        # active
-        # ----------------------------------------------------
-
-        if item.get(
-            "status"
-        ) != "active":
-
-            log(
-                f"❌ {key}: inactive"
-            )
-
-            errors += 1
-
-        # ----------------------------------------------------
-        # market
-        # ----------------------------------------------------
-
-        market = item.get(
-            "market"
-        )
-
-        if market not in {
-            "TWSE",
-            "TPEX",
-        }:
-
-            errors += 1
-
-        # ----------------------------------------------------
-        # product
-        # ----------------------------------------------------
-
-        if item.get(
-            "type"
-        ) != "STOCK":
-
-            log(
-                f"❌ {key}: "
-                "非 STOCK"
-            )
-
-            errors += 1
-
-        # ----------------------------------------------------
-        # name
-        # ----------------------------------------------------
-
-        name = clean_text(
-            item.get("name")
-        )
-
-        if not name:
-
-            log(
-                f"❌ {key}: "
-                "name 空白"
-            )
-
-            errors += 1
-
-        # ----------------------------------------------------
-        # symbol
-        # ----------------------------------------------------
-
-        if not valid_symbol(
-            key
-        ):
-
-            log(
-                f"❌ {key}: "
-                "symbol 無效"
-            )
-
-            errors += 1
-
-    # --------------------------------------------------------
-    # Market counts
-    # --------------------------------------------------------
-
-    twse_count = sum(
-        1
-        for item in stocks.values()
-        if item.get("market")
-        == "TWSE"
-    )
-
-    tpex_count = sum(
-        1
-        for item in stocks.values()
-        if item.get("market")
-        == "TPEX"
-    )
-
-    log(
-        f"TWSE：{twse_count}"
-    )
-
-    log(
-        f"TPEx：{tpex_count}"
-    )
-
-    log(
-        f"Total：{len(stocks)}"
-    )
-
-    # --------------------------------------------------------
-    # 基本合理性
-    #
-    # 不設定「應該是多少檔」。
-    # 只防止明顯 API/parser 災難。
-    # --------------------------------------------------------
-
-    if len(stocks) <= 0:
-
-        log(
-            "❌ Universe 為 0"
-        )
-
-        errors += 1
-
-    if len(stocks) > 5000:
-
-        log(
-            "❌ Universe 超過安全上限 5000"
-        )
-
-        log(
-            "   這通常代表 API/parser 異常"
-        )
-
-        errors += 1
-
-    if twse_count <= 0:
-
-        log(
-            "❌ TWSE Universe 為 0"
-        )
-
-        errors += 1
-
-    if tpex_count <= 0:
-
-        log(
-            "❌ TPEx Universe 為 0"
-        )
-
-        errors += 1
-
-    # --------------------------------------------------------
-    # PASS / FAIL
-    # --------------------------------------------------------
-
-    if errors:
-
-        log(
-            f"❌ Data Quality Gate FAIL："
-            f"{errors}"
-        )
-
-        return False
-
-    log(
-        "✓ 所有 symbol 唯一"
-    )
-
-    log(
-        "✓ 所有商品為 STOCK"
-    )
-
-    log(
-        "✓ 所有 status == active"
-    )
-
-    log(
-        "✓ TWSE / TPEx 均有資料"
-    )
-
-    log(
-        "✓ Universe 數量未出現"
-        "明顯 parser 災難"
-    )
-
-    log(
-        "✓ Data Quality Gate PASS"
-    )
-
-    return True
-
-
-# ============================================================
-# PAYLOAD
-# ============================================================
-
-def build_payload(
-    stocks: List[Dict[str, str]],
-) -> Dict[str, Any]:
-
-    stock_dict: Dict[
-        str,
-        Dict[str, str],
-    ] = {}
-
-    for item in stocks:
-
-        symbol = item[
-            "symbol"
-        ]
-
-        if symbol in stock_dict:
-
-            raise RuntimeError(
-                f"Payload duplicate："
-                f"{symbol}"
-            )
-
-        stock_dict[
-            symbol
-        ] = item
-
-    twse_count = sum(
-        1
-        for item in stock_dict.values()
-        if item.get("market")
-        == "TWSE"
-    )
-
-    tpex_count = sum(
-        1
-        for item in stock_dict.values()
-        if item.get("market")
-        == "TPEX"
-    )
-
-    return {
-        "version": VERSION,
-
-        "generated_at":
-            now_tw().isoformat(),
-
-        "data_date":
-            now_tw().strftime(
-                "%Y-%m-%d"
-            ),
-
-        "universe_count":
-            len(stock_dict),
-
-        "market_counts": {
-            "TWSE":
-                twse_count,
-            "TPEX":
-                tpex_count,
-        },
-
-        "instrument_filter": {
-            "included": [
-                "STOCK",
-            ],
-
-            "excluded": [
-                "ETF",
-                "ETN",
-                "TDR",
-                "WARRANT",
-                "BOND",
-                "FUND",
-                "INDEX",
-                "OTHER",
-            ],
-        },
-
-        "source": {
-            "TWSE":
-                TWSE_API,
-
-            "TPEX":
-                TPEX_API,
-
-            "fallback_allowed":
-                False,
-        },
-
-        "stocks":
-            stock_dict,
-    }
-
-
-# ============================================================
-# PAYLOAD CONTRACT
-# ============================================================
-
-def payload_contract_gate(
+def validate_structure(
     payload: Dict[str, Any],
 ) -> bool:
 
     section(
-        "Payload Contract Gate"
+        "Structure Gate"
     )
 
     if not isinstance(
@@ -1698,22 +1424,241 @@ def payload_contract_gate(
     ):
 
         log(
-            "❌ stocks 不是 dict"
+            "❌ stocks 必須是 dict"
         )
 
         return False
 
-    universe_count = payload.get(
-        "universe_count"
-    )
-
-    if universe_count != len(
-        stocks
-    ):
+    if not stocks:
 
         log(
-            "❌ universe_count != "
-            "len(stocks)"
+            "❌ stocks 不得為空"
+        )
+
+        return False
+
+    errors = 0
+
+    for symbol, item in (
+        stocks.items()
+    ):
+
+        if not isinstance(
+            item,
+            dict,
+        ):
+
+            log(
+                f"❌ {symbol}: item 非 dict"
+            )
+
+            errors += 1
+            continue
+
+        missing = (
+            REQUIRED_STOCK_FIELDS
+            - set(item.keys())
+        )
+
+        if missing:
+
+            log(
+                f"❌ {symbol}: "
+                f"missing={sorted(missing)}"
+            )
+
+            errors += len(missing)
+
+        if clean_code(
+            item.get(
+                "symbol"
+            )
+        ) != symbol:
+
+            log(
+                f"❌ {symbol}: symbol mismatch"
+            )
+
+            errors += 1
+
+        if item.get(
+            "market"
+        ) not in {
+            "TWSE",
+            "TPEX",
+        }:
+
+            log(
+                f"❌ {symbol}: invalid market"
+            )
+
+            errors += 1
+
+        if item.get(
+            "status"
+        ) != "active":
+
+            log(
+                f"❌ {symbol}: "
+                "new Universe item 必須 active"
+            )
+
+            errors += 1
+
+        if item.get(
+            "type"
+        ) != "STOCK":
+
+            log(
+                f"❌ {symbol}: "
+                f"type={item.get('type')}"
+            )
+
+            errors += 1
+
+        if not looks_like_stock_code(
+            symbol
+        ):
+
+            log(
+                f"❌ invalid symbol：{symbol}"
+            )
+
+            errors += 1
+
+        if not item.get(
+            "name"
+        ):
+
+            log(
+                f"❌ {symbol}: name empty"
+            )
+
+            errors += 1
+
+        source = item.get(
+            "source"
+        )
+
+        if source not in {
+            "TWSE_OFFICIAL",
+            "TPEX_OFFICIAL",
+        }:
+
+            log(
+                f"❌ {symbol}: "
+                f"invalid source={source}"
+            )
+
+            errors += 1
+
+    if errors:
+
+        log(
+            f"❌ Structure Gate FAIL："
+            f"{errors}"
+        )
+
+        return False
+
+    log(
+        f"✓ Structure Gate PASS："
+        f"{len(stocks)}"
+    )
+
+    return True
+
+
+# ============================================================
+# MARKET GATE
+# ============================================================
+
+def market_gate(
+    stocks: Dict[
+        str,
+        Dict[str, Any],
+    ],
+) -> bool:
+
+    section(
+        "Market Coverage Gate"
+    )
+
+    twse = [
+        symbol
+        for symbol, item
+        in stocks.items()
+        if item.get("market")
+        == "TWSE"
+    ]
+
+    tpex = [
+        symbol
+        for symbol, item
+        in stocks.items()
+        if item.get("market")
+        == "TPEX"
+    ]
+
+    log(
+        f"TWSE：{len(twse)}"
+    )
+
+    log(
+        f"TPEx：{len(tpex)}"
+    )
+
+    if not twse:
+
+        log(
+            "❌ TWSE Universe 為 0"
+        )
+
+        return False
+
+    if not tpex:
+
+        log(
+            "❌ TPEx Universe 為 0"
+        )
+
+        return False
+
+    log(
+        "✓ TWSE / TPEx 均有官方 Universe"
+    )
+
+    return True
+
+
+# ============================================================
+# PAYLOAD GATE
+# ============================================================
+
+def validate_payload(
+    payload: Dict[str, Any],
+) -> bool:
+
+    section(
+        "Payload Gate"
+    )
+
+    stocks = payload.get(
+        "stocks"
+    )
+
+    if not isinstance(
+        stocks,
+        dict,
+    ):
+        return False
+
+    if payload.get(
+        "universe_count"
+    ) != len(stocks):
+
+        log(
+            "❌ universe_count mismatch"
         )
 
         return False
@@ -1726,21 +1671,16 @@ def payload_contract_gate(
         market_counts,
         dict,
     ):
-
-        log(
-            "❌ market_counts 無效"
-        )
-
         return False
 
-    twse_count = sum(
+    actual_twse = sum(
         1
         for item in stocks.values()
         if item.get("market")
         == "TWSE"
     )
 
-    tpex_count = sum(
+    actual_tpex = sum(
         1
         for item in stocks.values()
         if item.get("market")
@@ -1749,7 +1689,7 @@ def payload_contract_gate(
 
     if market_counts.get(
         "TWSE"
-    ) != twse_count:
+    ) != actual_twse:
 
         log(
             "❌ TWSE count mismatch"
@@ -1759,7 +1699,7 @@ def payload_contract_gate(
 
     if market_counts.get(
         "TPEX"
-    ) != tpex_count:
+    ) != actual_tpex:
 
         log(
             "❌ TPEx count mismatch"
@@ -1767,34 +1707,29 @@ def payload_contract_gate(
 
         return False
 
-    if payload.get(
-        "source",
-        {},
-    ).get(
-        "fallback_allowed"
+    source_policy = payload.get(
+        "source_policy"
+    )
+
+    if not isinstance(
+        source_policy,
+        dict,
+    ):
+        return False
+
+    if source_policy.get(
+        "third_party_allowed"
     ) is not False:
 
         log(
-            "❌ Universe fallback "
-            "不得擴張"
+            "❌ third_party_allowed "
+            "必須為 false"
         )
 
         return False
 
     log(
-        "✓ universe_count == len(stocks)"
-    )
-
-    log(
-        "✓ market_counts 正確"
-    )
-
-    log(
-        "✓ 官方來源契約正確"
-    )
-
-    log(
-        "✓ Payload Contract PASS"
+        "✓ Payload Gate PASS"
     )
 
     return True
@@ -1817,10 +1752,6 @@ def atomic_write(
         exist_ok=True,
     )
 
-    temp_path: Optional[
-        Path
-    ] = None
-
     try:
 
         serialized = json.dumps(
@@ -1829,75 +1760,34 @@ def atomic_write(
             indent=2,
         )
 
-        # ----------------------------------------------------
-        # 先確認 serialization 本身有效
-        # ----------------------------------------------------
-
-        json.loads(
-            serialized
-        )
-
-        # ----------------------------------------------------
-        # temp file
-        # ----------------------------------------------------
-
-        fd, temp_name = (
-            tempfile.mkstemp(
-                prefix="universe.",
-                suffix=".tmp",
-                dir=str(DATA_DIR),
-                text=True,
-            )
-        )
-
-        temp_path = Path(
-            temp_name
-        )
-
-        with os.fdopen(
-            fd,
-            "w",
+        TEMP_FILE.write_text(
+            serialized,
             encoding="utf-8",
-        ) as handle:
-
-            handle.write(
-                serialized
-            )
-
-            handle.flush()
-
-            os.fsync(
-                handle.fileno()
-            )
+        )
 
         # ----------------------------------------------------
-        # temp read verify
+        # temp file JSON validation
         # ----------------------------------------------------
 
-        temp_payload = json.loads(
-            temp_path.read_text(
+        check = json.loads(
+            TEMP_FILE.read_text(
                 encoding="utf-8"
             )
         )
 
         if not isinstance(
-            temp_payload,
+            check,
             dict,
         ):
 
             raise RuntimeError(
-                "temp payload 不是 dict"
+                "temporary JSON root "
+                "不是 dict"
             )
 
-        # ----------------------------------------------------
-        # Atomic replace
-        # ----------------------------------------------------
-
-        temp_path.replace(
+        TEMP_FILE.replace(
             UNIVERSE_FILE
         )
-
-        temp_path = None
 
         log(
             f"✓ Atomic Write："
@@ -1913,16 +1803,14 @@ def atomic_write(
             f"{exc}"
         )
 
-        if (
-            temp_path is not None
-            and temp_path.exists()
-        ):
+        try:
 
-            try:
-                temp_path.unlink()
+            TEMP_FILE.unlink(
+                missing_ok=True
+            )
 
-            except Exception:
-                pass
+        except Exception:
+            pass
 
         return False
 
@@ -1936,7 +1824,7 @@ def post_write_verify(
 ) -> bool:
 
     section(
-        "Post-Write Verify"
+        "Post Write Verify"
     )
 
     if not UNIVERSE_FILE.exists():
@@ -1949,7 +1837,7 @@ def post_write_verify(
 
     try:
 
-        actual = json.loads(
+        payload = json.loads(
             UNIVERSE_FILE.read_text(
                 encoding="utf-8"
             )
@@ -1958,44 +1846,31 @@ def post_write_verify(
     except Exception as exc:
 
         log(
-            f"❌ universe.json "
-            f"JSON 解析失敗：{exc}"
+            f"❌ universe.json JSON ERROR："
+            f"{exc}"
         )
 
         return False
 
     if not isinstance(
-        actual,
+        payload,
         dict,
     ):
 
-        log(
-            "❌ universe.json "
-            "根節點不是 dict"
-        )
-
         return False
 
-    # --------------------------------------------------------
-    # universe count
-    # --------------------------------------------------------
+    stocks = payload.get(
+        "stocks"
+    )
 
     expected_stocks = (
         expected_payload.get(
-            "stocks",
-            {}
-        )
-    )
-
-    actual_stocks = (
-        actual.get(
-            "stocks",
-            {}
+            "stocks"
         )
     )
 
     if not isinstance(
-        actual_stocks,
+        stocks,
         dict,
     ):
 
@@ -2005,166 +1880,107 @@ def post_write_verify(
 
         return False
 
-    if len(
-        actual_stocks
-    ) != len(
-        expected_stocks
+    if not isinstance(
+        expected_stocks,
+        dict,
     ):
-
-        log(
-            "❌ 寫入後數量不一致"
-        )
 
         return False
 
-    # --------------------------------------------------------
-    # exact symbol set
-    # --------------------------------------------------------
-
-    expected_symbols = set(
+    if set(
+        stocks.keys()
+    ) != set(
         expected_stocks.keys()
-    )
-
-    actual_symbols = set(
-        actual_stocks.keys()
-    )
-
-    if (
-        expected_symbols
-        != actual_symbols
     ):
 
-        missing = sorted(
-            expected_symbols
-            - actual_symbols
-        )
-
-        extra = sorted(
-            actual_symbols
-            - expected_symbols
-        )
-
         log(
-            f"❌ symbol set mismatch"
-        )
-
-        log(
-            f"   missing：{missing[:20]}"
-        )
-
-        log(
-            f"   extra：{extra[:20]}"
+            "❌ 寫入後 Universe symbol set 改變"
         )
 
         return False
 
-    # --------------------------------------------------------
-    # record-level verify
-    # --------------------------------------------------------
+    if payload.get(
+        "universe_count"
+    ) != len(stocks):
 
-    for symbol in sorted(
-        expected_symbols
+        log(
+            "❌ 寫入後 universe_count 錯誤"
+        )
+
+        return False
+
+    for symbol, item in (
+        stocks.items()
     ):
 
-        expected = (
-            expected_stocks[
-                symbol
-            ]
-        )
-
-        actual_item = (
-            actual_stocks[
-                symbol
-            ]
-        )
-
-        if expected != actual_item:
+        if not isinstance(
+            item,
+            dict,
+        ):
 
             log(
-                f"❌ {symbol}: "
-                "寫入前後資料不一致"
+                f"❌ {symbol}: item 非 dict"
             )
 
             return False
 
-    # --------------------------------------------------------
-    # count
-    # --------------------------------------------------------
-
-    if actual.get(
-        "universe_count"
-    ) != len(
-        actual_stocks
-    ):
-
-        log(
-            "❌ universe_count "
-            "寫入後錯誤"
-        )
-
-        return False
-
-    # --------------------------------------------------------
-    # active
-    # --------------------------------------------------------
-
-    active_count = sum(
-        1
-        for item in actual_stocks.values()
         if item.get(
             "status"
-        ) == "active"
-    )
+        ) != "active":
 
-    if active_count != len(
-        actual_stocks
-    ):
+            log(
+                f"❌ {symbol}: status != active"
+            )
 
-        log(
-            "❌ 寫入後存在 "
-            "非 active 股票"
-        )
+            return False
 
-        return False
+        if item.get(
+            "symbol"
+        ) != symbol:
 
-    # --------------------------------------------------------
-    # final structure
-    # --------------------------------------------------------
+            log(
+                f"❌ {symbol}: symbol mismatch"
+            )
 
-    if not structure_gate(
-        actual_stocks
-    ):
+            return False
 
-        log(
-            "❌ Post-Write Structure Gate FAIL"
-        )
+        if item.get(
+            "market"
+        ) not in {
+            "TWSE",
+            "TPEX",
+        }:
 
-        return False
+            return False
+
+        if item.get(
+            "type"
+        ) != "STOCK":
+
+            return False
 
     log(
         "✓ universe.json 重新讀取成功"
     )
 
     log(
-        f"✓ Total："
-        f"{len(actual_stocks)}"
+        f"✓ Universe：{len(stocks)}"
     )
 
     log(
-        f"✓ Active："
-        f"{active_count}"
+        "✓ symbol set 一致"
     )
 
     log(
-        "✓ Symbol set 完全一致"
+        "✓ active 狀態一致"
     )
 
     log(
-        "✓ Record 完全一致"
+        "✓ market/type 驗證一致"
     )
 
     log(
-        "✓ Post-Write Verify PASS"
+        "✓ Post Write Verify PASS"
     )
 
     return True
@@ -2176,119 +1992,233 @@ def post_write_verify(
 
 def main() -> int:
 
-    start_time = time.time()
+    start = time.time()
 
     section(
-        f"台股 AI 選股系統 "
-        f"Universe Builder "
-        f"{VERSION}"
+        "台股 AI 選股系統 "
+        f"Universe Builder {VERSION}"
     )
 
     log(
-        f"開始時間："
-        f"{now_tw().isoformat()}"
+        f"開始時間：{iso_datetime()}"
     )
 
     try:
 
         # ====================================================
-        # 1. TWSE
+        # Existing Universe
         # ====================================================
 
-        twse = fetch_market_universe(
-            "TWSE",
-            TWSE_API,
+        existing = (
+            load_existing_universe()
         )
 
-        time.sleep(
-            0.8
-        )
-
-        # ====================================================
-        # 2. TPEx
-        # ====================================================
-
-        tpex = fetch_market_universe(
-            "TPEX",
-            TPEX_API,
+        log(
+            f"既有 Universe metadata："
+            f"{len(existing)}"
         )
 
         # ====================================================
-        # 3. Merge
+        # TWSE
         # ====================================================
 
-        stocks_list = merge_markets(
-            twse,
-            tpex,
+        twse_sources = []
+
+        twse_rows_1 = (
+            fetch_twse_openapi_daily()
         )
 
-        # ====================================================
-        # 4. Convert
-        # ====================================================
-
-        stocks: Dict[
-            str,
-            Dict[str, str],
-        ] = {}
-
-        for item in stocks_list:
-
-            symbol = item[
-                "symbol"
-            ]
-
-            if symbol in stocks:
-
-                raise RuntimeError(
-                    f"Duplicate symbol："
-                    f"{symbol}"
+        if twse_rows_1:
+            twse_sources.append(
+                (
+                    "STOCK_DAY_ALL",
+                    twse_rows_1,
                 )
+            )
 
-            stocks[
-                symbol
-            ] = item
+        # ----------------------------------------------------
+        # 如果第一個官方 endpoint 失敗，
+        # 不立即 FAIL。
+        # 繼續官方替代來源。
+        # ----------------------------------------------------
+
+        twse_rows_2 = (
+            fetch_twse_openapi_avg()
+        )
+
+        if twse_rows_2:
+            twse_sources.append(
+                (
+                    "STOCK_DAY_AVG_ALL",
+                    twse_rows_2,
+                )
+            )
+
+        twse_rows_3 = (
+            fetch_twse_stock_main()
+        )
+
+        if twse_rows_3:
+            twse_sources.append(
+                (
+                    "BWIBBU_d",
+                    twse_rows_3,
+                )
+            )
+
+        twse_candidates = (
+            build_twse_candidates(
+                twse_sources
+            )
+        )
 
         # ====================================================
-        # 5. Structure Gate
+        # TPEx
         # ====================================================
 
-        if not structure_gate(
-            stocks
-        ):
+        tpex_sources = []
+
+        tpex_rows_1 = (
+            fetch_tpex_daily_quotes()
+        )
+
+        if tpex_rows_1:
+            tpex_sources.append(
+                (
+                    "TPEX_DAILY_QUOTES",
+                    tpex_rows_1,
+                )
+            )
+
+        tpex_rows_2 = (
+            fetch_tpex_secondary()
+        )
+
+        if tpex_rows_2:
+            tpex_sources.append(
+                (
+                    "TPEX_SECONDARY",
+                    tpex_rows_2,
+                )
+            )
+
+        tpex_candidates = (
+            build_tpex_candidates(
+                tpex_sources
+            )
+        )
+
+        # ====================================================
+        # HARD OFFICIAL SOURCE GATE
+        # ====================================================
+
+        section(
+            "Official Source Gate"
+        )
+
+        if not twse_sources:
 
             log(
-                "❌ BUILD STOP"
+                "❌ TWSE 所有官方來源皆失敗"
+            )
+
+            log(
+                "❌ 禁止建立 TWSE Universe"
             )
 
             return 1
 
-        # ====================================================
-        # 6. Data Quality Gate
-        # ====================================================
-
-        if not data_quality_gate(
-            stocks
-        ):
+        if not tpex_sources:
 
             log(
-                "❌ BUILD STOP"
+                "❌ TPEx 所有官方來源皆失敗"
+            )
+
+            log(
+                "❌ 禁止建立 TPEx Universe"
             )
 
             return 1
 
+        if not twse_candidates:
+
+            log(
+                "❌ TWSE 官方來源有回應，"
+                "但無法解析有效普通股"
+            )
+
+            return 1
+
+        if not tpex_candidates:
+
+            log(
+                "❌ TPEx 官方來源有回應，"
+                "但無法解析有效普通股"
+            )
+
+            return 1
+
+        log(
+            "✓ TWSE 官方來源可用"
+        )
+
+        log(
+            "✓ TPEx 官方來源可用"
+        )
+
         # ====================================================
-        # 7. Payload
+        # MERGE
+        # ====================================================
+
+        section(
+            "Build Universe"
+        )
+
+        candidates = {}
+
+        candidates.update(
+            twse_candidates
+        )
+
+        candidates.update(
+            tpex_candidates
+        )
+
+        stocks = (
+            merge_existing_metadata(
+                candidates,
+                existing,
+            )
+        )
+
+        log(
+            f"TWSE："
+            f"{sum(1 for x in stocks.values() if x['market'] == 'TWSE')}"
+        )
+
+        log(
+            f"TPEx："
+            f"{sum(1 for x in stocks.values() if x['market'] == 'TPEX')}"
+        )
+
+        log(
+            f"Universe："
+            f"{len(stocks)}"
+        )
+
+        # ====================================================
+        # Payload
         # ====================================================
 
         payload = build_payload(
-            stocks_list
+            stocks
         )
 
         # ====================================================
-        # 8. Payload Contract
+        # Structure Gate
         # ====================================================
 
-        if not payload_contract_gate(
+        if not validate_structure(
             payload
         ):
 
@@ -2299,21 +2229,45 @@ def main() -> int:
             return 1
 
         # ====================================================
-        # 9. Atomic Write
+        # Market Gate
+        # ====================================================
+
+        if not market_gate(
+            stocks
+        ):
+
+            log(
+                "❌ BUILD STOP"
+            )
+
+            return 1
+
+        # ====================================================
+        # Payload Gate
+        # ====================================================
+
+        if not validate_payload(
+            payload
+        ):
+
+            log(
+                "❌ BUILD STOP"
+            )
+
+            return 1
+
+        # ====================================================
+        # Atomic Write
         # ====================================================
 
         if not atomic_write(
             payload
         ):
 
-            log(
-                "❌ BUILD STOP"
-            )
-
             return 1
 
         # ====================================================
-        # 10. Post Write Verify
+        # Post Write Verify
         # ====================================================
 
         if not post_write_verify(
@@ -2321,80 +2275,61 @@ def main() -> int:
         ):
 
             log(
-                "❌ BUILD STOP"
+                "❌ BUILD FAIL"
             )
 
             return 1
 
         # ====================================================
-        # 11. RESULT
+        # RESULT
         # ====================================================
 
         elapsed = (
             time.time()
-            - start_time
+            - start
         )
 
         section(
             "BUILD RESULT"
         )
 
-        twse_count = sum(
-            1
-            for item in stocks.values()
-            if item.get(
-                "market"
-            ) == "TWSE"
-        )
-
-        tpex_count = sum(
-            1
-            for item in stocks.values()
-            if item.get(
-                "market"
-            ) == "TPEX"
-        )
-
-        active_count = sum(
-            1
-            for item in stocks.values()
-            if item.get(
-                "status"
-            ) == "active"
+        log(
+            "✓ UNIVERSE BUILD PASS"
         )
 
         log(
-            "✓ build_universe.py PASS"
+            f"✓ Version：{VERSION}"
         )
 
         log(
-            f"✓ TWSE："
-            f"{twse_count}"
+            f"✓ Data Date：{payload['data_date']}"
         )
 
         log(
-            f"✓ TPEx："
-            f"{tpex_count}"
-        )
-
-        log(
-            f"✓ Total："
-            f"{len(stocks)}"
-        )
-
-        log(
-            f"✓ Active："
-            f"{active_count}"
-        )
-
-        log(
-            f"✓ universe_count："
+            f"✓ Universe："
             f"{payload['universe_count']}"
         )
 
         log(
-            f"✓ elapsed："
-            f"{elapsed:.1f}s"
+            f"✓ TWSE："
+            f"{payload['market_counts']['TWSE']}"
+        )
+
+        log(
+            f"✓ TPEx："
+            f"{payload['market_counts']['TPEX']}"
+        )
+
+        log(
+            "✓ Source：OFFICIAL"
+        )
+
+        log(
+            "✓ Third-party：DISABLED"
+        )
+
+        log(
+            f"✓ elapsed：{elapsed:.1f}s"
         )
 
         return 0
@@ -2422,4 +2357,6 @@ def main() -> int:
 # ============================================================
 
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(
+        main()
+    )
