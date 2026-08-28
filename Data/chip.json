@@ -1,6 +1,6 @@
 {
-  "version": "OFFICIAL-SOURCE-ONLY-2026.08.29.V2",
-  "generated_at": "2026-08-29T02:39:06.933013+08:00",
+  "version": "OFFICIAL-SOURCE-ONLY-2026.08.29-S23-CONTRACT-FIX",
+  "generated_at": "2026-08-29T03:03:24.772335+08:00",
   "data_date": "2026-08-28",
   "institutional_trading_dates": [
     "2026-08-28",
@@ -48376,6 +48376,17 @@
       "volume_TWSE": "TWSE STOCK_DAY_ALL",
       "volume_TPEX": "TPEx daily close quotes"
     },
-    "fallback": false
+    "forbidden_sources": [
+      "MoneyLink",
+      "CMoney",
+      "Yahoo Finance",
+      "TWTB4U",
+      "tpex_intraday_trading_statistics",
+      "可現股當沖標的",
+      "現股當沖成交股數",
+      "融資餘額",
+      "融券餘額",
+      "融券賣出量"
+    ]
   }
 }
