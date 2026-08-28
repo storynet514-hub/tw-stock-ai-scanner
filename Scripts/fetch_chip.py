@@ -1673,7 +1673,6 @@ def parse_tpex_margin_rows(
 
 def fetch_tpex_margin_offset(
     trade_date: str,
-    universe: Dict[str, Dict[str, Any]],
 ) -> Dict[str, Dict[str, Any]]:
     """
     TPEx 官方資券相抵資料。
@@ -1854,8 +1853,6 @@ def fetch_tpex_margin_offset(
 
         code = code_match.group(1)
 
-        if code not in universe:
-            continue
 
         # --------------------------------------------------------
         # 解析資料欄位
