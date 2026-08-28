@@ -1,6 +1,6 @@
 {
   "version": "UNIVERSE-BUILD",
-  "generated_at": "2026-08-28T15:29:23.829402+08:00",
+  "generated_at": "2026-08-29T02:36:29.467198+08:00",
   "universe_count": 2301,
   "stock_count": 1944,
   "etf_count": 357,
@@ -27468,7 +27468,7 @@
     }
   },
   "build_stats": {
-    "official_rows": 64616,
+    "official_rows": 64619,
     "valid_products": 2301,
     "stock_products": 1944,
     "etf_products": 357,
@@ -27477,6 +27477,6 @@
     "twse_etf": 0,
     "tpex_etf": 0,
     "excluded_products": 43070,
-    "unknown_products": 422
+    "unknown_products": 423
   }
 }
