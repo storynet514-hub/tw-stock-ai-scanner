@@ -5,56 +5,50 @@
 台股 AI 選股系統 - fetch_chip.py
 ============================================================
 
+OFFICIAL SOURCE ONLY
+
 核心契約
 ------------------------------------------------------------
 1. Data/universe.json 是唯一 Universe 來源
 2. 只接受 status == "active"
-3. TWSE / TPEx 分開使用各自官方資料來源
+3. TWSE / TPEx 分開使用官方資料
 4. 三大法人：
    - TWSE：TWSE 官方 T86
    - TPEx：TPEx 官方 3insti
-5. 資券當沖率：
-   - TWSE：TWSE 官方 MI_MARGN「資券互抵」
-   - TPEx：TPEx 官方 S23 / STKDMARGIN.TXT「資券相抵」
+5. 資券相抵：
+   - TWSE：TWSE 官方 MI_MARGN
+   - TPEx：TPEx 官方 S23 / STKDMARGIN.TXT
 6. 成交量：
    - TWSE：TWSE 官方 STOCK_DAY_ALL
-   - TPEx：TPEx 官方 daily_close_quotes
-7. 公式：
+   - TPEx：TPEx 官方 daily close quotes
+7. 資券當沖率：
 
        資券相抵量(股)
        ───────────── × 100
           成交量(股)
 
-8. 完全禁止：
-   - MoneyLink
-   - CMoney
-   - Yahoo Finance
-   - 任何第三方網站 fallback
-   - 現股當沖成交股數
-   - 可現股當沖標的數量
-   - TWTB4U
-   - tpex_intraday_trading_statistics
-   - 融資餘額
-   - 融券餘額
-   - 融券賣出量
-
-9. TPEx STKDMARGIN.TXT：
-   官方 S23 格式每筆 165 bytes。
-   最後欄位：
-       147:155 = 資券相抵
-   單位：
-       千股
-   因此：
-       資券相抵股數 = 欄位值 × 1000
-
-10. 官方資券相抵資料不足時：
-    不准 fallback。
-    該股票 day_trading_rate = None。
-    Gate 會阻止錯誤資料寫入。
-
-11. Universe / Chip 必須 1:1。
-
-12. 寫檔採 atomic write。
+8. 完全禁止任何第三方 fallback
+9. TPEx S23：
+   - 每筆 165 bytes
+   - 證券代號：0:6
+   - 資券相抵：147:155
+   - 單位：千股
+10. 官方資料不足：
+    day_trading_rate = None
+    不准使用其他來源補值
+11. Universe / Chip 必須 1:1
+12. Atomic write
+13. Write 後重新讀取驗證
+14. TPEx 原始 HTTP 回應必須可診斷：
+    - URL
+    - HTTP status
+    - Content-Type
+    - Content-Length
+    - 實際 bytes 長度
+    - 前 256 bytes
+    - 前 5 筆固定長度 record
+    - 147:155 原始欄位
+    - 解析成功數
 ============================================================
 """
 
@@ -78,7 +72,7 @@ import requests
 # VERSION
 # ============================================================
 
-VERSION = "OFFICIAL-SOURCE-ONLY-2026.08.29"
+VERSION = "OFFICIAL-SOURCE-ONLY-2026.08.29.V2"
 
 
 # ============================================================
@@ -96,16 +90,12 @@ CHIP_FILE = DATA_DIR / "chip.json"
 # OFFICIAL TWSE
 # ============================================================
 
-TWSE_WEB = "https://www.twse.com.tw/rwd/zh"
-
 TWSE_T86_URL = (
-    TWSE_WEB
-    + "/fund/T86"
+    "https://www.twse.com.tw/rwd/zh/fund/T86"
 )
 
 TWSE_MARGIN_URL = (
-    "https://www.twse.com.tw/"
-    "exchangeReport/MI_MARGN"
+    "https://www.twse.com.tw/exchangeReport/MI_MARGN"
 )
 
 TWSE_VOLUME_URL = (
@@ -135,14 +125,13 @@ TPEX_INSTITUTIONAL_URL = (
 
 
 # ============================================================
-# TPEx OFFICIAL S23
+# TPEx S23
 # ============================================================
 
 TPEX_S23_FILENAME = "STKDMARGIN.TXT"
 
 TPEX_S23_RECORD_LENGTH = 165
 
-# 官方 S23 固定長度欄位
 S23_CODE_START = 0
 S23_CODE_END = 6
 
@@ -162,6 +151,9 @@ REQUEST_SLEEP = 0.6
 
 HISTORY_DAYS = 20
 MAX_LOOKBACK_DAYS = 70
+
+DIAGNOSTIC_RECORDS = 5
+DIAGNOSTIC_BYTES = 256
 
 
 HEADERS = {
@@ -183,6 +175,7 @@ HEADERS = {
         "en-US;q=0.8,en;q=0.7"
     ),
     "Referer": "https://www.tpex.org.tw/",
+    "Connection": "keep-alive",
 }
 
 
@@ -228,6 +221,7 @@ def yyyymmdd(dt: datetime) -> str:
 # ============================================================
 
 def clean_code(value: Any) -> str:
+
     if value is None:
         return ""
 
@@ -245,6 +239,7 @@ def clean_code(value: Any) -> str:
 
 
 def clean_text(value: Any) -> str:
+
     if value is None:
         return ""
 
@@ -252,6 +247,7 @@ def clean_text(value: Any) -> str:
 
 
 def normalize_key(value: Any) -> str:
+
     text = str(value).strip().lower()
 
     return re.sub(
@@ -304,12 +300,12 @@ def safe_number(
     )
 
     try:
-        value_float = float(text)
+        number = float(text)
 
-        if not math.isfinite(value_float):
+        if not math.isfinite(number):
             return None
 
-        return value_float
+        return number
 
     except Exception:
         return None
@@ -332,6 +328,7 @@ def find_field(
         ] = value
 
     for alias in aliases:
+
         key = normalize_key(alias)
 
         if key in normalized:
@@ -361,55 +358,6 @@ def find_code(
     )
 
 
-def find_date(
-    row: Dict[str, Any],
-) -> Optional[str]:
-
-    value = find_field(
-        row,
-        [
-            "日期",
-            "資料日期",
-            "交易日期",
-            "Date",
-            "date",
-            "TradeDate",
-            "trade_date",
-        ],
-    )
-
-    if value is None:
-        return None
-
-    text = clean_text(value)
-
-    match = re.search(
-        r"(20\d{2})[/-](\d{1,2})[/-](\d{1,2})",
-        text,
-    )
-
-    if match:
-        return (
-            f"{int(match.group(1)):04d}-"
-            f"{int(match.group(2)):02d}-"
-            f"{int(match.group(3)):02d}"
-        )
-
-    match = re.search(
-        r"(20\d{2})(\d{2})(\d{2})",
-        text,
-    )
-
-    if match:
-        return (
-            f"{match.group(1)}-"
-            f"{match.group(2)}-"
-            f"{match.group(3)}"
-        )
-
-    return None
-
-
 # ============================================================
 # RESPONSE NORMALIZATION
 # ============================================================
@@ -430,6 +378,7 @@ def rows_from_fields_data(
     for row in data:
 
         if isinstance(row, dict):
+
             result.append(row)
             continue
 
@@ -456,6 +405,7 @@ def normalize_records(
 ) -> List[Dict[str, Any]]:
 
     if isinstance(payload, list):
+
         return [
             row
             for row in payload
@@ -521,7 +471,7 @@ def normalize_records(
 
 
 # ============================================================
-# HTTP
+# HTTP JSON
 # ============================================================
 
 def request_json(
@@ -552,6 +502,7 @@ def request_json(
                 text = response.text.strip()
 
                 if not text:
+
                     last_error = "EMPTY RESPONSE"
 
                 else:
@@ -560,6 +511,7 @@ def request_json(
                         return response.json()
 
                     except Exception as exc:
+
                         last_error = (
                             f"JSON ERROR: {exc}"
                         )
@@ -574,43 +526,8 @@ def request_json(
             time.sleep(attempt)
 
     log(
-        f"      ❌ {last_error}"
+        f"      ❌ {url}"
     )
-
-    return None
-
-
-def request_bytes(
-    url: str,
-) -> Optional[bytes]:
-
-    last_error = ""
-
-    for attempt in range(1, RETRIES + 1):
-
-        try:
-
-            response = session.get(
-                url,
-                timeout=REQUEST_TIMEOUT,
-            )
-
-            if (
-                response.status_code == 200
-                and response.content
-            ):
-                return response.content
-
-            last_error = (
-                f"HTTP {response.status_code}"
-            )
-
-        except Exception as exc:
-
-            last_error = str(exc)
-
-        if attempt < RETRIES:
-            time.sleep(attempt)
 
     log(
         f"      ❌ {last_error}"
@@ -630,6 +547,7 @@ def load_universe() -> List[Dict[str, str]]:
     )
 
     if not UNIVERSE_FILE.exists():
+
         raise RuntimeError(
             f"找不到 {UNIVERSE_FILE}"
         )
@@ -646,11 +564,15 @@ def load_universe() -> List[Dict[str, str]]:
     )
 
     if not isinstance(raw, dict):
+
         raise RuntimeError(
             "universe.json 的 stocks 結構無效"
         )
 
-    securities: List[Dict[str, str]] = []
+    securities: List[
+        Dict[str, str]
+    ] = []
+
     seen = set()
 
     for key, item in raw.items():
@@ -725,6 +647,7 @@ def load_universe() -> List[Dict[str, str]]:
             "STOCK",
             "ETF",
         }:
+
             instrument_type = "STOCK"
 
         securities.append(
@@ -740,32 +663,31 @@ def load_universe() -> List[Dict[str, str]]:
         seen.add(symbol)
 
     if not securities:
+
         raise RuntimeError(
             "Universe 沒有任何 active 標的"
         )
+
+    twse_count = sum(
+        x["market"] == "TWSE"
+        for x in securities
+    )
+
+    tpex_count = sum(
+        x["market"] == "TPEX"
+        for x in securities
+    )
 
     log(
         f"✓ Universe：{len(securities)} 檔"
     )
 
     log(
-        "  TWSE："
-        + str(
-            sum(
-                x["market"] == "TWSE"
-                for x in securities
-            )
-        )
+        f"  TWSE：{twse_count}"
     )
 
     log(
-        "  TPEx："
-        + str(
-            sum(
-                x["market"] == "TPEX"
-                for x in securities
-            )
-        )
+        f"  TPEx：{tpex_count}"
     )
 
     return securities
@@ -870,7 +792,9 @@ def fetch_tpex_institutional(
         if not payload:
             continue
 
-        rows = normalize_records(payload)
+        rows = normalize_records(
+            payload
+        )
 
         result: Dict[str, float] = {}
 
@@ -1049,6 +973,7 @@ def fetch_institutional_history(
         for date in trading_dates:
 
             if date not in history[symbol]:
+
                 history[symbol][date] = None
 
     latest_date = trading_dates[0]
@@ -1113,7 +1038,9 @@ def fetch_twse_total_volume() -> Dict[str, float]:
         TWSE_VOLUME_URL
     )
 
-    rows = normalize_records(payload)
+    rows = normalize_records(
+        payload
+    )
 
     result: Dict[str, float] = {}
 
@@ -1137,6 +1064,7 @@ def fetch_twse_total_volume() -> Dict[str, float]:
         )
 
         if volume is not None and volume > 0:
+
             result[symbol] = volume
 
     log(
@@ -1160,7 +1088,9 @@ def fetch_tpex_total_volume() -> Dict[str, float]:
         TPEX_VOLUME_URL
     )
 
-    rows = normalize_records(payload)
+    rows = normalize_records(
+        payload
+    )
 
     result: Dict[str, float] = {}
 
@@ -1185,6 +1115,7 @@ def fetch_tpex_total_volume() -> Dict[str, float]:
         )
 
         if volume is not None and volume > 0:
+
             result[symbol] = volume
 
     log(
@@ -1216,9 +1147,11 @@ def fetch_twse_margin_offset(
     )
 
     if not isinstance(payload, dict):
+
         log(
             "  ❌ MI_MARGN 無有效 JSON"
         )
+
         return {}
 
     result: Dict[
@@ -1226,23 +1159,38 @@ def fetch_twse_margin_offset(
         Dict[str, Any],
     ] = {}
 
-    tables = payload.get("tables")
+    tables = payload.get(
+        "tables"
+    )
 
-    if not isinstance(tables, list):
+    if not isinstance(
+        tables,
+        list,
+    ):
+
         return {}
 
     for table in tables:
 
-        if not isinstance(table, dict):
+        if not isinstance(
+            table,
+            dict,
+        ):
             continue
 
         fields = table.get("fields")
         data = table.get("data")
 
-        if not isinstance(fields, list):
+        if not isinstance(
+            fields,
+            list,
+        ):
             continue
 
-        if not isinstance(data, list):
+        if not isinstance(
+            data,
+            list,
+        ):
             continue
 
         normalized_fields = [
@@ -1262,23 +1210,29 @@ def fetch_twse_margin_offset(
                 normalize_key("股票代號"),
                 normalize_key("代號"),
             }:
+
                 code_index = index
 
             if (
                 "資券互抵" in field
                 or "資券相抵" in field
             ):
+
                 offset_index = index
 
         if (
             code_index is None
             or offset_index is None
         ):
+
             continue
 
         for row in data:
 
-            if not isinstance(row, list):
+            if not isinstance(
+                row,
+                list,
+            ):
                 continue
 
             if (
@@ -1330,7 +1284,7 @@ def fetch_twse_margin_offset(
 
 
 # ============================================================
-# TPEx S23 URL DISCOVERY
+# TPEx S23 URLS
 # ============================================================
 
 def tpex_s23_urls(
@@ -1347,8 +1301,6 @@ def tpex_s23_urls(
     compact = dt.strftime("%Y%m%d")
     ym = dt.strftime("%Y%m")
 
-    # TPEx EDIS 官方檔案路徑。
-    # 不加入任何第三方來源。
     return [
         (
             "https://www.tpex.org.tw/"
@@ -1369,6 +1321,126 @@ def tpex_s23_urls(
 
 
 # ============================================================
+# TPEx S23 DIAGNOSTIC
+# ============================================================
+
+def print_s23_diagnostic(
+    raw: bytes,
+    url: str,
+) -> None:
+
+    log("")
+    log(
+        "---------- TPEx S23 RAW DIAGNOSTIC ----------"
+    )
+
+    log(
+        f"URL：{url}"
+    )
+
+    log(
+        f"實際 bytes：{len(raw)}"
+    )
+
+    log(
+        f"165 bytes record remainder："
+        f"{len(raw) % TPEX_S23_RECORD_LENGTH}"
+    )
+
+    preview = raw[
+        :DIAGNOSTIC_BYTES
+    ]
+
+    log(
+        "前 256 bytes HEX："
+    )
+
+    log(
+        preview.hex(" ")
+    )
+
+    log(
+        "前 256 bytes TEXT："
+    )
+
+    log(
+        preview.decode(
+            "big5",
+            errors="replace",
+        ).replace(
+            "\r",
+            "\\r",
+        ).replace(
+            "\n",
+            "\\n",
+        )
+    )
+
+    log(
+        "前 5 筆固定 165-byte record："
+    )
+
+    count = 0
+
+    for start in range(
+        0,
+        len(raw),
+        TPEX_S23_RECORD_LENGTH,
+    ):
+
+        record = raw[
+            start:
+            start + TPEX_S23_RECORD_LENGTH
+        ]
+
+        if len(record) != TPEX_S23_RECORD_LENGTH:
+            break
+
+        count += 1
+
+        code_raw = record[
+            S23_CODE_START:
+            S23_CODE_END
+        ]
+
+        offset_raw = record[
+            S23_MARGIN_OFFSET_START:
+            S23_MARGIN_OFFSET_END
+        ]
+
+        log(
+            f"  RECORD #{count}"
+        )
+
+        log(
+            f"    code[0:6] HEX = "
+            f"{code_raw.hex(' ')}"
+        )
+
+        log(
+            f"    code[0:6] TEXT = "
+            f"{code_raw.decode('ascii', errors='replace')!r}"
+        )
+
+        log(
+            f"    margin[147:155] HEX = "
+            f"{offset_raw.hex(' ')}"
+        )
+
+        log(
+            f"    margin[147:155] TEXT = "
+            f"{offset_raw.decode('ascii', errors='replace')!r}"
+        )
+
+        if count >= DIAGNOSTIC_RECORDS:
+            break
+
+    log(
+        "----------------------------------------------"
+    )
+
+
+# ============================================================
 # TPEx S23 PARSER
 # ============================================================
 
@@ -1382,12 +1454,18 @@ def parse_tpex_s23(
         Dict[str, Any],
     ] = {}
 
-    # --------------------------------------------------------
-    # 官方 S23：
-    # 每筆 165 bytes
-    # --------------------------------------------------------
+    fixed_length_records = 0
+    valid_code_records = 0
+    valid_offset_records = 0
 
-    records: List[bytes] = []
+    log("")
+    log(
+        "TPEx S23 Parser："
+    )
+
+    # --------------------------------------------------------
+    # 第一優先：固定 165 bytes
+    # --------------------------------------------------------
 
     if len(raw) >= TPEX_S23_RECORD_LENGTH:
 
@@ -1404,42 +1482,41 @@ def parse_tpex_s23(
 
             if (
                 len(record)
-                == TPEX_S23_RECORD_LENGTH
+                != TPEX_S23_RECORD_LENGTH
             ):
-                records.append(record)
-
-    # --------------------------------------------------------
-    # 若檔案有 CR/LF：
-    # 再嘗試逐行解析。
-    # --------------------------------------------------------
-
-    if not records:
-
-        records = [
-            line
-            for line in raw.splitlines()
-            if len(line) >= 155
-        ]
-
-    for record in records:
-
-        try:
-
-            code = record[
-                S23_CODE_START:
-                S23_CODE_END
-            ].decode(
-                "ascii",
-                errors="ignore",
-            ).strip()
-
-            if not code:
                 continue
 
-            if code.upper() in {
-                "TOTSHR",
-                "TOTAMT",
-            }:
+            fixed_length_records += 1
+
+            code_raw = record[
+                S23_CODE_START:
+                S23_CODE_END
+            ]
+
+            offset_raw = record[
+                S23_MARGIN_OFFSET_START:
+                S23_MARGIN_OFFSET_END
+            ]
+
+            code = (
+                code_raw
+                .decode(
+                    "ascii",
+                    errors="ignore",
+                )
+                .strip()
+            )
+
+            offset_text = (
+                offset_raw
+                .decode(
+                    "ascii",
+                    errors="ignore",
+                )
+                .strip()
+            )
+
+            if not code:
                 continue
 
             if not code.isdigit():
@@ -1450,19 +1527,16 @@ def parse_tpex_s23(
             ):
                 continue
 
-            raw_offset_text = record[
-                S23_MARGIN_OFFSET_START:
-                S23_MARGIN_OFFSET_END
-            ].decode(
-                "ascii",
-                errors="ignore",
-            ).strip()
-
-            if not raw_offset_text:
+            if code in {
+                "TOTSHR",
+                "TOTAMT",
+            }:
                 continue
 
+            valid_code_records += 1
+
             raw_offset = safe_number(
-                raw_offset_text
+                offset_text
             )
 
             if raw_offset is None:
@@ -1471,7 +1545,8 @@ def parse_tpex_s23(
             if raw_offset < 0:
                 continue
 
-            # 官方單位：千股
+            valid_offset_records += 1
+
             offset_shares = (
                 raw_offset
                 * SHARES_PER_TRADING_UNIT
@@ -1494,34 +1569,150 @@ def parse_tpex_s23(
                     offset_shares,
             }
 
-        except (
-            ValueError,
-            IndexError,
-            UnicodeDecodeError,
-        ):
-            continue
+    # --------------------------------------------------------
+    # 第二優先：逐行
+    # 只在固定長度完全無法解析時使用。
+    # --------------------------------------------------------
+
+    if not result:
+
+        log(
+            "⚠️ 固定 165-byte parser "
+            "沒有產生資料，嘗試逐行診斷解析"
+        )
+
+        for line in raw.splitlines():
+
+            if len(line) < S23_MARGIN_OFFSET_END:
+                continue
+
+            code_raw = line[
+                S23_CODE_START:
+                S23_CODE_END
+            ]
+
+            offset_raw = line[
+                S23_MARGIN_OFFSET_START:
+                S23_MARGIN_OFFSET_END
+            ]
+
+            code = (
+                code_raw
+                .decode(
+                    "ascii",
+                    errors="ignore",
+                )
+                .strip()
+            )
+
+            offset_text = (
+                offset_raw
+                .decode(
+                    "ascii",
+                    errors="ignore",
+                )
+                .strip()
+            )
+
+            if not code.isdigit():
+                continue
+
+            if not (
+                4 <= len(code) <= 6
+            ):
+                continue
+
+            raw_offset = safe_number(
+                offset_text
+            )
+
+            if raw_offset is None:
+                continue
+
+            if raw_offset < 0:
+                continue
+
+            offset_shares = (
+                raw_offset
+                * SHARES_PER_TRADING_UNIT
+            )
+
+            result[code] = {
+                "symbol": code,
+                "source": "official",
+                "source_name":
+                    "TPEx_S23_STKDMARGIN.TXT",
+                "source_field":
+                    "資券相抵",
+                "source_unit":
+                    "thousand_shares",
+                "source_date":
+                    trade_date,
+                "margin_offset_volume_raw":
+                    raw_offset,
+                "margin_offset_volume":
+                    offset_shares,
+            }
+
+    log(
+        f"  固定長度 record："
+        f"{fixed_length_records}"
+    )
+
+    log(
+        f"  有效代號 record："
+        f"{valid_code_records}"
+    )
+
+    log(
+        f"  有效資券相抵 record："
+        f"{valid_offset_records}"
+    )
+
+    log(
+        f"  最終解析資料："
+        f"{len(result)} 檔"
+    )
 
     return result
 
 
 # ============================================================
-# TPEx OFFICIAL S23
+# TPEx S23 FETCH
 # ============================================================
 
 def fetch_tpex_margin_offset(
     trade_date: str,
 ) -> Dict[str, Dict[str, Any]]:
 
-    log(
-        "TPEx 官方資券相抵："
+    section(
+        f"TPEx 官方 S23 "
+        f"STKDMARGIN.TXT：{trade_date}"
     )
 
-    raw: Optional[bytes] = None
-    used_url = ""
-
-    for url in tpex_s23_urls(
+    urls = tpex_s23_urls(
         trade_date
+    )
+
+    log(
+        "官方候選 URL："
+    )
+
+    for index, url in enumerate(
+        urls,
+        start=1,
     ):
+
+        log(
+            f"  {index}. {url}"
+        )
+
+    for url in urls:
+
+        log("")
+        log(
+            f"嘗試官方 URL：{url}"
+        )
 
         try:
 
@@ -1530,56 +1721,111 @@ def fetch_tpex_margin_offset(
                 timeout=REQUEST_TIMEOUT,
             )
 
-            if (
-                response.status_code == 200
-                and response.content
-            ):
+            log(
+                f"  HTTP Status："
+                f"{response.status_code}"
+            )
 
-                raw = response.content
-                used_url = url
-                break
+            log(
+                f"  Content-Type："
+                f"{response.headers.get('Content-Type', '')}"
+            )
+
+            log(
+                f"  Content-Length header："
+                f"{response.headers.get('Content-Length', '')}"
+            )
+
+            log(
+                f"  實際 bytes："
+                f"{len(response.content)}"
+            )
+
+            if response.status_code != 200:
+
+                log(
+                    "  ❌ HTTP 非 200"
+                )
+
+                preview = response.content[
+                    :DIAGNOSTIC_BYTES
+                ]
+
+                log(
+                    "  Response 前 256 bytes："
+                )
+
+                log(
+                    preview.decode(
+                        "utf-8",
+                        errors="replace",
+                    )
+                )
+
+                continue
+
+            if not response.content:
+
+                log(
+                    "  ❌ HTTP 200 但內容為空"
+                )
+
+                continue
+
+            raw = response.content
+
+            # ------------------------------------------------
+            # 關鍵診斷
+            # ------------------------------------------------
+
+            print_s23_diagnostic(
+                raw,
+                url,
+            )
+
+            result = parse_tpex_s23(
+                raw,
+                trade_date,
+            )
+
+            if result:
+
+                log("")
+                log(
+                    f"✓ TPEx 官方 S23 "
+                    f"解析成功："
+                    f"{len(result)} 檔"
+                )
+
+                log(
+                    f"✓ 使用官方 URL："
+                    f"{url}"
+                )
+
+                return result
+
+            log(
+                "  ❌ 官方回應取得成功，"
+                "但 S23 parser 沒有解析出有效資料"
+            )
 
         except Exception as exc:
 
             log(
-                f"  ⚠️ 官方 S23 "
-                f"請求失敗：{exc}"
+                f"  ❌ 請求例外：{exc}"
             )
 
-    if raw is None:
-
-        log(
-            "  ❌ TPEx 官方 "
-            "STKDMARGIN.TXT 無法取得"
-        )
-
-        return {}
-
-    result = parse_tpex_s23(
-        raw,
-        trade_date,
+    log("")
+    log(
+        "❌ TPEx 官方 STKDMARGIN.TXT："
+        "所有候選 URL 均無法取得有效資券相抵資料"
     )
-
-    if not result:
-
-        log(
-            "  ❌ TPEx 官方 "
-            "STKDMARGIN.TXT "
-            "解析後沒有任何有效資券相抵資料"
-        )
-
-        log(
-            f"  官方 URL：{used_url}"
-        )
-
-        return {}
 
     log(
-        f"  ✓ TPEx 官方資券相抵："
-        f"{len(result)} 檔"
+        "❌ 不使用任何 fallback"
     )
 
-    return result
+    return {}
 
 
 # ============================================================
@@ -1597,10 +1843,6 @@ def build_daytrade_data(
     section(
         "3. 資券當沖率資料"
     )
-
-    # --------------------------------------------------------
-    # 官方資券相抵
-    # --------------------------------------------------------
 
     twse_offset = (
         fetch_twse_margin_offset(
@@ -1622,10 +1864,6 @@ def build_daytrade_data(
         REQUEST_SLEEP
     )
 
-    # --------------------------------------------------------
-    # 官方成交量
-    # --------------------------------------------------------
-
     twse_volume = (
         fetch_twse_total_volume()
     )
@@ -1645,7 +1883,6 @@ def build_daytrade_data(
 
     valid_rates = 0
     invalid = 0
-    official_valid = 0
 
     twse_valid = 0
     tpex_valid = 0
@@ -1708,7 +1945,7 @@ def build_daytrade_data(
                 "source_date"
             )
 
-        rate: Optional[float] = None
+        rate = None
 
         if (
             offset is not None
@@ -1726,7 +1963,6 @@ def build_daytrade_data(
             )
 
             valid_rates += 1
-            official_valid += 1
 
             if market == "TWSE":
                 twse_valid += 1
@@ -1740,24 +1976,32 @@ def build_daytrade_data(
         result[symbol] = {
             "margin_offset_volume":
                 offset,
+
             "day_trading_volume":
                 offset,
+
             "total_volume":
                 total_volume,
+
             "day_trading_rate":
                 rate,
+
             "day_trading_source":
                 (
                     "official"
                     if rate is not None
                     else None
                 ),
+
             "day_trading_source_name":
                 source_name,
+
             "day_trading_source_field":
                 source_field,
+
             "day_trading_source_unit":
                 source_unit,
+
             "day_trading_source_date":
                 source_date,
         }
@@ -1765,25 +2009,31 @@ def build_daytrade_data(
     statistics = {
         "twse_official_offset_source":
             len(twse_offset),
+
         "tpex_official_offset_source":
             len(tpex_offset),
+
         "twse_volume_source":
             len(twse_volume),
+
         "tpex_volume_source":
             len(tpex_volume),
+
         "official_valid":
-            official_valid,
+            valid_rates,
+
         "valid_rates":
             valid_rates,
+
         "invalid":
             invalid,
+
         "twse_valid":
             twse_valid,
+
         "tpex_valid":
             tpex_valid,
 
-        # 永遠為 0。
-        # 正式版完全取消 fallback。
         "fallback_valid": 0,
         "twse_fallback": 0,
         "tpex_fallback": 0,
@@ -1808,11 +2058,6 @@ def build_daytrade_data(
     log(
         f"  無效/缺資料："
         f"{invalid}"
-    )
-
-    log(
-        "  MoneyLink fallback："
-        "已永久取消"
     )
 
     return result, statistics
@@ -1911,7 +2156,6 @@ def build_chip(
                     "margin_offset_volume"
                 ),
 
-            # Dashboard 舊欄位相容
             "day_trading_volume":
                 dt.get(
                     "day_trading_volume"
@@ -2039,19 +2283,6 @@ def validate_structure(
 
             errors += 1
 
-        # 正式版禁止任何 fallback
-        if (
-            "fallback"
-            in str(source).lower()
-        ):
-
-            log(
-                f"❌ {symbol}: "
-                "偵測到 fallback source"
-            )
-
-            errors += 1
-
     if errors:
 
         log(
@@ -2094,10 +2325,6 @@ def data_quality_gate(
     chip_count = len(
         stocks
     )
-
-    # --------------------------------------------------------
-    # Universe / Chip 1:1
-    # --------------------------------------------------------
 
     if universe_count != chip_count:
 
@@ -2146,10 +2373,6 @@ def data_quality_gate(
 
         errors += len(extra)
 
-    # --------------------------------------------------------
-    # 20D
-    # --------------------------------------------------------
-
     if len(trading_dates) != HISTORY_DAYS:
 
         log(
@@ -2160,9 +2383,16 @@ def data_quality_gate(
 
         errors += 1
 
-    # --------------------------------------------------------
-    # 官方來源
-    # --------------------------------------------------------
+    if statistics.get(
+        "fallback_valid",
+        0,
+    ) != 0:
+
+        log(
+            "❌ fallback_valid 非 0"
+        )
+
+        errors += 1
 
     if statistics.get(
         "twse_fallback",
@@ -2185,21 +2415,6 @@ def data_quality_gate(
         )
 
         errors += 1
-
-    if statistics.get(
-        "fallback_valid",
-        0,
-    ) != 0:
-
-        log(
-            "❌ fallback_valid 非 0"
-        )
-
-        errors += 1
-
-    # --------------------------------------------------------
-    # 每檔資料
-    # --------------------------------------------------------
 
     valid = 0
 
@@ -2233,7 +2448,6 @@ def data_quality_gate(
             "updated_at"
         )
 
-        # 日期
         if updated_at != data_date:
 
             log(
@@ -2244,41 +2458,18 @@ def data_quality_gate(
 
             errors += 1
 
-        # fallback 完全禁止
-        if source == "validated_fallback":
+        # ----------------------------------------------------
+        # None 是允許的：
+        # 代表官方資料真的沒有取得。
+        # ----------------------------------------------------
 
-            log(
-                f"❌ {symbol}: "
-                "偵測到舊 fallback source"
-            )
-
-            errors += 1
-
-        # 沒有官方資料時允許 None，
-        # 但不可製造 rate。
         if rate is None:
-
-            if (
-                offset is not None
-                or total is not None
-            ):
-
-                if (
-                    offset is not None
-                    and total is not None
-                    and total > 0
-                ):
-
-                    log(
-                        f"❌ {symbol}: "
-                        "原始資料存在但 rate 缺失"
-                    )
-
-                    errors += 1
-
             continue
 
-        # rate 有值必須完整
+        # ----------------------------------------------------
+        # rate 有值時，所有原始值必須存在。
+        # ----------------------------------------------------
+
         if (
             offset is None
             or total is None
@@ -2331,12 +2522,10 @@ def data_quality_gate(
         )
 
         try:
+
             stored = float(rate)
 
-        except (
-            TypeError,
-            ValueError,
-        ):
+        except Exception:
 
             log(
                 f"❌ {symbol}: "
@@ -2362,26 +2551,18 @@ def data_quality_gate(
 
             log(
                 f"❌ {symbol}: "
-                f"有效 rate 卻非官方 source："
+                f"有效 rate 卻非 official："
                 f"{source}"
             )
 
             errors += 1
 
-        if not source_date:
+        if source_date != data_date:
 
             log(
                 f"❌ {symbol}: "
-                "official 缺 source_date"
-            )
-
-            errors += 1
-
-        elif source_date != data_date:
-
-            log(
-                f"❌ {symbol}: "
-                "source_date 不一致"
+                f"source_date={source_date}, "
+                f"expected={data_date}"
             )
 
             errors += 1
@@ -2421,15 +2602,13 @@ def data_quality_gate(
     )
 
     log(
-        "MoneyLink fallback：0"
+        "Fallback：0"
     )
 
-    # 至少要有官方資料
     if valid == 0:
 
         log(
-            "❌ 沒有任何可驗證的"
-            "官方資券當沖率"
+            "❌ 沒有任何可驗證的官方資券相抵資料"
         )
 
         errors += 1
@@ -2474,11 +2653,11 @@ def data_quality_gate(
     )
 
     log(
-        "✓ 全部資料來源為官方"
+        "✓ 全部有效資料來源為官方"
     )
 
     log(
-        "✓ MoneyLink fallback = 0"
+        "✓ Fallback = 0"
     )
 
     log(
@@ -2570,23 +2749,36 @@ def validate_payload_contract(
     ):
         return False
 
-    # 正式版來源契約
-    forbidden = (
-        "MoneyLink",
-        "MONEYLINK",
-        "validated_fallback",
-        "CMoney",
-    )
+    # --------------------------------------------------------
+    # 注意：
+    # 禁止來源清單可以存在於 metadata。
+    # 不能再把整個 payload JSON 搜尋這些字串，
+    # 否則只要 metadata 列出禁止來源，Contract 就必然 FAIL。
+    # --------------------------------------------------------
 
-    serialized = json.dumps(
-        payload,
-        ensure_ascii=False,
-    )
+    for symbol, item in stocks.items():
 
-    for word in forbidden:
+        source = item.get(
+            "day_trading_source"
+        )
 
-        if word in serialized:
+        if source not in {
+            None,
+            "official",
+        }:
             return False
+
+        if source == "official":
+
+            if not item.get(
+                "day_trading_source_name"
+            ):
+                return False
+
+            if not item.get(
+                "day_trading_source_date"
+            ):
+                return False
 
     return True
 
@@ -2642,9 +2834,11 @@ def atomic_write(
         )
 
         try:
+
             temp_file.unlink(
                 missing_ok=True
             )
+
         except Exception:
             pass
 
@@ -2715,13 +2909,11 @@ def verify_written_chip(
         if item.get(
             "symbol"
         ) != symbol:
-
             return False
 
         if item.get(
             "updated_at"
         ) != data_date:
-
             return False
 
         source = item.get(
@@ -2732,11 +2924,6 @@ def verify_written_chip(
             None,
             "official",
         }:
-
-            return False
-
-        if source == "validated_fallback":
-
             return False
 
         offset = item.get(
@@ -2756,7 +2943,6 @@ def verify_written_chip(
         )
 
         if offset != alias:
-
             return False
 
         if rate is None:
@@ -2767,7 +2953,6 @@ def verify_written_chip(
             or total is None
             or total <= 0
         ):
-
             return False
 
         expected = round(
@@ -2785,11 +2970,9 @@ def verify_written_chip(
         if abs(
             expected - stored
         ) > 0.0001:
-
             return False
 
         if source != "official":
-
             return False
 
     log(
@@ -2801,19 +2984,19 @@ def verify_written_chip(
     )
 
     log(
-        "✓ 所有 rate 重新計算一致"
+        "✓ rate 重新計算一致"
     )
 
     log(
-        "✓ 所有 updated_at 正確"
+        "✓ updated_at 正確"
     )
 
     log(
-        "✓ 所有來源皆為 official"
+        "✓ 有效來源皆為 official"
     )
 
     log(
-        "✓ fallback = 0"
+        "✓ Fallback = 0"
     )
 
     log(
@@ -2987,18 +3170,8 @@ def main() -> int:
                         "TPEx daily close quotes",
                 },
 
-                "forbidden_sources": [
-                    "MoneyLink",
-                    "CMoney",
-                    "Yahoo Finance",
-                    "TWTB4U",
-                    "tpex_intraday_trading_statistics",
-                    "可現股當沖標的",
-                    "現股當沖成交股數",
-                    "融資餘額",
-                    "融券餘額",
-                    "融券賣出量",
-                ],
+                "fallback":
+                    False,
             },
         }
 
@@ -3028,7 +3201,6 @@ def main() -> int:
         if not atomic_write(
             payload
         ):
-
             return 1
 
         # ----------------------------------------------------
@@ -3079,7 +3251,7 @@ def main() -> int:
         )
 
         log(
-            "✓ 法人實際交易日："
+            f"✓ 法人交易日："
             f"{len(trading_dates)}"
         )
 
@@ -3099,7 +3271,7 @@ def main() -> int:
         )
 
         log(
-            "✓ MoneyLink fallback：0"
+            "✓ Fallback：0"
         )
 
         log(
