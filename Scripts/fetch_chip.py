@@ -3186,50 +3186,32 @@ def data_quality_gate(
 
     log(
         "TWSE 官方資券相抵筆數："
-        f"{statistics.get(
-            'twse_official_offset_source',
-            0
-        )}"
+        f"{statistics.get('twse_official_offset_source',0)}"
     )
 
     log(
         "TPEx 官方資券相抵筆數："
-        f"{statistics.get(
-            'tpex_official_offset_source',
-            0
-        )}"
+        f"{statistics.get('tpex_official_offset_source',0)}"
     )
 
     log(
         "TWSE 官方成交量筆數："
-        f"{statistics.get(
-            'twse_volume_source',
-            0
-        )}"
+        f"{statistics.get('twse_volume_source',0)}"
     )
 
     log(
         "TPEx 官方成交量筆數："
-        f"{statistics.get(
-            'tpex_volume_source',
-            0
-        )}"
+        f"{statistics.get('tpex_volume_source',0)}"
     )
 
     log(
         "官方有效筆數："
-        f"{statistics.get(
-            'official_valid',
-            0
-        )}"
+        f"{statistics.get('official_valid',0)}"
     )
 
     log(
         "fallback 有效筆數："
-        f"{statistics.get(
-            'fallback_valid',
-            0
-        )}"
+        f"{statistics.get('fallback_valid',0)}"
     )
 
     # --------------------------------------------------------
@@ -4056,10 +4038,7 @@ def main() -> int:
 
         log(
             "✓ 有效資券當沖率："
-            f"{statistics.get(
-                'valid_rates',
-                0
-            )}"
+            f"{statistics.get('valid_rates',0)}"
         )
 
         log(
