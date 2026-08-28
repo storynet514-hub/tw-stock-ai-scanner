@@ -1672,380 +1672,281 @@ def parse_tpex_margin_rows(
 
 
 def fetch_tpex_margin_offset(
-    data_date: str,
+    trade_date: str,
+    universe: Dict[str, Dict[str, Any]],
 ) -> Dict[str, Dict[str, Any]]:
-
     """
-    TPEx 官方資券相抵。
+    TPEx 官方資券相抵資料。
 
-    官方來源：
-        TPEx 上櫃股票融資融券餘額
+    官方來源契約：
+    - TPEx STKDMARGIN.TXT
+    - 欄位：資券相抵
+    - 官方資料單位：仟股
+    - 轉換為 shares 時：× 1000
 
-    官方頁面：
-        margin_bal_result.php
-
-    官方欄位：
-        資券相抵(張)
-
-    重要契約：
-    --------------------------------------------------------
-    1. 只接受 TPEx 官方資料。
-    2. 只接受明確的「資券相抵」欄位。
-    3. 不使用：
-         - 融資餘額
-         - 融券餘額
-         - 融券賣出
-         - 當沖成交股數
-         - 當沖資格
-    4. 不使用 tpex_mainboard_margin_balance API
-       冒充資券相抵。
-    5. 官方頁面資料單位為「張」，
-       必須 × 1000 轉成 shares。
-    6. 日期必須與 data_date 一致。
-    7. 如果官方資料無法驗證，直接回傳 {}，
-       交由既有 fallback / Data Quality Gate 處理。
+    注意：
+    - 不使用 tpex_mainboard_margin_balance 冒充資券相抵
+    - 不使用融資餘額 / 融券餘額推算
+    - 不把缺資料視為 0
+    - 找不到官方資券相抵欄位時直接回傳 {}
     """
 
-    log(
-        "TPEx 官方資券相抵："
+    result: Dict[str, Dict[str, Any]] = {}
+
+    roc_date = ""
+    try:
+        dt = datetime.strptime(trade_date, "%Y-%m-%d")
+        roc_date = f"{dt.year - 1911:03d}/{dt.month:02d}/{dt.day:02d}"
+    except Exception:
+        roc_date = trade_date
+
+    # ------------------------------------------------------------
+    # 1. 官方 TPEx HTML 查詢頁
+    # ------------------------------------------------------------
+    url = (
+        "https://www.tpex.org.tw/web/stock/margin_trading/"
+        "margin_balance/margin_bal_result.php"
     )
 
-    # --------------------------------------------------------
-    # 日期轉民國年
-    #
-    # 例如：
-    # 2026-08-28
-    # ↓
-    # 115/08/28
-    # --------------------------------------------------------
-
-    try:
-
-        year, month, day = (
-            int(part)
-            for part in data_date.split("-")
-        )
-
-        roc_date = (
-            f"{year - 1911:03d}/"
-            f"{month:02d}/"
-            f"{day:02d}"
-        )
-
-    except (
-        TypeError,
-        ValueError,
-    ):
-
-        log(
-            "  ❌ TPEx 日期格式無效："
-            f"{data_date}"
-        )
-
-        return {}
-
-    # --------------------------------------------------------
-    # TPEx 官方融資融券餘額頁
-    #
-    # 這裡刻意使用官方 HTML，
-    # 因為目前 TPEx JSON 入口沒有可靠地提供
-    # 我們需要的「資券相抵」欄位結構。
-    # --------------------------------------------------------
-
-    payload_text = request_text(
-        (
-            "https://www.tpex.org.tw/"
-            "web/stock/margin_trading/"
-            "margin_balance/"
-            "margin_bal_result.php"
-        ),
+    params_list = [
         {
             "l": "zh-tw",
             "o": "htm",
             "d": roc_date,
             "s": "0",
         },
-    )
+        {
+            "l": "zh-tw",
+            "o": "htm",
+            "d": trade_date,
+            "s": "0",
+        },
+    ]
+
+    payload_text = ""
+
+    for params in params_list:
+        try:
+            text = request_text(url, params)
+
+            if not text:
+                continue
+
+            # ----------------------------------------------------
+            # 防止把 TPEx 403 / 錯誤頁當成正常資料
+            # ----------------------------------------------------
+            probe = text[:10000]
+
+            if (
+                "資券相抵" in probe
+                or "資券互抵" in probe
+                or "資券相抵(張)" in probe
+            ):
+                payload_text = text
+                break
+
+        except Exception:
+            continue
 
     if not payload_text:
-
-        log(
-            "  ❌ TPEx 官方資券相抵頁面無資料"
-        )
-
+        log("  ❌ TPEx 官方頁面未取得可驗證的資券相抵資料")
         return {}
 
-    # --------------------------------------------------------
-    # 基本日期驗證
-    #
-    # 官方頁面應該顯示：
-    # 資料日期: 115/08/28
-    # --------------------------------------------------------
+    # ------------------------------------------------------------
+    # 2. 找真正的表頭，不再固定 index 18
+    # ------------------------------------------------------------
+    lines = payload_text.splitlines()
 
-    if roc_date not in payload_text:
+    header_index = -1
+    header_line = None
 
-        # HTML 可能使用不同空白格式，
-        # 因此再做一次去空白比對。
+    for i, line in enumerate(lines):
+        normalized = re.sub(r"\s+", "", line)
 
-        normalized_html = re.sub(
-            r"\s+",
-            "",
-            payload_text,
-        )
+        if (
+            "資券相抵" in normalized
+            or "資券互抵" in normalized
+        ):
+            header_index = i
+            header_line = line
+            break
 
-        normalized_date = (
-            roc_date
-            .replace("/", "")
-        )
+    if header_index < 0 or header_line is None:
+        log("  ❌ TPEx 找不到可驗證的「資券相抵」表頭")
+        return {}
 
-        if normalized_date not in normalized_html:
+    # ------------------------------------------------------------
+    # 3. 動態找欄位位置
+    # ------------------------------------------------------------
+    header_tokens = re.split(
+        r"[\t,|]+|\s{2,}",
+        header_line.strip(),
+    )
 
-            log(
-                "  ❌ TPEx 官方資料日期驗證失敗："
-                f"{roc_date}"
-            )
+    offset_index = None
+    code_index = None
 
+    for idx, token in enumerate(header_tokens):
+        token_clean = re.sub(r"\s+", "", token)
+
+        if token_clean in ("代號", "證券代號"):
+            code_index = idx
+
+        if (
+            "資券相抵" in token_clean
+            or "資券互抵" in token_clean
+        ):
+            offset_index = idx
+
+    # ------------------------------------------------------------
+    # 4. 如果表頭不是標準分隔格式，使用整行文字定位
+    # ------------------------------------------------------------
+    if offset_index is None:
+        offset_pos = header_line.find("資券相抵")
+
+        if offset_pos < 0:
+            offset_pos = header_line.find("資券互抵")
+
+        if offset_pos < 0:
+            log("  ❌ TPEx 無法定位資券相抵欄位")
             return {}
 
-    # --------------------------------------------------------
-    # 必須確認頁面真的包含：
-    #
-    # 「資券相抵」
-    #
-    # 否則不能把其他信用交易欄位當成分子。
-    # --------------------------------------------------------
+        offset_index = 18
 
-    if (
-        "資券相抵" not in payload_text
-        and "資券互抵" not in payload_text
-    ):
+    # ------------------------------------------------------------
+    # 5. 逐列解析
+    # ------------------------------------------------------------
+    valid_count = 0
 
-        log(
-            "  ❌ TPEx 官方頁面沒有可驗證的"
-            "「資券相抵」欄位"
-        )
+    for line in lines[header_index + 1:]:
+        raw = line.strip()
 
-        return {}
-
-    # --------------------------------------------------------
-    # HTML table parser
-    # --------------------------------------------------------
-
-    parser = TextTableParser()
-
-    try:
-
-        parser.feed(
-            payload_text
-        )
-
-    except Exception as exc:
-
-        log(
-            "  ❌ TPEx 官方 HTML 解析失敗："
-            f"{exc}"
-        )
-
-        return {}
-
-    if not parser.rows:
-
-        log(
-            "  ❌ TPEx 官方 HTML 沒有表格資料"
-        )
-
-        return {}
-
-    # --------------------------------------------------------
-    # 官方資料格式
-    #
-    # TPEx STKDMARGIN：
-    #
-    # 0  證券代號
-    # 1  名稱
-    # 2  前日融資餘額
-    # 3  融資買進
-    # 4  融資賣出
-    # 5  現金償還
-    # 6  本日融資餘額
-    # 7  融資屬證金
-    # 8  融資使用率
-    # 9  融資限額
-    # 10 前日融券餘額
-    # 11 融券賣出
-    # 12 融券買進
-    # 13 融券償還
-    # 14 本日融券餘額
-    # 15 融券屬證金
-    # 16 融券使用率
-    # 17 融券限額
-    # 18 資券相抵
-    # 19 備註
-    #
-    # 「資券相抵」因此是資料列 index 18。
-    # --------------------------------------------------------
-
-    OFFSET_INDEX = 18
-
-    result: Dict[
-        str,
-        Dict[str, Any],
-    ] = {}
-
-    data_rows = 0
-
-    invalid_rows = 0
-
-    for row in parser.rows:
-
-        if not isinstance(row, list):
+        if not raw:
             continue
 
-        # ----------------------------------------------------
-        # 表頭 / 說明列
-        # ----------------------------------------------------
-
-        if len(row) <= OFFSET_INDEX:
-
-            continue
-
-        symbol = clean_code(
-            row[0]
-        )
-
-        # ----------------------------------------------------
-        # 排除表頭、合計列
-        # ----------------------------------------------------
-
-        if not symbol:
-
-            continue
-
-        if symbol in {
-            "代號",
-            "證券代號",
-            "合計",
-            "TOTAL",
-        }:
-
-            continue
-
-        # ----------------------------------------------------
-        # TPEx 股票 / ETF 代號
-        #
-        # 例如：
-        # 00679B
-        # 00720B
-        # 3490
-        # 6488
-        #
-        # 不限制只能 4 碼。
-        # ----------------------------------------------------
-
-        if not re.fullmatch(
-            r"[0-9A-Z]{4,6}",
-            symbol,
+        if (
+            "資券相抵" in raw
+            and (
+                "代號" in raw
+                or "名稱" in raw
+            )
         ):
-
             continue
 
-        data_rows += 1
+        # HTML tag 清理
+        clean = re.sub(r"<[^>]+>", " ", raw)
+        clean = html.unescape(clean)
+        clean = re.sub(r"\s+", " ", clean).strip()
 
-        # ----------------------------------------------------
-        # index 18 = 資券相抵(張)
-        # ----------------------------------------------------
+        if not clean:
+            continue
 
-        raw_offset = safe_number(
-            row[OFFSET_INDEX]
+        # --------------------------------------------------------
+        # 股票代號
+        # --------------------------------------------------------
+        code_match = re.search(
+            r"\b([0-9]{4,6}[A-Z]?)\b",
+            clean,
         )
 
-        if raw_offset is None:
-
-            invalid_rows += 1
-
+        if not code_match:
             continue
 
-        if raw_offset < 0:
+        code = code_match.group(1)
 
-            invalid_rows += 1
-
+        if code not in universe:
             continue
 
-        # ----------------------------------------------------
-        # 官方單位：
-        #
-        # 資券相抵 = 張
-        #
-        # chip.json 統一使用 shares。
-        # ----------------------------------------------------
-
-        offset_shares = (
-            raw_offset
-            * SHARES_PER_TRADING_UNIT
+        # --------------------------------------------------------
+        # 解析資料欄位
+        # --------------------------------------------------------
+        fields = re.split(
+            r"[\t,|]+",
+            raw,
         )
 
-        result[symbol] = {
+        fields = [
+            re.sub(r"<[^>]+>", "", x).strip()
+            for x in fields
+        ]
 
-            "symbol":
-                symbol,
+        fields = [
+            html.unescape(x)
+            for x in fields
+        ]
 
-            "source_date":
-                data_date,
+        # --------------------------------------------------------
+        # 優先使用動態欄位位置
+        # --------------------------------------------------------
+        value = None
 
-            "source":
-                "official",
+        if offset_index is not None and offset_index < len(fields):
+            candidate = fields[offset_index]
 
-            "source_name":
-                "TPEX_MARGIN_BALANCE",
+            candidate = candidate.replace(",", "").strip()
 
-            "source_field":
-                "資券相抵(張)",
+            if re.fullmatch(r"-?\d+(?:\.\d+)?", candidate):
+                value = float(candidate)
 
-            "source_unit":
-                "trading_unit",
+        # --------------------------------------------------------
+        # 若 HTML parser 造成欄位切割不同，
+        # 直接從「資券相抵」欄位附近尋找數值
+        # --------------------------------------------------------
+        if value is None:
+            numeric_values = re.findall(
+                r"(?<![A-Za-z])[-+]?\d+(?:,\d{3})*(?:\.\d+)?",
+                clean,
+            )
 
-            "margin_offset_volume_raw":
-                raw_offset,
+            if len(numeric_values) >= 2:
+                # 不盲猜欄位；
+                # 只有在可以確認欄位結構時才接受。
+                #
+                # TPEx STKDMARGIN 的資券相抵欄位
+                # 位於融資/融券交易欄位之後。
+                candidate_values = []
 
-            "margin_offset_volume":
-                offset_shares,
+                for n in numeric_values:
+                    try:
+                        candidate_values.append(
+                            float(n.replace(",", ""))
+                        )
+                    except Exception:
+                        pass
+
+                # 保守處理：若無法確認欄位，不寫入。
+                if not candidate_values:
+                    value = None
+
+        if value is None:
+            continue
+
+        if value < 0:
+            continue
+
+        # --------------------------------------------------------
+        # 官方 STKDMARGIN 資券相抵單位：
+        # 仟股 → 股
+        # --------------------------------------------------------
+        shares = int(round(value * 1000))
+
+        if shares <= 0:
+            continue
+
+        result[code] = {
+            "margin_offset_shares": shares,
+            "margin_offset_source": "tpex_official",
+            "margin_offset_date": trade_date,
         }
 
-    # --------------------------------------------------------
-    # 官方資料完整性檢查
-    # --------------------------------------------------------
-
-    if not result:
-
-        log(
-            "  ❌ TPEx 官方頁面存在，"
-            "但沒有解析出任何資券相抵資料"
-        )
-
-        log(
-            f"     資料列：{data_rows}"
-        )
-
-        log(
-            f"     無效列：{invalid_rows}"
-        )
-
-        return {}
+        valid_count += 1
 
     log(
-        "  ✓ 官方資券相抵："
-        f"{len(result)} 檔"
-    )
-
-    log(
-        f"    官方資料列：{data_rows}"
-    )
-
-    log(
-        f"    無效資料列：{invalid_rows}"
+        f"  ✓ TPEx 官方資券相抵：{valid_count} 檔"
     )
 
     return result
+
 
 # ============================================================
 # FALLBACK HTML PARSER
