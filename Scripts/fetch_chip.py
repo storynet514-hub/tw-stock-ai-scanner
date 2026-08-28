@@ -1675,333 +1675,284 @@ def fetch_tpex_margin_offset(
     trade_date: str,
 ) -> Dict[str, Dict[str, Any]]:
     """
-    TPEx 官方資券相抵。
+    取得 TPEx 官方資券相抵資料。
 
     官方來源：
-        TPEx「上櫃股票融資融券餘額」官方查詢頁
+        S23 / STKDMARGIN.TXT
+        上櫃股票日融資融券餘額
 
-    官方欄位：
-        資券相抵(張)
+    官方格式：
+        每筆 165 bytes
+        最後 8 bytes = 資券相抵
+        單位 = 千股
 
-    重要：
-        1. 不使用 tpex_mainboard_margin_balance 冒充資券相抵
-        2. 不使用融資餘額 / 融券餘額推算
-        3. 不猜固定欄位 index
-        4. 不依賴 universe 參數
-        5. 官方頁面沒有資料時回傳 {}
-        6. 資券相抵單位是「張」，直接轉為股數 × 1000
+    回傳：
+        {
+            "xxxx": {
+                "margin_offset": int,      # 股
+                "source": "tpex_official",
+                "trade_date": "YYYY-MM-DD"
+            }
+        }
+
+    注意：
+        不使用 TPEx HTML 頁面。
+        不使用 tpex_mainboard_margin_balance 冒充資券相抵。
     """
 
     result: Dict[str, Dict[str, Any]] = {}
 
-    # ============================================================
-    # TPEx 官方日期：民國年
-    # ============================================================
-    try:
-        dt = datetime.strptime(trade_date, "%Y-%m-%d")
-        roc_date = (
-            f"{dt.year - 1911:03d}/"
-            f"{dt.month:02d}/"
-            f"{dt.day:02d}"
-        )
-    except Exception as exc:
-        log(f"  ❌ TPEx 日期轉換失敗：{trade_date} / {exc}")
-        return {}
+    # ------------------------------------------------------------
+    # 日期格式
+    # ------------------------------------------------------------
+    dt = datetime.strptime(trade_date, "%Y-%m-%d")
 
-    url = (
-        "https://www.tpex.org.tw/web/stock/margin_trading/"
-        "margin_balance/margin_bal_result.php"
-    )
+    # TPEx 官方 S23 檔案
+    # 常見 EDIS 路徑：
+    # https://www.tpex.org.tw/storage/edis/....
+    #
+    # 先使用官方目前公開的歷史資料路徑，
+    # 若第一個路徑失敗，再嘗試相容路徑。
+    date_compact = dt.strftime("%Y%m%d")
+    date_tw = dt.strftime("%Y/%m/%d")
 
-    params = {
-        "d": roc_date,
-        "l": "zh-tw",
-        "o": "htm",
-        "s": "0",
-    }
+    urls = [
+        (
+            "https://www.tpex.org.tw/storage/edis/"
+            f"{dt.strftime('%Y')}/{dt.strftime('%m')}/"
+            f"STKDMARGIN.TXT"
+        ),
+        (
+            "https://www.tpex.org.tw/storage/edis/"
+            f"{date_compact}/STKDMARGIN.TXT"
+        ),
+        (
+            "https://www.tpex.org.tw/storage/edis/"
+            f"{dt.strftime('%Y%m')}/STKDMARGIN.TXT"
+        ),
+    ]
 
     headers = {
         "User-Agent": (
-            "Mozilla/5.0 (X11; Linux x86_64) "
+            "Mozilla/5.0 "
+            "(Windows NT 10.0; Win64; x64) "
             "AppleWebKit/537.36 "
             "(KHTML, like Gecko) "
-            "Chrome/131.0.0.0 Safari/537.36"
+            "Chrome/131.0 Safari/537.36"
         ),
-        "Accept": (
-            "text/html,application/xhtml+xml,"
-            "application/xml;q=0.9,*/*;q=0.8"
-        ),
-        "Accept-Language": "zh-TW,zh;q=0.9,en;q=0.8",
-        "Referer": (
-            "https://www.tpex.org.tw/"
-            "web/stock/margin_trading/"
-            "margin_balance/margin_bal.php"
-            "?l=zh-tw"
-        ),
+        "Accept": "text/plain,text/html,*/*",
+        "Referer": "https://www.tpex.org.tw/",
     }
 
-    # ============================================================
-    # 1. 取得 TPEx 官方 HTML
-    # ============================================================
-    try:
-        response = requests.get(
-            url,
-            params=params,
-            headers=headers,
-            timeout=30,
-        )
+    response = None
+    last_error = None
 
-        response.raise_for_status()
-
-    except Exception as exc:
-        log(
-            "  ❌ TPEx 官方資券相抵 HTTP 取得失敗："
-            f"{exc}"
-        )
-        return {}
-
-    # ============================================================
-    # 2. 編碼
-    # ============================================================
-    content = response.content
-
-    text = None
-
-    # TPEx 舊頁面可能為 BIG5 / UTF-8
-    for encoding in ("utf-8", "big5", "cp950"):
+    # ------------------------------------------------------------
+    # 嘗試官方來源
+    # ------------------------------------------------------------
+    for url in urls:
         try:
-            candidate = content.decode(
-                encoding,
-                errors="strict",
+            r = requests.get(
+                url,
+                headers=headers,
+                timeout=30,
             )
 
-            if (
-                "資券相抵" in candidate
-                or "資券" in candidate
-            ):
-                text = candidate
+            if r.status_code == 200 and r.content:
+                response = r
                 break
 
-        except Exception:
+            last_error = (
+                f"HTTP {r.status_code}: {url}"
+            )
+
+        except Exception as exc:
+            last_error = str(exc)
+
+    if response is None:
+        log(
+            "  ❌ TPEx 官方 STKDMARGIN.TXT 無法取得："
+            f"{last_error or 'unknown error'}"
+        )
+        return result
+
+    raw = response.content
+
+    # ------------------------------------------------------------
+    # 編碼處理
+    # ------------------------------------------------------------
+    text = None
+
+    for encoding in (
+        "big5",
+        "cp950",
+        "utf-8-sig",
+        "utf-8",
+    ):
+        try:
+            text = raw.decode(encoding)
+            break
+        except UnicodeDecodeError:
             continue
 
     if text is None:
-        text = response.text
+        log("  ❌ TPEx STKDMARGIN.TXT 編碼解析失敗")
+        return result
 
-    # ============================================================
-    # 3. 基本官方來源驗證
-    # ============================================================
-    if "資券相抵" not in text:
-        log(
-            "  ❌ TPEx 官方頁面沒有可驗證的「資券相抵」欄位"
-        )
-        return {}
+    # ------------------------------------------------------------
+    # S23 固定長度
+    # ------------------------------------------------------------
+    RECORD_LENGTH = 165
 
-    # ============================================================
-    # 4. 使用 pandas.read_html 解析官方表格
+    raw_bytes = raw
+
+    # 如果原始資料不是純固定長度，
+    # 嘗試用換行拆分。
+    records = []
+
+    # 第一優先：依 165 bytes 固定長度解析
+    for offset in range(0, len(raw_bytes), RECORD_LENGTH):
+        record = raw_bytes[offset:offset + RECORD_LENGTH]
+
+        if len(record) != RECORD_LENGTH:
+            continue
+
+        records.append(record)
+
+    # 如果固定長度解析沒有有效資料，
+    # 改用逐行解析。
+    if not records:
+        records = [
+            line
+            for line in raw_bytes.splitlines()
+            if len(line) >= RECORD_LENGTH
+        ]
+
+    # ------------------------------------------------------------
+    # 欄位位置
     #
-    #    不使用固定欄位 index。
-    #    直接搜尋包含「資券相抵」的欄位。
-    # ============================================================
-    try:
-        tables = pd.read_html(StringIO(text))
+    # S23：
+    #
+    #  0-5     證券代號
+    #  6-15    前日融資餘額
+    # 16-24    融資買進
+    # 25-33    融資賣出
+    # 34-41    現金償還
+    # 42-51    本日餘額
+    # 52-62    融資限額
+    # 63-67    融資使用率
+    # 68-77    前日融券餘額
+    # 78-86    融券賣出
+    # 87-95    融券買進
+    # 96-104   融券償還
+    # 105-114  本日融券餘額
+    # 115-125  融券限額
+    # 126-130  融券使用率
+    # 131-138  本日融資餘額屬證金部分
+    # 139-146  融券屬證金部分
+    # 147-154  資券相抵
+    #
+    # 165 bytes 規格中的剩餘資料為保留/控制欄位。
+    # ------------------------------------------------------------
 
-    except Exception as exc:
-        log(
-            "  ❌ TPEx 官方資券相抵 HTML table 解析失敗："
-            f"{exc}"
-        )
-        return {}
+    OFFSET_CODE_START = 0
+    OFFSET_CODE_END = 6
 
-    if not tables:
-        log("  ❌ TPEx 官方頁面沒有可解析的表格")
-        return {}
+    OFFSET_MARGIN_OFFSET_START = 147
+    OFFSET_MARGIN_OFFSET_END = 155
 
-    target_df = None
-    offset_column = None
-    code_column = None
+    parsed = 0
 
-    # ============================================================
-    # 5. 找到真正的資券相抵欄位
-    # ============================================================
-    for df in tables:
-
-        if df is None or df.empty:
-            continue
-
-        # --------------------------------------------------------
-        # MultiIndex 欄位攤平
-        # --------------------------------------------------------
-        columns = []
-
-        for col in df.columns:
-
-            if isinstance(col, tuple):
-                parts = [
-                    str(x)
-                    for x in col
-                    if str(x).lower() != "nan"
-                ]
-                name = "".join(parts)
-            else:
-                name = str(col)
-
-            name = re.sub(r"\s+", "", name)
-            columns.append(name)
-
-        # --------------------------------------------------------
-        # 股票代號欄位
-        # --------------------------------------------------------
-        local_code_column = None
-
-        for original, normalized in zip(
-            df.columns,
-            columns,
-        ):
-            if (
-                normalized in ("代號", "證券代號")
-                or "證券代號" in normalized
-            ):
-                local_code_column = original
-                break
-
-        # --------------------------------------------------------
-        # 資券相抵欄位
-        # --------------------------------------------------------
-        local_offset_column = None
-
-        for original, normalized in zip(
-            df.columns,
-            columns,
-        ):
-            if (
-                "資券相抵" in normalized
-                or "資券相抵(張)" in normalized
-                or "資券相抵（張）" in normalized
-            ):
-                local_offset_column = original
-                break
-
-        if (
-            local_code_column is not None
-            and local_offset_column is not None
-        ):
-            target_df = df
-            code_column = local_code_column
-            offset_column = local_offset_column
-            break
-
-    if target_df is None:
-        log(
-            "  ❌ TPEx 官方表格找不到"
-            "「證券代號」與「資券相抵」欄位"
-        )
-        return {}
-
-    # ============================================================
-    # 6. 逐股票解析
-    # ============================================================
-    valid_count = 0
-
-    for _, row in target_df.iterrows():
-
+    for record in records:
         try:
-            raw_code = row[code_column]
-            raw_offset = row[offset_column]
+            # ----------------------------------------------------
+            # bytes → Big5 / ASCII
+            # ----------------------------------------------------
+            code_bytes = record[
+                OFFSET_CODE_START:OFFSET_CODE_END
+            ]
 
+            try:
+                code = code_bytes.decode(
+                    "ascii",
+                    errors="ignore",
+                ).strip()
+            except Exception:
+                code = ""
+
+            # ----------------------------------------------------
+            # 只接受正常股票代號
+            # ----------------------------------------------------
+            if not code:
+                continue
+
+            if code.upper() in {
+                "TOTSHR",
+                "TOTAMT",
+            }:
+                continue
+
+            if not code.isdigit():
+                continue
+
+            # Universe 使用 4~6 碼代號
+            if not (4 <= len(code) <= 6):
+                continue
+
+            # ----------------------------------------------------
+            # 資券相抵
+            # ----------------------------------------------------
+            offset_bytes = record[
+                OFFSET_MARGIN_OFFSET_START:
+                OFFSET_MARGIN_OFFSET_END
+            ]
+
+            value_text = offset_bytes.decode(
+                "ascii",
+                errors="ignore",
+            ).strip()
+
+            if not value_text:
+                continue
+
+            # 官方欄位為 9(8)，單位千股
+            offset_thousand = int(value_text)
+
+            # 千股 → 股
+            margin_offset = offset_thousand * 1000
+
+            result[code] = {
+                "margin_offset": margin_offset,
+                "source": "tpex_official",
+                "trade_date": trade_date,
+            }
+
+            parsed += 1
+
+        except (
+            ValueError,
+            UnicodeDecodeError,
+            IndexError,
+        ):
+            continue
         except Exception:
             continue
 
-        if pd.isna(raw_code) or pd.isna(raw_offset):
-            continue
-
-        # --------------------------------------------------------
-        # 股票代號
-        # --------------------------------------------------------
-        code = str(raw_code).strip()
-
-        # pandas 有時會把代號轉成 679.0
-        if re.fullmatch(r"\d+\.0", code):
-            code = code[:-2]
-
-        code = code.strip()
-
-        # 只接受正常台股代號
-        if not re.fullmatch(r"\d{4,6}[A-Z]?", code):
-            continue
-
-        # --------------------------------------------------------
-        # 資券相抵
-        # 官方 HTML 單位：張
-        # --------------------------------------------------------
-        value_text = str(raw_offset).strip()
-
-        value_text = (
-            value_text
-            .replace(",", "")
-            .replace(" ", "")
-            .replace("－", "-")
-        )
-
-        if value_text in (
-            "",
-            "-",
-            "--",
-            "nan",
-            "NaN",
-        ):
-            continue
-
-        try:
-            offset_lots = float(value_text)
-
-        except Exception:
-            continue
-
-        if not math.isfinite(offset_lots):
-            continue
-
-        if offset_lots < 0:
-            continue
-
-        # ========================================================
-        # 官方欄位是「張」
-        # 1 張 = 1000 股
-        # ========================================================
-        offset_shares = int(
-            round(offset_lots * 1000)
-        )
-
-        # 0 本身是合法資料。
-        # 但不能把「缺資料」轉成 0。
-        if offset_shares < 0:
-            continue
-
-        result[code] = {
-            "margin_offset_shares": offset_shares,
-            "margin_offset_lots": offset_lots,
-            "margin_offset_source": "tpex_official",
-            "margin_offset_date": trade_date,
-        }
-
-        valid_count += 1
-
-    # ============================================================
-    # 7. 最終驗證
-    # ============================================================
-    if valid_count == 0:
+    # ------------------------------------------------------------
+    # 驗證
+    # ------------------------------------------------------------
+    if parsed == 0:
         log(
-            "  ❌ TPEx 官方資券相抵解析成功取得頁面，"
-            "但沒有任何有效股票資料"
+            "  ❌ TPEx 官方 STKDMARGIN.TXT "
+            "解析後沒有任何有效資券相抵資料"
         )
         return {}
 
     log(
-        f"  ✓ TPEx 官方資券相抵：{valid_count} 檔"
+        f"  ✓ TPEx 官方資券相抵：{parsed} 檔"
     )
 
     return result
-
 # ============================================================
 # FALLBACK HTML PARSER
 # ============================================================
