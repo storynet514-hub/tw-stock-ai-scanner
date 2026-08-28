@@ -4043,18 +4043,12 @@ def main() -> int:
 
         log(
             "✓ 官方有效："
-            f"{statistics.get(
-                'official_valid',
-                0
-            )}"
+            f"{statistics.get('official_valid',0)}"
         )
 
         log(
             "✓ fallback 有效："
-            f"{statistics.get(
-                'fallback_valid',
-                0
-            )}"
+            f"{statistics.get('fallback_valid',0)}"
         )
 
         log(
