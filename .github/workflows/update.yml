@@ -15,12 +15,12 @@ jobs:
   update:
     runs-on: ubuntu-latest
 
-    timeout-minutes: 30
+    timeout-minutes: 45
 
     steps:
 
       # ======================================================
-      # Checkout
+      # 1. Checkout
       # ======================================================
 
       - name: Checkout repository
@@ -29,7 +29,7 @@ jobs:
           fetch-depth: 1
 
       # ======================================================
-      # Python
+      # 2. Python
       # ======================================================
 
       - name: Setup Python
@@ -38,16 +38,18 @@ jobs:
           python-version: "3.11"
 
       # ======================================================
-      # Dependencies
+      # 3. Dependencies
       # ======================================================
 
       - name: Install dependencies
         run: |
+          set -e
+
           python -m pip install --upgrade pip
           pip install requests pandas
 
       # ======================================================
-      # Directory check
+      # 4. Verify Scripts
       # ======================================================
 
       - name: Verify project structure
@@ -60,16 +62,38 @@ jobs:
 
           test -f Scripts/build_universe.py
           test -f Scripts/fetch_chip.py
+          test -f Scripts/fetch_prices.py
+          test -f Scripts/analyze_stocks.py
+          test -f Scripts/build_ui_data.py
 
           mkdir -p Data
 
-          echo "✓ build_universe.py"
-          echo "✓ fetch_chip.py"
-          echo "✓ Data directory"
+          echo "✓ Scripts/build_universe.py"
+          echo "✓ Scripts/fetch_chip.py"
+          echo "✓ Scripts/fetch_prices.py"
+          echo "✓ Scripts/analyze_stocks.py"
+          echo "✓ Scripts/build_ui_data.py"
+          echo "✓ Data/"
 
       # ======================================================
-      # Layer 1-4
-      # Build Universe
+      # 5. Syntax Gate
+      # ======================================================
+
+      - name: Python syntax gate
+        run: |
+          set -e
+
+          python -m py_compile \
+            Scripts/build_universe.py \
+            Scripts/fetch_chip.py \
+            Scripts/fetch_prices.py \
+            Scripts/analyze_stocks.py \
+            Scripts/build_ui_data.py
+
+          echo "✓ Python syntax PASS"
+
+      # ======================================================
+      # 6. Build Universe
       # ======================================================
 
       - name: Build Universe
@@ -87,7 +111,7 @@ jobs:
           echo "========================================"
 
       # ======================================================
-      # Universe structural validation
+      # 7. Validate Universe
       # ======================================================
 
       - name: Validate Universe
@@ -164,8 +188,7 @@ jobs:
               if item["symbol"] != key:
                   raise SystemExit(
                       f"❌ key != symbol："
-                      f"{key} != "
-                      f"{item['symbol']}"
+                      f"{key} != {item['symbol']}"
                   )
 
               if item["status"] != "active":
@@ -182,33 +205,16 @@ jobs:
                       f"❌ {key} market 不正確"
                   )
 
-          print(
-              f"✓ Universe：{count}"
-          )
-
-          print(
-              "✓ stocks object"
-          )
-
-          print(
-              "✓ required fields"
-          )
-
-          print(
-              "✓ status=active"
-          )
-
-          print(
-              "✓ market validation"
-          )
-
-          print(
-              "✓ Universe validation PASS"
-          )
+          print(f"✓ Universe：{count}")
+          print("✓ stocks object")
+          print("✓ required fields")
+          print("✓ status=active")
+          print("✓ market validation")
+          print("✓ Universe validation PASS")
           PY
 
       # ======================================================
-      # Fetch chip
+      # 8. Fetch Chip
       # ======================================================
 
       - name: Fetch Chip Data
@@ -221,39 +227,512 @@ jobs:
 
           python Scripts/fetch_chip.py
 
+          test -f Data/chip.json
+
+          echo "✓ Data/chip.json"
+
       # ======================================================
-      # Check generated files
+      # 9. Fetch Prices
       # ======================================================
 
-      - name: Validate generated data
+      - name: Fetch Price Data
         run: |
           set -e
 
           echo "========================================"
-          echo "GENERATED DATA"
+          echo "FETCH PRICE DATA"
           echo "========================================"
 
-          if [ -f Data/universe.json ]; then
-            echo "✓ Data/universe.json"
-          else
-            echo "❌ Data/universe.json missing"
-            exit 1
-          fi
+          python Scripts/fetch_prices.py
 
-          if [ -f Data/chip.json ]; then
-            echo "✓ Data/chip.json"
-          else
-            echo "⚠ Data/chip.json not found"
-          fi
+          test -d Data/prices
+          test -f Data/prices/manifest.json
 
-          if [ -f Data/prices.json ]; then
-            echo "✓ Data/prices.json"
-          else
-            echo "⚠ Data/prices.json not found"
-          fi
+          echo "✓ Data/prices/"
+          echo "✓ Data/prices/manifest.json"
 
       # ======================================================
-      # Git diff
+      # 10. Validate Price Manifest
+      # ======================================================
+
+      - name: Validate Price Data
+        run: |
+          set -e
+
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          universe_path = Path("Data/universe.json")
+          manifest_path = Path("Data/prices/manifest.json")
+
+          with universe_path.open(
+              "r",
+              encoding="utf-8-sig"
+          ) as f:
+              universe = json.load(f)
+
+          with manifest_path.open(
+              "r",
+              encoding="utf-8-sig"
+          ) as f:
+              manifest = json.load(f)
+
+          stocks = universe.get("stocks")
+
+          if not isinstance(stocks, dict):
+              raise SystemExit(
+                  "❌ Universe stocks 無效"
+              )
+
+          if not isinstance(manifest, dict):
+              raise SystemExit(
+                  "❌ manifest 不是 object"
+              )
+
+          print(
+              f"✓ Universe：{len(stocks)}"
+          )
+
+          print(
+              "✓ Price manifest JSON 有效"
+          )
+
+          # 不在 workflow 自行猜測 manifest schema。
+          # fetch_prices.py 已負責完整驗證。
+          print(
+              "✓ Price Data validation PASS"
+          )
+          PY
+
+      # ======================================================
+      # 11. Analyze Stocks
+      # ======================================================
+
+      - name: Analyze Stocks
+        run: |
+          set -e
+
+          echo "========================================"
+          echo "ANALYZE STOCKS"
+          echo "========================================"
+
+          python Scripts/analyze_stocks.py
+
+          test -f Data/analysis.json
+
+          echo "✓ Data/analysis.json"
+
+      # ======================================================
+      # 12. Build UI Data
+      # ======================================================
+
+      - name: Build UI Data
+        run: |
+          set -e
+
+          echo "========================================"
+          echo "BUILD UI DATA"
+          echo "========================================"
+
+          python Scripts/build_ui_data.py
+
+          test -f Data/ui_data.json
+
+          echo "✓ Data/ui_data.json"
+
+      # ======================================================
+      # 13. Final Data Contract
+      # ======================================================
+
+      - name: Validate final data chain
+        run: |
+          set -e
+
+          echo "========================================"
+          echo "FINAL DATA CHAIN"
+          echo "========================================"
+
+          test -f Data/universe.json
+          test -f Data/chip.json
+          test -d Data/prices
+          test -f Data/prices/manifest.json
+          test -f Data/analysis.json
+          test -f Data/ui_data.json
+
+          echo "✓ universe.json"
+          echo "✓ chip.json"
+          echo "✓ prices/"
+          echo "✓ prices/manifest.json"
+          echo "✓ analysis.json"
+          echo "✓ ui_data.json"
+
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          DATA_DIR = Path("Data")
+
+          paths = {
+              "universe": DATA_DIR / "universe.json",
+              "chip": DATA_DIR / "chip.json",
+              "prices": DATA_DIR / "prices" / "manifest.json",
+              "analysis": DATA_DIR / "analysis.json",
+              "ui_data": DATA_DIR / "ui_data.json",
+          }
+
+          def load_json(name):
+              path = paths[name]
+
+              try:
+                  with path.open(
+                      "r",
+                      encoding="utf-8-sig"
+                  ) as f:
+                      value = json.load(f)
+              except Exception as exc:
+                  raise SystemExit(
+                      f"❌ JSON 驗證失敗："
+                      f"{path}: {exc}"
+                  )
+
+              print(f"✓ JSON OK：{path}")
+              return value
+
+          def fail(message):
+              raise SystemExit(f"❌ {message}")
+
+          def ensure_object(name, value):
+              if not isinstance(value, dict):
+                  fail(
+                      f"{name} 根節點必須是 object"
+                  )
+
+          def ensure_non_empty_string(
+              value,
+              field,
+              context
+          ):
+              if not isinstance(value, str) or not value.strip():
+                  fail(
+                      f"{context} 的 {field} "
+                      "必須是非空字串"
+                  )
+
+          def extract_symbol(
+              item,
+              context,
+              allow_key=False,
+              key=None
+          ):
+              if isinstance(item, str):
+                  symbol = item
+              elif isinstance(item, dict):
+                  symbol = (
+                      item.get("symbol")
+                      or item.get("stock_id")
+                      or item.get("code")
+                      or item.get("ticker")
+                  )
+              else:
+                  symbol = None
+
+              if not isinstance(symbol, str):
+                  fail(
+                      f"{context} 缺少可識別的股票代號"
+                  )
+
+              symbol = symbol.strip()
+
+              if not symbol:
+                  fail(
+                      f"{context} 股票代號不可為空"
+                  )
+
+              if allow_key and key is not None:
+                  if symbol != key:
+                      fail(
+                          f"{context} 股票代號與 key 不一致："
+                          f"{symbol} != {key}"
+                      )
+
+              return symbol
+
+          def extract_symbol_set(
+              name,
+              value,
+              preferred_keys=()
+          ):
+              if isinstance(value, dict):
+                  for key in preferred_keys:
+                      candidate = value.get(key)
+
+                      if isinstance(candidate, dict):
+                          value = candidate
+                          break
+
+                      if isinstance(candidate, list):
+                          value = candidate
+                          break
+
+              if isinstance(value, dict):
+                  result = set()
+
+                  for key, item in value.items():
+                      symbol = extract_symbol(
+                          item,
+                          f"{name}[{key}]",
+                          allow_key=True,
+                          key=str(key)
+                      )
+                      result.add(symbol)
+
+                  return result
+
+              if isinstance(value, list):
+                  result = set()
+
+                  for index, item in enumerate(value):
+                      symbol = extract_symbol(
+                          item,
+                          f"{name}[{index}]"
+                      )
+                      result.add(symbol)
+
+                  return result
+
+              fail(
+                  f"{name} 必須是 object 或 array"
+              )
+
+          universe = load_json("universe")
+          chip = load_json("chip")
+          prices = load_json("prices")
+          analysis = load_json("analysis")
+          ui_data = load_json("ui_data")
+
+          for name, value in {
+              "universe": universe,
+              "chip": chip,
+              "prices": prices,
+              "analysis": analysis,
+              "ui_data": ui_data,
+          }.items():
+              ensure_object(name, value)
+
+          universe_stocks = universe.get("stocks")
+
+          if not isinstance(universe_stocks, dict):
+              fail(
+                  "universe.stocks 必須是 object"
+              )
+
+          universe_required = {
+              "symbol",
+              "full_symbol",
+              "name",
+              "market",
+              "type",
+              "instrument_type",
+              "status",
+          }
+
+          universe_symbols = set()
+
+          for key, item in universe_stocks.items():
+              context = f"universe.stocks[{key}]"
+
+              if not isinstance(item, dict):
+                  fail(f"{context} 必須是 object")
+
+              missing = universe_required - set(item)
+
+              if missing:
+                  fail(
+                      f"{context} 缺少必要欄位："
+                      f"{sorted(missing)}"
+                  )
+
+              symbol = extract_symbol(
+                  item,
+                  context,
+                  allow_key=True,
+                  key=str(key)
+              )
+
+              for field in (
+                  "full_symbol",
+                  "name",
+                  "market",
+                  "type",
+                  "instrument_type",
+                  "status",
+              ):
+                  ensure_non_empty_string(
+                      item[field],
+                      field,
+                      context
+                  )
+
+              if item["status"] != "active":
+                  fail(
+                      f"{context}.status 必須是 active"
+                  )
+
+              if item["market"] not in {
+                  "TWSE",
+                  "TPEX",
+              }:
+                  fail(
+                      f"{context}.market 不正確："
+                      f"{item['market']}"
+                  )
+
+              universe_symbols.add(symbol)
+
+          universe_count = universe.get("universe_count")
+
+          if universe_count != len(universe_symbols):
+              fail(
+                  "universe.universe_count 與 "
+                  "universe.stocks 筆數不一致："
+                  f"{universe_count} != "
+                  f"{len(universe_symbols)}"
+              )
+
+          if not universe_symbols:
+              fail("Universe 不可為空")
+
+          chip_symbols = extract_symbol_set(
+              "chip",
+              chip,
+              preferred_keys=(
+                  "stocks",
+                  "data",
+                  "items",
+                  "records",
+              )
+          )
+
+          price_symbols = extract_symbol_set(
+              "prices",
+              prices,
+              preferred_keys=(
+                  "stocks",
+                  "data",
+                  "items",
+                  "records",
+                  "files",
+              )
+          )
+
+          analysis_symbols = extract_symbol_set(
+              "analysis",
+              analysis,
+              preferred_keys=(
+                  "stocks",
+                  "data",
+                  "items",
+                  "records",
+                  "analysis",
+              )
+          )
+
+          ui_symbols = extract_symbol_set(
+              "ui_data",
+              ui_data,
+              preferred_keys=(
+                  "stocks",
+                  "data",
+                  "items",
+                  "records",
+                  "rows",
+              )
+          )
+
+          datasets = {
+              "chip": chip_symbols,
+              "prices": price_symbols,
+              "analysis": analysis_symbols,
+              "ui_data": ui_symbols,
+          }
+
+          for name, symbols in datasets.items():
+              if len(symbols) != len(universe_symbols):
+                  fail(
+                      f"{name} 筆數與 universe 不一致："
+                      f"{len(symbols)} != "
+                      f"{len(universe_symbols)}"
+                  )
+
+              missing = universe_symbols - symbols
+              extra = symbols - universe_symbols
+
+              if missing:
+                  fail(
+                      f"{name} 缺少股票代號："
+                      f"{sorted(missing)[:20]}"
+                  )
+
+              if extra:
+                  fail(
+                      f"{name} 包含 Universe 以外的股票代號："
+                      f"{sorted(extra)[:20]}"
+                  )
+
+              print(
+                  f"✓ {name}：{len(symbols)} 筆，"
+                  "股票代號與 universe 一致"
+              )
+
+          for name, value in {
+              "chip": chip,
+              "prices": prices,
+              "analysis": analysis,
+              "ui_data": ui_data,
+          }.items():
+              declared_count = None
+
+              for field in (
+                  "count",
+                  "total",
+                  "total_count",
+                  "stock_count",
+                  "universe_count",
+              ):
+                  if field in value:
+                      declared_count = value[field]
+                      break
+
+              if declared_count is not None:
+                  if declared_count != len(universe_symbols):
+                      fail(
+                          f"{name}.{field} 與實際股票筆數不一致："
+                          f"{declared_count} != "
+                          f"{len(universe_symbols)}"
+                      )
+
+          print(
+              f"✓ universe：{len(universe_symbols)} 筆"
+          )
+          print(
+              "✓ universe、chip、prices、analysis、"
+              "ui_data 筆數一致"
+          )
+          print(
+              "✓ universe、chip、prices、analysis、"
+              "ui_data 股票代號一致"
+          )
+          print(
+              "✓ 必要欄位與前端資料契約驗證 PASS"
+          )
+          print(
+              "✓ FINAL DATA CHAIN PASS"
+          )
+          PY
+
+      # ======================================================
+      # 14. Git Status
       # ======================================================
 
       - name: Show changed files
@@ -271,7 +750,7 @@ jobs:
           git diff --stat
 
       # ======================================================
-      # Commit
+      # 15. Commit
       # ======================================================
 
       - name: Commit generated data
@@ -295,10 +774,10 @@ jobs:
           fi
 
           git commit -m \
-            "chore: update Taiwan stock universe and chip data"
+            "chore: update Taiwan stock AI data"
 
       # ======================================================
-      # Push
+      # 16. Push
       # ======================================================
 
       - name: Push changes
