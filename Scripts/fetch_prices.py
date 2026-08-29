@@ -5,7 +5,43 @@
 台股 AI 選股系統
 Scripts/fetch_prices.py
 
-正式價格管線 V10.0
+正式價格管線 V11.0
+============================================================
+
+核心修正
+------------------------------------------------------------
+
+V10 的致命效能問題：
+
+    每一檔商品
+        ×
+    每一天
+        ×
+    TWSE / TPEx HTTP
+
+造成：
+
+    2301 × 180 ≈ 414,000 次以上 HTTP request
+
+因此看起來會卡在：
+
+    [1/2301]
+    [2/2301]
+
+V11 改為：
+
+    TWSE：
+        每個日期只請求一次
+
+    TPEx：
+        每個日期只請求一次
+
+    然後建立：
+
+        official_data[market][symbol][date]
+
+    最後再依 Universe 對接。
+
 ============================================================
 
 核心契約
@@ -38,6 +74,21 @@ Scripts/fetch_prices.py
 25. 絕不因歷史不足而 silently drop 商品
 
 ============================================================
+
+V11 效能契約
+------------------------------------------------------------
+
+官方歷史資料：
+
+    不允許：
+        每商品 × 每日 HTTP
+
+    必須：
+        每市場 × 每日 HTTP
+
+2301 商品不再產生 40 萬次 HTTP。
+
+============================================================
 """
 
 from __future__ import annotations
@@ -60,8 +111,8 @@ import requests
 # VERSION
 # ============================================================
 
-VERSION = "V10.0"
-SCHEMA_VERSION = "prices-v10.0"
+VERSION = "V11.0"
+SCHEMA_VERSION = "prices-v11.0"
 
 
 # ============================================================
@@ -80,26 +131,20 @@ OUTPUT_DIR = DATA_DIR / "prices"
 # ============================================================
 
 TARGET_HISTORY_ROWS = 90
-
 MAX_HISTORY_ROWS = 90
 
-# ------------------------------------------------------------
 # 重要：
 #
-# 這個值不再決定商品是否進入 results。
+# 此值只用來標記 short_history。
 #
-# 舊版：
-#     < 20 筆 -> continue -> 商品消失
+# 絕不再用：
 #
-# V10：
-#     >= 1 筆 -> 寫入 Price shard
-#     0 筆     -> missing / diagnostics
+#     len(rows) < 20 -> continue
 #
-# 這是本版本最重要的修正。
-# ------------------------------------------------------------
-
 SHORT_HISTORY_THRESHOLD = 20
 
+# 90 個交易日需要約 130 個日曆日。
+# 使用 180 天是保守值，可涵蓋假日。
 INITIAL_LOOKBACK_CALENDAR_DAYS = 180
 
 STOCKS_PER_FILE = 100
@@ -116,8 +161,19 @@ MAX_FILE_SIZE_BYTES = int(
 
 MAX_RETRIES = 3
 REQUEST_TIMEOUT = 30
+
+# 官方批次 API 不再對每檔股票 sleep。
+# 只在日期與日期之間使用極短 delay。
 REQUEST_DELAY = 0.08
+
 RETRY_DELAY = 1.5
+
+
+# ============================================================
+# FALLBACK
+# ============================================================
+
+YAHOO_FALLBACK_ONLY_WHEN_OFFICIAL_EMPTY = True
 
 
 # ============================================================
@@ -208,10 +264,12 @@ def section(title: str) -> None:
 # ============================================================
 
 def load_json(path: Path) -> Any:
+
     with path.open(
         "r",
         encoding="utf-8-sig",
     ) as f:
+
         return json.load(f)
 
 
@@ -279,6 +337,7 @@ def safe_float(
         "null",
         "None",
     }:
+
         return None
 
     text = (
@@ -288,11 +347,15 @@ def safe_float(
     )
 
     try:
+
         number = float(text)
+
     except Exception:
+
         return None
 
     if not math.isfinite(number):
+
         return None
 
     return number
@@ -326,15 +389,15 @@ def normalize_symbol(
     if not text:
         return None
 
+    upper = text.upper()
+
     for suffix in (
         ".TW",
         ".TWO",
         ".HK",
     ):
 
-        if text.upper().endswith(
-            suffix
-        ):
+        if upper.endswith(suffix):
 
             text = text[
                 :-len(suffix)
@@ -342,7 +405,9 @@ def normalize_symbol(
 
             break
 
-    return text.strip() or None
+    text = text.strip()
+
+    return text or None
 
 
 # ============================================================
@@ -406,7 +471,7 @@ def normalize_date(
     except Exception:
         pass
 
-    # Taiwan ROC date
+    # ROC date
     if "/" in text:
 
         parts = text.split("/")
@@ -485,25 +550,16 @@ def normalize_price_row(
     if close_price <= 0:
         return None
 
-    if (
-        open_price is None
-        or high_price is None
-        or low_price is None
-    ):
+    # 官方資料若缺 OHLC，
+    # 對新上市商品允許使用 close 補齊。
+    if open_price is None:
+        open_price = close_price
 
-        # ETF / newly listed instruments
-        # 若官方只提供成交價，無法形成完整 OHLC，
-        # 使用 close 補齊缺少欄位。
-        #
-        # 但 high / low 必須仍然合理。
-        if open_price is None:
-            open_price = close_price
+    if high_price is None:
+        high_price = close_price
 
-        if high_price is None:
-            high_price = close_price
-
-        if low_price is None:
-            low_price = close_price
+    if low_price is None:
+        low_price = close_price
 
     if high_price < low_price:
         return None
@@ -545,7 +601,7 @@ def normalize_price_row(
 
 
 # ============================================================
-# HTTP GET
+# HTTP GET JSON
 # ============================================================
 
 def http_get_json(
@@ -577,6 +633,7 @@ def http_get_json(
             last_error = exc
 
             if attempt < MAX_RETRIES:
+
                 time.sleep(
                     RETRY_DELAY
                 )
@@ -635,6 +692,7 @@ def load_universe() -> List[Dict[str, str]]:
             item,
             dict,
         ):
+
             raise RuntimeError(
                 f"Universe {key} 不是 object"
             )
@@ -687,15 +745,15 @@ def load_universe() -> List[Dict[str, str]]:
                 f"{market}"
             )
 
-        instrument_type = clean_text(
-            item.get(
-                "instrument_type"
-            )
-        )
-
         record_type = clean_text(
             item.get(
                 "type"
+            )
+        )
+
+        instrument_type = clean_text(
+            item.get(
+                "instrument_type"
             )
         )
 
@@ -725,12 +783,27 @@ def load_universe() -> List[Dict[str, str]]:
 
 
 # ============================================================
-# TWSE DAILY
+# TWSE DAILY BATCH
 # ============================================================
 
-def fetch_twse_daily(
+def fetch_twse_daily_batch(
     target_date: str,
 ) -> Dict[str, Dict[str, Any]]:
+
+    """
+    一次取得指定日期 TWSE 全市場資料。
+
+    重要：
+        此函式只對 API 發出一次 request。
+
+    回傳：
+        {
+            "2330": {
+                date/open/high/low/close/volume
+            },
+            ...
+        }
+    """
 
     params = {
         "response": "json",
@@ -748,7 +821,14 @@ def fetch_twse_daily(
             params,
         )
 
-    except Exception:
+    except Exception as exc:
+
+        log(
+            f"  ⚠️ TWSE "
+            f"{target_date} 取得失敗："
+            f"{exc}"
+        )
+
         return {}
 
     result = {}
@@ -757,6 +837,7 @@ def fetch_twse_daily(
         data,
         dict,
     ):
+
         return result
 
     tables = data.get(
@@ -767,6 +848,7 @@ def fetch_twse_daily(
         tables,
         list,
     ):
+
         return result
 
     for table in tables:
@@ -775,6 +857,7 @@ def fetch_twse_daily(
             table,
             dict,
         ):
+
             continue
 
         fields = table.get(
@@ -789,12 +872,14 @@ def fetch_twse_daily(
             fields,
             list,
         ):
+
             continue
 
         if not isinstance(
             rows,
             list,
         ):
+
             continue
 
         field_map = {
@@ -806,8 +891,8 @@ def fetch_twse_daily(
         }
 
         def get_value(
-            row,
-            names,
+            row: list,
+            names: Tuple[str, ...],
         ):
 
             for name in names:
@@ -831,6 +916,7 @@ def fetch_twse_daily(
                 row,
                 list,
             ):
+
                 continue
 
             symbol = normalize_symbol(
@@ -846,54 +932,44 @@ def fetch_twse_daily(
             if not symbol:
                 continue
 
-            close = get_value(
-                row,
-                (
-                    "收盤價",
-                    "收盤",
-                ),
-            )
-
-            volume = get_value(
-                row,
-                (
-                    "成交股數",
-                    "成交量",
-                ),
-            )
-
-            open_price = get_value(
-                row,
-                (
-                    "開盤價",
-                    "開盤",
-                ),
-            )
-
-            high = get_value(
-                row,
-                (
-                    "最高價",
-                    "最高",
-                ),
-            )
-
-            low = get_value(
-                row,
-                (
-                    "最低價",
-                    "最低",
-                ),
-            )
-
             normalized = normalize_price_row(
                 symbol,
                 target_date,
-                open_price,
-                high,
-                low,
-                close,
-                volume,
+                get_value(
+                    row,
+                    (
+                        "開盤價",
+                        "開盤",
+                    ),
+                ),
+                get_value(
+                    row,
+                    (
+                        "最高價",
+                        "最高",
+                    ),
+                ),
+                get_value(
+                    row,
+                    (
+                        "最低價",
+                        "最低",
+                    ),
+                ),
+                get_value(
+                    row,
+                    (
+                        "收盤價",
+                        "收盤",
+                    ),
+                ),
+                get_value(
+                    row,
+                    (
+                        "成交股數",
+                        "成交量",
+                    ),
+                ),
             )
 
             if normalized:
@@ -904,95 +980,29 @@ def fetch_twse_daily(
 
 
 # ============================================================
-# TWSE STOCK DAY ALL
+# TPEx DAILY BATCH
 # ============================================================
 
-def fetch_twse_stock_day_all(
+def fetch_tpex_daily_batch(
     target_date: str,
 ) -> Dict[str, Dict[str, Any]]:
+
+    """
+    一次取得指定日期 TPEx 全市場資料。
+
+    一個日期只發出一次 HTTP request。
+    """
 
     try:
 
-        data = http_get_json(
-            TWSE_STOCK_DAY_ALL_URL
+        dt = datetime.strptime(
+            target_date,
+            "%Y-%m-%d",
         )
 
     except Exception:
+
         return {}
-
-    result = {}
-
-    if not isinstance(
-        data,
-        list,
-    ):
-        return result
-
-    for item in data:
-
-        if not isinstance(
-            item,
-            dict,
-        ):
-            continue
-
-        symbol = normalize_symbol(
-            item.get(
-                "Code"
-            )
-            or item.get(
-                "證券代號"
-            )
-        )
-
-        if not symbol:
-            continue
-
-        close = (
-            item.get("ClosingPrice")
-            or item.get("收盤價")
-        )
-
-        volume = (
-            item.get("TradeVolume")
-            or item.get("成交股數")
-        )
-
-        normalized = normalize_price_row(
-            symbol,
-            target_date,
-            item.get(
-                "OpeningPrice"
-            ),
-            item.get(
-                "HighestPrice"
-            ),
-            item.get(
-                "LowestPrice"
-            ),
-            close,
-            volume,
-        )
-
-        if normalized:
-
-            result[symbol] = normalized
-
-    return result
-
-
-# ============================================================
-# TPEX DAILY
-# ============================================================
-
-def fetch_tpex_daily(
-    target_date: str,
-) -> Dict[str, Dict[str, Any]]:
-
-    dt = datetime.strptime(
-        target_date,
-        "%Y-%m-%d",
-    )
 
     roc_date = (
         f"{dt.year - 1911:03d}"
@@ -1013,7 +1023,14 @@ def fetch_tpex_daily(
             params,
         )
 
-    except Exception:
+    except Exception as exc:
+
+        log(
+            f"  ⚠️ TPEx "
+            f"{target_date} 取得失敗："
+            f"{exc}"
+        )
+
         return {}
 
     result = {}
@@ -1022,6 +1039,7 @@ def fetch_tpex_daily(
         data,
         dict,
     ):
+
         return result
 
     aa_data = data.get(
@@ -1032,26 +1050,8 @@ def fetch_tpex_daily(
         aa_data,
         list,
     ):
-        return result
 
-    # --------------------------------------------------------
-    # TPEx 官方 stk_wn1430_result.php
-    #
-    # 欄位順序以官方 aaData 為準。
-    #
-    # 常見：
-    #
-    # 0 代號
-    # 1 名稱
-    # 2 收盤
-    # 3 漲跌
-    # 4 開盤
-    # 5 最高
-    # 6 最低
-    # 7 成交股數
-    #
-    # 不猜欄名，直接按照官方 aaData 結構解析。
-    # --------------------------------------------------------
+        return result
 
     for row in aa_data:
 
@@ -1059,9 +1059,11 @@ def fetch_tpex_daily(
             row,
             list,
         ):
+
             continue
 
         if len(row) < 8:
+
             continue
 
         symbol = normalize_symbol(
@@ -1069,27 +1071,240 @@ def fetch_tpex_daily(
         )
 
         if not symbol:
-            continue
 
-        close = row[2]
-        open_price = row[4]
-        high = row[5]
-        low = row[6]
-        volume = row[7]
+            continue
 
         normalized = normalize_price_row(
             symbol,
             target_date,
-            open_price,
-            high,
-            low,
-            close,
-            volume,
+            row[4],
+            row[5],
+            row[6],
+            row[2],
+            row[7],
         )
 
         if normalized:
 
             result[symbol] = normalized
+
+    return result
+
+
+# ============================================================
+# OFFICIAL MARKET HISTORY
+# ============================================================
+
+def fetch_official_market_history(
+    universe: List[Dict[str, str]],
+    start_date: str,
+    end_date: str,
+) -> Dict[
+    str,
+    Dict[str, Dict[str, Any]],
+]:
+
+    """
+    V11 核心：
+
+    不再：
+
+        symbol -> date -> HTTP
+
+    改為：
+
+        date -> market batch HTTP
+        ↓
+        symbol -> dates
+
+    回傳：
+
+        {
+            "2330": {
+                "2026-08-01": {...},
+                "2026-08-04": {...}
+            },
+            ...
+        }
+    """
+
+    requested = {
+        item["symbol"]: item["market"]
+        for item in universe
+    }
+
+    result = {
+        symbol: {}
+        for symbol in requested
+    }
+
+    start_dt = datetime.strptime(
+        start_date,
+        "%Y-%m-%d",
+    )
+
+    end_dt = datetime.strptime(
+        end_date,
+        "%Y-%m-%d",
+    )
+
+    total_days = (
+        end_dt - start_dt
+    ).days + 1
+
+    section(
+        "OFFICIAL BATCH HISTORY"
+    )
+
+    log(
+        f"日期範圍："
+        f"{start_date} ~ {end_date}"
+    )
+
+    log(
+        f"日曆天數："
+        f"{total_days}"
+    )
+
+    log(
+        "模式："
+        "每市場 / 每日期一次 HTTP"
+    )
+
+    log(
+        "禁止模式："
+        "每股票 / 每日期 HTTP"
+    )
+
+    current = start_dt
+
+    processed_days = 0
+    twse_rows = 0
+    tpex_rows = 0
+
+    while current <= end_dt:
+
+        date_text = current.strftime(
+            "%Y-%m-%d"
+        )
+
+        # ----------------------------------------------------
+        # TWSE
+        # ----------------------------------------------------
+
+        twse_needed = any(
+            market == "TWSE"
+            for market in requested.values()
+        )
+
+        if twse_needed:
+
+            twse = fetch_twse_daily_batch(
+                date_text
+            )
+
+            twse_rows += len(
+                twse
+            )
+
+            for symbol, row in twse.items():
+
+                if requested.get(
+                    symbol
+                ) == "TWSE":
+
+                    result[symbol][
+                        row["date"]
+                    ] = row
+
+        # ----------------------------------------------------
+        # TPEx
+        # ----------------------------------------------------
+
+        tpex_needed = any(
+            market == "TPEX"
+            for market in requested.values()
+        )
+
+        if tpex_needed:
+
+            tpex = fetch_tpex_daily_batch(
+                date_text
+            )
+
+            tpex_rows += len(
+                tpex
+            )
+
+            for symbol, row in tpex.items():
+
+                if requested.get(
+                    symbol
+                ) == "TPEX":
+
+                    result[symbol][
+                        row["date"]
+                    ] = row
+
+        processed_days += 1
+
+        # ----------------------------------------------------
+        # Progress
+        # ----------------------------------------------------
+
+        if (
+            processed_days == 1
+            or processed_days % 10 == 0
+            or current.date() == end_dt.date()
+        ):
+
+            twse_symbols = sum(
+                1
+                for symbol in result
+                if requested[symbol]
+                == "TWSE"
+                and result[symbol]
+            )
+
+            tpex_symbols = sum(
+                1
+                for symbol in result
+                if requested[symbol]
+                == "TPEX"
+                and result[symbol]
+            )
+
+            log(
+                f"[{processed_days}/{total_days}] "
+                f"{date_text} | "
+                f"TWSE rows={twse_rows} "
+                f"symbols={twse_symbols} | "
+                f"TPEx rows={tpex_rows} "
+                f"symbols={tpex_symbols}"
+            )
+
+        time.sleep(
+            REQUEST_DELAY
+        )
+
+        current += timedelta(
+            days=1
+        )
+
+    log("")
+    log(
+        "✓ 官方批次歷史抓取完成"
+    )
+
+    log(
+        f"✓ TWSE 原始有效 row："
+        f"{twse_rows}"
+    )
+
+    log(
+        f"✓ TPEx 原始有效 row："
+        f"{tpex_rows}"
+    )
 
     return result
 
@@ -1203,6 +1418,7 @@ def fetch_yahoo_history(
         timestamps,
         list,
     ):
+
         return []
 
     rows = []
@@ -1307,91 +1523,6 @@ def fetch_yahoo_history(
 
 
 # ============================================================
-# FETCH OFFICIAL HISTORY
-# ============================================================
-
-def fetch_official_history(
-    item: Dict[str, str],
-    start_date: str,
-    end_date: str,
-) -> Dict[str, Dict[str, Any]]:
-
-    symbol = item["symbol"]
-
-    market = item["market"]
-
-    rows = {}
-
-    start_dt = datetime.strptime(
-        start_date,
-        "%Y-%m-%d",
-    )
-
-    end_dt = datetime.strptime(
-        end_date,
-        "%Y-%m-%d",
-    )
-
-    current = start_dt
-
-    while current <= end_dt:
-
-        date_text = current.strftime(
-            "%Y-%m-%d"
-        )
-
-        daily = {}
-
-        if market == "TWSE":
-
-            daily = fetch_twse_daily(
-                date_text
-            )
-
-            # ------------------------------------------------
-            # 若 MI_INDEX 沒資料，
-            # 再使用 STOCK_DAY_ALL。
-            # ------------------------------------------------
-
-            if symbol not in daily:
-
-                all_market = (
-                    fetch_twse_stock_day_all(
-                        date_text
-                    )
-                )
-
-                if symbol in all_market:
-                    daily = all_market
-
-        elif market == "TPEX":
-
-            daily = fetch_tpex_daily(
-                date_text
-            )
-
-        if symbol in daily:
-
-            row = daily[
-                symbol
-            ]
-
-            rows[
-                row["date"]
-            ] = row
-
-        current += timedelta(
-            days=1
-        )
-
-        time.sleep(
-            REQUEST_DELAY
-        )
-
-    return rows
-
-
-# ============================================================
 # EXISTING PRICES
 # ============================================================
 
@@ -1427,6 +1558,7 @@ def load_existing_prices() -> Dict[
         manifest,
         dict,
     ):
+
         return result
 
     files = manifest.get(
@@ -1437,6 +1569,7 @@ def load_existing_prices() -> Dict[
         files,
         list,
     ):
+
         return result
 
     for filename in files:
@@ -1465,6 +1598,7 @@ def load_existing_prices() -> Dict[
             data,
             dict,
         ):
+
             continue
 
         stocks = data.get(
@@ -1475,6 +1609,7 @@ def load_existing_prices() -> Dict[
             stocks,
             dict,
         ):
+
             continue
 
         for symbol, rows in stocks.items():
@@ -1490,6 +1625,7 @@ def load_existing_prices() -> Dict[
                 rows,
                 list,
             ):
+
                 continue
 
             clean_rows = []
@@ -1500,19 +1636,33 @@ def load_existing_prices() -> Dict[
                     row,
                     dict,
                 ):
+
                     continue
 
                 normalized = normalize_price_row(
                     symbol,
-                    row.get("date"),
-                    row.get("open"),
-                    row.get("high"),
-                    row.get("low"),
-                    row.get("close"),
-                    row.get("volume"),
+                    row.get(
+                        "date"
+                    ),
+                    row.get(
+                        "open"
+                    ),
+                    row.get(
+                        "high"
+                    ),
+                    row.get(
+                        "low"
+                    ),
+                    row.get(
+                        "close"
+                    ),
+                    row.get(
+                        "volume"
+                    ),
                 )
 
                 if normalized:
+
                     clean_rows.append(
                         normalized
                     )
@@ -1535,7 +1685,7 @@ def load_existing_prices() -> Dict[
 
 
 # ============================================================
-# BUILD PRICE RESULTS
+# BUILD RESULTS
 # ============================================================
 
 def build_results(
@@ -1566,18 +1716,52 @@ def build_results(
         "%Y-%m-%d"
     )
 
+    # --------------------------------------------------------
+    # Existing data
+    # --------------------------------------------------------
+
     existing = load_existing_prices()
 
-    results = {}
+    log(
+        f"Existing price symbols："
+        f"{len(existing)}"
+    )
 
+    # --------------------------------------------------------
+    # IMPORTANT V11
+    #
+    # 只建立一次官方市場資料池。
+    #
+    # 不再：
+    #
+    #     for symbol:
+    #         for date:
+    #             request()
+    #
+    # --------------------------------------------------------
+
+    official_history = (
+        fetch_official_market_history(
+            universe,
+            start_date,
+            end_date,
+        )
+    )
+
+    results = {}
     diagnostics = {}
 
-    universe_by_symbol = {
-        item["symbol"]: item
-        for item in universe
-    }
+    total = len(
+        universe
+    )
 
-    total = len(universe)
+    # --------------------------------------------------------
+    # Universe → Price
+    # --------------------------------------------------------
+
+    section(
+        "UNIVERSE → PRICE MAPPING"
+    )
 
     for index, item in enumerate(
         universe,
@@ -1595,7 +1779,7 @@ def build_results(
         row_map = {}
 
         # ----------------------------------------------------
-        # 1. existing
+        # 1. Existing
         # ----------------------------------------------------
 
         previous = existing.get(
@@ -1613,24 +1797,32 @@ def build_results(
                 ] = row
 
         # ----------------------------------------------------
-        # 2. official batch history
+        # 2. Official batch data
         # ----------------------------------------------------
 
-        official = (
-            fetch_official_history(
-                item,
-                start_date,
-                end_date,
+        official_rows = (
+            official_history.get(
+                symbol,
+                {}
             )
         )
 
         for date_text, row in (
-            official.items()
+            official_rows.items()
         ):
 
             row_map[
                 date_text
             ] = row
+
+        # ----------------------------------------------------
+        # 3. Determine official history
+        # ----------------------------------------------------
+
+        final_rows = sorted(
+            row_map.values(),
+            key=lambda x: x["date"],
+        )
 
         source = (
             "TWSE official"
@@ -1639,34 +1831,22 @@ def build_results(
         )
 
         # ----------------------------------------------------
-        # 3. Yahoo fallback
+        # 4. Yahoo fallback
         #
-        # 只有官方資料完全沒有，或最新日期沒有，
-        # 才使用 Yahoo。
+        # 只有「官方 + existing 完全 0 筆」才 fallback。
+        #
+        # 不因為歷史只有 1~19 筆而重新抓 Yahoo。
         # ----------------------------------------------------
 
-        final_rows = sorted(
-            row_map.values(),
-            key=lambda x: x["date"],
-        )
-
-        needs_yahoo = (
+        if (
             len(final_rows) == 0
-        )
+            and YAHOO_FALLBACK_ONLY_WHEN_OFFICIAL_EMPTY
+        ):
 
-        if not needs_yahoo:
-
-            latest_date = (
-                final_rows[-1]["date"]
+            log(
+                "  → 官方無有效資料，"
+                "啟動 Yahoo fallback"
             )
-
-            if latest_date < end_date:
-
-                # 非交易日不應要求一定等於今天。
-                # 只要已有最近交易日即可。
-                pass
-
-        if needs_yahoo:
 
             yahoo_rows = (
                 fetch_yahoo_history(
@@ -1688,8 +1868,13 @@ def build_results(
                     "Yahoo fallback"
                 )
 
+                log(
+                    f"  → Yahoo "
+                    f"{len(yahoo_rows)} 筆"
+                )
+
         # ----------------------------------------------------
-        # 4. final rows
+        # 5. Final
         # ----------------------------------------------------
 
         final_rows = sorted(
@@ -1700,20 +1885,17 @@ def build_results(
         ]
 
         # ----------------------------------------------------
-        # 重要修正：
+        # 重要：
         #
-        # 舊版：
+        # >= 1：
+        #     必須進 results
         #
-        # if len(final_rows) < 20:
-        #     diagnostics[...] = ...
-        #     continue
+        # 0：
+        #     missing
         #
-        # 這會直接把新上市 ETF 從 Price Universe 移除。
+        # 絕對不能：
         #
-        # V10：
-        #
-        # >= 1 筆：一定進 results
-        # 0 筆：才是真正 missing
+        #     <20 -> continue
         # ----------------------------------------------------
 
         if len(final_rows) == 0:
@@ -1725,8 +1907,8 @@ def build_results(
             )
 
             log(
-                f"  ⚠️ {symbol} "
-                "目前沒有任何有效價格資料"
+                f"  ❌ {symbol} "
+                "沒有任何有效價格資料"
             )
 
             continue
@@ -1861,11 +2043,6 @@ def validate_results(
             )
 
             continue
-
-        # ----------------------------------------------------
-        # V10：
-        # >=1 筆即可存在於 Price Universe
-        # ----------------------------------------------------
 
         if len(rows) < 1:
 
@@ -2068,6 +2245,7 @@ def print_diagnostics(
         )
 
         for symbol in extra:
+
             log(
                 f"  - {symbol}"
             )
@@ -2087,16 +2265,6 @@ def print_diagnostics(
                 f"  - {symbol}"
                 f" → {reason}"
             )
-
-    # --------------------------------------------------------
-    # 真正阻塞條件
-    #
-    # 1. malformed
-    # 2. extra
-    #
-    # missing 不再由 fetch_prices 自己 raise，
-    # 但 Validate Price Data 會在 workflow 中檢查。
-    # --------------------------------------------------------
 
     if malformed:
 
@@ -2259,11 +2427,6 @@ def validate_shard(
                 f"{symbol} prices "
                 "不是 list"
             )
-
-        # ----------------------------------------------------
-        # V10：
-        # 新上市商品可以只有 1~19 筆。
-        # ----------------------------------------------------
 
         if len(rows) < 1:
 
@@ -2662,6 +2825,10 @@ def write_price_directory(
             expected,
         )
 
+    # --------------------------------------------------------
+    # Manifest
+    # --------------------------------------------------------
+
     manifest = build_manifest(
         shard_files,
         results,
@@ -2751,12 +2918,22 @@ def atomic_replace_output(
 def main() -> int:
 
     section(
-        "TAIWAN STOCK AI PRICE PIPELINE V10.0"
+        "TAIWAN STOCK AI PRICE PIPELINE V11.0"
     )
 
     log(
         "核心修正："
-        "歷史不足 20 日不再排除商品"
+        "官方資料改為市場批次抓取"
+    )
+
+    log(
+        "舊模式："
+        "2301 商品 × 180 日 HTTP"
+    )
+
+    log(
+        "新模式："
+        "TWSE/TPEx 每日期各一次 HTTP"
     )
 
     log(
@@ -2834,24 +3011,6 @@ def main() -> int:
         validation,
         diagnostics,
     )
-
-    # --------------------------------------------------------
-    # IMPORTANT
-    #
-    # fetch_prices.py 不因少數商品沒有資料而把
-    # 已取得的有效資料全部丟掉。
-    #
-    # 但是如果 Universe 有商品完全沒有價格，
-    # diagnostics 必須保留。
-    #
-    # update.yml 的 Validate Price Data
-    # 會最終要求：
-    #
-    # Universe == Price
-    #
-    # 因此如果仍然 missing，
-    # workflow 會明確 FAIL，而不是產生假完整資料。
-    # --------------------------------------------------------
 
     if validation["malformed"]:
 
@@ -3100,6 +3259,14 @@ def main() -> int:
 
     log(
         "✓ Universe 是唯一商品來源"
+    )
+
+    log(
+        "✓ 官方資料採市場批次抓取"
+    )
+
+    log(
+        "✓ 不再每股票 × 每日期 HTTP"
     )
 
     log(
