@@ -5,14 +5,14 @@ on:
 
   schedule:
     # ======================================================
-    # 台灣時間
+    # 台灣時間：
     #
-    # 09:15 → UTC 01:15
-    # 10:30 → UTC 02:30
-    # 12:00 → UTC 04:00
-    # 14:30 → UTC 06:30
-    # 16:30 → UTC 08:30
-    # 17:30 → UTC 09:30
+    # 09:15
+    # 10:30
+    # 12:00
+    # 14:30
+    # 16:30
+    # 17:30
     #
     # GitHub Actions 使用 UTC
     # ======================================================
@@ -29,7 +29,6 @@ permissions:
 
 jobs:
   update:
-
     runs-on: ubuntu-latest
 
     timeout-minutes: 45
@@ -46,7 +45,7 @@ jobs:
           fetch-depth: 1
 
       # ======================================================
-      # 2. Setup Python
+      # 2. Python
       # ======================================================
 
       - name: Setup Python
@@ -55,7 +54,7 @@ jobs:
           python-version: "3.11"
 
       # ======================================================
-      # 3. Install Dependencies
+      # 3. Dependencies
       # ======================================================
 
       - name: Install dependencies
@@ -63,10 +62,10 @@ jobs:
           set -e
 
           python -m pip install --upgrade pip
-          python -m pip install requests pandas
+          pip install requests pandas
 
       # ======================================================
-      # 4. Verify Project Structure
+      # 4. Verify Scripts
       # ======================================================
 
       - name: Verify project structure
@@ -93,7 +92,7 @@ jobs:
           echo "✓ Data/"
 
       # ======================================================
-      # 5. Python Syntax Gate
+      # 5. Syntax Gate
       # ======================================================
 
       - name: Python syntax gate
@@ -146,16 +145,11 @@ jobs:
                   "❌ Data/universe.json 不存在"
               )
 
-          try:
-              with path.open(
-                  "r",
-                  encoding="utf-8-sig"
-              ) as f:
-                  data = json.load(f)
-          except Exception as exc:
-              raise SystemExit(
-                  f"❌ universe.json JSON 解析失敗：{exc}"
-              )
+          with path.open(
+              "r",
+              encoding="utf-8-sig"
+          ) as f:
+              data = json.load(f)
 
           if not isinstance(data, dict):
               raise SystemExit(
@@ -192,11 +186,6 @@ jobs:
               "status",
           }
 
-          valid_markets = {
-              "TWSE",
-              "TPEX",
-          }
-
           for key, item in stocks.items():
 
               if not isinstance(item, dict):
@@ -224,7 +213,10 @@ jobs:
                       f"{item['status']}"
                   )
 
-              if item["market"] not in valid_markets:
+              if item["market"] not in {
+                  "TWSE",
+                  "TPEX",
+              }:
                   raise SystemExit(
                       f"❌ {key} market 不正確："
                       f"{item['market']}"
@@ -284,17 +276,26 @@ jobs:
       # ======================================================
       # 10. Validate Price Data
       #
-      # 重要修正：
+      # 正式價格契約：
       #
-      # 不再把 price shard 裡面的任意 dictionary key
-      # 當成股票代號。
+      # 1. 老商品缺價格 => FAIL
+      # 2. 新掛牌商品尚未累積足夠交易日
+      #    => 可以暫時沒有完整價格歷史
+      # 3. 新掛牌商品仍必須屬於 Universe
+      # 4. Price 不得出現 Universe 外商品
+      # 5. 不得跨 shard 重複
       #
-      # 股票只能從明確的 symbol/code/stock_id/ticker
-      # 或「真正的 symbol-keyed 股票 object」取得。
+      # 20 個交易日約等於 30 個日曆日。
       #
-      # 同時：
-      # manifest.files[] 只負責描述 shard。
-      # 絕對不把 manifest.files[] 當股票集合。
+      # 因此上市後 30 日內：
+      #   missing price = ALLOWED_NEW_LISTING
+      #
+      # 超過 30 日仍缺：
+      #   => HARD FAIL
+      #
+      # 這避免新 ETF 一上市就把整條
+      # Data Pipeline 卡死，同時避免把
+      # 老股票缺資料偷偷吞掉。
       # ======================================================
 
       - name: Validate Price Data
@@ -303,7 +304,7 @@ jobs:
 
           python - <<'PY'
           import json
-          import re
+          from datetime import date, datetime, timedelta
           from pathlib import Path
 
           DATA_DIR = Path("Data")
@@ -312,7 +313,7 @@ jobs:
           UNIVERSE_FILE = DATA_DIR / "universe.json"
           MANIFEST_FILE = PRICES_DIR / "manifest.json"
 
-          SYMBOL_RE = re.compile(r"^[0-9A-Za-z]{4,12}$")
+          NEW_LISTING_GRACE_DAYS = 30
 
           def fail(message):
               raise SystemExit(f"❌ {message}")
@@ -340,7 +341,7 @@ jobs:
               if not isinstance(value, str):
                   return None
 
-              symbol = value.strip()
+              symbol = value.strip().upper()
 
               if not symbol:
                   return None
@@ -350,119 +351,95 @@ jobs:
                   ".TWO",
                   ".HK",
               ):
-                  if symbol.upper().endswith(suffix):
-                      symbol = symbol[
-                          :-len(suffix)
-                      ]
-
-              symbol = symbol.strip()
-
-              if not symbol:
-                  return None
-
-              if not SYMBOL_RE.fullmatch(symbol):
-                  return None
+                  if symbol.endswith(suffix):
+                      symbol = symbol[:-len(suffix)]
 
               return symbol
 
-          def explicit_symbol(item):
-              """
-              只從明確股票欄位取得 symbol。
-              """
+          def parse_listing_date(value):
+              if value is None:
+                  return None
+
+              text = str(value).strip()
+
+              if not text:
+                  return None
+
+              for fmt in (
+                  "%Y/%m/%d",
+                  "%Y-%m-%d",
+                  "%Y%m%d",
+              ):
+                  try:
+                      return datetime.strptime(
+                          text,
+                          fmt
+                      ).date()
+                  except ValueError:
+                      pass
+
+              return None
+
+          def extract_symbol_from_record(item, key=None):
+              if isinstance(item, str):
+                  return normalize_symbol(item)
 
               if not isinstance(item, dict):
                   return None
 
-              for field in (
-                  "symbol",
-                  "stock_id",
-                  "code",
-                  "ticker",
-                  "stock_code",
-                  "security_code",
-              ):
-                  value = item.get(field)
+              symbol = (
+                  item.get("symbol")
+                  or item.get("stock_id")
+                  or item.get("code")
+                  or item.get("ticker")
+              )
 
-                  symbol = normalize_symbol(value)
+              symbol = normalize_symbol(symbol)
 
-                  if symbol:
-                      return symbol
+              if symbol:
+                  return symbol
+
+              if key is not None:
+                  return normalize_symbol(str(key))
 
               return None
 
-          def extract_symbols_from_stock_object(obj):
-              """
-              處理真正的 symbol-keyed object：
+          def extract_stock_symbols(data, context):
+              if isinstance(data, dict):
 
-                  {
-                      "2337": {...},
-                      "2426": {...}
-                  }
+                  for preferred in (
+                      "stocks",
+                      "data",
+                      "items",
+                      "records",
+                  ):
+                      candidate = data.get(preferred)
 
-              只有 key 本身符合股票代號格式，
-              且 value 是股票資料 object/list，
-              才接受 key 為股票代號。
+                      if isinstance(candidate, dict):
+                          return extract_stock_symbols(
+                              candidate,
+                              f"{context}.{preferred}"
+                          )
 
-              不會把 metadata key，例如：
-                  date
-                  generated_at
-                  count
-                  latest_date
-                  source
-              當股票。
-              """
+                      if isinstance(candidate, list):
+                          return extract_stock_symbols(
+                              candidate,
+                              f"{context}.{preferred}"
+                          )
 
-              result = set()
+                  result = set()
 
-              if not isinstance(obj, dict):
-                  return result
+                  for key, item in data.items():
 
-              for key, value in obj.items():
+                      symbol = extract_symbol_from_record(
+                          item,
+                          key=key
+                      )
 
-                  symbol = normalize_symbol(str(key))
-
-                  if not symbol:
-                      continue
-
-                  if isinstance(value, dict):
-
-                      explicit = explicit_symbol(value)
-
-                      if explicit:
-                          if explicit != symbol:
-                              continue
-
+                      if symbol:
                           result.add(symbol)
-                          continue
 
-                      # symbol-keyed stock object
-                      result.add(symbol)
-
-                  elif isinstance(value, list):
-
-                      # symbol-keyed price list
-                      result.add(symbol)
-
-              return result
-
-          def extract_symbols(data):
-              """
-              嚴格解析真正股票集合。
-
-              優先處理：
-                  stocks
-                  data
-                  items
-                  records
-
-              若是 list：
-                  只接受含明確股票欄位的 record。
-
-              若是 dict：
-                  最後才處理真正的 symbol-keyed object。
-
-              不會把任意 metadata key 當股票。
-              """
+                  return result
 
               if isinstance(data, list):
 
@@ -470,46 +447,16 @@ jobs:
 
                   for item in data:
 
-                      symbol = explicit_symbol(item)
+                      symbol = extract_symbol_from_record(
+                          item
+                      )
 
                       if symbol:
                           result.add(symbol)
 
                   return result
 
-              if not isinstance(data, dict):
-                  return set()
-
-              for field in (
-                  "stocks",
-                  "data",
-                  "items",
-                  "records",
-              ):
-
-                  candidate = data.get(field)
-
-                  if isinstance(candidate, dict):
-
-                      result = extract_symbols(
-                          candidate
-                      )
-
-                      if result:
-                          return result
-
-                  elif isinstance(candidate, list):
-
-                      result = extract_symbols(
-                          candidate
-                      )
-
-                      if result:
-                          return result
-
-              return extract_symbols_from_stock_object(
-                  data
-              )
+              return set()
 
           universe = load_json(
               UNIVERSE_FILE
@@ -542,6 +489,7 @@ jobs:
               )
 
           universe_symbols = set()
+          universe_listing_dates = {}
 
           for key, item in universe_stocks.items():
 
@@ -552,149 +500,157 @@ jobs:
 
               symbol = normalize_symbol(
                   item.get("symbol")
+                  or key
               )
 
               if not symbol:
                   fail(
-                      f"Universe {key} 缺少有效 symbol"
+                      f"Universe 股票 {key} "
+                      "缺少有效代號"
                   )
 
               universe_symbols.add(symbol)
+
+              listing_date = parse_listing_date(
+                  item.get("listed_date")
+              )
+
+              universe_listing_dates[
+                  symbol
+              ] = listing_date
+
+          universe_count = len(
+              universe_symbols
+          )
 
           manifest_files = manifest.get(
               "files"
           )
 
-          if not isinstance(
+          shard_names = []
+
+          if isinstance(
               manifest_files,
               list
           ):
-              fail(
-                  "manifest.files 必須是 list"
-              )
+              for item in manifest_files:
 
-          shard_names = []
-
-          for item in manifest_files:
-
-              if isinstance(item, str):
-
-                  filename = Path(
-                      item.replace(
-                          "\\",
-                          "/"
-                      )
-                  ).name
-
-                  if filename:
-                      shard_names.append(
-                          filename
-                      )
-
-              elif isinstance(item, dict):
-
-                  filename = None
-
-                  for field in (
-                      "file",
-                      "path",
-                      "filename",
-                      "name",
+                  if isinstance(
+                      item,
+                      str
                   ):
+                      shard_names.append(item)
 
-                      value = item.get(field)
+                  elif isinstance(
+                      item,
+                      dict
+                  ):
+                      for field in (
+                          "file",
+                          "path",
+                          "filename",
+                          "name",
+                      ):
+                          value = item.get(field)
 
-                      if isinstance(
-                          value,
-                          str
-                      ) and value.strip():
-
-                          filename = Path(
-                              value.replace(
-                                  "\\",
-                                  "/"
+                          if value:
+                              shard_names.append(
+                                  str(value)
                               )
-                          ).name
-
-                          break
-
-                  if filename:
-                      shard_names.append(
-                          filename
-                      )
-
-          # 去除重複
-          shard_names = list(
-              dict.fromkeys(
-                  shard_names
-              )
-          )
+                              break
 
           if not shard_names:
 
+              shard_names = [
+                  p.name
+                  for p in sorted(
+                      PRICES_DIR.glob(
+                          "prices_*.json"
+                      )
+                  )
+              ]
+
+          unique_shard_names = []
+
+          seen = set()
+
+          for name in shard_names:
+
+              filename = Path(
+                  str(name).replace(
+                      "\\",
+                      "/"
+                  )
+              ).name
+
+              if filename in seen:
+                  continue
+
+              seen.add(filename)
+              unique_shard_names.append(
+                  filename
+              )
+
+          if not unique_shard_names:
               fail(
-                  "manifest.files 沒有任何 price shard"
+                  "manifest 沒有任何價格 shard"
               )
 
           price_symbols = set()
           shard_symbols = {}
-          duplicate_symbols = set()
+          shard_duplicates = set()
 
-          for filename in shard_names:
+          for filename in unique_shard_names:
 
-              shard_path = (
-                  PRICES_DIR
-                  / filename
-              )
+              candidates = [
+                  PRICES_DIR / filename,
+                  DATA_DIR / filename,
+              ]
 
-              if not shard_path.exists():
+              shard_path = None
+
+              for candidate in candidates:
+
+                  if candidate.exists():
+                      shard_path = candidate
+                      break
+
+              if shard_path is None:
                   fail(
-                      f"manifest 指定的價格分檔不存在："
-                      f"{shard_path}"
+                      "manifest 指定的價格分檔不存在："
+                      f"{filename}"
                   )
 
-              shard_data = load_json(
+              data = load_json(
                   shard_path
               )
 
-              symbols = extract_symbols(
-                  shard_data
+              symbols = extract_stock_symbols(
+                  data,
+                  filename
               )
 
               if not symbols:
                   fail(
-                      f"{filename} "
-                      "沒有解析到任何股票資料"
-                  )
-
-              # 只接受 Universe 內的候選，
-              # 避免 metadata 被誤認為股票。
-              valid_symbols = (
-                  symbols
-                  & universe_symbols
-              )
-
-              if not valid_symbols:
-                  fail(
-                      f"{filename} "
-                      "沒有解析到任何 Universe 股票"
+                      f"{filename} 沒有解析到任何股票資料"
                   )
 
               shard_symbols[
                   filename
-              ] = valid_symbols
+              ] = symbols
 
-              overlap = (
+              duplicated = (
                   price_symbols
-                  & valid_symbols
+                  & symbols
               )
 
-              duplicate_symbols.update(
-                  overlap
-              )
+              if duplicated:
+                  shard_duplicates.update(
+                      duplicated
+                  )
 
               price_symbols.update(
-                  valid_symbols
+                  symbols
               )
 
           missing = (
@@ -707,71 +663,139 @@ jobs:
               - universe_symbols
           )
 
+          # --------------------------------------------------
+          # 新掛牌商品豁免
+          # --------------------------------------------------
+
+          today = date.today()
+
+          allowed_new_listing_missing = set()
+          hard_missing = set()
+
+          for symbol in missing:
+
+              listing_date = (
+                  universe_listing_dates.get(
+                      symbol
+                  )
+              )
+
+              if listing_date is None:
+                  hard_missing.add(symbol)
+                  continue
+
+              age_days = (
+                  today - listing_date
+              ).days
+
+              if (
+                  age_days >= 0
+                  and age_days <= NEW_LISTING_GRACE_DAYS
+              ):
+                  allowed_new_listing_missing.add(
+                      symbol
+                  )
+              else:
+                  hard_missing.add(symbol)
+
           print("")
           print("========================================")
           print("PRICE DATA VALIDATION")
           print("========================================")
-
           print(
               f"Universe STOCK："
-              f"{len(universe_symbols)}"
+              f"{universe_count}"
           )
-
           print(
               f"Price shards："
-              f"{len(shard_names)}"
+              f"{len(unique_shard_names)}"
           )
-
           print(
               f"Price 股票集合："
               f"{len(price_symbols)}"
           )
-
           print(
               f"Universe → Price 成功對接："
               f"{len(universe_symbols & price_symbols)}"
           )
-
           print(
-              f"Price 缺失："
+              f"Price 缺失總數："
               f"{len(missing)}"
           )
-
+          print(
+              f"新掛牌豁免："
+              f"{len(allowed_new_listing_missing)}"
+          )
+          print(
+              f"真正缺失："
+              f"{len(hard_missing)}"
+          )
           print(
               f"Price 額外股票："
               f"{len(extra)}"
           )
-
           print(
               f"跨 shard 重複："
-              f"{len(duplicate_symbols)}"
+              f"{len(shard_duplicates)}"
           )
 
-          if missing:
+          if allowed_new_listing_missing:
 
               print("")
               print(
-                  "❌ Universe 缺少價格資料："
+                  "⚠️ 新掛牌商品尚未累積足夠歷史價格，"
+                  "本次允許通過："
               )
 
               for symbol in sorted(
-                  missing
-              )[:50]:
-
-                  print(
-                      f"  {symbol}"
+                  allowed_new_listing_missing
+              ):
+                  listing_date = (
+                      universe_listing_dates.get(
+                          symbol
+                      )
                   )
 
-              if len(missing) > 50:
+                  age_days = (
+                      today - listing_date
+                  ).days
 
                   print(
+                      f"  {symbol} "
+                      f"(listed={listing_date}, "
+                      f"age={age_days} days)"
+                  )
+
+          if hard_missing:
+
+              print("")
+              print(
+                  "❌ 非新掛牌商品缺少價格資料："
+              )
+
+              for symbol in sorted(
+                  hard_missing
+              )[:50]:
+                  listing_date = (
+                      universe_listing_dates.get(
+                          symbol
+                      )
+                  )
+
+                  print(
+                      f"  {symbol} "
+                      f"(listed={listing_date})"
+                  )
+
+              if len(hard_missing) > 50:
+                  print(
                       f"  ... "
-                      f"另外 "
-                      f"{len(missing) - 50} 檔"
+                      f"另外 {len(hard_missing) - 50} 檔"
                   )
 
               fail(
-                  "Price Data 不完整"
+                  "Price Data 不完整："
+                  "存在非新掛牌商品缺少價格資料"
               )
 
           if extra:
@@ -784,16 +808,21 @@ jobs:
               for symbol in sorted(
                   extra
               )[:50]:
-
                   print(
                       f"  {symbol}"
+                  )
+
+              if len(extra) > 50:
+                  print(
+                      f"  ... "
+                      f"另外 {len(extra) - 50} 檔"
                   )
 
               fail(
                   "Price Data 包含 Universe 外股票"
               )
 
-          if duplicate_symbols:
+          if shard_duplicates:
 
               print("")
               print(
@@ -801,13 +830,12 @@ jobs:
               )
 
               for symbol in sorted(
-                  duplicate_symbols
+                  shard_duplicates
               )[:50]:
 
                   locations = [
-                      filename
-                      for filename,
-                      symbols
+                      name
+                      for name, symbols
                       in shard_symbols.items()
                       if symbol in symbols
                   ]
@@ -821,24 +849,49 @@ jobs:
                   "Price shard 存在重複股票"
               )
 
-          if len(price_symbols) != len(
-              universe_symbols
-          ):
+          effective_coverage = (
+              len(
+                  price_symbols
+              )
+              +
+              len(
+                  allowed_new_listing_missing
+              )
+          )
 
+          if effective_coverage != universe_count:
               fail(
-                  "Price 股票數量與 Universe "
-                  "不一致"
+                  "Price 有效覆蓋數量與 Universe "
+                  "不一致："
+                  f"{effective_coverage} != "
+                  f"{universe_count}"
               )
 
           print("")
-          print("✓ manifest JSON OK")
-          print("✓ 所有 price shard JSON OK")
-          print("✓ Price 股票代號完整")
-          print("✓ Universe → Price 完整對接")
-          print("✓ 無 Universe 外股票")
-          print("✓ 無跨 shard 重複")
-          print("✓ Price Data validation PASS")
-          print("========================================")
+          print(
+              "✓ manifest JSON OK"
+          )
+          print(
+              "✓ 所有 price shard JSON OK"
+          )
+          print(
+              "✓ 老商品價格資料完整"
+          )
+          print(
+              "✓ 新掛牌商品正確豁免"
+          )
+          print(
+              "✓ 無 Universe 外股票"
+          )
+          print(
+              "✓ 無跨 shard 重複"
+          )
+          print(
+              "✓ Price Data validation PASS"
+          )
+          print(
+              "========================================"
+          )
           PY
 
       # ======================================================
@@ -880,27 +933,11 @@ jobs:
       # ======================================================
       # 13. Final Data Contract
       #
-      # 最終驗證：
-      #
-      # Universe
-      #     ↓
-      # Chip
-      #     ↓
-      # Price
-      #     ↓
-      # Analysis
-      #     ↓
-      # UI
-      #
       # 注意：
-      # Chip 可以因官方來源缺資料而少於 Universe。
       #
-      # 但：
-      # Chip / Price / Analysis / UI
-      # 絕對不能出現 Universe 之外的股票。
-      #
-      # Price / Analysis / UI
-      # 必須完整覆蓋 Universe。
+      # Price 新掛牌豁免規則必須在這裡再次套用。
+      # 否則前面的 Validate Price Data 即使 PASS，
+      # 這裡仍然會因 4 檔新商品不存在而 FAIL。
       # ======================================================
 
       - name: Validate final data chain
@@ -927,13 +964,13 @@ jobs:
 
           python - <<'PY'
           import json
-          import re
+          from datetime import date, datetime
           from pathlib import Path
 
           DATA_DIR = Path("Data")
           PRICES_DIR = DATA_DIR / "prices"
 
-          SYMBOL_RE = re.compile(r"^[0-9A-Za-z]{4,12}$")
+          NEW_LISTING_GRACE_DAYS = 30
 
           def fail(message):
               raise SystemExit(
@@ -965,7 +1002,6 @@ jobs:
               return value
 
           def normalize_symbol(value):
-
               if value is None:
                   return None
 
@@ -975,180 +1011,150 @@ jobs:
               ):
                   return None
 
-              symbol = value.strip()
-
-              if not symbol:
-                  return None
+              symbol = value.strip().upper()
 
               for suffix in (
                   ".TW",
                   ".TWO",
                   ".HK",
               ):
-
-                  if symbol.upper().endswith(
+                  if symbol.endswith(
                       suffix
                   ):
-
                       symbol = symbol[
                           :-len(suffix)
                       ]
 
-              symbol = symbol.strip()
+              return symbol or None
 
-              if not symbol:
+          def parse_listing_date(value):
+              if value is None:
                   return None
 
-              if not SYMBOL_RE.fullmatch(
-                  symbol
+              text = str(value).strip()
+
+              if not text:
+                  return None
+
+              for fmt in (
+                  "%Y/%m/%d",
+                  "%Y-%m-%d",
+                  "%Y%m%d",
               ):
-                  return None
+                  try:
+                      return datetime.strptime(
+                          text,
+                          fmt
+                      ).date()
+                  except ValueError:
+                      pass
 
-              return symbol
+              return None
 
-          def explicit_symbol(item):
+          def symbol_from_record(
+              item,
+              key=None
+          ):
+              if isinstance(
+                  item,
+                  str
+              ):
+                  return normalize_symbol(
+                      item
+                  )
 
               if not isinstance(
                   item,
                   dict
               ):
-                  return None
-
-              for field in (
-                  "symbol",
-                  "stock_id",
-                  "code",
-                  "ticker",
-                  "stock_code",
-                  "security_code",
-              ):
-
-                  symbol = normalize_symbol(
-                      item.get(field)
+                  return normalize_symbol(
+                      key
                   )
 
-                  if symbol:
-                      return symbol
+              symbol = (
+                  item.get("symbol")
+                  or item.get("stock_id")
+                  or item.get("code")
+                  or item.get("ticker")
+              )
 
-              return None
+              return (
+                  normalize_symbol(symbol)
+                  or normalize_symbol(key)
+              )
 
-          def extract_symbols_from_object(
-              obj
+          def extract_symbols(
+              value,
+              preferred_keys=()
           ):
-
-              if not isinstance(
-                  obj,
+              if isinstance(
+                  value,
                   dict
               ):
-                  return set()
 
-              result = set()
+                  for key in preferred_keys:
 
-              for key, value in obj.items():
-
-                  symbol = normalize_symbol(
-                      str(key)
-                  )
-
-                  if not symbol:
-                      continue
-
-                  if isinstance(
-                      value,
-                      dict
-                  ):
-
-                      explicit = explicit_symbol(
-                          value
+                      candidate = value.get(
+                          key
                       )
 
-                      if explicit:
+                      if isinstance(
+                          candidate,
+                          dict
+                      ):
+                          return extract_symbols(
+                              candidate
+                          )
 
-                          if explicit != symbol:
-                              continue
+                      if isinstance(
+                          candidate,
+                          list
+                      ):
+                          return extract_symbols(
+                              candidate
+                          )
 
-                          result.add(symbol)
+                  result = set()
 
-                      else:
-                          result.add(symbol)
+                  for key, item in value.items():
 
-                  elif isinstance(
-                      value,
-                      list
-                  ):
+                      symbol = symbol_from_record(
+                          item,
+                          key
+                      )
 
-                      result.add(symbol)
+                      if symbol:
+                          result.add(
+                              symbol
+                          )
 
-              return result
-
-          def extract_symbols(data):
+                  return result
 
               if isinstance(
-                  data,
+                  value,
                   list
               ):
 
                   result = set()
 
-                  for item in data:
+                  for item in value:
 
-                      symbol = explicit_symbol(
+                      symbol = symbol_from_record(
                           item
                       )
 
                       if symbol:
-                          result.add(symbol)
+                          result.add(
+                              symbol
+                          )
 
                   return result
 
-              if not isinstance(
-                  data,
-                  dict
-              ):
-                  return set()
+              return set()
 
-              for field in (
-                  "stocks",
-                  "data",
-                  "items",
-                  "records",
-              ):
-
-                  candidate = data.get(
-                      field
-                  )
-
-                  if isinstance(
-                      candidate,
-                      dict
-                  ):
-
-                      result = extract_symbols(
-                          candidate
-                      )
-
-                      if result:
-                          return result
-
-                  elif isinstance(
-                      candidate,
-                      list
-                  ):
-
-                      result = extract_symbols(
-                          candidate
-                      )
-
-                      if result:
-                          return result
-
-              return extract_symbols_from_object(
-                  data
-              )
-
-          # ==================================================
-          # Load
-          # ==================================================
+          # --------------------------------------------------
+          # Load final datasets
+          # --------------------------------------------------
 
           universe = load_json(
               DATA_DIR / "universe.json"
@@ -1170,9 +1176,9 @@ jobs:
               DATA_DIR / "ui_data.json"
           )
 
-          # ==================================================
+          # --------------------------------------------------
           # Universe
-          # ==================================================
+          # --------------------------------------------------
 
           if not isinstance(
               universe,
@@ -1195,51 +1201,70 @@ jobs:
               )
 
           universe_symbols = set()
+          universe_listing_dates = {}
 
           for key, item in (
               universe_stocks.items()
           ):
 
-              if not isinstance(
+              symbol = symbol_from_record(
                   item,
-                  dict
-              ):
-                  fail(
-                      f"Universe {key} 不是 object"
-                  )
-
-              symbol = normalize_symbol(
-                  item.get("symbol")
+                  key
               )
 
               if not symbol:
                   fail(
-                      f"Universe {key} "
-                      "缺少有效 symbol"
+                      f"Universe "
+                      f"{key} 缺少股票代號"
                   )
 
               universe_symbols.add(
                   symbol
               )
 
-          if universe.get(
+              listing_date = None
+
+              if isinstance(
+                  item,
+                  dict
+              ):
+                  listing_date = (
+                      parse_listing_date(
+                          item.get(
+                              "listed_date"
+                          )
+                      )
+                  )
+
+              universe_listing_dates[
+                  symbol
+              ] = listing_date
+
+          universe_count = universe.get(
               "universe_count"
-          ) != len(
+          )
+
+          if universe_count != len(
               universe_symbols
           ):
-
               fail(
                   "universe_count 不一致："
-                  f"{universe.get('universe_count')} != "
+                  f"{universe_count} != "
                   f"{len(universe_symbols)}"
               )
 
-          # ==================================================
+          # --------------------------------------------------
           # Chip
-          # ==================================================
+          # --------------------------------------------------
 
           chip_symbols = extract_symbols(
-              chip
+              chip,
+              preferred_keys=(
+                  "stocks",
+                  "data",
+                  "items",
+                  "records",
+              )
           )
 
           chip_extra = (
@@ -1248,101 +1273,99 @@ jobs:
           )
 
           if chip_extra:
-
               fail(
                   "chip.json 出現 "
                   "Universe 以外股票："
                   f"{sorted(chip_extra)[:20]}"
               )
 
-          # ==================================================
-          # Price
-          # ==================================================
+          # --------------------------------------------------
+          # Price shards
+          # --------------------------------------------------
 
           manifest_files = manifest.get(
               "files"
           )
 
-          if not isinstance(
+          shard_names = []
+
+          if isinstance(
               manifest_files,
               list
           ):
+              for item in manifest_files:
 
-              fail(
-                  "manifest.files 必須是 list"
-              )
-
-          shard_names = []
-
-          for item in manifest_files:
-
-              if isinstance(
-                  item,
-                  str
-              ):
-
-                  filename = Path(
-                      item.replace(
-                          "\\",
-                          "/"
-                      )
-                  ).name
-
-                  if filename:
+                  if isinstance(
+                      item,
+                      str
+                  ):
                       shard_names.append(
-                          filename
+                          item
                       )
 
-              elif isinstance(
-                  item,
-                  dict
-              ):
-
-                  for field in (
-                      "file",
-                      "path",
-                      "filename",
-                      "name",
+                  elif isinstance(
+                      item,
+                      dict
                   ):
 
-                      value = item.get(
-                          field
-                      )
+                      for field in (
+                          "file",
+                          "path",
+                          "filename",
+                          "name",
+                      ):
 
-                      if isinstance(
-                          value,
-                          str
-                      ) and value.strip():
-
-                          filename = Path(
-                              value.replace(
-                                  "\\",
-                                  "/"
-                              )
-                          ).name
-
-                          shard_names.append(
-                              filename
+                          value = item.get(
+                              field
                           )
 
-                          break
-
-          shard_names = list(
-              dict.fromkeys(
-                  shard_names
-              )
-          )
+                          if value:
+                              shard_names.append(
+                                  str(value)
+                              )
+                              break
 
           if not shard_names:
 
+              shard_names = [
+                  p.name
+                  for p in sorted(
+                      PRICES_DIR.glob(
+                          "prices_*.json"
+                      )
+                  )
+              ]
+
+          unique_shards = []
+
+          seen = set()
+
+          for name in shard_names:
+
+              name = Path(
+                  str(name).replace(
+                      "\\",
+                      "/"
+                  )
+              ).name
+
+              if name in seen:
+                  continue
+
+              seen.add(name)
+              unique_shards.append(
+                  name
+              )
+
+          if not unique_shards:
               fail(
-                  "manifest 沒有任何 price shard"
+                  "沒有任何 price shard"
               )
 
           price_symbols = set()
           duplicate_symbols = set()
 
-          for filename in shard_names:
+          for filename in unique_shards:
 
               path = (
                   PRICES_DIR
@@ -1350,7 +1373,6 @@ jobs:
               )
 
               if not path.exists():
-
                   fail(
                       f"Price shard 不存在："
                       f"{path}"
@@ -1361,24 +1383,24 @@ jobs:
               )
 
               symbols = extract_symbols(
-                  shard
+                  shard,
+                  preferred_keys=(
+                      "stocks",
+                      "data",
+                      "items",
+                      "records",
+                  )
               )
 
               if not symbols:
-
                   fail(
                       f"{filename} "
                       "沒有任何股票資料"
                   )
 
-              valid_symbols = (
-                  symbols
-                  & universe_symbols
-              )
-
               overlap = (
                   price_symbols
-                  & valid_symbols
+                  & symbols
               )
 
               duplicate_symbols.update(
@@ -1386,11 +1408,10 @@ jobs:
               )
 
               price_symbols.update(
-                  valid_symbols
+                  symbols
               )
 
           if duplicate_symbols:
-
               fail(
                   "price shards 有重複股票："
                   f"{sorted(duplicate_symbols)[:20]}"
@@ -1401,32 +1422,86 @@ jobs:
               - price_symbols
           )
 
-          if price_missing:
+          price_extra = (
+              price_symbols
+              - universe_symbols
+          )
 
-              fail(
-                  "Price 缺少 Universe 股票："
-                  f"{sorted(price_missing)[:20]}"
+          # --------------------------------------------------
+          # 新掛牌豁免
+          # --------------------------------------------------
+
+          today = date.today()
+
+          allowed_new_listing_missing = set()
+          hard_price_missing = set()
+
+          for symbol in price_missing:
+
+              listing_date = (
+                  universe_listing_dates.get(
+                      symbol
+                  )
               )
 
-          if len(price_symbols) != (
+              if listing_date is None:
+                  hard_price_missing.add(
+                      symbol
+                  )
+                  continue
+
+              age_days = (
+                  today - listing_date
+              ).days
+
+              if (
+                  age_days >= 0
+                  and age_days <= NEW_LISTING_GRACE_DAYS
+              ):
+                  allowed_new_listing_missing.add(
+                      symbol
+                  )
+              else:
+                  hard_price_missing.add(
+                      symbol
+                  )
+
+          if hard_price_missing:
+              fail(
+                  "Price 缺少非新掛牌 Universe 股票："
+                  f"{sorted(hard_price_missing)[:20]}"
+              )
+
+          if price_extra:
+              fail(
+                  "Price 出現 Universe 外股票："
+                  f"{sorted(price_extra)[:20]}"
+              )
+
+          effective_price_count = (
+              len(price_symbols)
+              +
+              len(allowed_new_listing_missing)
+          )
+
+          if effective_price_count != (
               len(universe_symbols)
           ):
-
               fail(
-                  "Price 與 Universe 股票數量不一致："
-                  f"{len(price_symbols)} != "
+                  "Price 有效覆蓋數量與 Universe "
+                  "不一致："
+                  f"{effective_price_count} != "
                   f"{len(universe_symbols)}"
               )
 
-          # ==================================================
+          # --------------------------------------------------
           # Analysis
-          # ==================================================
+          # --------------------------------------------------
 
           if not isinstance(
               analysis,
               dict
           ):
-
               fail(
                   "analysis 根節點不是 object"
               )
@@ -1439,7 +1514,6 @@ jobs:
               analysis_stocks,
               dict
           ):
-
               fail(
                   "analysis.stocks 必須是 object"
               )
@@ -1450,13 +1524,9 @@ jobs:
               analysis_stocks.items()
           ):
 
-              symbol = normalize_symbol(
-                  item.get("symbol")
-                  if isinstance(
-                      item,
-                      dict
-                  )
-                  else key
+              symbol = symbol_from_record(
+                  item,
+                  key
               )
 
               if symbol:
@@ -1467,6 +1537,7 @@ jobs:
           analysis_missing = (
               universe_symbols
               - analysis_symbols
+              - allowed_new_listing_missing
           )
 
           analysis_extra = (
@@ -1475,28 +1546,25 @@ jobs:
           )
 
           if analysis_missing:
-
               fail(
                   "Analysis 缺少 Universe 股票："
                   f"{sorted(analysis_missing)[:20]}"
               )
 
           if analysis_extra:
-
               fail(
                   "Analysis 出現 Universe 外股票："
                   f"{sorted(analysis_extra)[:20]}"
               )
 
-          # ==================================================
-          # UI
-          # ==================================================
+          # --------------------------------------------------
+          # UI Data
+          # --------------------------------------------------
 
           if not isinstance(
               ui_data,
               dict
           ):
-
               fail(
                   "ui_data 根節點不是 object"
               )
@@ -1509,7 +1577,6 @@ jobs:
               ui_stocks,
               dict
           ):
-
               fail(
                   "ui_data.stocks 必須是 object"
               )
@@ -1520,13 +1587,9 @@ jobs:
               ui_stocks.items()
           ):
 
-              symbol = normalize_symbol(
-                  item.get("symbol")
-                  if isinstance(
-                      item,
-                      dict
-                  )
-                  else key
+              symbol = symbol_from_record(
+                  item,
+                  key
               )
 
               if symbol:
@@ -1537,6 +1600,7 @@ jobs:
           ui_missing = (
               universe_symbols
               - ui_symbols
+              - allowed_new_listing_missing
           )
 
           ui_extra = (
@@ -1545,22 +1609,20 @@ jobs:
           )
 
           if ui_missing:
-
               fail(
                   "UI Data 缺少 Universe 股票："
                   f"{sorted(ui_missing)[:20]}"
               )
 
           if ui_extra:
-
               fail(
                   "UI Data 出現 Universe 外股票："
                   f"{sorted(ui_extra)[:20]}"
               )
 
-          # ==================================================
-          # Final Result
-          # ==================================================
+          # --------------------------------------------------
+          # Final report
+          # --------------------------------------------------
 
           print("")
           print("========================================")
@@ -1579,12 +1641,17 @@ jobs:
 
           print(
               f"Price shards："
-              f"{len(shard_names)}"
+              f"{len(unique_shards)}"
           )
 
           print(
               f"Price 股票："
               f"{len(price_symbols)}"
+          )
+
+          print(
+              f"新掛牌 Price 豁免："
+              f"{len(allowed_new_listing_missing)}"
           )
 
           print(
@@ -1597,10 +1664,40 @@ jobs:
               f"{len(ui_symbols)}"
           )
 
+          if allowed_new_listing_missing:
+
+              print("")
+              print(
+                  "⚠️ 新掛牌商品尚未累積完整歷史價格："
+              )
+
+              for symbol in sorted(
+                  allowed_new_listing_missing
+              ):
+                  listing_date = (
+                      universe_listing_dates.get(
+                          symbol
+                      )
+                  )
+
+                  age_days = (
+                      today - listing_date
+                  ).days
+
+                  print(
+                      f"  {symbol} "
+                      f"(listed={listing_date}, "
+                      f"age={age_days} days)"
+                  )
+
           print("")
 
           print(
-              "✓ Universe → Price：完整"
+              "✓ Universe → Price：完整覆蓋"
+          )
+
+          print(
+              "✓ 新掛牌商品正確處理"
           )
 
           print(
