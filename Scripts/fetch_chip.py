@@ -309,28 +309,32 @@ def find_field(
     return None
 
 
-def find_code(
-    row: Dict[str, Any],
-) -> str:
+def find_code(row: Dict[str, Any]) -> Optional[str]:
+    """
+    從官方資料 row 找出股票代號。
 
-    return clean_code(
-        find_field(
-            row,
-            [
-                "代號",
-                "證券代號",
-                "股票代號",
-                "證券代碼",
-                "Code",
-                "SecurityCode",
-                "StockCode",
-                "SecuritiesCode",
-                "ticker",
-                "symbol",
-            ],
-        )
+    TPEx 官方 OpenAPI：
+        SecuritiesCompanyCode
+
+    TWSE / 其他來源：
+        證券代號、股票代號、代號、SecuritiesCode 等
+    """
+
+    value = find_field(
+        row,
+        [
+            "證券代號",
+            "股票代號",
+            "代號",
+            "SecuritiesCompanyCode",
+            "SecuritiesCode",
+            "ticker",
+            "symbol",
+            "Code",
+        ],
     )
 
+    return clean_code(value)
 
 def find_date(
     row: Dict[str, Any],
@@ -1472,19 +1476,19 @@ def fetch_tpex_margin_offset(
         if not symbol:
             continue
 
-        raw_offset = safe_number(
-            find_field(
-                row,
-                [
-                    "資券相抵",
-                    "資券相抵(張)",
-                    "資券相抵張",
-                    "MarginSpot",
-                    "MarginOffset",
-                ],
-            )
-        )
-
+raw_offset = safe_number(
+    find_field(
+        row,
+        [
+            "資券相抵",
+            "資券相抵(張)",
+            "資券相抵張",
+            "Offsetting",
+            "MarginSpot",
+            "MarginOffset",
+        ],
+    )
+)
         if raw_offset is None:
             continue
 
