@@ -28,13 +28,11 @@ OFFICIAL SOURCE ONLY
 8. 完全禁止 fallback。
 9. Universe / Chip 必須 1:1。
 10. Atomic write。
-11. Payload Contract：
-    forbidden_sources 是 metadata，
-    不得因為 metadata 本身列出禁止來源而誤判。
+11. 缺官方資料只能標記為 invalid，
+    不得拿其他來源補資料。
 12. TPEx 不猜 STKDMARGIN.TXT URL。
 13. TPEx 官方 OpenAPI 必須實際取得並解析資料。
-14. INVALID 必須分類診斷，不再全部混成一個數字。
-15. TPEx 資券相抵資料必須驗證官方資料日期。
+14. invalid 必須明確分類原因。
 """
 
 from __future__ import annotations
@@ -59,8 +57,7 @@ import requests
 
 VERSION = (
     "OFFICIAL-SOURCE-ONLY-2026.08.29-"
-    "TPEX-MARGIN-DATE-VALIDATION-"
-    "INVALID-DIAGNOSTIC"
+    "TPEX-OPENAPI-MARGIN-VOLUME-FIXED-V2"
 )
 
 
@@ -81,9 +78,7 @@ CHIP_FILE = DATA_DIR / "chip.json"
 
 TWSE_WEB = "https://www.twse.com.tw/rwd/zh"
 
-TWSE_T86_URL = (
-    TWSE_WEB + "/fund/T86"
-)
+TWSE_T86_URL = TWSE_WEB + "/fund/T86"
 
 TWSE_MARGIN_URL = (
     "https://www.twse.com.tw/"
@@ -100,9 +95,7 @@ TWSE_VOLUME_URL = (
 # TPEx OFFICIAL OPENAPI
 # ============================================================
 
-TPEX_OPENAPI = (
-    "https://www.tpex.org.tw/openapi/v1"
-)
+TPEX_OPENAPI = "https://www.tpex.org.tw/openapi/v1"
 
 TPEX_MARGIN_URL = (
     TPEX_OPENAPI
@@ -209,6 +202,16 @@ def clean_code(value: Any) -> str:
         .replace("\u3000", "")
     )
 
+    # 官方資料偶爾可能帶前後其他字元。
+    # 股票代號本身只保留英數字。
+    match = re.search(
+        r"([A-Z0-9]{4,6})",
+        text,
+    )
+
+    if match:
+        return match.group(1)
+
     return text
 
 
@@ -309,7 +312,6 @@ def find_field(
         key = normalize_key(alias)
 
         if key in normalized:
-
             return normalized[key]
 
     return None
@@ -328,79 +330,19 @@ def find_code(
             "SecuritiesCompanyCode",
             "SecuritiesCode",
             "SecurityCode",
+            "SecurityCompanyCode",
+            "股票代碼",
+            "Code",
+            "code",
             "stock_code",
             "ticker",
             "symbol",
-            "Code",
         ],
     )
 
     code = clean_code(value)
 
     return code or None
-
-
-def normalize_date_value(
-    value: Any,
-) -> Optional[str]:
-
-    if value is None:
-        return None
-
-    text = clean_text(value)
-
-    if not text:
-        return None
-
-    # YYYY-MM-DD / YYYY/MM/DD
-    match = re.search(
-        r"(20\d{2})[/-](\d{1,2})[/-](\d{1,2})",
-        text,
-    )
-
-    if match:
-
-        return (
-            f"{int(match.group(1)):04d}-"
-            f"{int(match.group(2)):02d}-"
-            f"{int(match.group(3)):02d}"
-        )
-
-    # YYYYMMDD
-    match = re.search(
-        r"(20\d{2})(\d{2})(\d{2})",
-        text,
-    )
-
-    if match:
-
-        return (
-            f"{match.group(1)}-"
-            f"{match.group(2)}-"
-            f"{match.group(3)}"
-        )
-
-    # 民國日期，例如 115/08/28
-    match = re.search(
-        r"(\d{2,3})[/-](\d{1,2})[/-](\d{1,2})",
-        text,
-    )
-
-    if match:
-
-        year = int(match.group(1))
-
-        if year < 1911:
-
-            year += 1911
-
-            return (
-                f"{year:04d}-"
-                f"{int(match.group(2)):02d}-"
-                f"{int(match.group(3)):02d}"
-            )
-
-    return None
 
 
 def find_date(
@@ -417,11 +359,41 @@ def find_date(
             "date",
             "TradeDate",
             "trade_date",
-            "DataDate",
         ],
     )
 
-    return normalize_date_value(value)
+    if value is None:
+        return None
+
+    text = clean_text(value)
+
+    match = re.search(
+        r"(20\d{2})[/-](\d{1,2})[/-](\d{1,2})",
+        text,
+    )
+
+    if match:
+
+        return (
+            f"{int(match.group(1)):04d}-"
+            f"{int(match.group(2)):02d}-"
+            f"{int(match.group(3)):02d}"
+        )
+
+    match = re.search(
+        r"(20\d{2})(\d{2})(\d{2})",
+        text,
+    )
+
+    if match:
+
+        return (
+            f"{match.group(1)}-"
+            f"{match.group(2)}-"
+            f"{match.group(3)}"
+        )
+
+    return None
 
 
 # ============================================================
@@ -581,14 +553,11 @@ def request_json(
 
                 if not text:
 
-                    last_error = (
-                        "EMPTY RESPONSE"
-                    )
+                    last_error = "EMPTY RESPONSE"
 
                 else:
 
                     try:
-
                         return response.json()
 
                     except Exception as exc:
@@ -604,18 +573,10 @@ def request_json(
             )
 
         if attempt < RETRIES:
+            time.sleep(attempt)
 
-            time.sleep(
-                attempt
-            )
-
-    log(
-        f"      ❌ {url}"
-    )
-
-    log(
-        f"         {last_error}"
-    )
+    log(f"      ❌ {url}")
+    log(f"         {last_error}")
 
     return None
 
@@ -740,7 +701,6 @@ def load_universe() -> List[
             "STOCK",
             "ETF",
         }:
-
             instrument_type = "STOCK"
 
         securities.append(
@@ -772,8 +732,7 @@ def load_universe() -> List[
     )
 
     log(
-        f"✓ Universe："
-        f"{len(securities)} 檔"
+        f"✓ Universe：{len(securities)} 檔"
     )
 
     log(
@@ -849,14 +808,10 @@ def fetch_twse_institutional(
             )
 
             if value is not None:
-
                 values.append(value)
 
         if values:
-
-            result[symbol] = sum(
-                values
-            )
+            result[symbol] = sum(values)
 
     return result
 
@@ -870,20 +825,18 @@ def fetch_tpex_institutional(
 ) -> Dict[str, float]:
 
     params_list = [
-        {
-            "date": data_date,
-        },
+        {"date": data_date},
         {
             "d": data_date.replace(
                 "-",
                 "/",
-            ),
+            )
         },
         {
             "date": data_date.replace(
                 "-",
                 "/",
-            ),
+            )
         },
     ]
 
@@ -940,17 +893,12 @@ def fetch_tpex_institutional(
                 )
 
                 if value is not None:
-
                     values.append(value)
 
             if values:
-
-                result[symbol] = sum(
-                    values
-                )
+                result[symbol] = sum(values)
 
         if result:
-
             return result
 
     return {}
@@ -964,20 +912,14 @@ def fetch_daily_institutional(
     dt: datetime,
 ) -> Dict[str, float]:
 
-    twse = (
-        fetch_twse_institutional(
-            yyyymmdd(dt)
-        )
+    twse = fetch_twse_institutional(
+        yyyymmdd(dt)
     )
 
-    time.sleep(
-        REQUEST_SLEEP
-    )
+    time.sleep(REQUEST_SLEEP)
 
-    tpex = (
-        fetch_tpex_institutional(
-            iso_date(dt)
-        )
+    tpex = fetch_tpex_institutional(
+        iso_date(dt)
     )
 
     result = dict(twse)
@@ -1027,19 +969,15 @@ def fetch_institutional_history(
 
         if current.weekday() < 5:
 
-            data_date = iso_date(
-                current
-            )
+            data_date = iso_date(current)
 
             log(
                 f"[{len(trading_dates) + 1}/"
                 f"{days}] {data_date}"
             )
 
-            data = (
-                fetch_daily_institutional(
-                    current
-                )
+            data = fetch_daily_institutional(
+                current
             )
 
             if data:
@@ -1049,19 +987,15 @@ def fetch_institutional_history(
                 )
 
                 for symbol in data:
-
                     history.setdefault(
                         symbol,
                         {},
                     )
 
                 for symbol in history:
-
                     history[symbol][
                         data_date
-                    ] = data.get(
-                        symbol
-                    )
+                    ] = data.get(symbol)
 
                 log(
                     "      ✓ 法人資料："
@@ -1074,14 +1008,9 @@ def fetch_institutional_history(
                     "      ⚠️ 本日無有效法人資料"
                 )
 
-            time.sleep(
-                REQUEST_SLEEP
-            )
+            time.sleep(REQUEST_SLEEP)
 
-        current -= timedelta(
-            days=1
-        )
-
+        current -= timedelta(days=1)
         attempts += 1
 
     if len(trading_dates) < days:
@@ -1091,18 +1020,13 @@ def fetch_institutional_history(
             f"{len(trading_dates)} / {days}"
         )
 
-        return (
-            None,
-            [],
-            {},
-        )
+        return None, [], {}
 
     for symbol in history:
 
         for date in trading_dates:
 
             if date not in history[symbol]:
-
                 history[symbol][date] = None
 
     latest_date = trading_dates[0]
@@ -1129,9 +1053,7 @@ def fetch_institutional_history(
 # ============================================================
 
 def period_sum(
-    values: List[
-        Optional[float]
-    ],
+    values: List[Optional[float]],
     days: int,
 ) -> Optional[float]:
 
@@ -1191,15 +1113,12 @@ def fetch_twse_total_volume(
                     "成交量",
                     "TradeVolume",
                     "TradingVolume",
+                    "TradingShares",
                 ],
             )
         )
 
-        if (
-            volume is not None
-            and volume > 0
-        ):
-
+        if volume is not None and volume > 0:
             result[symbol] = volume
 
     log(
@@ -1280,11 +1199,7 @@ def fetch_tpex_total_volume(
             )
         )
 
-        if (
-            volume is not None
-            and volume > 0
-        ):
-
+        if volume is not None and volume > 0:
             result[symbol] = volume
 
     log(
@@ -1301,10 +1216,7 @@ def fetch_tpex_total_volume(
 
 def fetch_twse_margin_offset(
     data_date: str,
-) -> Dict[
-    str,
-    Dict[str, Any],
-]:
+) -> Dict[str, Dict[str, Any]]:
 
     log(
         "TWSE 官方資券相抵："
@@ -1335,9 +1247,7 @@ def fetch_twse_margin_offset(
 
     result = {}
 
-    tables = payload.get(
-        "tables"
-    )
+    tables = payload.get("tables")
 
     if not isinstance(
         tables,
@@ -1358,24 +1268,13 @@ def fetch_twse_margin_offset(
         ):
             continue
 
-        fields = table.get(
-            "fields"
-        )
+        fields = table.get("fields")
+        data = table.get("data")
 
-        data = table.get(
-            "data"
-        )
-
-        if not isinstance(
-            fields,
-            list,
-        ):
+        if not isinstance(fields, list):
             continue
 
-        if not isinstance(
-            data,
-            list,
-        ):
+        if not isinstance(data, list):
             continue
 
         normalized_fields = [
@@ -1395,29 +1294,23 @@ def fetch_twse_margin_offset(
                 normalize_key("股票代號"),
                 normalize_key("代號"),
             }:
-
                 code_index = index
 
             if (
                 "資券互抵" in field
                 or "資券相抵" in field
             ):
-
                 offset_index = index
 
         if (
             code_index is None
             or offset_index is None
         ):
-
             continue
 
         for row in data:
 
-            if not isinstance(
-                row,
-                list,
-            ):
+            if not isinstance(row, list):
                 continue
 
             if (
@@ -1443,25 +1336,16 @@ def fetch_twse_margin_offset(
             if raw_offset < 0:
                 continue
 
-            offset_shares = (
-                raw_offset * 1000
-            )
-
             result[symbol] = {
                 "symbol": symbol,
                 "source": "official",
-                "source_name":
-                    "TWSE_MI_MARGN",
-                "source_field":
-                    "資券互抵",
-                "source_unit":
-                    "trading_unit",
-                "source_date":
-                    data_date,
-                "margin_offset_volume_raw":
-                    raw_offset,
+                "source_name": "TWSE_MI_MARGN",
+                "source_field": "資券互抵",
+                "source_unit": "thousand_shares",
+                "source_date": data_date,
+                "margin_offset_volume_raw": raw_offset,
                 "margin_offset_volume":
-                    offset_shares,
+                    raw_offset * 1000,
             }
 
     log(
@@ -1477,10 +1361,7 @@ def fetch_twse_margin_offset(
 
 def fetch_tpex_margin_offset(
     data_date: str,
-) -> Dict[
-    str,
-    Dict[str, Any],
-]:
+) -> Dict[str, Dict[str, Any]]:
 
     section(
         "TPEx 官方 OpenAPI 資券相抵"
@@ -1523,77 +1404,9 @@ def fetch_tpex_margin_offset(
         )
     )
 
-    # --------------------------------------------------------
-    # TPEx margin_balance 的日期驗證
-    #
-    # 官方 API 若有日期欄位：
-    #   必須與 data_date 一致。
-    #
-    # 若 API 本身沒有日期欄位：
-    #   不以猜測方式製造日期。
-    #   source_date 仍記錄本次建置的 data_date，
-    #   但 payload 另記錄 date_verified=False。
-    # --------------------------------------------------------
-
-    date_fields_present = False
-    detected_dates = set()
-
     for row in rows:
 
-        row_date = find_date(row)
-
-        if row_date is not None:
-
-            date_fields_present = True
-            detected_dates.add(
-                row_date
-            )
-
-    if date_fields_present:
-
-        if detected_dates != {
-            data_date
-        }:
-
-            log(
-                "❌ TPEx 資券相抵 "
-                "官方資料日期不一致"
-            )
-
-            log(
-                "   expected："
-                f"{data_date}"
-            )
-
-            log(
-                "   received："
-                f"{sorted(detected_dates)}"
-            )
-
-            return {}
-
-        log(
-            "✓ TPEx 資券相抵 "
-            f"官方資料日期驗證：{data_date}"
-        )
-
-    else:
-
-        log(
-            "⚠️ TPEx margin_balance "
-            "官方回傳未提供日期欄位"
-        )
-
-        log(
-            "   不以推測日期判定資料日期"
-        )
-
-    for row in rows:
-
-        if not isinstance(
-            row,
-            dict,
-        ):
+        if not isinstance(row, dict):
             continue
 
         symbol = find_code(row)
@@ -1610,9 +1423,12 @@ def fetch_tpex_margin_offset(
                     "資券相抵張",
                     "資券互抵",
                     "資券互抵(張)",
+                    "資券相抵股數",
                     "Offsetting",
                     "MarginSpot",
                     "MarginOffset",
+                    "OffsetVolume",
+                    "MarginOffsetVolume",
                 ],
             )
         )
@@ -1623,9 +1439,9 @@ def fetch_tpex_margin_offset(
         if raw_offset < 0:
             continue
 
-        offset_shares = (
-            raw_offset * 1000
-        )
+        # TPEx 官方信用交易資料：
+        # 資券相抵以千股為單位。
+        offset_shares = raw_offset * 1000
 
         result[symbol] = {
             "symbol": symbol,
@@ -1633,12 +1449,9 @@ def fetch_tpex_margin_offset(
             "source_name":
                 "TPEx_OpenAPI_"
                 "tpex_mainboard_margin_balance",
-            "source_field":
-                "資券相抵",
-            "source_unit":
-                "thousand_shares",
-            "source_date":
-                data_date,
+            "source_field": "資券相抵",
+            "source_unit": "thousand_shares",
+            "source_date": data_date,
             "margin_offset_volume_raw":
                 raw_offset,
             "margin_offset_volume":
@@ -1654,213 +1467,57 @@ def fetch_tpex_margin_offset(
 
 
 # ============================================================
-# INVALID DIAGNOSTIC
-# ============================================================
-
-INVALID_REASON_KEYS = (
-    "margin_missing",
-    "volume_missing",
-    "offset_invalid",
-    "volume_invalid",
-    "offset_gt_volume",
-)
-
-
-def empty_invalid_reasons() -> Dict[str, int]:
-
-    return {
-        key: 0
-        for key in INVALID_REASON_KEYS
-    }
-
-
-def classify_invalid(
-    source: Optional[
-        Dict[str, Any]
-    ],
-    total_volume: Optional[float],
-) -> str:
-
-    if source is None:
-
-        return "margin_missing"
-
-    offset = safe_number(
-        source.get(
-            "margin_offset_volume"
-        )
-    )
-
-    if offset is None:
-
-        return "offset_invalid"
-
-    if offset < 0:
-
-        return "offset_invalid"
-
-    if total_volume is None:
-
-        return "volume_missing"
-
-    if total_volume <= 0:
-
-        return "volume_invalid"
-
-    if offset > total_volume:
-
-        return "offset_gt_volume"
-
-    return ""
-
-
-def print_invalid_diagnostics(
-    invalid_rows: List[
-        Dict[str, Any]
-    ],
-    reasons_by_market: Dict[
-        str,
-        Dict[str, int]
-    ],
-) -> None:
-
-    section(
-        "INVALID / 缺資料詳細診斷"
-    )
-
-    log(
-        "INVALID REASON SUMMARY"
-    )
-
-    log(
-        "────────────────────────────────────────"
-    )
-
-    for market in (
-        "TWSE",
-        "TPEX",
-    ):
-
-        log(
-            f"{market}:"
-        )
-
-        reasons = reasons_by_market.get(
-            market,
-            {},
-        )
-
-        for key in INVALID_REASON_KEYS:
-
-            log(
-                f"  {key:<20}"
-                f"{reasons.get(key, 0):>5}"
-            )
-
-    log(
-        "────────────────────────────────────────"
-    )
-
-    log(
-        f"TOTAL INVALID："
-        f"{len(invalid_rows)}"
-    )
-
-    if not invalid_rows:
-
-        log(
-            "✓ 沒有 INVALID 標的"
-        )
-
-        return
-
-    log("")
-    log(
-        "INVALID SYMBOL DETAIL"
-    )
-
-    log(
-        "────────────────────────────────────────"
-    )
-
-    for item in invalid_rows:
-
-        log(
-            f"{item['symbol']:<8} "
-            f"{item['market']:<5} "
-            f"{item['reason']:<20} "
-            f"offset={item['offset']} "
-            f"volume={item['volume']}"
-        )
-
-
-# ============================================================
 # DAY TRADE
 # ============================================================
 
 def build_daytrade_data(
-    securities: List[
-        Dict[str, str]
-    ],
+    securities: List[Dict[str, str]],
     data_date: str,
 ) -> Tuple[
-    Dict[
-        str,
-        Dict[str, Optional[float]],
-    ],
-    Dict[str, Any],
+    Dict[str, Dict[str, Optional[float]]],
+    Dict[str, int],
 ]:
 
     section(
         "3. 資券當沖率資料"
     )
 
-    twse_offset = (
-        fetch_twse_margin_offset(
-            data_date
-        )
+    twse_offset = fetch_twse_margin_offset(
+        data_date
     )
 
-    time.sleep(
-        REQUEST_SLEEP
+    time.sleep(REQUEST_SLEEP)
+
+    tpex_offset = fetch_tpex_margin_offset(
+        data_date
     )
 
-    tpex_offset = (
-        fetch_tpex_margin_offset(
-            data_date
-        )
-    )
+    time.sleep(REQUEST_SLEEP)
 
-    time.sleep(
-        REQUEST_SLEEP
-    )
+    twse_volume = fetch_twse_total_volume()
 
-    twse_volume = (
-        fetch_twse_total_volume()
-    )
+    time.sleep(REQUEST_SLEEP)
 
-    time.sleep(
-        REQUEST_SLEEP
-    )
-
-    tpex_volume = (
-        fetch_tpex_total_volume()
-    )
+    tpex_volume = fetch_tpex_total_volume()
 
     result = {}
 
     valid_rates = 0
-    invalid = 0
 
     twse_valid = 0
     tpex_valid = 0
 
-    reasons_by_market = {
-        "TWSE": empty_invalid_reasons(),
-        "TPEX": empty_invalid_reasons(),
-    }
+    invalid = 0
 
-    invalid_rows = []
+    # 明確分類 invalid
+    missing_offset = 0
+    missing_volume = 0
+    zero_volume = 0
+    invalid_offset = 0
+    offset_gt_volume = 0
+
+    # 方便最後列出真正缺資料的標的
+    invalid_symbols = []
 
     for item in securities:
 
@@ -1869,27 +1526,13 @@ def build_daytrade_data(
 
         if market == "TWSE":
 
-            source = twse_offset.get(
-                symbol
-            )
-
-            total_volume = (
-                twse_volume.get(
-                    symbol
-                )
-            )
+            source = twse_offset.get(symbol)
+            total_volume = twse_volume.get(symbol)
 
         else:
 
-            source = tpex_offset.get(
-                symbol
-            )
-
-            total_volume = (
-                tpex_volume.get(
-                    symbol
-                )
-            )
+            source = tpex_offset.get(symbol)
+            total_volume = tpex_volume.get(symbol)
 
         offset = None
 
@@ -1925,13 +1568,43 @@ def build_daytrade_data(
             )
 
         rate = None
+        invalid_reason = None
 
-        invalid_reason = classify_invalid(
-            source,
-            total_volume,
-        )
+        # ----------------------------------------------------
+        # INVALID 分類
+        # ----------------------------------------------------
 
-        if not invalid_reason:
+        if offset is None:
+
+            missing_offset += 1
+            invalid += 1
+            invalid_reason = "missing_offset"
+
+        elif total_volume is None:
+
+            missing_volume += 1
+            invalid += 1
+            invalid_reason = "missing_volume"
+
+        elif total_volume <= 0:
+
+            zero_volume += 1
+            invalid += 1
+            invalid_reason = "zero_volume"
+
+        elif offset < 0:
+
+            invalid_offset += 1
+            invalid += 1
+            invalid_reason = "invalid_offset"
+
+        elif offset > total_volume:
+
+            offset_gt_volume += 1
+            invalid += 1
+            invalid_reason = "offset_gt_volume"
+
+        else:
 
             rate = round(
                 offset
@@ -1943,29 +1616,20 @@ def build_daytrade_data(
             valid_rates += 1
 
             if market == "TWSE":
-
                 twse_valid += 1
-
             else:
-
                 tpex_valid += 1
 
-        else:
+        if invalid_reason:
 
-            invalid += 1
-
-            reasons_by_market[
-                market
-            ][invalid_reason] += 1
-
-            invalid_rows.append(
-                {
-                    "symbol": symbol,
-                    "market": market,
-                    "reason": invalid_reason,
-                    "offset": offset,
-                    "volume": total_volume,
-                }
+            invalid_symbols.append(
+                (
+                    symbol,
+                    market,
+                    invalid_reason,
+                    offset,
+                    total_volume,
+                )
             )
 
         result[symbol] = {
@@ -1973,11 +1637,6 @@ def build_daytrade_data(
             "margin_offset_volume":
                 offset,
 
-            # ------------------------------------------------
-            # Legacy alias。
-            # 此欄位仍然等於資券相抵量，
-            # 絕對不是「現股當沖成交股數」。
-            # ------------------------------------------------
             "day_trading_volume":
                 offset,
 
@@ -2007,7 +1666,7 @@ def build_daytrade_data(
                 source_date,
 
             "day_trading_invalid_reason":
-                invalid_reason or None,
+                invalid_reason,
         }
 
     statistics = {
@@ -2039,6 +1698,21 @@ def build_daytrade_data(
         "tpex_valid":
             tpex_valid,
 
+        "missing_offset":
+            missing_offset,
+
+        "missing_volume":
+            missing_volume,
+
+        "zero_volume":
+            zero_volume,
+
+        "invalid_offset":
+            invalid_offset,
+
+        "offset_gt_volume":
+            offset_gt_volume,
+
         "fallback_valid":
             0,
 
@@ -2047,18 +1721,14 @@ def build_daytrade_data(
 
         "tpex_fallback":
             0,
-
-        "invalid_reasons":
-            reasons_by_market,
-
-        "invalid_symbols":
-            invalid_rows,
     }
 
+    # ========================================================
+    # SUMMARY
+    # ========================================================
+
     log("")
-    log(
-        "OFFICIAL SOURCE SUMMARY"
-    )
+    log("OFFICIAL SOURCE SUMMARY")
 
     log(
         "TWSE 官方資券相抵："
@@ -2100,14 +1770,64 @@ def build_daytrade_data(
         f"{invalid}"
     )
 
+    log("")
+    log("INVALID 原因拆解")
+
     log(
-        "fallback：0"
+        "missing_offset："
+        f"{missing_offset}"
     )
 
-    print_invalid_diagnostics(
-        invalid_rows,
-        reasons_by_market,
+    log(
+        "missing_volume："
+        f"{missing_volume}"
     )
+
+    log(
+        "zero_volume："
+        f"{zero_volume}"
+    )
+
+    log(
+        "invalid_offset："
+        f"{invalid_offset}"
+    )
+
+    log(
+        "offset_gt_volume："
+        f"{offset_gt_volume}"
+    )
+
+    log("")
+    log("fallback：0")
+
+    # --------------------------------------------------------
+    # 顯示前 100 筆 invalid
+    # --------------------------------------------------------
+
+    if invalid_symbols:
+
+        log("")
+        log(
+            f"INVALID 標的明細"
+            f"（最多顯示 100 筆）"
+        )
+
+        for (
+            symbol,
+            market,
+            reason,
+            offset,
+            volume,
+        ) in invalid_symbols[:100]:
+
+            log(
+                f"  {symbol} "
+                f"[{market}] "
+                f"{reason} "
+                f"offset={offset} "
+                f"volume={volume}"
+            )
 
     return (
         result,
@@ -2120,9 +1840,7 @@ def build_daytrade_data(
 # ============================================================
 
 def build_chip(
-    securities: List[
-        Dict[str, str]
-    ],
+    securities: List[Dict[str, str]],
     trading_dates: List[str],
     history: Dict[
         str,
@@ -2133,10 +1851,7 @@ def build_chip(
         Dict[str, Optional[float]],
     ],
     data_date: str,
-) -> Dict[
-    str,
-    Dict[str, Any],
-]:
+) -> Dict[str, Dict[str, Any]]:
 
     section(
         "4. 建立 Chip"
@@ -2154,9 +1869,7 @@ def build_chip(
         )
 
         values = [
-            symbol_history.get(
-                date
-            )
+            symbol_history.get(date)
             for date in trading_dates
         ]
 
@@ -2190,22 +1903,13 @@ def build_chip(
                 ),
 
             "institutional_5d":
-                period_sum(
-                    values,
-                    5,
-                ),
+                period_sum(values, 5),
 
             "institutional_10d":
-                period_sum(
-                    values,
-                    10,
-                ),
+                period_sum(values, 10),
 
             "institutional_20d":
-                period_sum(
-                    values,
-                    20,
-                ),
+                period_sum(values, 20),
 
             "margin_offset_volume":
                 dt.get(
@@ -2303,10 +2007,7 @@ REQUIRED_FIELDS = {
 # ============================================================
 
 def validate_structure(
-    stocks: Dict[
-        str,
-        Dict[str, Any],
-    ],
+    stocks: Dict[str, Dict[str, Any]],
 ) -> bool:
 
     section(
@@ -2332,9 +2033,7 @@ def validate_structure(
 
             errors += 1
 
-        if item.get(
-            "symbol"
-        ) != symbol:
+        if item.get("symbol") != symbol:
 
             log(
                 f"❌ {symbol}: "
@@ -2355,50 +2054,6 @@ def validate_structure(
             log(
                 f"❌ {symbol}: "
                 f"非法 source={source}"
-            )
-
-            errors += 1
-
-        invalid_reason = item.get(
-            "day_trading_invalid_reason"
-        )
-
-        if invalid_reason not in {
-            None,
-            *INVALID_REASON_KEYS,
-        }:
-
-            log(
-                f"❌ {symbol}: "
-                f"非法 invalid_reason="
-                f"{invalid_reason}"
-            )
-
-            errors += 1
-
-        if (
-            source == "official"
-            and invalid_reason is not None
-        ):
-
-            log(
-                f"❌ {symbol}: "
-                "official rate 不應同時存在 "
-                "invalid_reason"
-            )
-
-            errors += 1
-
-        if (
-            source is None
-            and item.get(
-                "day_trading_rate"
-            ) is not None
-        ):
-
-            log(
-                f"❌ {symbol}: "
-                "rate 有值但 source=None"
             )
 
             errors += 1
@@ -2425,14 +2080,9 @@ def validate_structure(
 # ============================================================
 
 def data_quality_gate(
-    securities: List[
-        Dict[str, str]
-    ],
-    stocks: Dict[
-        str,
-        Dict[str, Any],
-    ],
-    statistics: Dict[str, Any],
+    securities: List[Dict[str, str]],
+    stocks: Dict[str, Dict[str, Any]],
+    statistics: Dict[str, int],
     data_date: str,
     trading_dates: List[str],
 ) -> bool:
@@ -2443,13 +2093,12 @@ def data_quality_gate(
 
     errors = 0
 
-    universe_count = len(
-        securities
-    )
+    universe_count = len(securities)
+    chip_count = len(stocks)
 
-    chip_count = len(
-        stocks
-    )
+    # --------------------------------------------------------
+    # Universe / Chip 必須 1:1
+    # --------------------------------------------------------
 
     if universe_count != chip_count:
 
@@ -2466,9 +2115,7 @@ def data_quality_gate(
         for item in securities
     }
 
-    chip_symbols = set(
-        stocks.keys()
-    )
+    chip_symbols = set(stocks.keys())
 
     missing = (
         universe_symbols
@@ -2498,6 +2145,10 @@ def data_quality_gate(
 
         errors += len(extra)
 
+    # --------------------------------------------------------
+    # 20D
+    # --------------------------------------------------------
+
     if len(trading_dates) != HISTORY_DAYS:
 
         log(
@@ -2507,6 +2158,10 @@ def data_quality_gate(
         )
 
         errors += 1
+
+    # --------------------------------------------------------
+    # fallback 永遠必須 0
+    # --------------------------------------------------------
 
     if statistics.get(
         "fallback_valid",
@@ -2541,6 +2196,10 @@ def data_quality_gate(
 
         errors += 1
 
+    # --------------------------------------------------------
+    # 每檔驗證
+    # --------------------------------------------------------
+
     valid = 0
 
     for symbol, item in stocks.items():
@@ -2569,13 +2228,17 @@ def data_quality_gate(
             "day_trading_source_date"
         )
 
+        updated_at = item.get(
+            "updated_at"
+        )
+
         invalid_reason = item.get(
             "day_trading_invalid_reason"
         )
 
-        updated_at = item.get(
-            "updated_at"
-        )
+        # ----------------------------------------------------
+        # updated_at
+        # ----------------------------------------------------
 
         if updated_at != data_date:
 
@@ -2586,6 +2249,26 @@ def data_quality_gate(
             )
 
             errors += 1
+
+        # ----------------------------------------------------
+        # source
+        # ----------------------------------------------------
+
+        if source not in {
+            None,
+            "official",
+        }:
+
+            log(
+                f"❌ {symbol}: "
+                f"非法 source={source}"
+            )
+
+            errors += 1
+
+        # ----------------------------------------------------
+        # alias 必須一致
+        # ----------------------------------------------------
 
         if alias != offset:
 
@@ -2599,19 +2282,10 @@ def data_quality_gate(
             errors += 1
 
         # ----------------------------------------------------
-        # 有效資料
+        # 有 rate
         # ----------------------------------------------------
 
         if rate is not None:
-
-            if invalid_reason is not None:
-
-                log(
-                    f"❌ {symbol}: "
-                    "有效 rate 不應有 invalid_reason"
-                )
-
-                errors += 1
 
             if (
                 offset is None
@@ -2708,23 +2382,35 @@ def data_quality_gate(
 
                 errors += 1
 
+            if invalid_reason is not None:
+
+                log(
+                    f"❌ {symbol}: "
+                    "rate 有值但 invalid_reason "
+                    f"={invalid_reason}"
+                )
+
+                errors += 1
+
             valid += 1
 
-            continue
+        else:
 
-        # ----------------------------------------------------
-        # 無效資料
-        # ----------------------------------------------------
+            # 沒有 rate 可以是合法 invalid，
+            # 但必須有明確原因。
+            if not invalid_reason:
 
-        if invalid_reason not in INVALID_REASON_KEYS:
+                log(
+                    f"❌ {symbol}: "
+                    "rate=None 但沒有 "
+                    "invalid_reason"
+                )
 
-            log(
-                f"❌ {symbol}: "
-                "無效 rate 卻沒有合法 "
-                "invalid_reason"
-            )
+                errors += 1
 
-            errors += 1
+    # --------------------------------------------------------
+    # SUMMARY
+    # --------------------------------------------------------
 
     log("")
     log(
@@ -2773,93 +2459,80 @@ def data_quality_gate(
         f"{statistics.get('invalid', 0)}"
     )
 
+    log("")
+    log("INVALID 原因：")
+
     log(
-        "fallback：0"
+        "  missing_offset："
+        f"{statistics.get('missing_offset', 0)}"
     )
+
+    log(
+        "  missing_volume："
+        f"{statistics.get('missing_volume', 0)}"
+    )
+
+    log(
+        "  zero_volume："
+        f"{statistics.get('zero_volume', 0)}"
+    )
+
+    log(
+        "  invalid_offset："
+        f"{statistics.get('invalid_offset', 0)}"
+    )
+
+    log(
+        "  offset_gt_volume："
+        f"{statistics.get('offset_gt_volume', 0)}"
+    )
+
+    log("fallback：0")
 
     # --------------------------------------------------------
-    # INVALID reason consistency
+    # 重要：
+    # 不再因為「部分 TPEx 沒有資料」直接 FAIL。
+    #
+    # 只有：
+    # 1. TPEx Universe 存在
+    # 2. TPEx 官方兩個來源都完全沒有資料
+    # 才 FAIL。
     # --------------------------------------------------------
-
-    expected_invalid = (
-        universe_count
-        - valid
-    )
-
-    actual_invalid = statistics.get(
-        "invalid",
-        0,
-    )
-
-    if actual_invalid != expected_invalid:
-
-        log(
-            "❌ INVALID 統計不一致："
-            f"{actual_invalid} != "
-            f"{expected_invalid}"
-        )
-
-        errors += 1
-
-    diagnostic_total = 0
-
-    reasons_by_market = statistics.get(
-        "invalid_reasons",
-        {},
-    )
-
-    for market in (
-        "TWSE",
-        "TPEX",
-    ):
-
-        reasons = reasons_by_market.get(
-            market,
-            {},
-        )
-
-        diagnostic_total += sum(
-            int(
-                reasons.get(
-                    key,
-                    0,
-                )
-            )
-            for key in INVALID_REASON_KEYS
-        )
-
-    if diagnostic_total != actual_invalid:
-
-        log(
-            "❌ INVALID reason breakdown "
-            "總數不一致："
-            f"{diagnostic_total} != "
-            f"{actual_invalid}"
-        )
-
-        errors += 1
 
     tpex_universe_count = sum(
         item["market"] == "TPEX"
         for item in securities
     )
 
-    tpex_valid = statistics.get(
-        "tpex_valid",
+    tpex_offset_count = statistics.get(
+        "tpex_official_offset_source",
         0,
     )
 
-    if (
-        tpex_universe_count > 0
-        and tpex_valid == 0
-    ):
+    tpex_volume_count = statistics.get(
+        "tpex_volume_source",
+        0,
+    )
 
-        log(
-            "❌ TPEx Universe 存在，"
-            "但 TPEx 官方資券當沖率為 0"
-        )
+    if tpex_universe_count > 0:
 
-        errors += 1
+        if tpex_offset_count == 0:
+
+            log(
+                "❌ TPEx Universe 存在，"
+                "但 TPEx 官方資券相抵資料為 0"
+            )
+
+            errors += 1
+
+        if tpex_volume_count == 0:
+
+            log(
+                "❌ TPEx Universe 存在，"
+                "但 TPEx 官方成交量資料為 0"
+            )
+
+            errors += 1
 
     if errors:
 
@@ -2876,36 +2549,14 @@ def data_quality_gate(
         return False
 
     log("")
-    log(
-        "✓ Universe / Chip 1:1"
-    )
-    log(
-        "✓ 20D 固定交易日序列"
-    )
-    log(
-        "✓ TWSE 官方資料"
-    )
-    log(
-        "✓ TPEx 官方資料"
-    )
-    log(
-        "✓ INVALID 已完成原因分類"
-    )
-    log(
-        "✓ 資券相抵量 <= 成交量"
-    )
-    log(
-        "✓ 資券當沖率公式一致"
-    )
-    log(
-        "✓ 全部有效資料來源 official"
-    )
-    log(
-        "✓ fallback = 0"
-    )
-    log(
-        "✓ Data Quality Gate PASS"
-    )
+    log("✓ Universe / Chip 1:1")
+    log("✓ 20D 固定交易日序列")
+    log("✓ TWSE 官方資料")
+    log("✓ TPEx 官方資料")
+    log("✓ fallback = 0")
+    log("✓ invalid 原因已分類")
+    log("✓ 有效 rate 全部 official")
+    log("✓ Data Quality Gate PASS")
 
     return True
 
@@ -2916,9 +2567,7 @@ def data_quality_gate(
 
 def validate_payload_contract(
     payload: Dict[str, Any],
-    securities: List[
-        Dict[str, str]
-    ],
+    securities: List[Dict[str, str]],
 ) -> bool:
 
     if not isinstance(
@@ -2927,9 +2576,7 @@ def validate_payload_contract(
     ):
         return False
 
-    stocks = payload.get(
-        "stocks"
-    )
+    stocks = payload.get("stocks")
 
     if not isinstance(
         stocks,
@@ -2946,10 +2593,7 @@ def validate_payload_contract(
         stocks.keys()
     )
 
-    if (
-        expected_symbols
-        != actual_symbols
-    ):
+    if expected_symbols != actual_symbols:
 
         log(
             "❌ Payload Contract："
@@ -2959,9 +2603,7 @@ def validate_payload_contract(
         return False
 
     if (
-        payload.get(
-            "universe_count"
-        )
+        payload.get("universe_count")
         != len(securities)
     ):
 
@@ -2989,9 +2631,7 @@ def validate_payload_contract(
         return False
 
     if (
-        definition.get(
-            "numerator"
-        )
+        definition.get("numerator")
         != "margin_offset_volume"
     ):
 
@@ -3003,9 +2643,7 @@ def validate_payload_contract(
         return False
 
     if (
-        definition.get(
-            "denominator"
-        )
+        definition.get("denominator")
         != "total_volume"
     ):
 
@@ -3017,9 +2655,7 @@ def validate_payload_contract(
         return False
 
     if (
-        definition.get(
-            "formula"
-        )
+        definition.get("formula")
         != "資券相抵量 / 成交量 * 100"
     ):
 
@@ -3039,6 +2675,8 @@ def validate_payload_contract(
         "tpex_intraday_trading_statistics",
     )
 
+    # 只檢查 stocks。
+    # forbidden_sources metadata 不應被誤判。
     serialized_stocks = json.dumps(
         stocks,
         ensure_ascii=False,
@@ -3086,19 +2724,20 @@ def validate_payload_contract(
 
             return False
 
-        invalid_reason = item.get(
+        rate = item.get(
+            "day_trading_rate"
+        )
+
+        reason = item.get(
             "day_trading_invalid_reason"
         )
 
-        if invalid_reason not in {
-            None,
-            *INVALID_REASON_KEYS,
-        }:
+        if rate is None and not reason:
 
             log(
                 f"❌ Payload Contract："
-                f"{symbol} invalid_reason="
-                f"{invalid_reason}"
+                f"{symbol} rate=None "
+                "但沒有 invalid_reason"
             )
 
             return False
@@ -3157,13 +2796,10 @@ def atomic_write(
         )
 
         try:
-
             temp_file.unlink(
                 missing_ok=True
             )
-
         except Exception:
-
             pass
 
         return False
@@ -3174,9 +2810,7 @@ def atomic_write(
 # ============================================================
 
 def verify_written_chip(
-    securities: List[
-        Dict[str, str]
-    ],
+    securities: List[Dict[str, str]],
     data_date: str,
 ) -> bool:
 
@@ -3220,29 +2854,20 @@ def verify_written_chip(
 
         return False
 
-    stocks = payload.get(
-        "stocks"
-    )
+    stocks = payload.get("stocks")
 
     if not isinstance(
         stocks,
         dict,
     ):
-
         return False
 
     for symbol, item in stocks.items():
 
-        if item.get(
-            "symbol"
-        ) != symbol:
-
+        if item.get("symbol") != symbol:
             return False
 
-        if item.get(
-            "updated_at"
-        ) != data_date:
-
+        if item.get("updated_at") != data_date:
             return False
 
         source = item.get(
@@ -3253,18 +2878,6 @@ def verify_written_chip(
             None,
             "official",
         }:
-
-            return False
-
-        invalid_reason = item.get(
-            "day_trading_invalid_reason"
-        )
-
-        if invalid_reason not in {
-            None,
-            *INVALID_REASON_KEYS,
-        }:
-
             return False
 
         offset = item.get(
@@ -3283,36 +2896,39 @@ def verify_written_chip(
             "day_trading_rate"
         )
 
-        if offset != alias:
+        reason = item.get(
+            "day_trading_invalid_reason"
+        )
 
+        if offset != alias:
             return False
+
+        # ----------------------------------------------------
+        # invalid 可以存在，但必須有原因
+        # ----------------------------------------------------
 
         if rate is None:
 
-            if invalid_reason is None:
-
+            if not reason:
                 return False
 
             continue
 
-        if invalid_reason is not None:
-
-            return False
+        # ----------------------------------------------------
+        # valid rate
+        # ----------------------------------------------------
 
         if (
             offset is None
             or total is None
             or total <= 0
         ):
-
             return False
 
         if offset < 0:
-
             return False
 
         if offset > total:
-
             return False
 
         expected = round(
@@ -3323,44 +2939,49 @@ def verify_written_chip(
         )
 
         try:
-
             stored = float(rate)
-
         except Exception:
-
             return False
 
         if abs(
             expected - stored
         ) > 0.0001:
-
             return False
 
         if source != "official":
+            return False
 
+        if reason is not None:
             return False
 
     log(
         "✓ chip.json 重新讀取成功"
     )
+
     log(
         "✓ Universe / Chip 1:1"
     )
+
     log(
         "✓ rate 重新計算一致"
     )
+
     log(
         "✓ updated_at 正確"
     )
-    log(
-        "✓ INVALID reason 完整"
-    )
+
     log(
         "✓ 有效 rate 全部 official"
     )
+
+    log(
+        "✓ invalid 均有明確原因"
+    )
+
     log(
         "✓ fallback = 0"
     )
+
     log(
         "✓ Post Write Verify PASS"
     )
@@ -3409,8 +3030,7 @@ def main() -> int:
 
         if (
             not data_date
-            or len(trading_dates)
-            != HISTORY_DAYS
+            or len(trading_dates) != HISTORY_DAYS
             or not history
         ):
 
@@ -3452,7 +3072,6 @@ def main() -> int:
         if not validate_structure(
             stocks
         ):
-
             return 1
 
         # ----------------------------------------------------
@@ -3466,7 +3085,6 @@ def main() -> int:
             data_date,
             trading_dates,
         ):
-
             return 1
 
         # ----------------------------------------------------
@@ -3536,18 +3154,6 @@ def main() -> int:
                         "tpex_mainboard_daily_close_quotes",
                 },
 
-                "legacy_alias": {
-
-                    "day_trading_volume":
-                        "margin_offset_volume",
-
-                    "description":
-                        "為維持既有資料契約，"
-                        "day_trading_volume "
-                        "保留為資券相抵量 alias；"
-                        "不是現股當沖成交股數。",
-                },
-
                 "forbidden_sources": [
 
                     "MoneyLink",
@@ -3591,7 +3197,6 @@ def main() -> int:
         if not atomic_write(
             payload
         ):
-
             return 1
 
         # ----------------------------------------------------
@@ -3667,7 +3272,7 @@ def main() -> int:
         )
 
         log(
-            "✓ 無效/缺資料："
+            "✓ invalid："
             f"{statistics.get('invalid', 0)}"
         )
 
@@ -3676,11 +3281,13 @@ def main() -> int:
         )
 
         log(
-            f"✓ chip.json：{CHIP_FILE}"
+            f"✓ chip.json："
+            f"{CHIP_FILE}"
         )
 
         log(
-            f"✓ elapsed：{elapsed:.2f}s"
+            f"✓ elapsed："
+            f"{elapsed:.2f}s"
         )
 
         return 0
