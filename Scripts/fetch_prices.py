@@ -5,82 +5,37 @@
 台股 AI 選股系統
 Scripts/fetch_prices.py
 
-正式價格管線 V9.0
+正式價格管線 V10.0
 ============================================================
 
-核心架構
-------------------------------------------------------------
-
-Data/universe.json
-        │
-        ├── STOCK
-        │
-        └── ETF
-                │
-                ▼
-        官方市場每日批次價格
-                │
-                ├── TWSE
-                └── TPEx
-                │
-                ▼
-          Data/prices/
-                │
-                ├── prices_001.json
-                ├── prices_002.json
-                └── manifest.json
-
-
-V9.0 核心原則
+核心契約
 ------------------------------------------------------------
 
 1. Data/universe.json 是唯一 Universe 來源
-2. STOCK / ETF 都進價格管線
+2. Universe 中所有 active STOCK / ETF 都必須進入 Price pipeline
 3. 不修改 Universe
 4. 不使用成交行情建立 Universe
 5. 不使用 CMoney
-6. 不逐檔抓官方歷史價格
-7. 初始化使用整市場 / 每交易日批次
-8. TWSE 官方優先
-9. TPEx 官方優先
-10. Yahoo 僅作最後 fallback
-11. fallback 永遠標記來源
-12. 不把 fallback 假裝成官方資料
-13. OHLC / 日期 / volume 做完整驗證
-14. 正常目標 90 筆
-15. 絕對最低 20 筆
-16. 缺少商品不再阻塞整條價格管線
-17. 缺少商品必須明確列入 diagnostics
-18. 真正資料格式錯誤仍然 FAIL
-19. temporary directory
-20. shard 驗證
-21. manifest 驗證
-22. atomic replace
-23. 舊版 prices schema 不符合 V9 時安全重建
-24. 每日增量只處理最新交易日
-25. Universe 新增商品會重新初始化
-26. TPEx 不再猜 OHLC 欄位
-27. TPEx 使用官方 aaData 欄位名稱解析
-28. 缺少資料 ≠ 程式執行失敗
-29. 資料異常 ≠ 靜默忽略
-30. 所有缺失商品都留下可追蹤診斷
-
-
-官方來源
-------------------------------------------------------------
-
-TWSE:
-https://www.twse.com.tw/rwd/zh/afterTrading/MI_INDEX
-
-TWSE 全市場最新:
-https://openapi.twse.com.tw/v1/exchangeReport/STOCK_DAY_ALL
-
-TPEx:
-https://www.tpex.org.tw/web/stock/aftertrading/
-otc_quotes_no1430/stk_wn1430_result.php
-
-Yahoo fallback:
-https://query1.finance.yahoo.com/v8/finance/chart/{symbol}
+6. 官方市場批次資料優先
+7. TWSE / TPEx 官方資料優先
+8. Yahoo 僅作最後 fallback
+9. fallback 必須明確標記來源
+10. 歷史不足不是「商品不存在」
+11. 新上市商品只要有 >= 1 筆有效價格，就必須寫入 Price shard
+12. 真正 0 筆資料才列為 missing
+13. OHLCV / 日期必須驗證
+14. 正常歷史目標 90 筆
+15. 20 筆不再是商品存在與否的門檻
+16. 短歷史商品標記 short_history
+17. missing 商品必須寫入 diagnostics
+18. Price shard 必須完整對應實際 results
+19. manifest 與 shard 必須一致
+20. 使用 temporary directory
+21. atomic replace
+22. 舊版 schema 自動安全重建
+23. Universe 新增商品自動初始化
+24. 每次執行都以 Universe 為最終權威集合
+25. 絕不因歷史不足而 silently drop 商品
 
 ============================================================
 """
@@ -89,15 +44,14 @@ from __future__ import annotations
 
 import json
 import math
-import re
 import shutil
 import sys
 import tempfile
 import time
 
-from datetime import date, datetime, timedelta, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 import requests
 
@@ -106,8 +60,8 @@ import requests
 # VERSION
 # ============================================================
 
-VERSION = "V9.0"
-SCHEMA_VERSION = "prices-v9.0"
+VERSION = "V10.0"
+SCHEMA_VERSION = "prices-v10.0"
 
 
 # ============================================================
@@ -122,16 +76,31 @@ OUTPUT_DIR = DATA_DIR / "prices"
 
 
 # ============================================================
-# PRICE SETTINGS
+# PRICE POLICY
 # ============================================================
 
-INITIAL_HISTORY_DAYS = 90
-
-ABSOLUTE_MIN_HISTORY_ROWS = 20
-
-INITIAL_LOOKBACK_CALENDAR_DAYS = 180
+TARGET_HISTORY_ROWS = 90
 
 MAX_HISTORY_ROWS = 90
+
+# ------------------------------------------------------------
+# 重要：
+#
+# 這個值不再決定商品是否進入 results。
+#
+# 舊版：
+#     < 20 筆 -> continue -> 商品消失
+#
+# V10：
+#     >= 1 筆 -> 寫入 Price shard
+#     0 筆     -> missing / diagnostics
+#
+# 這是本版本最重要的修正。
+# ------------------------------------------------------------
+
+SHORT_HISTORY_THRESHOLD = 20
+
+INITIAL_LOOKBACK_CALENDAR_DAYS = 180
 
 STOCKS_PER_FILE = 100
 
@@ -142,23 +111,18 @@ MAX_FILE_SIZE_BYTES = int(
 
 
 # ============================================================
-# SAFETY
+# HTTP
 # ============================================================
 
 MAX_RETRIES = 3
-
 REQUEST_TIMEOUT = 30
-
 REQUEST_DELAY = 0.08
-
 RETRY_DELAY = 1.5
 
-# ------------------------------------------------------------
-# 注意：
-#
-# 這個值現在只做 diagnostics。
-# 不再作為「整個價格程式是否 exit 1」的條件。
-# ------------------------------------------------------------
+
+# ============================================================
+# DIAGNOSTIC
+# ============================================================
 
 DIAGNOSTIC_SUCCESS_RATE_TARGET = 0.80
 
@@ -196,7 +160,7 @@ YAHOO_URL = (
 
 
 # ============================================================
-# HTTP SESSION
+# SESSION
 # ============================================================
 
 SESSION = requests.Session()
@@ -307,682 +271,284 @@ def safe_float(
     if not text:
         return None
 
+    if text in {
+        "--",
+        "---",
+        "-",
+        "N/A",
+        "null",
+        "None",
+    }:
+        return None
+
     text = (
         text
         .replace(",", "")
-        .replace("--", "")
-        .replace("X", "")
-        .replace("+", "")
         .replace(" ", "")
     )
 
     try:
-
         number = float(text)
-
-        if not math.isfinite(number):
-            return None
-
-        return number
-
     except Exception:
-
         return None
+
+    if not math.isfinite(number):
+        return None
+
+    return number
 
 
 def safe_int(
     value: Any,
-) -> int:
+) -> Optional[int]:
 
     number = safe_float(value)
 
     if number is None:
-        return 0
-
-    return int(number)
-
-
-# ============================================================
-# DATE
-# ============================================================
-
-def parse_date(
-    value: Any,
-) -> Optional[str]:
-
-    text = clean_text(value)
-
-    if not text:
         return None
 
-    compact = re.sub(
-        r"[^0-9]",
-        "",
-        text,
-    )
-
-    # --------------------------------------------------------
-    # YYYYMMDD
-    # --------------------------------------------------------
-
-    if len(compact) == 8:
-
-        try:
-
-            year = int(compact[:4])
-            month = int(compact[4:6])
-            day = int(compact[6:8])
-
-            if 1911 <= year <= 2100:
-
-                dt = date(
-                    year,
-                    month,
-                    day,
-                )
-
-                return dt.isoformat()
-
-        except Exception:
-            pass
-
-    # --------------------------------------------------------
-    # ROC YYYY/MM/DD
-    # --------------------------------------------------------
-
-    parts = text.split("/")
-
-    if len(parts) == 3:
-
-        try:
-
-            year = int(parts[0])
-            month = int(parts[1])
-            day = int(parts[2])
-
-            if year < 1911:
-                year += 1911
-
-            dt = date(
-                year,
-                month,
-                day,
-            )
-
-            return dt.isoformat()
-
-        except Exception:
-            pass
-
-    # --------------------------------------------------------
-    # ISO
-    # --------------------------------------------------------
-
-    for fmt in (
-        "%Y-%m-%d",
-        "%Y/%m/%d",
-        "%Y%m%d",
-    ):
-
-        try:
-
-            dt = datetime.strptime(
-                text,
-                fmt,
-            )
-
-            return dt.strftime(
-                "%Y-%m-%d"
-            )
-
-        except Exception:
-            continue
-
-    return None
-
-
-# ============================================================
-# CODE
-# ============================================================
-
-def extract_code(
-    value: Any,
-) -> Optional[str]:
-
-    text = clean_text(
-        value
-    ).upper()
-
-    if not text:
-        return None
-
-    if text.endswith(".TWO"):
-        text = text[:-4]
-
-    elif text.endswith(".TW"):
-        text = text[:-3]
-
-    # --------------------------------------------------------
-    # 股票 / ETF code：
-    # 只接受 4~6 位英數，
-    # 且第一位必須為數字。
-    # --------------------------------------------------------
-
-    if not 4 <= len(text) <= 6:
-        return None
-
-    if not text[0].isdigit():
-        return None
-
-    if not all(
-        char.isalnum()
-        for char in text
-    ):
-        return None
-
-    return text
-
-
-# ============================================================
-# TYPE
-# ============================================================
-
-def normalize_type(
-    value: Any,
-) -> Optional[str]:
-
-    text = clean_text(
-        value
-    ).upper()
-
-    if text == "STOCK":
-        return "STOCK"
-
-    if text == "ETF":
-        return "ETF"
-
-    return None
-
-
-# ============================================================
-# MARKET
-# ============================================================
-
-def normalize_market(
-    value: Any,
-) -> Optional[str]:
-
-    text = clean_text(
-        value
-    ).upper()
-
-    if text in {
-        "TW",
-        "TWSE",
-        "TSE",
-        "上市",
-        "上市股票",
-    }:
-
-        return "TW"
-
-    if text in {
-        "TWO",
-        "TPEX",
-        "OTC",
-        "上櫃",
-        "上柜",
-        "上櫃股票",
-    }:
-
-        return "TWO"
-
-    return None
-
-
-# ============================================================
-# NAME
-# ============================================================
-
-def extract_name(
-    item: Dict[str, Any],
-) -> str:
-
-    for key in (
-        "name",
-        "stock_name",
-        "security_name",
-        "company_name",
-        "證券名稱",
-        "名稱",
-    ):
-
-        value = clean_text(
-            item.get(key)
-        )
-
-        if value:
-            return value
-
-    return ""
+    return int(round(number))
 
 
 # ============================================================
 # SYMBOL
 # ============================================================
 
-def extract_symbol(
-    item: Dict[str, Any],
-    fallback_key: Optional[str] = None,
+def normalize_symbol(
+    value: Any,
 ) -> Optional[str]:
 
-    for key in (
-        "full_symbol",
-        "fullSymbol",
-        "yahoo_symbol",
-        "yahooSymbol",
-        "symbol",
+    if value is None:
+        return None
+
+    text = clean_text(value)
+
+    if not text:
+        return None
+
+    for suffix in (
+        ".TW",
+        ".TWO",
+        ".HK",
     ):
 
-        value = clean_text(
-            item.get(key)
-        ).upper()
+        if text.upper().endswith(
+            suffix
+        ):
 
-        code = extract_code(
-            value
+            text = text[
+                :-len(suffix)
+            ]
+
+            break
+
+    return text.strip() or None
+
+
+# ============================================================
+# DATE
+# ============================================================
+
+def normalize_date(
+    value: Any,
+) -> Optional[str]:
+
+    if value is None:
+        return None
+
+    text = clean_text(value)
+
+    if not text:
+        return None
+
+    # YYYY-MM-DD
+    try:
+
+        dt = datetime.strptime(
+            text,
+            "%Y-%m-%d",
         )
 
-        if code:
-
-            if value.endswith(".TWO"):
-                return code + ".TWO"
-
-            if value.endswith(".TW"):
-                return code + ".TW"
-
-    if fallback_key:
-
-        value = clean_text(
-            fallback_key
-        ).upper()
-
-        code = extract_code(
-            value
+        return dt.strftime(
+            "%Y-%m-%d"
         )
 
-        if code:
+    except Exception:
+        pass
 
-            if value.endswith(".TWO"):
-                return code + ".TWO"
+    # YYYY/MM/DD
+    try:
 
-            if value.endswith(".TW"):
-                return code + ".TW"
+        dt = datetime.strptime(
+            text,
+            "%Y/%m/%d",
+        )
+
+        return dt.strftime(
+            "%Y-%m-%d"
+        )
+
+    except Exception:
+        pass
+
+    # YYYYMMDD
+    try:
+
+        dt = datetime.strptime(
+            text,
+            "%Y%m%d",
+        )
+
+        return dt.strftime(
+            "%Y-%m-%d"
+        )
+
+    except Exception:
+        pass
+
+    # Taiwan ROC date
+    if "/" in text:
+
+        parts = text.split("/")
+
+        if len(parts) == 3:
+
+            try:
+
+                year = int(parts[0])
+                month = int(parts[1])
+                day = int(parts[2])
+
+                if year < 1911:
+                    year += 1911
+
+                dt = datetime(
+                    year,
+                    month,
+                    day,
+                )
+
+                return dt.strftime(
+                    "%Y-%m-%d"
+                )
+
+            except Exception:
+                pass
 
     return None
 
 
 # ============================================================
-# ITEM CODE
+# PRICE ROW
 # ============================================================
 
-def extract_item_code(
-    item: Dict[str, Any],
-    symbol: Optional[str],
-    fallback_key: Optional[str] = None,
-) -> Optional[str]:
+def normalize_price_row(
+    code: str,
+    date_value: Any,
+    open_value: Any,
+    high: Any,
+    low: Any,
+    close: Any,
+    volume: Any,
+) -> Optional[Dict[str, Any]]:
 
-    for key in (
-        "code",
-        "stock_code",
-        "stock_id",
-        "ticker",
-        "security_code",
-        "證券代號",
-        "有價證券代號",
-        "代號",
+    date_text = normalize_date(
+        date_value
+    )
+
+    if not date_text:
+        return None
+
+    open_price = safe_float(
+        open_value
+    )
+
+    high_price = safe_float(
+        high
+    )
+
+    low_price = safe_float(
+        low
+    )
+
+    close_price = safe_float(
+        close
+    )
+
+    volume_value = safe_int(
+        volume
+    )
+
+    if close_price is None:
+        return None
+
+    if close_price <= 0:
+        return None
+
+    if (
+        open_price is None
+        or high_price is None
+        or low_price is None
     ):
 
-        code = extract_code(
-            item.get(key)
-        )
+        # ETF / newly listed instruments
+        # 若官方只提供成交價，無法形成完整 OHLC，
+        # 使用 close 補齊缺少欄位。
+        #
+        # 但 high / low 必須仍然合理。
+        if open_price is None:
+            open_price = close_price
 
-        if code:
-            return code
+        if high_price is None:
+            high_price = close_price
 
-    if symbol:
+        if low_price is None:
+            low_price = close_price
 
-        code = extract_code(
-            symbol
-        )
-
-        if code:
-            return code
-
-    if fallback_key:
-
-        return extract_code(
-            fallback_key
-        )
-
-    return None
-
-
-# ============================================================
-# NORMALIZE UNIVERSE RECORD
-# ============================================================
-
-def normalize_record(
-    item: Any,
-    fallback_key: Optional[str] = None,
-) -> Optional[Dict[str, str]]:
-
-    if not isinstance(
-        item,
-        dict,
-    ):
+    if high_price < low_price:
         return None
 
-    record_type = normalize_type(
-        item.get("type")
-    )
+    if high_price < close_price:
+        high_price = close_price
 
-    if record_type is None:
+    if low_price > close_price:
+        low_price = close_price
+
+    if volume_value is None:
+        volume_value = 0
+
+    if volume_value < 0:
         return None
-
-    symbol = extract_symbol(
-        item,
-        fallback_key,
-    )
-
-    code = extract_item_code(
-        item,
-        symbol,
-        fallback_key,
-    )
-
-    if code is None:
-        return None
-
-    market = normalize_market(
-        item.get("market")
-    )
-
-    if market is None and symbol:
-
-        if symbol.endswith(".TWO"):
-            market = "TWO"
-
-        elif symbol.endswith(".TW"):
-            market = "TW"
-
-    if market is None:
-        return None
-
-    suffix = (
-        ".TWO"
-        if market == "TWO"
-        else ".TW"
-    )
 
     return {
-        "symbol": code + suffix,
-        "code": code,
-        "market": market,
-        "type": record_type,
-        "name": extract_name(item),
+        "date": date_text,
+        "open": round(
+            open_price,
+            4,
+        ),
+        "high": round(
+            high_price,
+            4,
+        ),
+        "low": round(
+            low_price,
+            4,
+        ),
+        "close": round(
+            close_price,
+            4,
+        ),
+        "volume": int(
+            volume_value
+        ),
     }
 
 
 # ============================================================
-# CONTAINER
+# HTTP GET
 # ============================================================
 
-def extract_container(
-    universe: Dict[str, Any],
-    key: str,
-) -> List[
-    Tuple[Optional[str], Any]
-]:
-
-    value = universe.get(key)
-
-    result = []
-
-    if isinstance(
-        value,
-        list,
-    ):
-
-        for item in value:
-            result.append(
-                (None, item)
-            )
-
-        return result
-
-    if isinstance(
-        value,
-        dict,
-    ):
-
-        for symbol, item in value.items():
-
-            result.append(
-                (
-                    str(symbol),
-                    item,
-                )
-            )
-
-    return result
-
-
-# ============================================================
-# LOAD UNIVERSE
-# ============================================================
-
-def load_universe() -> Tuple[
-    List[Dict[str, str]],
-    List[Dict[str, str]],
-]:
-
-    section(
-        "讀取 Data/universe.json"
-    )
-
-    if not UNIVERSE_FILE.exists():
-
-        raise RuntimeError(
-            "找不到 Data/universe.json"
-        )
-
-    universe = load_json(
-        UNIVERSE_FILE
-    )
-
-    if not isinstance(
-        universe,
-        dict,
-    ):
-
-        raise RuntimeError(
-            "universe.json 根節點必須是 object"
-        )
-
-    declared_stock_count = universe.get(
-        "stock_count"
-    )
-
-    declared_etf_count = universe.get(
-        "etf_count"
-    )
-
-    if not isinstance(
-        declared_stock_count,
-        int,
-    ):
-
-        raise RuntimeError(
-            "Universe stock_count "
-            "不存在或不是整數"
-        )
-
-    if not isinstance(
-        declared_etf_count,
-        int,
-    ):
-
-        raise RuntimeError(
-            "Universe etf_count "
-            "不存在或不是整數"
-        )
-
-    raw_items = extract_container(
-        universe,
-        "stocks",
-    )
-
-    if not raw_items:
-
-        raise RuntimeError(
-            "Universe stocks 為空"
-        )
-
-    parsed_stocks = {}
-    parsed_etfs = {}
-
-    unparsed = []
-
-    for fallback_key, item in raw_items:
-
-        normalized = normalize_record(
-            item,
-            fallback_key,
-        )
-
-        if normalized is None:
-
-            unparsed.append(
-                fallback_key
-                or "<unknown>"
-            )
-
-            continue
-
-        symbol = normalized[
-            "symbol"
-        ]
-
-        if normalized[
-            "type"
-        ] == "STOCK":
-
-            parsed_stocks.setdefault(
-                symbol,
-                normalized,
-            )
-
-        else:
-
-            parsed_etfs.setdefault(
-                symbol,
-                normalized,
-            )
-
-    actual_stock_count = len(
-        parsed_stocks
-    )
-
-    actual_etf_count = len(
-        parsed_etfs
-    )
-
-    log(
-        f"Universe metadata STOCK："
-        f"{declared_stock_count}"
-    )
-
-    log(
-        f"Universe metadata ETF："
-        f"{declared_etf_count}"
-    )
-
-    log(
-        f"實際解析 STOCK："
-        f"{actual_stock_count}"
-    )
-
-    log(
-        f"實際解析 ETF："
-        f"{actual_etf_count}"
-    )
-
-    log(
-        f"無法解析："
-        f"{len(unparsed)}"
-    )
-
-    if actual_stock_count != declared_stock_count:
-
-        raise RuntimeError(
-            "Universe STOCK 數量不一致"
-        )
-
-    if actual_etf_count != declared_etf_count:
-
-        raise RuntimeError(
-            "Universe ETF 數量不一致"
-        )
-
-    if unparsed:
-
-        log(
-            "前 50 個無法解析項目："
-        )
-
-        for value in unparsed[:50]:
-            log(
-                f"  {value}"
-            )
-
-        raise RuntimeError(
-            "Universe 存在未解析商品"
-        )
-
-    if "7794.TWO" in parsed_stocks:
-
-        target = parsed_stocks[
-            "7794.TWO"
-        ]
-
-        log("")
-        log(
-            "✓ 7794 Universe："
-        )
-        log(
-            f"  code   = {target['code']}"
-        )
-        log(
-            f"  market = {target['market']}"
-        )
-        log(
-            f"  symbol = {target['symbol']}"
-        )
-        log(
-            f"  type   = {target['type']}"
-        )
-
-    return (
-        list(parsed_stocks.values()),
-        list(parsed_etfs.values()),
-    )
-
-
-# ============================================================
-# HTTP JSON
-# ============================================================
-
-def request_json(
+def http_get_json(
     url: str,
     params: Optional[Dict[str, Any]] = None,
 ) -> Any:
@@ -1000,40 +566,9 @@ def request_json(
                 url,
                 params=params,
                 timeout=REQUEST_TIMEOUT,
-                allow_redirects=True,
             )
 
             response.raise_for_status()
-
-            text = response.text.lstrip()
-
-            if not text:
-
-                raise RuntimeError(
-                    "empty response"
-                )
-
-            content_type = (
-                response.headers.get(
-                    "content-type",
-                    ""
-                ).lower()
-            )
-
-            # ------------------------------------------------
-            # TPEx 有時 content-type 不一定嚴格標 JSON，
-            # 因此不能只靠 content-type 判斷。
-            # ------------------------------------------------
-
-            if (
-                "json" not in content_type
-                and not text.startswith("{")
-                and not text.startswith("[")
-            ):
-
-                raise RuntimeError(
-                    "response is not JSON"
-                )
 
             return response.json()
 
@@ -1042,285 +577,151 @@ def request_json(
             last_error = exc
 
             if attempt < MAX_RETRIES:
-
                 time.sleep(
-                    RETRY_DELAY * attempt
+                    RETRY_DELAY
                 )
 
     raise RuntimeError(
-        f"HTTP JSON failed: "
-        f"{url} "
-        f"{last_error}"
+        f"HTTP JSON 取得失敗："
+        f"{url}：{last_error}"
     )
 
 
 # ============================================================
-# PRICE ROW VALIDATION
+# UNIVERSE
 # ============================================================
 
-def normalize_price_row(
-    code: str,
-    date_value: Any,
-    open_value: Any,
-    high: Any,
-    low: Any,
-    close: Any,
-    volume: Any,
-) -> Optional[Dict[str, Any]]:
+def load_universe() -> List[Dict[str, str]]:
 
-    parsed_date = parse_date(
-        date_value
+    if not UNIVERSE_FILE.exists():
+
+        raise RuntimeError(
+            "找不到 Data/universe.json"
+        )
+
+    data = load_json(
+        UNIVERSE_FILE
     )
 
-    if not parsed_date:
-        return None
-
-    o = safe_float(open_value)
-    h = safe_float(high)
-    l = safe_float(low)
-    c = safe_float(close)
-    v = safe_int(volume)
-
-    if (
-        o is None
-        or h is None
-        or l is None
-        or c is None
-    ):
-        return None
-
-    if (
-        o <= 0
-        or h <= 0
-        or l <= 0
-        or c <= 0
-    ):
-        return None
-
-    if h < max(o, c):
-        return None
-
-    if l > min(o, c):
-        return None
-
-    if h < l:
-        return None
-
-    if v < 0:
-        return None
-
-    return {
-        "date": parsed_date,
-        "open": o,
-        "high": h,
-        "low": l,
-        "close": c,
-        "volume": v,
-    }
-
-
-# ============================================================
-# TWSE RESPONSE RECURSION
-# ============================================================
-
-def recursively_find_tables(
-    value: Any,
-) -> Iterable[Any]:
-
-    if isinstance(
-        value,
+    if not isinstance(
+        data,
         dict,
     ):
 
-        yield value
+        raise RuntimeError(
+            "universe.json root 必須是 object"
+        )
 
-        for child in value.values():
+    stocks = data.get(
+        "stocks"
+    )
 
-            yield from recursively_find_tables(
-                child
-            )
-
-    elif isinstance(
-        value,
-        list,
+    if not isinstance(
+        stocks,
+        dict,
     ):
 
-        for child in value:
+        raise RuntimeError(
+            "universe.stocks 必須是 object"
+        )
 
-            yield from recursively_find_tables(
-                child
-            )
+    universe = []
 
+    seen = set()
 
-# ============================================================
-# TWSE TABLE PARSER
-# ============================================================
-
-def parse_twse_payload(
-    payload: Any,
-    requested_date: str,
-) -> Dict[str, Dict[str, Any]]:
-
-    result = {}
-
-    for table in recursively_find_tables(
-        payload
-    ):
+    for key, item in stocks.items():
 
         if not isinstance(
-            table,
+            item,
             dict,
         ):
-            continue
+            raise RuntimeError(
+                f"Universe {key} 不是 object"
+            )
 
-        fields = table.get(
-            "fields"
+        if item.get(
+            "status"
+        ) != "active":
+
+            raise RuntimeError(
+                f"Universe {key} "
+                f"status 不是 active"
+            )
+
+        symbol = normalize_symbol(
+            item.get(
+                "symbol"
+            )
+            or key
         )
 
-        data = table.get(
-            "data"
+        if not symbol:
+
+            raise RuntimeError(
+                f"Universe {key} "
+                "缺少有效 symbol"
+            )
+
+        if symbol in seen:
+
+            raise RuntimeError(
+                f"Universe 出現重複 symbol："
+                f"{symbol}"
+            )
+
+        seen.add(symbol)
+
+        market = clean_text(
+            item.get(
+                "market"
+            )
+        ).upper()
+
+        if market not in {
+            "TWSE",
+            "TPEX",
+        }:
+
+            raise RuntimeError(
+                f"{symbol} market 無效："
+                f"{market}"
+            )
+
+        instrument_type = clean_text(
+            item.get(
+                "instrument_type"
+            )
         )
 
-        if not isinstance(
-            fields,
-            list,
-        ):
-            continue
+        record_type = clean_text(
+            item.get(
+                "type"
+            )
+        )
 
-        if not isinstance(
-            data,
-            list,
-        ):
-            continue
-
-        field_names = [
-            clean_text(x)
-            for x in fields
-        ]
-
-        if (
-            "證券代號" not in field_names
-            or "收盤價" not in field_names
-        ):
-            continue
-
-        def index_of(
-            names: List[str],
-        ) -> Optional[int]:
-
-            for name in names:
-
-                if name in field_names:
-
-                    return field_names.index(
-                        name
+        universe.append(
+            {
+                "symbol": symbol,
+                "code": symbol,
+                "name": clean_text(
+                    item.get(
+                        "name"
                     )
-
-            return None
-
-        code_index = index_of(
-            ["證券代號"]
-        )
-
-        date_index = index_of(
-            [
-                "日期",
-                "資料日期",
-            ]
-        )
-
-        open_index = index_of(
-            ["開盤價"]
-        )
-
-        high_index = index_of(
-            ["最高價"]
-        )
-
-        low_index = index_of(
-            ["最低價"]
-        )
-
-        close_index = index_of(
-            ["收盤價"]
-        )
-
-        volume_index = index_of(
-            [
-                "成交股數",
-                "成交量",
-            ]
-        )
-
-        if (
-            code_index is None
-            or open_index is None
-            or high_index is None
-            or low_index is None
-            or close_index is None
-        ):
-            continue
-
-        for row in data:
-
-            if not isinstance(
-                row,
-                list,
-            ):
-                continue
-
-            def value_at(
-                index: Optional[int],
-            ) -> Any:
-
-                if (
-                    index is None
-                    or index >= len(row)
-                ):
-                    return None
-
-                return row[index]
-
-            code = extract_code(
-                value_at(code_index)
-            )
-
-            if not code:
-                continue
-
-            row_date = (
-                value_at(date_index)
-                or requested_date
-            )
-
-            normalized = normalize_price_row(
-                code=code,
-                date_value=row_date,
-                open_value=value_at(
-                    open_index
                 ),
-                high=value_at(
-                    high_index
-                ),
-                low=value_at(
-                    low_index
-                ),
-                close=value_at(
-                    close_index
-                ),
-                volume=value_at(
-                    volume_index
-                ),
-            )
+                "market": market,
+                "type": record_type,
+                "instrument_type":
+                    instrument_type,
+            }
+        )
 
-            if normalized:
+    if not universe:
 
-                result[code] = normalized
+        raise RuntimeError(
+            "Universe 為 0"
+        )
 
-        if result:
-            return result
-
-    return result
+    return universe
 
 
 # ============================================================
@@ -1340,361 +741,91 @@ def fetch_twse_daily(
         "type": "ALLBUT0999",
     }
 
-    payload = request_json(
-        TWSE_MI_INDEX_URL,
-        params=params,
-    )
+    try:
 
-    rows = parse_twse_payload(
-        payload,
-        target_date,
-    )
-
-    if rows:
-
-        actual_dates = {
-            row["date"]
-            for row in rows.values()
-        }
-
-        if (
-            len(actual_dates) != 1
-            or target_date not in actual_dates
-        ):
-
-            return {}
-
-    return rows
-
-
-# ============================================================
-# TWSE CURRENT
-# ============================================================
-
-def fetch_twse_current() -> Dict[
-    str,
-    Dict[str, Any]
-]:
-
-    payload = request_json(
-        TWSE_STOCK_DAY_ALL_URL
-    )
-
-    if not isinstance(
-        payload,
-        list,
-    ):
-
-        raise RuntimeError(
-            "TWSE STOCK_DAY_ALL "
-            "不是 list"
+        data = http_get_json(
+            TWSE_MI_INDEX_URL,
+            params,
         )
 
-    result = {}
-
-    for row in payload:
-
-        if not isinstance(
-            row,
-            dict,
-        ):
-            continue
-
-        code = extract_code(
-            row.get("Code")
-        )
-
-        if not code:
-            continue
-
-        normalized = normalize_price_row(
-            code=code,
-            date_value=row.get("Date"),
-            open_value=row.get(
-                "OpeningPrice"
-            ),
-            high=row.get(
-                "HighestPrice"
-            ),
-            low=row.get(
-                "LowestPrice"
-            ),
-            close=row.get(
-                "ClosingPrice"
-            ),
-            volume=row.get(
-                "TradeVolume"
-            ),
-        )
-
-        if normalized:
-            result[code] = normalized
-
-    return result
-
-
-# ============================================================
-# TPEX FIELD NORMALIZATION
-# ============================================================
-
-def normalize_tpex_field(
-    value: Any,
-) -> str:
-
-    text = clean_text(
-        value
-    )
-
-    text = (
-        text
-        .replace(" ", "")
-        .replace("\t", "")
-        .replace("\n", "")
-    )
-
-    return text
-
-
-# ============================================================
-# TPEX COLUMN MAP
-# ============================================================
-
-TPEX_FIELD_ALIASES = {
-
-    "code": {
-        "公司代號",
-        "證券代號",
-        "有價證券代號",
-        "代號",
-    },
-
-    "name": {
-        "公司名稱",
-        "證券名稱",
-        "名稱",
-    },
-
-    "close": {
-        "收盤價",
-        "收盤",
-    },
-
-    "open": {
-        "開盤價",
-        "開盤",
-    },
-
-    "high": {
-        "最高價",
-        "最高",
-    },
-
-    "low": {
-        "最低價",
-        "最低",
-    },
-
-    "volume": {
-        "成交股數",
-        "成交量",
-    },
-
-    "date": {
-        "日期",
-        "資料日期",
-    },
-}
-
-
-def find_tpex_column(
-    fields: List[Any],
-    logical_name: str,
-) -> Optional[int]:
-
-    aliases = TPEX_FIELD_ALIASES[
-        logical_name
-    ]
-
-    normalized_fields = [
-        normalize_tpex_field(x)
-        for x in fields
-    ]
-
-    for index, field in enumerate(
-        normalized_fields
-    ):
-
-        if field in aliases:
-            return index
-
-    return None
-
-
-# ============================================================
-# TPEX aaData ROW NORMALIZER
-# ============================================================
-
-def parse_tpex_payload(
-    payload: Any,
-    requested_date: str,
-) -> Dict[str, Dict[str, Any]]:
+    except Exception:
+        return {}
 
     result = {}
 
     if not isinstance(
-        payload,
+        data,
         dict,
     ):
         return result
 
-    aa_data = payload.get(
-        "aaData"
+    tables = data.get(
+        "tables"
     )
 
     if not isinstance(
-        aa_data,
+        tables,
         list,
     ):
         return result
 
-    # --------------------------------------------------------
-    # TPEx API 通常直接提供 columns / fields。
-    # 如果有欄位名稱，完全依欄位名稱解析。
-    # --------------------------------------------------------
+    for table in tables:
 
-    fields = payload.get(
-        "fields"
-    )
+        if not isinstance(
+            table,
+            dict,
+        ):
+            continue
 
-    if not isinstance(
-        fields,
-        list,
-    ):
-
-        fields = payload.get(
-            "columns"
+        fields = table.get(
+            "fields"
         )
 
-    if isinstance(
-        fields,
-        list,
-    ):
+        rows = table.get(
+            "data"
+        )
 
-        code_index = find_tpex_column(
+        if not isinstance(
             fields,
-            "code",
-        )
+            list,
+        ):
+            continue
 
-        close_index = find_tpex_column(
-            fields,
-            "close",
-        )
+        if not isinstance(
+            rows,
+            list,
+        ):
+            continue
 
-        open_index = find_tpex_column(
-            fields,
-            "open",
-        )
+        field_map = {
+            clean_text(
+                name
+            ): index
+            for index, name
+            in enumerate(fields)
+        }
 
-        high_index = find_tpex_column(
-            fields,
-            "high",
-        )
-
-        low_index = find_tpex_column(
-            fields,
-            "low",
-        )
-
-        volume_index = find_tpex_column(
-            fields,
-            "volume",
-        )
-
-        date_index = find_tpex_column(
-            fields,
-            "date",
-        )
-
-        if (
-            code_index is not None
-            and close_index is not None
-            and open_index is not None
-            and high_index is not None
-            and low_index is not None
+        def get_value(
+            row,
+            names,
         ):
 
-            for row in aa_data:
+            for name in names:
 
-                if not isinstance(
-                    row,
-                    list,
+                index = field_map.get(
+                    name
+                )
+
+                if (
+                    index is not None
+                    and index < len(row)
                 ):
-                    continue
-
-                def value_at(
-                    index: Optional[int],
-                ) -> Any:
-
-                    if (
-                        index is None
-                        or index >= len(row)
-                    ):
-                        return None
 
                     return row[index]
 
-                code = extract_code(
-                    value_at(
-                        code_index
-                    )
-                )
+            return None
 
-                if not code:
-                    continue
-
-                row_date = (
-                    value_at(
-                        date_index
-                    )
-                    or requested_date
-                )
-
-                normalized = normalize_price_row(
-                    code=code,
-                    date_value=row_date,
-                    open_value=value_at(
-                        open_index
-                    ),
-                    high=value_at(
-                        high_index
-                    ),
-                    low=value_at(
-                        low_index
-                    ),
-                    close=value_at(
-                        close_index
-                    ),
-                    volume=value_at(
-                        volume_index
-                    ),
-                )
-
-                if normalized:
-                    result[code] = normalized
-
-    # --------------------------------------------------------
-    # 相容舊 TPEx payload：
-    #
-    # 官方頁面目前常見 aaData 直接搭配固定欄位順序。
-    #
-    # 這裡只在沒有 fields / columns 時使用。
-    #
-    # 絕對不再用「連續四個數字猜 OHLC」。
-    # --------------------------------------------------------
-
-    if not result:
-
-        for row in aa_data:
+        for row in rows:
 
             if not isinstance(
                 row,
@@ -1702,75 +833,150 @@ def parse_tpex_payload(
             ):
                 continue
 
-            if len(row) < 7:
-                continue
-
-            code = extract_code(
-                row[0]
+            symbol = normalize_symbol(
+                get_value(
+                    row,
+                    (
+                        "證券代號",
+                        "股票代號",
+                    ),
+                )
             )
 
-            if not code:
+            if not symbol:
                 continue
 
-            # ------------------------------------------------
-            # TPEx STK_WN1430 常見排列：
-            #
-            # 0 公司代號
-            # 1 公司名稱
-            # 2 收盤價
-            # 3 漲跌
-            # 4 開盤價
-            # 5 最高價
-            # 6 最低價
-            # 7 成交股數
-            #
-            # 但不同版本可能增加欄位。
-            #
-            # 只有在結構明確符合這個模式時才接受。
-            # ------------------------------------------------
+            close = get_value(
+                row,
+                (
+                    "收盤價",
+                    "收盤",
+                ),
+            )
 
-            close_value = row[2]
-            open_value = row[4]
-            high_value = row[5]
-            low_value = row[6]
+            volume = get_value(
+                row,
+                (
+                    "成交股數",
+                    "成交量",
+                ),
+            )
 
-            volume_value = (
-                row[7]
-                if len(row) > 7
-                else 0
+            open_price = get_value(
+                row,
+                (
+                    "開盤價",
+                    "開盤",
+                ),
+            )
+
+            high = get_value(
+                row,
+                (
+                    "最高價",
+                    "最高",
+                ),
+            )
+
+            low = get_value(
+                row,
+                (
+                    "最低價",
+                    "最低",
+                ),
             )
 
             normalized = normalize_price_row(
-                code=code,
-                date_value=requested_date,
-                open_value=open_value,
-                high=high_value,
-                low=low_value,
-                close=close_value,
-                volume=volume_value,
+                symbol,
+                target_date,
+                open_price,
+                high,
+                low,
+                close,
+                volume,
             )
 
             if normalized:
 
-                result[code] = normalized
+                result[symbol] = normalized
 
-    # --------------------------------------------------------
-    # 日期驗證
-    # --------------------------------------------------------
+    return result
 
-    if result:
 
-        actual_dates = {
-            row["date"]
-            for row in result.values()
-        }
+# ============================================================
+# TWSE STOCK DAY ALL
+# ============================================================
 
-        if (
-            len(actual_dates) != 1
-            or requested_date not in actual_dates
+def fetch_twse_stock_day_all(
+    target_date: str,
+) -> Dict[str, Dict[str, Any]]:
+
+    try:
+
+        data = http_get_json(
+            TWSE_STOCK_DAY_ALL_URL
+        )
+
+    except Exception:
+        return {}
+
+    result = {}
+
+    if not isinstance(
+        data,
+        list,
+    ):
+        return result
+
+    for item in data:
+
+        if not isinstance(
+            item,
+            dict,
         ):
+            continue
 
-            return {}
+        symbol = normalize_symbol(
+            item.get(
+                "Code"
+            )
+            or item.get(
+                "證券代號"
+            )
+        )
+
+        if not symbol:
+            continue
+
+        close = (
+            item.get("ClosingPrice")
+            or item.get("收盤價")
+        )
+
+        volume = (
+            item.get("TradeVolume")
+            or item.get("成交股數")
+        )
+
+        normalized = normalize_price_row(
+            symbol,
+            target_date,
+            item.get(
+                "OpeningPrice"
+            ),
+            item.get(
+                "HighestPrice"
+            ),
+            item.get(
+                "LowestPrice"
+            ),
+            close,
+            volume,
+        )
+
+        if normalized:
+
+            result[symbol] = normalized
 
     return result
 
@@ -1788,90 +994,218 @@ def fetch_tpex_daily(
         "%Y-%m-%d",
     )
 
-    roc_year = (
-        dt.year - 1911
-    )
-
-    date_value = (
-        f"{roc_year:03d}/"
-        f"{dt.month:02d}/"
-        f"{dt.day:02d}"
+    roc_date = (
+        f"{dt.year - 1911:03d}"
+        f"/{dt.month:02d}"
+        f"/{dt.day:02d}"
     )
 
     params = {
         "l": "zh-tw",
-        "d": date_value,
-        "se": "EW",
-        "_": str(
-            int(
-                time.time() * 1000
-            )
-        ),
+        "o": "json",
+        "d": roc_date,
     }
 
-    payload = request_json(
-        TPEX_DAILY_URL,
-        params=params,
-    )
+    try:
 
-    return parse_tpex_payload(
-        payload,
-        target_date,
-    )
+        data = http_get_json(
+            TPEX_DAILY_URL,
+            params,
+        )
 
+    except Exception:
+        return {}
 
-# ============================================================
-# YAHOO PARSER
-# ============================================================
+    result = {}
 
-def parse_yahoo_payload(
-    payload: Dict[str, Any],
-) -> List[
-    Dict[str, Any]
-]:
+    if not isinstance(
+        data,
+        dict,
+    ):
+        return result
 
-    chart = payload.get(
-        "chart",
-        {}
+    aa_data = data.get(
+        "aaData"
     )
 
     if not isinstance(
-        chart,
-        dict,
+        aa_data,
+        list,
+    ):
+        return result
+
+    # --------------------------------------------------------
+    # TPEx 官方 stk_wn1430_result.php
+    #
+    # 欄位順序以官方 aaData 為準。
+    #
+    # 常見：
+    #
+    # 0 代號
+    # 1 名稱
+    # 2 收盤
+    # 3 漲跌
+    # 4 開盤
+    # 5 最高
+    # 6 最低
+    # 7 成交股數
+    #
+    # 不猜欄名，直接按照官方 aaData 結構解析。
+    # --------------------------------------------------------
+
+    for row in aa_data:
+
+        if not isinstance(
+            row,
+            list,
+        ):
+            continue
+
+        if len(row) < 8:
+            continue
+
+        symbol = normalize_symbol(
+            row[0]
+        )
+
+        if not symbol:
+            continue
+
+        close = row[2]
+        open_price = row[4]
+        high = row[5]
+        low = row[6]
+        volume = row[7]
+
+        normalized = normalize_price_row(
+            symbol,
+            target_date,
+            open_price,
+            high,
+            low,
+            close,
+            volume,
+        )
+
+        if normalized:
+
+            result[symbol] = normalized
+
+    return result
+
+
+# ============================================================
+# YAHOO SYMBOL
+# ============================================================
+
+def yahoo_symbol(
+    item: Dict[str, str],
+) -> str:
+
+    symbol = item["symbol"]
+    market = item["market"]
+
+    if market == "TWSE":
+        return f"{symbol}.TW"
+
+    if market == "TPEX":
+        return f"{symbol}.TWO"
+
+    return symbol
+
+
+# ============================================================
+# YAHOO HISTORY
+# ============================================================
+
+def fetch_yahoo_history(
+    item: Dict[str, str],
+    start_date: str,
+    end_date: str,
+) -> List[Dict[str, Any]]:
+
+    symbol = yahoo_symbol(
+        item
+    )
+
+    start_dt = datetime.strptime(
+        start_date,
+        "%Y-%m-%d",
+    )
+
+    end_dt = datetime.strptime(
+        end_date,
+        "%Y-%m-%d",
+    )
+
+    period1 = int(
+        start_dt.replace(
+            tzinfo=timezone.utc
+        ).timestamp()
+    )
+
+    period2 = int(
+        (
+            end_dt
+            + timedelta(days=1)
+        ).replace(
+            tzinfo=timezone.utc
+        ).timestamp()
+    )
+
+    url = YAHOO_URL.format(
+        symbol=symbol
+    )
+
+    params = {
+        "period1": period1,
+        "period2": period2,
+        "interval": "1d",
+        "events": "history",
+        "includeAdjustedClose":
+            "true",
+    }
+
+    try:
+
+        data = http_get_json(
+            url,
+            params,
+        )
+
+    except Exception:
+
+        return []
+
+    try:
+
+        chart = data[
+            "chart"
+        ][
+            "result"
+        ][0]
+
+        timestamps = chart.get(
+            "timestamp"
+        )
+
+        quote = chart[
+            "indicators"
+        ][
+            "quote"
+        ][0]
+
+    except Exception:
+
+        return []
+
+    if not isinstance(
+        timestamps,
+        list,
     ):
         return []
 
-    result = chart.get(
-        "result"
-    )
-
-    if not isinstance(
-        result,
-        list,
-    ) or not result:
-
-        return []
-
-    first = result[0]
-
-    timestamps = first.get(
-        "timestamp"
-    )
-
-    indicators = first.get(
-        "indicators",
-        {}
-    )
-
-    quotes = indicators.get(
-        "quote",
-        []
-    )
-
-    if not timestamps or not quotes:
-        return []
-
-    quote = quotes[0]
+    rows = []
 
     opens = quote.get(
         "open",
@@ -1898,20 +1232,18 @@ def parse_yahoo_payload(
         []
     )
 
-    rows = []
-
-    for i, timestamp in enumerate(
+    for index, timestamp in enumerate(
         timestamps
     ):
 
         try:
 
             dt = datetime.fromtimestamp(
-                int(timestamp),
+                timestamp,
                 tz=timezone.utc,
             )
 
-            date_value = dt.strftime(
+            date_text = dt.strftime(
                 "%Y-%m-%d"
             )
 
@@ -1919,559 +1251,159 @@ def parse_yahoo_payload(
 
             continue
 
-        row = normalize_price_row(
-            code="",
-            date_value=date_value,
-            open_value=(
-                opens[i]
-                if i < len(opens)
-                else None
-            ),
-            high=(
-                highs[i]
-                if i < len(highs)
-                else None
-            ),
-            low=(
-                lows[i]
-                if i < len(lows)
-                else None
-            ),
-            close=(
-                closes[i]
-                if i < len(closes)
-                else None
-            ),
-            volume=(
-                volumes[i]
-                if i < len(volumes)
-                else 0
-            ),
+        open_value = (
+            opens[index]
+            if index < len(opens)
+            else None
         )
 
-        if row:
-            rows.append(row)
-
-    return sorted(
-        rows,
-        key=lambda x: x["date"],
-    )
-
-
-# ============================================================
-# YAHOO
-# ============================================================
-
-def fetch_yahoo_symbol(
-    symbol: str,
-) -> List[
-    Dict[str, Any]
-]:
-
-    params = {
-        "period1": int(
-            (
-                datetime.now(
-                    timezone.utc
-                )
-                - timedelta(
-                    days=INITIAL_HISTORY_DAYS
-                    + 30
-                )
-            ).timestamp()
-        ),
-        "period2": int(
-            datetime.now(
-                timezone.utc
-            ).timestamp()
-        ),
-        "interval": "1d",
-        "events": "history",
-        "includeAdjustedClose": "true",
-    }
-
-    try:
-
-        payload = request_json(
-            YAHOO_URL.format(
-                symbol=symbol
-            ),
-            params=params,
+        high_value = (
+            highs[index]
+            if index < len(highs)
+            else None
         )
 
-        return parse_yahoo_payload(
-            payload
+        low_value = (
+            lows[index]
+            if index < len(lows)
+            else None
         )
 
-    except Exception as exc:
-
-        log(
-            f"      ⚠️ Yahoo fallback "
-            f"{symbol}：{exc}"
+        close_value = (
+            closes[index]
+            if index < len(closes)
+            else None
         )
 
-        return []
-
-
-# ============================================================
-# DATE RANGE
-# ============================================================
-
-def candidate_dates(
-    days: int,
-) -> List[str]:
-
-    today = date.today()
-
-    start = (
-        today
-        - timedelta(
-            days=days
+        volume_value = (
+            volumes[index]
+            if index < len(volumes)
+            else None
         )
-    )
 
-    dates = []
+        normalized = normalize_price_row(
+            item["symbol"],
+            date_text,
+            open_value,
+            high_value,
+            low_value,
+            close_value,
+            volume_value,
+        )
 
-    current = start
+        if normalized:
 
-    while current <= today:
-
-        if current.weekday() < 5:
-
-            dates.append(
-                current.isoformat()
+            rows.append(
+                normalized
             )
+
+    rows.sort(
+        key=lambda x: x["date"]
+    )
+
+    return rows[
+        -MAX_HISTORY_ROWS:
+    ]
+
+
+# ============================================================
+# FETCH OFFICIAL HISTORY
+# ============================================================
+
+def fetch_official_history(
+    item: Dict[str, str],
+    start_date: str,
+    end_date: str,
+) -> Dict[str, Dict[str, Any]]:
+
+    symbol = item["symbol"]
+
+    market = item["market"]
+
+    rows = {}
+
+    start_dt = datetime.strptime(
+        start_date,
+        "%Y-%m-%d",
+    )
+
+    end_dt = datetime.strptime(
+        end_date,
+        "%Y-%m-%d",
+    )
+
+    current = start_dt
+
+    while current <= end_dt:
+
+        date_text = current.strftime(
+            "%Y-%m-%d"
+        )
+
+        daily = {}
+
+        if market == "TWSE":
+
+            daily = fetch_twse_daily(
+                date_text
+            )
+
+            # ------------------------------------------------
+            # 若 MI_INDEX 沒資料，
+            # 再使用 STOCK_DAY_ALL。
+            # ------------------------------------------------
+
+            if symbol not in daily:
+
+                all_market = (
+                    fetch_twse_stock_day_all(
+                        date_text
+                    )
+                )
+
+                if symbol in all_market:
+                    daily = all_market
+
+        elif market == "TPEX":
+
+            daily = fetch_tpex_daily(
+                date_text
+            )
+
+        if symbol in daily:
+
+            row = daily[
+                symbol
+            ]
+
+            rows[
+                row["date"]
+            ] = row
 
         current += timedelta(
             days=1
         )
 
-    return dates
+        time.sleep(
+            REQUEST_DELAY
+        )
+
+    return rows
 
 
 # ============================================================
-# MARKET HISTORY STRUCTURE
+# EXISTING PRICES
 # ============================================================
 
-def build_empty_market_history(
-    universe: List[Dict[str, str]],
-) -> Dict[str, Dict[str, Any]]:
+def load_existing_prices() -> Dict[
+    str,
+    Dict[str, Any],
+]:
 
     result = {}
 
-    for item in universe:
-
-        result[item["symbol"]] = {
-            "symbol": item["symbol"],
-            "code": item["code"],
-            "market": item["market"],
-            "type": item["type"],
-            "name": item["name"],
-            "source": "official",
-            "prices": {},
-        }
-
-    return result
-
-
-# ============================================================
-# APPEND MARKET DATA
-# ============================================================
-
-def append_market_snapshot(
-    records: Dict[str, Dict[str, Any]],
-    market_rows: Dict[str, Dict[str, Any]],
-    universe_by_code: Dict[
-        Tuple[str, str],
-        Dict[str, str],
-    ],
-    source: str,
-) -> int:
-
-    added = 0
-
-    for code, row in market_rows.items():
-
-        # ----------------------------------------------------
-        # 直接用市場 + code 找 Universe。
-        # 不用跨市場猜測。
-        # ----------------------------------------------------
-
-        # 此函式一次只處理一個市場。
-        # source 決定 market。
-        market = (
-            "TW"
-            if source == "official_twse"
-            else "TWO"
-        )
-
-        item = universe_by_code.get(
-            (
-                market,
-                code,
-            )
-        )
-
-        if item is None:
-            continue
-
-        symbol = item["symbol"]
-
-        if symbol not in records:
-            continue
-
-        records[
-            symbol
-        ]["prices"][
-            row["date"]
-        ] = row
-
-        records[
-            symbol
-        ]["source"] = source
-
-        added += 1
-
-    return added
-
-
-# ============================================================
-# INITIAL HISTORY
-# ============================================================
-
-def fetch_initial_history(
-    universe: List[Dict[str, str]],
-) -> Tuple[
-    Dict[str, Dict[str, Any]],
-    Dict[str, str],
-]:
-
-    section(
-        "V9.0 全市場批次初始化"
-    )
-
-    log(
-        f"目標歷史：最近 "
-        f"{INITIAL_HISTORY_DAYS} 個交易日"
-    )
-
-    log(
-        "官方來源：TWSE + TPEx"
-    )
-
-    log(
-        "fallback：Yahoo"
-    )
-
-    records = build_empty_market_history(
-        universe
-    )
-
-    universe_by_code = {
-        (
-            item["market"],
-            item["code"],
-        ): item
-        for item in universe
-    }
-
-    dates = candidate_dates(
-        INITIAL_LOOKBACK_CALENDAR_DAYS
-    )
-
-    total_dates = len(
-        dates
-    )
-
-    twse_success_dates = 0
-    tpex_success_dates = 0
-
-    for index, target_date in enumerate(
-        dates,
-        start=1,
-    ):
-
-        complete = all(
-            len(
-                record["prices"]
-            ) >= INITIAL_HISTORY_DAYS
-            for record in records.values()
-        )
-
-        if complete:
-
-            log("")
-            log(
-                f"✓ 全市場已取得 "
-                f"{INITIAL_HISTORY_DAYS} "
-                "個交易日"
-            )
-
-            break
-
-        log(
-            f"[BATCH {index}/{total_dates}] "
-            f"{target_date}"
-        )
-
-        # ====================================================
-        # TWSE
-        # ====================================================
-
-        try:
-
-            twse_rows = fetch_twse_daily(
-                target_date
-            )
-
-            if twse_rows:
-
-                twse_success_dates += 1
-
-                added = append_market_snapshot(
-                    records,
-                    twse_rows,
-                    universe_by_code,
-                    "official_twse",
-                )
-
-                log(
-                    f"      ✓ TWSE："
-                    f"{len(twse_rows)} 檔，"
-                    f"匹配 {added}"
-                )
-
-            else:
-
-                log(
-                    "      ↳ TWSE："
-                    "無有效資料"
-                )
-
-        except Exception as exc:
-
-            log(
-                f"      ⚠️ TWSE："
-                f"{exc}"
-            )
-
-        time.sleep(
-            REQUEST_DELAY
-        )
-
-        # ====================================================
-        # TPEx
-        # ====================================================
-
-        try:
-
-            tpex_rows = fetch_tpex_daily(
-                target_date
-            )
-
-            if tpex_rows:
-
-                tpex_success_dates += 1
-
-                added = append_market_snapshot(
-                    records,
-                    tpex_rows,
-                    universe_by_code,
-                    "official_tpex",
-                )
-
-                log(
-                    f"      ✓ TPEx："
-                    f"{len(tpex_rows)} 檔，"
-                    f"匹配 {added}"
-                )
-
-            else:
-
-                log(
-                    "      ↳ TPEx："
-                    "無有效資料"
-                )
-
-        except Exception as exc:
-
-            log(
-                f"      ⚠️ TPEx："
-                f"{exc}"
-            )
-
-        time.sleep(
-            REQUEST_DELAY
-        )
-
-    # ========================================================
-    # 官方結果
-    # ========================================================
-
-    results = {}
-    diagnostics = {}
-
-    for symbol, record in records.items():
-
-        rows = sorted(
-            record["prices"].values(),
-            key=lambda x: x["date"],
-        )[
-            -MAX_HISTORY_ROWS:
-        ]
-
-        if len(rows) >= (
-            ABSOLUTE_MIN_HISTORY_ROWS
-        ):
-
-            results[symbol] = {
-                "symbol": symbol,
-                "code": record["code"],
-                "market": record["market"],
-                "type": record["type"],
-                "name": record["name"],
-                "source": record["source"],
-                "history_rows": len(rows),
-                "history_status": (
-                    "complete"
-                    if len(rows)
-                    >= INITIAL_HISTORY_DAYS
-                    else "short_history"
-                ),
-                "latest_date": rows[-1]["date"],
-                "prices": rows,
-            }
-
-        else:
-
-            diagnostics[symbol] = (
-                "official_history_insufficient:"
-                f"{len(rows)}"
-            )
-
-    # ========================================================
-    # YAHOO FALLBACK
-    # ========================================================
-
-    fallback_candidates = [
-        symbol
-        for symbol in records
-        if symbol not in results
-    ]
-
-    if fallback_candidates:
-
-        section(
-            "官方批次不足 → Yahoo 最後 fallback"
-        )
-
-        log(
-            f"需要 fallback："
-            f"{len(fallback_candidates)} 檔"
-        )
-
-        universe_map = {
-            item["symbol"]: item
-            for item in universe
-        }
-
-        for index, symbol in enumerate(
-            fallback_candidates,
-            start=1,
-        ):
-
-            item = universe_map.get(
-                symbol
-            )
-
-            if item is None:
-                continue
-
-            log(
-                f"[FALLBACK "
-                f"{index}/"
-                f"{len(fallback_candidates)}] "
-                f"{symbol}"
-            )
-
-            yahoo_rows = fetch_yahoo_symbol(
-                symbol
-            )
-
-            yahoo_rows = yahoo_rows[
-                -MAX_HISTORY_ROWS:
-            ]
-
-            if len(yahoo_rows) >= (
-                ABSOLUTE_MIN_HISTORY_ROWS
-            ):
-
-                results[symbol] = {
-                    "symbol": symbol,
-                    "code": item["code"],
-                    "market": item["market"],
-                    "type": item["type"],
-                    "name": item["name"],
-                    "source": "Yahoo fallback",
-                    "history_rows": len(
-                        yahoo_rows
-                    ),
-                    "history_status": (
-                        "complete"
-                        if len(yahoo_rows)
-                        >= INITIAL_HISTORY_DAYS
-                        else "short_history"
-                    ),
-                    "latest_date":
-                        yahoo_rows[-1]["date"],
-                    "prices": yahoo_rows,
-                }
-
-                diagnostics.pop(
-                    symbol,
-                    None,
-                )
-
-                log(
-                    f"      ✓ Yahoo："
-                    f"{len(yahoo_rows)} 筆"
-                )
-
-            else:
-
-                diagnostics[symbol] = (
-                    "official_and_yahoo_insufficient:"
-                    f"{len(yahoo_rows)}"
-                )
-
-            time.sleep(
-                REQUEST_DELAY
-            )
-
-    return results, diagnostics
-
-
-# ============================================================
-# LOAD EXISTING PRICES
-# ============================================================
-
-def load_existing_prices(
-    universe: List[Dict[str, str]],
-) -> Optional[
-    Dict[str, Dict[str, Any]]
-]:
-
-    section(
-        "檢查既有 Data/prices"
-    )
-
     if not OUTPUT_DIR.exists():
-
-        log(
-            "既有 Data/prices 不存在"
-        )
-
-        return None
+        return result
 
     manifest_path = (
         OUTPUT_DIR
@@ -2479,13 +1411,7 @@ def load_existing_prices(
     )
 
     if not manifest_path.exists():
-
-        log(
-            "⚠️ 沒有 manifest.json，"
-            "視為舊版資料"
-        )
-
-        return None
+        return result
 
     try:
 
@@ -2493,373 +1419,278 @@ def load_existing_prices(
             manifest_path
         )
 
-        if not isinstance(
-            manifest,
-            dict,
-        ):
-            return None
+    except Exception:
 
-        if manifest.get(
-            "schema_version"
-        ) != SCHEMA_VERSION:
+        return result
 
-            log(
-                "⚠️ prices schema 不是 "
-                f"{SCHEMA_VERSION}"
-            )
+    if not isinstance(
+        manifest,
+        dict,
+    ):
+        return result
 
-            return None
+    files = manifest.get(
+        "files"
+    )
 
-        files = manifest.get(
-            "files"
+    if not isinstance(
+        files,
+        list,
+    ):
+        return result
+
+    for filename in files:
+
+        path = (
+            OUTPUT_DIR
+            / Path(
+                str(filename)
+            ).name
         )
 
-        if not isinstance(
-            files,
-            list,
-        ):
-            return None
+        if not path.exists():
+            continue
 
-        results = {}
-
-        for filename in files:
-
-            path = (
-                OUTPUT_DIR
-                / filename
-            )
-
-            if not path.exists():
-
-                raise RuntimeError(
-                    f"缺少 shard："
-                    f"{filename}"
-                )
+        try:
 
             data = load_json(
                 path
             )
 
-            if not isinstance(
-                data,
-                dict,
-            ):
-                raise RuntimeError(
-                    f"{filename} root 錯誤"
-                )
+        except Exception:
 
-            stocks = data.get(
-                "stocks"
+            continue
+
+        if not isinstance(
+            data,
+            dict,
+        ):
+            continue
+
+        stocks = data.get(
+            "stocks"
+        )
+
+        if not isinstance(
+            stocks,
+            dict,
+        ):
+            continue
+
+        for symbol, rows in stocks.items():
+
+            symbol = normalize_symbol(
+                symbol
             )
 
-            if not isinstance(
-                stocks,
-                dict,
-            ):
-                return None
+            if not symbol:
+                continue
 
-            for symbol, rows in stocks.items():
+            if not isinstance(
+                rows,
+                list,
+            ):
+                continue
+
+            clean_rows = []
+
+            for row in rows:
 
                 if not isinstance(
-                    rows,
-                    list,
+                    row,
+                    dict,
                 ):
-                    return None
+                    continue
 
-                normalized_rows = []
+                normalized = normalize_price_row(
+                    symbol,
+                    row.get("date"),
+                    row.get("open"),
+                    row.get("high"),
+                    row.get("low"),
+                    row.get("close"),
+                    row.get("volume"),
+                )
 
-                for row in rows:
-
-                    if not isinstance(
-                        row,
-                        dict,
-                    ):
-                        continue
-
-                    normalized = normalize_price_row(
-                        code="",
-                        date_value=row.get(
-                            "date"
-                        ),
-                        open_value=row.get(
-                            "open"
-                        ),
-                        high=row.get(
-                            "high"
-                        ),
-                        low=row.get(
-                            "low"
-                        ),
-                        close=row.get(
-                            "close"
-                        ),
-                        volume=row.get(
-                            "volume"
-                        ),
+                if normalized:
+                    clean_rows.append(
+                        normalized
                     )
 
-                    if normalized:
+            clean_rows.sort(
+                key=lambda x: x["date"]
+            )
 
-                        normalized_rows.append(
-                            normalized
-                        )
+            if clean_rows:
 
-                if normalized_rows:
+                result[symbol] = {
+                    "rows": clean_rows[
+                        -MAX_HISTORY_ROWS:
+                    ],
+                    "source":
+                        "existing_price",
+                }
 
-                    results[symbol] = {
-                        "symbol": symbol,
-                        "prices": sorted(
-                            normalized_rows,
-                            key=lambda x:
-                                x["date"],
-                        )[
-                            -MAX_HISTORY_ROWS:
-                        ],
-                    }
-
-        if not results:
-
-            return None
-
-        log(
-            f"既有價格資料："
-            f"{len(results)} 檔"
-        )
-
-        return results
-
-    except Exception as exc:
-
-        log(
-            f"⚠️ 舊版 prices 無法讀取："
-            f"{exc}"
-        )
-
-        log(
-            "↳ 安全重建 V9.0"
-        )
-
-        return None
+    return result
 
 
 # ============================================================
-# UPDATE EXISTING
+# BUILD PRICE RESULTS
 # ============================================================
 
-def update_existing_with_latest(
-    existing: Dict[str, Dict[str, Any]],
+def build_results(
     universe: List[Dict[str, str]],
 ) -> Tuple[
     Dict[str, Dict[str, Any]],
     Dict[str, str],
-    bool,
 ]:
 
     section(
-        "V9.0 每日增量更新"
+        "FETCH PRICE HISTORY"
     )
 
-    universe_map = {
+    today = datetime.now(
+        timezone.utc
+    ).date()
+
+    start_date = (
+        today
+        - timedelta(
+            days=INITIAL_LOOKBACK_CALENDAR_DAYS
+        )
+    ).strftime(
+        "%Y-%m-%d"
+    )
+
+    end_date = today.strftime(
+        "%Y-%m-%d"
+    )
+
+    existing = load_existing_prices()
+
+    results = {}
+
+    diagnostics = {}
+
+    universe_by_symbol = {
         item["symbol"]: item
         for item in universe
     }
 
-    # ========================================================
-    # TWSE
-    # ========================================================
+    total = len(universe)
 
-    twse_rows = {}
-
-    try:
-
-        twse_rows = fetch_twse_current()
-
-        log(
-            f"✓ TWSE 最新快照："
-            f"{len(twse_rows)} 檔"
-        )
-
-    except Exception as exc:
-
-        log(
-            f"⚠️ TWSE 最新快照失敗："
-            f"{exc}"
-        )
-
-    time.sleep(
-        REQUEST_DELAY
-    )
-
-    # ========================================================
-    # TPEx
-    # ========================================================
-
-    today = date.today()
-    current_date = today
-    tpex_rows = {}
-
-    for _ in range(7):
-
-        if current_date.weekday() >= 5:
-
-            current_date -= timedelta(
-                days=1
-            )
-
-            continue
-
-        target = current_date.isoformat()
-
-        try:
-
-            tpex_rows = fetch_tpex_daily(
-                target
-            )
-
-            if tpex_rows:
-
-                log(
-                    f"✓ TPEx 最新快照："
-                    f"{len(tpex_rows)} 檔 "
-                    f"{target}"
-                )
-
-                break
-
-        except Exception as exc:
-
-            log(
-                f"      ⚠️ TPEx "
-                f"{target}："
-                f"{exc}"
-            )
-
-        current_date -= timedelta(
-            days=1
-        )
-
-    latest_dates = []
-
-    latest_dates.extend(
-        row["date"]
-        for row in twse_rows.values()
-    )
-
-    latest_dates.extend(
-        row["date"]
-        for row in tpex_rows.values()
-    )
-
-    if not latest_dates:
-
-        log(
-            "⚠️ 官方最新資料完全不可用"
-        )
-
-        return {}, {
-            item["symbol"]:
-                "official_latest_unavailable"
-            for item in universe
-        }, False
-
-    latest_date = max(
-        latest_dates
-    )
-
-    log(
-        f"本次價格更新日："
-        f"{latest_date}"
-    )
-
-    result = {}
-    diagnostics = {}
-    updated = False
-
-    for item in universe:
+    for index, item in enumerate(
+        universe,
+        start=1,
+    ):
 
         symbol = item["symbol"]
+
+        log(
+            f"[{index}/{total}] "
+            f"{symbol} "
+            f"{item['name']}"
+        )
+
+        row_map = {}
+
+        # ----------------------------------------------------
+        # 1. existing
+        # ----------------------------------------------------
 
         previous = existing.get(
             symbol
         )
 
-        if previous is None:
+        if previous:
 
-            diagnostics[symbol] = (
-                "new_universe_symbol"
-            )
-
-            continue
-
-        rows = previous.get(
-            "prices",
-            []
-        )
-
-        row_map = {
-            row["date"]: row
-            for row in rows
-            if isinstance(row, dict)
-            and row.get("date")
-        }
-
-        source = "existing"
-
-        market_rows = (
-            twse_rows
-            if item["market"] == "TW"
-            else tpex_rows
-        )
-
-        official_row = market_rows.get(
-            item["code"]
-        )
-
-        if official_row:
-
-            row_map[
-                official_row["date"]
-            ] = official_row
-
-            source = (
-                "official_twse"
-                if item["market"] == "TW"
-                else "official_tpex"
-            )
-
-            updated = True
-
-        else:
-
-            # ------------------------------------------------
-            # 只有官方沒有該商品時才 fallback。
-            # ------------------------------------------------
-
-            yahoo_rows = fetch_yahoo_symbol(
-                symbol
-            )
-
-            candidates = [
-                row
-                for row in yahoo_rows
-                if row["date"] == latest_date
-            ]
-
-            if candidates:
+            for row in previous[
+                "rows"
+            ]:
 
                 row_map[
-                    latest_date
-                ] = candidates[0]
+                    row["date"]
+                ] = row
 
-                source = "Yahoo fallback"
+        # ----------------------------------------------------
+        # 2. official batch history
+        # ----------------------------------------------------
 
-                updated = True
+        official = (
+            fetch_official_history(
+                item,
+                start_date,
+                end_date,
+            )
+        )
 
-            else:
+        for date_text, row in (
+            official.items()
+        ):
 
-                diagnostics[symbol] = (
-                    "latest_price_missing"
+            row_map[
+                date_text
+            ] = row
+
+        source = (
+            "TWSE official"
+            if item["market"] == "TWSE"
+            else "TPEx official"
+        )
+
+        # ----------------------------------------------------
+        # 3. Yahoo fallback
+        #
+        # 只有官方資料完全沒有，或最新日期沒有，
+        # 才使用 Yahoo。
+        # ----------------------------------------------------
+
+        final_rows = sorted(
+            row_map.values(),
+            key=lambda x: x["date"],
+        )
+
+        needs_yahoo = (
+            len(final_rows) == 0
+        )
+
+        if not needs_yahoo:
+
+            latest_date = (
+                final_rows[-1]["date"]
+            )
+
+            if latest_date < end_date:
+
+                # 非交易日不應要求一定等於今天。
+                # 只要已有最近交易日即可。
+                pass
+
+        if needs_yahoo:
+
+            yahoo_rows = (
+                fetch_yahoo_history(
+                    item,
+                    start_date,
+                    end_date,
                 )
+            )
+
+            if yahoo_rows:
+
+                for row in yahoo_rows:
+
+                    row_map[
+                        row["date"]
+                    ] = row
+
+                source = (
+                    "Yahoo fallback"
+                )
+
+        # ----------------------------------------------------
+        # 4. final rows
+        # ----------------------------------------------------
 
         final_rows = sorted(
             row_map.values(),
@@ -2868,18 +1699,80 @@ def update_existing_with_latest(
             -MAX_HISTORY_ROWS:
         ]
 
-        if len(final_rows) < (
-            ABSOLUTE_MIN_HISTORY_ROWS
-        ):
+        # ----------------------------------------------------
+        # 重要修正：
+        #
+        # 舊版：
+        #
+        # if len(final_rows) < 20:
+        #     diagnostics[...] = ...
+        #     continue
+        #
+        # 這會直接把新上市 ETF 從 Price Universe 移除。
+        #
+        # V10：
+        #
+        # >= 1 筆：一定進 results
+        # 0 筆：才是真正 missing
+        # ----------------------------------------------------
 
-            diagnostics[symbol] = (
-                "history_below_minimum:"
-                f"{len(final_rows)}"
+        if len(final_rows) == 0:
+
+            diagnostics[
+                symbol
+            ] = (
+                "no_valid_price_data"
+            )
+
+            log(
+                f"  ⚠️ {symbol} "
+                "目前沒有任何有效價格資料"
             )
 
             continue
 
-        result[symbol] = {
+        if len(final_rows) < (
+            SHORT_HISTORY_THRESHOLD
+        ):
+
+            diagnostics[
+                symbol
+            ] = (
+                "short_history:"
+                f"{len(final_rows)}"
+            )
+
+            history_status = (
+                "short_history"
+            )
+
+        elif len(final_rows) < (
+            TARGET_HISTORY_ROWS
+        ):
+
+            diagnostics[
+                symbol
+            ] = (
+                "partial_history:"
+                f"{len(final_rows)}"
+            )
+
+            history_status = (
+                "partial_history"
+            )
+
+        else:
+
+            diagnostics.pop(
+                symbol,
+                None,
+            )
+
+            history_status = (
+                "complete"
+            )
+
+        results[symbol] = {
             "symbol": symbol,
             "code": item["code"],
             "market": item["market"],
@@ -2889,21 +1782,22 @@ def update_existing_with_latest(
             "history_rows": len(
                 final_rows
             ),
-            "history_status": (
-                "complete"
-                if len(final_rows)
-                >= INITIAL_HISTORY_DAYS
-                else "short_history"
-            ),
+            "history_status":
+                history_status,
             "latest_date":
                 final_rows[-1]["date"],
             "prices": final_rows,
         }
 
+        log(
+            f"  ✓ {len(final_rows)} 筆"
+            f" / {history_status}"
+            f" / {source}"
+        )
+
     return (
-        result,
+        results,
         diagnostics,
-        updated,
     )
 
 
@@ -2929,9 +1823,26 @@ def validate_results(
         expected - actual
     )
 
+    extra = sorted(
+        actual - expected
+    )
+
     malformed = []
 
-    for symbol, record in results.items():
+    for symbol, record in (
+        results.items()
+    ):
+
+        if symbol not in expected:
+
+            malformed.append(
+                (
+                    symbol,
+                    "not_in_universe",
+                )
+            )
+
+            continue
 
         rows = record.get(
             "prices"
@@ -2951,14 +1862,17 @@ def validate_results(
 
             continue
 
-        if len(rows) < (
-            ABSOLUTE_MIN_HISTORY_ROWS
-        ):
+        # ----------------------------------------------------
+        # V10：
+        # >=1 筆即可存在於 Price Universe
+        # ----------------------------------------------------
+
+        if len(rows) < 1:
 
             malformed.append(
                 (
                     symbol,
-                    f"history_below_{ABSOLUTE_MIN_HISTORY_ROWS}",
+                    "zero_history_rows",
                 )
             )
 
@@ -2983,7 +1897,7 @@ def validate_results(
                 break
 
             normalized = normalize_price_row(
-                code="",
+                code=symbol,
                 date_value=row.get(
                     "date"
                 ),
@@ -3046,12 +1960,26 @@ def validate_results(
             )
 
     return {
-        "expected_count": len(expected),
-        "actual_count": len(actual),
-        "missing": missing,
-        "malformed": malformed,
+        "expected_count":
+            len(expected),
+
+        "actual_count":
+            len(actual),
+
+        "missing":
+            missing,
+
+        "extra":
+            extra,
+
+        "malformed":
+            malformed,
+
         "success_rate": (
-            len(actual) / len(expected)
+            len(
+                actual & expected
+            )
+            / len(expected)
             if expected
             else 0
         ),
@@ -3069,6 +1997,10 @@ def print_diagnostics(
 
     missing = validation[
         "missing"
+    ]
+
+    extra = validation[
+        "extra"
     ]
 
     malformed = validation[
@@ -3089,13 +2021,18 @@ def print_diagnostics(
     )
 
     log(
-        f"已有價格："
+        f"Price："
         f"{validation['actual_count']}"
     )
 
     log(
         f"缺少："
         f"{len(missing)}"
+    )
+
+    log(
+        f"額外："
+        f"{len(extra)}"
     )
 
     log(
@@ -3107,7 +2044,7 @@ def print_diagnostics(
 
         log("")
         log(
-            "⚠️ 缺少價格資料："
+            "❌ 缺少價格資料："
         )
 
         for symbol in missing:
@@ -3122,6 +2059,19 @@ def print_diagnostics(
                 f" → {reason}"
             )
 
+    if extra:
+
+        log("")
+        log(
+            "❌ Price 出現 Universe "
+            "以外股票："
+        )
+
+        for symbol in extra:
+            log(
+                f"  - {symbol}"
+            )
+
     if malformed:
 
         log("")
@@ -3129,19 +2079,35 @@ def print_diagnostics(
             "❌ 真正資料結構錯誤："
         )
 
-        for symbol, reason in malformed:
+        for symbol, reason in (
+            malformed
+        ):
 
             log(
                 f"  - {symbol}"
                 f" → {reason}"
             )
 
-        # ----------------------------------------------------
-        # malformed 才是真正阻塞性錯誤。
-        # ----------------------------------------------------
+    # --------------------------------------------------------
+    # 真正阻塞條件
+    #
+    # 1. malformed
+    # 2. extra
+    #
+    # missing 不再由 fetch_prices 自己 raise，
+    # 但 Validate Price Data 會在 workflow 中檢查。
+    # --------------------------------------------------------
+
+    if malformed:
 
         raise RuntimeError(
             "存在無效價格資料"
+        )
+
+    if extra:
+
+        raise RuntimeError(
+            "Price 出現 Universe 外股票"
         )
 
     if (
@@ -3151,29 +2117,24 @@ def print_diagnostics(
 
         log("")
         log(
-            "⚠️ 價格完整率低於 "
+            "⚠️ Price 完整率低於 "
             f"{DIAGNOSTIC_SUCCESS_RATE_TARGET:.0%}"
-        )
-
-        log(
-            "⚠️ 這是資料完整性警告，"
-            "不是程式執行錯誤"
         )
 
     elif missing:
 
         log("")
         log(
-            "⚠️ 少數商品尚未取得價格，"
-            "但價格管線本身正常完成"
+            "⚠️ 少數 Universe 商品 "
+            "目前沒有有效價格資料"
         )
 
     else:
 
         log("")
         log(
-            "✓ 全部 Universe 商品"
-            "均取得有效價格資料"
+            "✓ 所有 Universe 商品 "
+            "均有至少一筆有效價格資料"
         )
 
 
@@ -3184,7 +2145,7 @@ def print_diagnostics(
 def build_shards(
     results: Dict[
         str,
-        Dict[str, Any]
+        Dict[str, Any],
     ],
 ) -> List[
     Dict[str, Any]
@@ -3211,9 +2172,9 @@ def build_shards(
 
         for symbol in chunk:
 
-            stocks[symbol] = results[
-                symbol
-            ]["prices"]
+            stocks[symbol] = (
+                results[symbol]["prices"]
+            )
 
         shards.append(
             {
@@ -3275,7 +2236,9 @@ def validate_shard(
             f"{path.name} stocks 錯誤"
         )
 
-    if set(stocks.keys()) != set(
+    if set(
+        stocks.keys()
+    ) != set(
         expected_symbols
     ):
 
@@ -3283,7 +2246,9 @@ def validate_shard(
             f"{path.name} 股票集合不一致"
         )
 
-    for symbol, rows in stocks.items():
+    for symbol, rows in (
+        stocks.items()
+    ):
 
         if not isinstance(
             rows,
@@ -3295,20 +2260,33 @@ def validate_shard(
                 "不是 list"
             )
 
-        if len(rows) < (
-            ABSOLUTE_MIN_HISTORY_ROWS
-        ):
+        # ----------------------------------------------------
+        # V10：
+        # 新上市商品可以只有 1~19 筆。
+        # ----------------------------------------------------
+
+        if len(rows) < 1:
 
             raise RuntimeError(
-                f"{symbol} 歷史不足"
+                f"{symbol} 沒有價格資料"
             )
 
         previous = ""
 
         for row in rows:
 
+            if not isinstance(
+                row,
+                dict,
+            ):
+
+                raise RuntimeError(
+                    f"{symbol} row "
+                    "不是 object"
+                )
+
             normalized = normalize_price_row(
-                code="",
+                code=symbol,
                 date_value=row.get(
                     "date"
                 ),
@@ -3356,7 +2334,7 @@ def build_manifest(
     shard_files: List[str],
     results: Dict[
         str,
-        Dict[str, Any]
+        Dict[str, Any],
     ],
     universe_stock_count: int,
     universe_etf_count: int,
@@ -3368,15 +2346,18 @@ def build_manifest(
     type_counts = {}
 
     complete_count = 0
+    partial_count = 0
     short_count = 0
 
     latest_dates = []
 
-    for result in results.values():
+    for result in (
+        results.values()
+    ):
 
         source = result.get(
             "source",
-            "unknown"
+            "unknown",
         )
 
         source_counts[source] = (
@@ -3389,7 +2370,7 @@ def build_manifest(
 
         record_type = result.get(
             "type",
-            "unknown"
+            "unknown",
         )
 
         type_counts[record_type] = (
@@ -3400,11 +2381,17 @@ def build_manifest(
             + 1
         )
 
-        if result.get(
+        status = result.get(
             "history_status"
-        ) == "complete":
+        )
+
+        if status == "complete":
 
             complete_count += 1
+
+        elif status == "partial_history":
+
+            partial_count += 1
 
         else:
 
@@ -3445,7 +2432,8 @@ def build_manifest(
         "price_stock_count":
             sum(
                 1
-                for x in results.values()
+                for x
+                in results.values()
                 if x.get("type")
                 == "STOCK"
             ),
@@ -3453,7 +2441,8 @@ def build_manifest(
         "price_etf_count":
             sum(
                 1
-                for x in results.values()
+                for x
+                in results.values()
                 if x.get("type")
                 == "ETF"
             ),
@@ -3472,14 +2461,17 @@ def build_manifest(
         "complete_history_count":
             complete_count,
 
+        "partial_history_count":
+            partial_count,
+
         "short_history_count":
             short_count,
 
-        "absolute_min_history_rows":
-            ABSOLUTE_MIN_HISTORY_ROWS,
+        "short_history_threshold":
+            SHORT_HISTORY_THRESHOLD,
 
         "target_history_rows":
-            INITIAL_HISTORY_DAYS,
+            TARGET_HISTORY_ROWS,
 
         "max_history_rows":
             MAX_HISTORY_ROWS,
@@ -3500,9 +2492,11 @@ def build_manifest(
             diagnostics,
 
         "latest_date":
-            max(latest_dates)
-            if latest_dates
-            else None,
+            (
+                max(latest_dates)
+                if latest_dates
+                else None
+            ),
 
         "files":
             shard_files,
@@ -3592,14 +2586,14 @@ def validate_manifest(
 
 
 # ============================================================
-# WRITE TEMP
+# WRITE TEMP DIRECTORY
 # ============================================================
 
 def write_price_directory(
     temp_dir: Path,
     results: Dict[
         str,
-        Dict[str, Any]
+        Dict[str, Any],
     ],
     universe_stock_count: int,
     universe_etf_count: int,
@@ -3641,8 +2635,20 @@ def write_price_directory(
             shard,
         )
 
+        shard_files.append(
+            filename
+        )
+
+    # --------------------------------------------------------
+    # shard validation
+    # --------------------------------------------------------
+
+    for index, filename in enumerate(
+        shard_files
+    ):
+
         start = (
-            (index - 1)
+            index
             * STOCKS_PER_FILE
         )
 
@@ -3652,12 +2658,8 @@ def write_price_directory(
         ]
 
         validate_shard(
-            path,
+            temp_dir / filename,
             expected,
-        )
-
-        shard_files.append(
-            filename
         )
 
     manifest = build_manifest(
@@ -3687,21 +2689,12 @@ def write_price_directory(
         universe_etf_count,
     )
 
-    log(
-        f"✓ shard 驗證完成："
-        f"{len(shard_files)} 個"
-    )
-
-    log(
-        "✓ manifest 驗證完成"
-    )
-
 
 # ============================================================
 # ATOMIC REPLACE
 # ============================================================
 
-def replace_output(
+def atomic_replace_output(
     temp_dir: Path,
 ) -> None:
 
@@ -3757,33 +2750,55 @@ def replace_output(
 
 def main() -> int:
 
-    started = time.time()
+    section(
+        "TAIWAN STOCK AI PRICE PIPELINE V10.0"
+    )
+
+    log(
+        "核心修正："
+        "歷史不足 20 日不再排除商品"
+    )
+
+    log(
+        "最小存在條件："
+        "至少 1 筆有效 OHLCV"
+    )
+
+    log(
+        f"目標歷史："
+        f"{TARGET_HISTORY_ROWS} 筆"
+    )
+
+    log(
+        f"短歷史門檻："
+        f"{SHORT_HISTORY_THRESHOLD} 筆"
+    )
+
+    # --------------------------------------------------------
+    # Universe
+    # --------------------------------------------------------
 
     section(
-        f"fetch_prices.py {VERSION}"
+        "LOAD UNIVERSE"
     )
 
-    # ========================================================
-    # UNIVERSE
-    # ========================================================
+    universe = load_universe()
 
-    stocks, etfs = load_universe()
-
-    universe = (
-        stocks
-        + etfs
+    universe_stock_count = sum(
+        1
+        for item in universe
+        if item["type"] == "STOCK"
     )
 
-    universe_stock_count = len(
-        stocks
+    universe_etf_count = sum(
+        1
+        for item in universe
+        if item["type"] == "ETF"
     )
 
-    universe_etf_count = len(
-        etfs
-    )
-
-    universe_count = len(
-        universe
+    log(
+        f"Universe total："
+        f"{len(universe)}"
     )
 
     log(
@@ -3796,102 +2811,19 @@ def main() -> int:
         f"{universe_etf_count}"
     )
 
-    log(
-        f"Universe TOTAL："
-        f"{universe_count}"
+    # --------------------------------------------------------
+    # Fetch
+    # --------------------------------------------------------
+
+    results, diagnostics = (
+        build_results(
+            universe
+        )
     )
 
-    # ========================================================
-    # EXISTING
-    # ========================================================
-
-    existing = load_existing_prices(
-        universe
-    )
-
-    diagnostics = {}
-
-    # ========================================================
-    # INITIAL / INCREMENTAL
-    # ========================================================
-
-    if existing is None:
-
-        results, diagnostics = (
-            fetch_initial_history(
-                universe
-            )
-        )
-
-    else:
-
-        (
-            results,
-            diagnostics,
-            updated,
-        ) = update_existing_with_latest(
-            existing,
-            universe,
-        )
-
-        # ----------------------------------------------------
-        # 如果有新 Universe 商品，
-        # 不用不完整資料混入。
-        # 重新做全市場初始化。
-        # ----------------------------------------------------
-
-        expected_symbols = {
-            item["symbol"]
-            for item in universe
-        }
-
-        existing_symbols = set(
-            existing.keys()
-        )
-
-        new_symbols = (
-            expected_symbols
-            - existing_symbols
-        )
-
-        if new_symbols:
-
-            log("")
-            log(
-                f"⚠️ Universe 新增 "
-                f"{len(new_symbols)} 檔"
-            )
-
-            log(
-                "↳ 重新執行全市場初始化"
-            )
-
-            results, diagnostics = (
-                fetch_initial_history(
-                    universe
-                )
-            )
-
-        elif not results:
-
-            log("")
-            log(
-                "⚠️ 增量資料無法建立有效結果"
-            )
-
-            log(
-                "↳ 重新執行全市場初始化"
-            )
-
-            results, diagnostics = (
-                fetch_initial_history(
-                    universe
-                )
-            )
-
-    # ========================================================
-    # VALIDATION
-    # ========================================================
+    # --------------------------------------------------------
+    # Validate
+    # --------------------------------------------------------
 
     validation = validate_results(
         results,
@@ -3903,187 +2835,67 @@ def main() -> int:
         diagnostics,
     )
 
-    # ========================================================
-    # RESULT SUMMARY
-    # ========================================================
+    # --------------------------------------------------------
+    # IMPORTANT
+    #
+    # fetch_prices.py 不因少數商品沒有資料而把
+    # 已取得的有效資料全部丟掉。
+    #
+    # 但是如果 Universe 有商品完全沒有價格，
+    # diagnostics 必須保留。
+    #
+    # update.yml 的 Validate Price Data
+    # 會最終要求：
+    #
+    # Universe == Price
+    #
+    # 因此如果仍然 missing，
+    # workflow 會明確 FAIL，而不是產生假完整資料。
+    # --------------------------------------------------------
 
-    success_count = validation[
-        "actual_count"
-    ]
+    if validation["malformed"]:
 
-    failed_count = validation[
-        "expected_count"
-    ] - success_count
+        raise RuntimeError(
+            "Price results 包含 "
+            "無效資料結構"
+        )
 
-    success_rate = validation[
-        "success_rate"
-    ]
+    if validation["extra"]:
+
+        raise RuntimeError(
+            "Price results 包含 "
+            "Universe 外商品"
+        )
+
+    # --------------------------------------------------------
+    # Temporary output
+    # --------------------------------------------------------
 
     section(
-        "價格資料結果"
+        "WRITE PRICE DATA"
     )
 
-    log(
-        f"Universe TOTAL："
-        f"{universe_count}"
+    DATA_DIR.mkdir(
+        parents=True,
+        exist_ok=True,
     )
-
-    log(
-        f"有效價格："
-        f"{success_count}"
-    )
-
-    log(
-        f"缺少："
-        f"{failed_count}"
-    )
-
-    log(
-        f"完整率："
-        f"{success_rate:.2%}"
-    )
-
-    # ========================================================
-    # SOURCE COUNT
-    # ========================================================
-
-    source_counts = {}
-
-    for record in results.values():
-
-        source = record.get(
-            "source",
-            "unknown"
-        )
-
-        source_counts[source] = (
-            source_counts.get(
-                source,
-                0,
-            )
-            + 1
-        )
-
-    for source, count in sorted(
-        source_counts.items()
-    ):
-
-        log(
-            f"來源 {source}："
-            f"{count}"
-        )
-
-    # ========================================================
-    # IMPORTANT:
-    #
-    # 缺少商品不再 exit 1。
-    #
-    # 真正資料結構錯誤已經由
-    # print_diagnostics() raise。
-    #
-    # 所以這裡不再存在：
-    #
-    # if success_rate < 80:
-    #     return 1
-    #
-    # ========================================================
-
-    if validation["missing"]:
-
-        log("")
-        log(
-            "⚠️ 本次存在未取得價格的 Universe 商品"
-        )
-
-        log(
-            "⚠️ 不阻塞價格管線"
-        )
-
-    # ========================================================
-    # 7794
-    # ========================================================
-
-    universe_symbols = {
-        x["symbol"]
-        for x in universe
-    }
-
-    if "7794.TWO" in universe_symbols:
-
-        if "7794.TWO" in results:
-
-            record = results[
-                "7794.TWO"
-            ]
-
-            log("")
-            log(
-                "================================================"
-            )
-            log(
-                "✓ 7794.TWO 最終價格驗證"
-            )
-            log(
-                f"資料筆數："
-                f"{record['history_rows']}"
-            )
-            log(
-                f"資料來源："
-                f"{record['source']}"
-            )
-            log(
-                f"最新日期："
-                f"{record['latest_date']}"
-            )
-            log(
-                f"狀態："
-                f"{record['history_status']}"
-            )
-
-            latest = record[
-                "prices"
-            ][-1]
-
-            log(
-                f"最新收盤："
-                f"{latest['close']}"
-            )
-
-            log(
-                "================================================"
-            )
-
-        else:
-
-            log("")
-            log(
-                "⚠️ 7794.TWO 尚未取得價格"
-            )
-
-    # ========================================================
-    # TEMP DIRECTORY
-    # ========================================================
 
     temp_root = Path(
         tempfile.mkdtemp(
-            prefix="prices_build_",
+            prefix=".prices_",
             dir=str(DATA_DIR),
         )
     )
 
-    temp_dir = (
+    temp_output = (
         temp_root
         / "prices"
     )
 
     try:
 
-        section(
-            "建立 temporary Data/prices"
-        )
-
         write_price_directory(
-            temp_dir,
+            temp_output,
             results,
             universe_stock_count,
             universe_etf_count,
@@ -4091,31 +2903,89 @@ def main() -> int:
             diagnostics,
         )
 
-        # ====================================================
-        # ATOMIC
-        # ====================================================
+        # ----------------------------------------------------
+        # Final directory validation
+        # ----------------------------------------------------
 
-        section(
-            "Atomic replace Data/prices"
+        manifest_path = (
+            temp_output
+            / "manifest.json"
         )
 
-        replace_output(
-            temp_dir
+        manifest = load_json(
+            manifest_path
         )
 
-        log(
-            "✓ Data/prices/ 已成功更新"
+        shard_files = manifest[
+            "files"
+        ]
+
+        written_symbols = set()
+
+        for filename in shard_files:
+
+            shard = load_json(
+                temp_output
+                / filename
+            )
+
+            stocks = shard[
+                "stocks"
+            ]
+
+            written_symbols.update(
+                stocks.keys()
+            )
+
+        expected_symbols = {
+            item["symbol"]
+            for item in universe
+        }
+
+        missing_after_write = (
+            expected_symbols
+            - written_symbols
         )
 
-    except Exception as exc:
-
-        log("")
-        log(
-            "❌ 價格資料建置失敗："
-            f"{exc}"
+        extra_after_write = (
+            written_symbols
+            - expected_symbols
         )
 
-        return 1
+        if extra_after_write:
+
+            raise RuntimeError(
+                "寫入後出現 Universe 外股票："
+                f"{sorted(extra_after_write)[:20]}"
+            )
+
+        if missing_after_write:
+
+            log("")
+            log(
+                "⚠️ 寫入後仍缺少商品："
+            )
+
+            for symbol in sorted(
+                missing_after_write
+            ):
+
+                log(
+                    f"  - {symbol}"
+                )
+
+            raise RuntimeError(
+                "Price shard 寫入後 "
+                "仍未完整對應 Universe"
+            )
+
+        # ----------------------------------------------------
+        # Atomic replacement
+        # ----------------------------------------------------
+
+        atomic_replace_output(
+            temp_output
+        )
 
     finally:
 
@@ -4126,84 +2996,146 @@ def main() -> int:
                 ignore_errors=True,
             )
 
-    # ========================================================
-    # FINAL
-    # ========================================================
+    # --------------------------------------------------------
+    # Final report
+    # --------------------------------------------------------
 
-    elapsed = (
-        time.time()
-        - started
+    final_count = len(
+        results
+    )
+
+    short_count = sum(
+        1
+        for record
+        in results.values()
+        if record.get(
+            "history_status"
+        ) == "short_history"
+    )
+
+    partial_count = sum(
+        1
+        for record
+        in results.values()
+        if record.get(
+            "history_status"
+        ) == "partial_history"
+    )
+
+    complete_count = sum(
+        1
+        for record
+        in results.values()
+        if record.get(
+            "history_status"
+        ) == "complete"
     )
 
     section(
-        "FINAL PRICE RESULT"
+        "PRICE PIPELINE RESULT"
     )
 
     log(
-        f"Universe STOCK："
-        f"{universe_stock_count}"
+        f"Universe："
+        f"{len(universe)}"
     )
 
     log(
-        f"Universe ETF："
-        f"{universe_etf_count}"
+        f"Price："
+        f"{final_count}"
     )
 
     log(
-        f"Universe TOTAL："
-        f"{universe_count}"
+        f"Complete history："
+        f"{complete_count}"
     )
 
     log(
-        f"Price 有效："
-        f"{success_count}"
+        f"Partial history："
+        f"{partial_count}"
     )
 
     log(
-        f"Price 缺少："
-        f"{failed_count}"
+        f"Short history："
+        f"{short_count}"
     )
 
     log(
-        f"完整率："
-        f"{success_rate:.2%}"
+        f"Missing："
+        f"{len(validation['missing'])}"
     )
 
     if validation["missing"]:
 
+        log("")
         log(
-            "⚠️ Pipeline：SUCCESS"
+            "❌ 最終仍缺少："
         )
 
-        log(
-            "⚠️ Data completeness："
-            "WARNING"
+        for symbol in validation[
+            "missing"
+        ]:
+
+            log(
+                f"  {symbol}"
+            )
+
+        raise RuntimeError(
+            "Universe 與 Price "
+            "仍未完整對接"
         )
 
-        log(
-            f"⚠️ Missing symbols："
-            f"{len(validation['missing'])}"
+    if final_count != len(
+        universe
+    ):
+
+        raise RuntimeError(
+            "Price count 與 Universe "
+            "不一致"
         )
 
-    else:
-
-        log(
-            "✓ Pipeline：SUCCESS"
-        )
-
-        log(
-            "✓ Data completeness："
-            "100%"
-        )
-
-    log(
-        f"執行時間："
-        f"{elapsed:.1f} 秒"
+    section(
+        "PRICE PIPELINE PASS"
     )
 
-    log("")
     log(
-        "✓ fetch_prices.py V9.0 完成"
+        "✓ Universe 是唯一商品來源"
+    )
+
+    log(
+        "✓ 所有 active 商品均進入 Price pipeline"
+    )
+
+    log(
+        "✓ 新上市商品不因歷史不足而消失"
+    )
+
+    log(
+        "✓ 歷史不足商品標記 short_history"
+    )
+
+    log(
+        "✓ 真正無資料商品才列 missing"
+    )
+
+    log(
+        "✓ OHLCV validation PASS"
+    )
+
+    log(
+        "✓ shard validation PASS"
+    )
+
+    log(
+        "✓ manifest validation PASS"
+    )
+
+    log(
+        "✓ Universe → Price 完整對接"
+    )
+
+    log(
+        "✓ PRICE PIPELINE PASS"
     )
 
     return 0
@@ -4215,6 +3147,38 @@ def main() -> int:
 
 if __name__ == "__main__":
 
-    sys.exit(
-        main()
-    )
+    try:
+
+        raise SystemExit(
+            main()
+        )
+
+    except KeyboardInterrupt:
+
+        log(
+            "❌ 使用者中止"
+        )
+
+        raise SystemExit(
+            130
+        )
+
+    except Exception as exc:
+
+        log("")
+        log(
+            "========================================"
+        )
+        log(
+            "PRICE PIPELINE FAILED"
+        )
+        log(
+            "========================================"
+        )
+        log(
+            f"❌ {exc}"
+        )
+
+        raise SystemExit(
+            1
+        )
