@@ -31,8 +31,8 @@ OFFICIAL SOURCE ONLY
 11. Payload Contract：
     forbidden_sources 是 metadata，
     不得因為 metadata 本身列出禁止來源而誤判。
-12. TPEx 不再猜 STKDMARGIN.TXT URL。
-    直接使用 TPEx 官方 OpenAPI。
+12. TPEx 不猜 STKDMARGIN.TXT URL。
+13. TPEx 官方 OpenAPI 必須實際取得並解析資料。
 """
 
 from __future__ import annotations
@@ -57,7 +57,7 @@ import requests
 
 VERSION = (
     "OFFICIAL-SOURCE-ONLY-2026.08.29-"
-    "TPEX-OPENAPI-MARGIN-VOLUME"
+    "TPEX-OPENAPI-MARGIN-VOLUME-FIXED"
 )
 
 
@@ -149,6 +149,7 @@ HEADERS = {
     "Connection": "keep-alive",
 }
 
+
 session = requests.Session()
 session.headers.update(HEADERS)
 
@@ -221,7 +222,7 @@ def normalize_key(value: Any) -> str:
     text = str(value).strip().lower()
 
     return re.sub(
-        r"[\s_\-\/\(\)（）]+",
+        r"[\s_\-\/\(\)（）\[\]【】]+",
         "",
         text,
     )
@@ -279,6 +280,7 @@ def safe_number(
         return number
 
     except Exception:
+
         return None
 
 
@@ -304,20 +306,26 @@ def find_field(
         key = normalize_key(alias)
 
         if key in normalized:
+
             return normalized[key]
 
     return None
 
 
-def find_code(row: Dict[str, Any]) -> Optional[str]:
+def find_code(
+    row: Dict[str, Any],
+) -> Optional[str]:
     """
-    從官方資料 row 找出股票代號。
+    從官方資料 row 找股票代號。
 
-    TPEx 官方 OpenAPI：
+    TPEx 官方 OpenAPI 常見：
         SecuritiesCompanyCode
 
-    TWSE / 其他來源：
-        證券代號、股票代號、代號、SecuritiesCode 等
+    其他官方資料：
+        證券代號
+        股票代號
+        代號
+        SecuritiesCode
     """
 
     value = find_field(
@@ -328,6 +336,8 @@ def find_code(row: Dict[str, Any]) -> Optional[str]:
             "代號",
             "SecuritiesCompanyCode",
             "SecuritiesCode",
+            "SecurityCode",
+            "stock_code",
             "ticker",
             "symbol",
             "Code",
@@ -335,6 +345,7 @@ def find_code(row: Dict[str, Any]) -> Optional[str]:
     )
 
     return clean_code(value)
+
 
 def find_date(
     row: Dict[str, Any],
@@ -460,7 +471,10 @@ def normalize_records(
 
         for table in tables:
 
-            if not isinstance(table, dict):
+            if not isinstance(
+                table,
+                dict,
+            ):
                 continue
 
             result.extend(
@@ -484,7 +498,10 @@ def normalize_records(
 
         value = payload.get(key)
 
-        if not isinstance(value, list):
+        if not isinstance(
+            value,
+            list,
+        ):
             continue
 
         rows = [
@@ -561,10 +578,17 @@ def request_json(
             )
 
         if attempt < RETRIES:
-            time.sleep(attempt)
+
+            time.sleep(
+                attempt
+            )
 
     log(
-        f"      ❌ {last_error}"
+        f"      ❌ {url}"
+    )
+
+    log(
+        f"         {last_error}"
     )
 
     return None
@@ -624,7 +648,8 @@ def load_universe() -> List[
                 "status",
                 "",
             )
-        ) != "active":
+        ).lower() != "active":
+
             continue
 
         symbol = clean_code(
@@ -778,12 +803,15 @@ def fetch_twse_institutional(
             [
                 "外陸資買賣超股數",
                 "外資及陸資買賣超股數",
+                "外資買賣超股數",
             ],
             [
                 "投信買賣超股數",
+                "投信買賣超",
             ],
             [
                 "自營商買賣超股數",
+                "自營商買賣超",
             ],
         ):
 
@@ -795,7 +823,10 @@ def fetch_twse_institutional(
             )
 
             if value is not None:
-                values.append(value)
+
+                values.append(
+                    value
+                )
 
         if values:
 
@@ -846,6 +877,9 @@ def fetch_tpex_institutional(
             payload
         )
 
+        if not rows:
+            continue
+
         result = {}
 
         for row in rows:
@@ -860,8 +894,9 @@ def fetch_tpex_institutional(
             for aliases in (
                 [
                     "外資及陸資買賣超股數",
-                    "外資買賣超",
+                    "外資買賣超股數",
                     "外資及陸資買賣超",
+                    "外資買賣超",
                 ],
                 [
                     "投信買賣超股數",
@@ -881,7 +916,10 @@ def fetch_tpex_institutional(
                 )
 
                 if value is not None:
-                    values.append(value)
+
+                    values.append(
+                        value
+                    )
 
             if values:
 
@@ -890,6 +928,7 @@ def fetch_tpex_institutional(
                 )
 
         if result:
+
             return result
 
     return {}
@@ -1188,15 +1227,13 @@ def fetch_tpex_total_volume(
 
         return {}
 
-    if rows:
-
-        log(
-            "欄位："
-            + ", ".join(
-                str(k)
-                for k in rows[0].keys()
-            )
+    log(
+        "官方欄位："
+        + ", ".join(
+            str(k)
+            for k in rows[0].keys()
         )
+    )
 
     for row in rows:
 
@@ -1332,15 +1369,9 @@ def fetch_twse_margin_offset(
         ):
 
             if field in {
-                normalize_key(
-                    "證券代號"
-                ),
-                normalize_key(
-                    "股票代號"
-                ),
-                normalize_key(
-                    "代號"
-                ),
+                normalize_key("證券代號"),
+                normalize_key("股票代號"),
+                normalize_key("代號"),
             }:
 
                 code_index = index
@@ -1356,6 +1387,7 @@ def fetch_twse_margin_offset(
             code_index is None
             or offset_index is None
         ):
+
             continue
 
         for row in data:
@@ -1471,30 +1503,47 @@ def fetch_tpex_margin_offset(
 
     for row in rows:
 
+        if not isinstance(
+            row,
+            dict,
+        ):
+            continue
+
         symbol = find_code(row)
 
         if not symbol:
             continue
 
-raw_offset = safe_number(
-    find_field(
-        row,
-        [
-            "資券相抵",
-            "資券相抵(張)",
-            "資券相抵張",
-            "Offsetting",
-            "MarginSpot",
-            "MarginOffset",
-        ],
-    )
-)
+        # ----------------------------------------------------
+        # FIX:
+        # raw_offset 必須位於 for row 迴圈內。
+        # ----------------------------------------------------
+
+        raw_offset = safe_number(
+            find_field(
+                row,
+                [
+                    "資券相抵",
+                    "資券相抵(張)",
+                    "資券相抵張",
+                    "資券互抵",
+                    "資券互抵(張)",
+                    "Offsetting",
+                    "MarginSpot",
+                    "MarginOffset",
+                ],
+            )
+        )
+
         if raw_offset is None:
             continue
 
         if raw_offset < 0:
             continue
 
+        # TPEx margin balance 官方資料的
+        # 資券相抵數值以千股／張級距表示，
+        # 統一轉成股數。
         offset_shares = (
             raw_offset * 1000
         )
@@ -1668,8 +1717,11 @@ def build_daytrade_data(
             valid_rates += 1
 
             if market == "TWSE":
+
                 twse_valid += 1
+
             else:
+
                 tpex_valid += 1
 
         else:
@@ -2390,11 +2442,6 @@ def data_quality_gate(
         "fallback：0"
     )
 
-    # --------------------------------------------------------
-    # TPEx 必須真的有官方資料。
-    # 不再允許 TPEx 全部 0 還 PASS。
-    # --------------------------------------------------------
-
     tpex_universe_count = sum(
         item["market"] == "TPEX"
         for item in securities
@@ -2533,6 +2580,7 @@ def validate_payload_contract(
         definition,
         dict,
     ):
+
         log(
             "❌ Payload Contract："
             "day_trade_definition missing"
@@ -2581,6 +2629,11 @@ def validate_payload_contract(
         )
 
         return False
+
+    # --------------------------------------------------------
+    # 只檢查 stocks 實際資料。
+    # forbidden_sources metadata 本身不能觸發這裡。
+    # --------------------------------------------------------
 
     forbidden = (
         "validated_fallback",
@@ -2692,10 +2745,13 @@ def atomic_write(
         )
 
         try:
+
             temp_file.unlink(
                 missing_ok=True
             )
+
         except Exception:
+
             pass
 
         return False
@@ -2760,6 +2816,7 @@ def verify_written_chip(
         stocks,
         dict,
     ):
+
         return False
 
     for symbol, item in stocks.items():
@@ -2767,11 +2824,13 @@ def verify_written_chip(
         if item.get(
             "symbol"
         ) != symbol:
+
             return False
 
         if item.get(
             "updated_at"
         ) != data_date:
+
             return False
 
         source = item.get(
@@ -2782,6 +2841,7 @@ def verify_written_chip(
             None,
             "official",
         }:
+
             return False
 
         offset = item.get(
@@ -2801,9 +2861,11 @@ def verify_written_chip(
         )
 
         if offset != alias:
+
             return False
 
         if rate is None:
+
             continue
 
         if (
@@ -2811,6 +2873,15 @@ def verify_written_chip(
             or total is None
             or total <= 0
         ):
+
+            return False
+
+        if offset < 0:
+
+            return False
+
+        if offset > total:
+
             return False
 
         expected = round(
@@ -2825,14 +2896,17 @@ def verify_written_chip(
             stored = float(rate)
 
         except Exception:
+
             return False
 
         if abs(
             expected - stored
         ) > 0.0001:
+
             return False
 
         if source != "official":
+
             return False
 
     log(
@@ -2944,6 +3018,7 @@ def main() -> int:
         if not validate_structure(
             stocks
         ):
+
             return 1
 
         # ----------------------------------------------------
@@ -2957,6 +3032,7 @@ def main() -> int:
             data_date,
             trading_dates,
         ):
+
             return 1
 
         # ----------------------------------------------------
@@ -3069,6 +3145,7 @@ def main() -> int:
         if not atomic_write(
             payload
         ):
+
             return 1
 
         # ----------------------------------------------------
