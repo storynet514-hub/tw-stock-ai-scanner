@@ -2,26 +2,22 @@
 # -*- coding: utf-8 -*-
 
 """
-00838B TPEx ETF Official Price Diagnostic V6
+00838B TPEx ETF Official API Contract Diagnostic V6
 
-Purpose
--------
-1. Diagnose the official TPEx ETF historical-data API.
-2. Do not modify fetch_prices.py.
-3. Do not modify Data/prices.json.
-4. Do not modify Data/universe.json.
-5. Do not assume tables[].data.
-6. Inspect the official historical ETF page.
-7. Inspect linked JavaScript for the real API request contract.
-8. Test GET and POST candidates against the confirmed API route.
-9. Print the complete JSON structure returned by TPEx.
-10. Search recursively for 00838B.
-11. Stop only after the official ETF data path is identified.
+Purpose:
+1. Inspect the official TPEx ETF historical daily page.
+2. Discover the JavaScript configuration used by the page.
+3. Download tables.js.
+4. Discover API_PATTERN and ETFReport/historical.
+5. Inspect JavaScript request functions and request contracts.
+6. Test discovered endpoint/method/parameter combinations.
+7. Search all successful JSON responses for 00838B.
+8. Do NOT modify production price files.
 
-IMPORTANT
----------
-This is a diagnostic script only.
-It does NOT modify the production price pipeline.
+Production files NOT touched:
+- Scripts/fetch_prices.py
+- Data/prices.json
+- Data/universe.json
 """
 
 from __future__ import annotations
@@ -42,36 +38,57 @@ PAGE_URL = (
     "https://www.tpex.org.tw/zh-tw/product/etf/info/historical/day.html"
 )
 
-API_URL = (
-    "https://www.tpex.org.tw/www/zh-tw/ETFReport/historical"
+TABLES_JS_URL = (
+    "https://www.tpex.org.tw/rsrc/js/tables.js"
 )
 
-BASE_URL = "https://www.tpex.org.tw"
+API_BASE = "https://www.tpex.org.tw"
+
+LANG = "zh-tw"
+ACTION = "ETFReport/historical"
+
+DEFAULT_START_DATE = date(2026, 8, 28)
+TEST_DAYS = 10
+
+TIMEOUT = 30
 
 HEADERS = {
     "User-Agent": (
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
         "AppleWebKit/537.36 "
         "(KHTML, like Gecko) "
-        "Chrome/131.0 Safari/537.36"
+        "Chrome/131.0.0.0 Safari/537.36"
     ),
     "Accept": (
-        "application/json,text/javascript,text/plain,"
-        "text/html,*/*"
+        "text/html,application/xhtml+xml,application/xml;"
+        "q=0.9,application/json;q=0.8,*/*;q=0.7"
     ),
-    "Accept-Language": "zh-TW,zh;q=0.9,en;q=0.8",
+    "Accept-Language": "zh-TW,zh;q=0.9,en-US;q=0.8,en;q=0.7",
+    "Connection": "keep-alive",
     "Referer": PAGE_URL,
+}
+
+JSON_HEADERS = {
+    **HEADERS,
+    "Accept": "application/json,text/plain,*/*",
     "X-Requested-With": "XMLHttpRequest",
 }
 
-TIMEOUT = 30
 
-session = requests.Session()
-session.headers.update(HEADERS)
+def print_line(char="=", length=80):
+    print(char * length)
 
 
-def roc_date(d: date) -> str:
+def roc_date_slash(d: date) -> str:
     return f"{d.year - 1911:03d}/{d.month:02d}/{d.day:02d}"
+
+
+def roc_date_compact(d: date) -> str:
+    return f"{d.year - 1911:03d}{d.month:02d}{d.day:02d}"
+
+
+def gregorian_compact(d: date) -> str:
+    return d.strftime("%Y%m%d")
 
 
 def normalize(value) -> str:
@@ -87,22 +104,17 @@ def normalize(value) -> str:
     )
 
 
-def print_separator(title: str = "") -> None:
-    print()
-    print("=" * 80)
-    if title:
-        print(title)
-        print("=" * 80)
-
-
-def fetch_page() -> str | None:
-    print_separator("STEP 1 - OFFICIAL TPEx ETF HISTORICAL PAGE")
+def request_page(session: requests.Session):
+    print_line()
+    print("STEP 1 - OFFICIAL TPEx ETF HISTORICAL PAGE")
+    print_line()
 
     print(f"URL: {PAGE_URL}")
 
     try:
         response = session.get(
             PAGE_URL,
+            headers=HEADERS,
             timeout=TIMEOUT,
         )
     except requests.RequestException as exc:
@@ -118,41 +130,44 @@ def fetch_page() -> str | None:
     print(f"CONTENT LENGTH: {len(response.content)}")
 
     if response.status_code != 200:
-        print("ERROR: historical page HTTP status is not 200")
+        print("ERROR: page status is not 200")
         return None
 
     response.encoding = response.apparent_encoding or "utf-8"
 
     html = response.text
 
+    print()
     print(f"HTML LENGTH: {len(html)}")
 
-    if "ETF" not in html:
-        print("WARNING: ETF keyword not found in HTML")
+    if "ETF" not in html.upper():
+        print("WARNING: ETF keyword not found in page")
 
     return html
 
 
-def extract_script_urls(html: str) -> list[str]:
-    print_separator("STEP 2 - LINKED JAVASCRIPT FILES")
+def extract_script_urls(html: str):
+    print_line()
+    print("STEP 2 - LINKED JAVASCRIPT FILES")
+    print_line()
 
-    urls: list[str] = []
+    urls = []
 
     pattern = re.compile(
-        r'<script[^>]+src=["\']([^"\']+)["\']',
+        r'<script\b[^>]*\bsrc=["\']([^"\']+)["\']',
         re.IGNORECASE,
     )
 
     for match in pattern.finditer(html):
-        src = unescape(match.group(1).strip())
+        raw = unescape(match.group(1).strip())
 
-        if not src:
+        if not raw:
             continue
 
-        absolute = urljoin(BASE_URL, src)
+        full_url = urljoin(PAGE_URL, raw)
 
-        if absolute not in urls:
-            urls.append(absolute)
+        if full_url not in urls:
+            urls.append(full_url)
 
     for url in urls:
         print(f"  {url}")
@@ -163,41 +178,50 @@ def extract_script_urls(html: str) -> list[str]:
     return urls
 
 
-def download_scripts(script_urls: list[str]) -> dict[str, str]:
-    print_separator("STEP 3 - DOWNLOAD JAVASCRIPT")
+def download_script(session, url: str):
+    try:
+        response = session.get(
+            url,
+            headers=HEADERS,
+            timeout=TIMEOUT,
+        )
+    except requests.RequestException as exc:
+        print(f"ERROR: {url}")
+        print(f"  {exc}")
+        return None
 
-    scripts: dict[str, str] = {}
+    if response.status_code != 200:
+        print(f"ERROR: {url}")
+        print(f"  HTTP {response.status_code}")
+        return None
+
+    response.encoding = response.apparent_encoding or "utf-8"
+
+    return response.text
+
+
+def download_all_scripts(session, script_urls):
+    print_line()
+    print("STEP 3 - DOWNLOAD JAVASCRIPT")
+    print_line()
+
+    scripts = {}
 
     for url in script_urls:
-        try:
-            response = session.get(
-                url,
-                timeout=TIMEOUT,
-            )
-        except requests.RequestException as exc:
-            print()
-            print(f"ERROR: {url}")
-            print(f"  {exc}")
+        content = download_script(session, url)
+
+        if content is None:
             continue
 
-        if response.status_code != 200:
-            print()
-            print(f"ERROR: {url}")
-            print(f"  HTTP {response.status_code}")
-            continue
-
-        response.encoding = response.apparent_encoding or "utf-8"
-        text = response.text
-
-        scripts[url] = text
+        scripts[url] = content
 
         print()
         print(f"OK: {url}")
         print(
             "  content_type: "
-            f"{response.headers.get('Content-Type', '')}"
+            "downloaded"
         )
-        print(f"  length: {len(response.content)}")
+        print(f"  length: {len(content)}")
 
     print()
     print(f"JAVASCRIPT FILES LOADED: {len(scripts)}")
@@ -205,282 +229,594 @@ def download_scripts(script_urls: list[str]) -> dict[str, str]:
     return scripts
 
 
-def print_keyword_context(
-    source_name: str,
-    text: str,
-    keywords: list[str],
-) -> None:
-    for keyword in keywords:
-        positions = [
-            match.start()
-            for match in re.finditer(
-                re.escape(keyword),
-                text,
-                re.IGNORECASE,
-            )
-        ]
+def extract_inline_api_config(html: str):
+    print_line()
+    print("STEP 4 - EXTRACT INLINE API CONFIGURATION")
+    print_line()
 
-        if not positions:
-            continue
+    results = []
 
-        print()
-        print("-" * 80)
-        print(f"SOURCE: {source_name}")
-        print(f"KEYWORD: {keyword}")
-
-        for position in positions[:10]:
-            start = max(0, position - 700)
-            end = min(len(text), position + 1800)
-
-            print()
-            print(text[start:end])
-
-
-def inspect_api_configuration(
-    html: str,
-    scripts: dict[str, str],
-) -> None:
-    print_separator("STEP 4 - SEARCH ETF API CONFIGURATION")
-
-    keywords = [
-        "ETFReport",
-        "API_PATTERN",
-        "tables.init",
-        "historical",
-        "download",
-        "csv",
-    ]
-
-    print_keyword_context(
-        "HTML",
+    api_pattern_matches = re.findall(
+        r'API_PATTERN\s*=\s*["\']([^"\']+)["\']',
         html,
-        keywords,
+        flags=re.IGNORECASE,
     )
 
-    for url, text in scripts.items():
-        print_keyword_context(
-            url,
-            text,
-            keywords,
+    action_matches = re.findall(
+        r'action\s*:\s*["\']([^"\']+)["\']',
+        html,
+        flags=re.IGNORECASE,
+    )
+
+    init_matches = re.findall(
+        r'tables\.init\s*\((.*?)\)\s*;',
+        html,
+        flags=re.IGNORECASE | re.DOTALL,
+    )
+
+    print()
+    print("API_PATTERN FOUND IN HTML:")
+
+    if api_pattern_matches:
+        for item in api_pattern_matches:
+            print(f"  {item}")
+            results.append(("html_api_pattern", item))
+    else:
+        print("  NONE")
+
+    print()
+    print("ACTION VALUES FOUND IN HTML:")
+
+    action_values = []
+
+    for item in action_matches:
+        if "ETF" in item or "Report" in item or "historical" in item:
+            if item not in action_values:
+                action_values.append(item)
+
+    if action_values:
+        for item in action_values:
+            print(f"  {item}")
+            results.append(("html_action", item))
+    else:
+        print("  NONE")
+
+    print()
+    print("TABLES.INIT BLOCKS:")
+
+    if init_matches:
+        for index, block in enumerate(init_matches, start=1):
+            print()
+            print(f"--- TABLES.INIT BLOCK {index} ---")
+            print(block[:5000])
+    else:
+        print("  NONE")
+
+    return results
+
+
+def find_keyword_context(
+    source: str,
+    keyword: str,
+    context=1800,
+):
+    matches = []
+
+    start = 0
+
+    while True:
+        index = source.lower().find(
+            keyword.lower(),
+            start,
         )
 
+        if index < 0:
+            break
 
-def extract_action_candidates(
-    html: str,
-    scripts: dict[str, str],
-) -> list[str]:
-    print_separator("STEP 5 - EXTRACT ACTION CANDIDATES")
+        left = max(0, index - context)
+        right = min(
+            len(source),
+            index + len(keyword) + context,
+        )
 
-    combined = html + "\n" + "\n".join(scripts.values())
+        matches.append(
+            source[left:right]
+        )
 
-    candidates: list[str] = []
+        start = index + len(keyword)
 
-    patterns = [
-        r'action\s*:\s*["\']([^"\']+)["\']',
-        r'ETFReport/[A-Za-z0-9_./-]+',
-        r'ETFReport\\/[A-Za-z0-9_./-]+',
+        if len(matches) >= 20:
+            break
+
+    return matches
+
+
+def inspect_javascript_sources(scripts):
+    print_line()
+    print("STEP 5 - SEARCH JAVASCRIPT REQUEST CONTRACT")
+    print_line()
+
+    keywords = [
+        "API_PATTERN",
+        "ETFReport/historical",
+        "$.ajax",
+        "$.post",
+        "$.get",
+        "fetch(",
+        "XMLHttpRequest",
+        "method:",
+        "type:",
+        "url:",
+        "data:",
+        "contentType:",
+        "ajax",
+        "post",
+        "get",
     ]
 
-    for pattern in patterns:
-        for match in re.finditer(
-            pattern,
-            combined,
-            re.IGNORECASE,
-        ):
-            value = match.group(1) if match.lastindex else match.group(0)
+    relevant = []
 
-            value = value.replace("\\/", "/").strip()
-
-            if value not in candidates:
-                candidates.append(value)
-
-    if not candidates:
-        print("No action candidates extracted.")
-    else:
-        for candidate in candidates:
-            print(f"  {candidate}")
-
-    return candidates
-
-
-def json_preview(payload) -> str:
-    try:
-        text = json.dumps(
-            payload,
-            ensure_ascii=False,
-            indent=2,
-        )
-    except Exception:
-        text = repr(payload)
-
-    if len(text) > 20000:
-        return text[:20000] + "\n... OUTPUT TRUNCATED ..."
-
-    return text
-
-
-def recursive_symbol_search(
-    value,
-    path: str = "root",
-) -> list[tuple[str, object]]:
-    found: list[tuple[str, object]] = []
-
-    if isinstance(value, dict):
-        for key, child in value.items():
-            child_path = f"{path}.{key}"
-
-            if normalize(key) == SYMBOL:
-                found.append(
-                    (
-                        child_path,
-                        child,
-                    )
-                )
-
-            found.extend(
-                recursive_symbol_search(
-                    child,
-                    child_path,
-                )
+    for url, source in scripts.items():
+        for keyword in keywords:
+            contexts = find_keyword_context(
+                source,
+                keyword,
             )
 
-    elif isinstance(value, list):
-        for index, child in enumerate(value):
-            child_path = f"{path}[{index}]"
+            if not contexts:
+                continue
 
-            found.extend(
-                recursive_symbol_search(
-                    child,
-                    child_path,
+            print()
+            print("-" * 80)
+            print(f"SOURCE: {url}")
+            print(f"KEYWORD: {keyword}")
+            print(f"MATCHES: {len(contexts)}")
+
+            for index, context in enumerate(
+                contexts[:5],
+                start=1,
+            ):
+                print()
+                print(
+                    f"--- MATCH {index} ---"
                 )
+                print(context)
+
+            relevant.append(
+                {
+                    "url": url,
+                    "keyword": keyword,
+                    "contexts": contexts,
+                }
             )
 
-    elif normalize(value) == SYMBOL:
-        found.append(
-            (
-                path,
-                value,
-            )
-        )
-
-    return found
-
-
-def recursive_string_search(
-    value,
-    needle: str,
-    path: str = "root",
-) -> list[tuple[str, object]]:
-    found: list[tuple[str, object]] = []
-
-    needle_norm = normalize(needle)
-
-    if isinstance(value, dict):
-        for key, child in value.items():
-            child_path = f"{path}.{key}"
-
-            if needle_norm in normalize(key):
-                found.append(
-                    (
-                        child_path,
-                        key,
-                    )
-                )
-
-            found.extend(
-                recursive_string_search(
-                    child,
-                    needle,
-                    child_path,
-                )
-            )
-
-    elif isinstance(value, list):
-        for index, child in enumerate(value):
-            child_path = f"{path}[{index}]"
-
-            found.extend(
-                recursive_string_search(
-                    child,
-                    needle,
-                    child_path,
-                )
-            )
-
-    elif needle_norm in normalize(value):
-        found.append(
-            (
-                path,
-                value,
-            )
-        )
-
-    return found
-
-
-def request_candidate(
-    method: str,
-    params: dict,
-    data: dict | None = None,
-):
     print()
-    print("-" * 80)
-    print(f"METHOD: {method}")
-    print(f"URL: {API_URL}")
+    print(
+        f"REQUEST/CONFIG SEARCH BLOCKS: "
+        f"{len(relevant)}"
+    )
 
-    if params:
-        print("PARAMS:")
-        print(
-            json.dumps(
-                params,
-                ensure_ascii=False,
-                indent=2,
+    return relevant
+
+
+def extract_request_candidates(scripts):
+    print_line()
+    print("STEP 6 - EXTRACT REQUEST CANDIDATES")
+    print_line()
+
+    candidates = []
+
+    for url, source in scripts.items():
+
+        # ---------------------------------------------------------
+        # Candidate 1: explicit URL strings containing ETFReport
+        # ---------------------------------------------------------
+        url_patterns = [
+            r'url\s*:\s*["\']([^"\']*ETFReport[^"\']*)["\']',
+            r'["\']([^"\']*ETFReport/historical[^"\']*)["\']',
+        ]
+
+        for pattern in url_patterns:
+            for match in re.finditer(
+                pattern,
+                source,
+                flags=re.IGNORECASE,
+            ):
+                value = match.group(1)
+
+                if value not in {
+                    c["url"]
+                    for c in candidates
+                }:
+                    candidates.append(
+                        {
+                            "source": url,
+                            "kind": "url",
+                            "url": value,
+                        }
+                    )
+
+        # ---------------------------------------------------------
+        # Candidate 2: strings containing API_PATTERN replacement
+        # ---------------------------------------------------------
+        if "ETFReport/historical" in source:
+            candidates.append(
+                {
+                    "source": url,
+                    "kind": "known-action",
+                    "url": (
+                        f"/www/{LANG}/"
+                        f"{ACTION}"
+                    ),
+                }
             )
+
+        # ---------------------------------------------------------
+        # Candidate 3: ajax blocks containing ETFReport
+        # ---------------------------------------------------------
+        for match in re.finditer(
+            r'\$\.ajax\s*\((.*?)\)',
+            source,
+            flags=re.IGNORECASE | re.DOTALL,
+        ):
+            block = match.group(1)
+
+            if "ETFReport" not in block:
+                continue
+
+            candidates.append(
+                {
+                    "source": url,
+                    "kind": "ajax-block",
+                    "block": block[:10000],
+                }
+            )
+
+        # ---------------------------------------------------------
+        # Candidate 4: $.post blocks containing ETFReport
+        # ---------------------------------------------------------
+        for match in re.finditer(
+            r'\$\.post\s*\((.*?)\)',
+            source,
+            flags=re.IGNORECASE | re.DOTALL,
+        ):
+            block = match.group(1)
+
+            if "ETFReport" not in block:
+                continue
+
+            candidates.append(
+                {
+                    "source": url,
+                    "kind": "post-block",
+                    "block": block[:10000],
+                }
+            )
+
+        # ---------------------------------------------------------
+        # Candidate 5: fetch blocks containing ETFReport
+        # ---------------------------------------------------------
+        for match in re.finditer(
+            r'fetch\s*\((.*?)\)',
+            source,
+            flags=re.IGNORECASE | re.DOTALL,
+        ):
+            block = match.group(1)
+
+            if "ETFReport" not in block:
+                continue
+
+            candidates.append(
+                {
+                    "source": url,
+                    "kind": "fetch-block",
+                    "block": block[:10000],
+                }
+            )
+
+    # Deduplicate textual representation.
+    unique = []
+    seen = set()
+
+    for candidate in candidates:
+        key = json.dumps(
+            candidate,
+            ensure_ascii=False,
+            sort_keys=True,
         )
 
-    if data:
-        print("FORM DATA:")
+        if key in seen:
+            continue
+
+        seen.add(key)
+        unique.append(candidate)
+
+    print()
+    print(f"RAW REQUEST CANDIDATES: {len(unique)}")
+
+    for index, candidate in enumerate(
+        unique,
+        start=1,
+    ):
+        print()
+        print(f"[CANDIDATE {index}]")
         print(
             json.dumps(
-                data,
+                candidate,
                 ensure_ascii=False,
                 indent=2,
-            )
+            )[:12000]
         )
+
+    return unique
+
+
+def build_endpoint_candidates():
+    endpoints = []
+
+    known_paths = [
+        f"/www/{LANG}/{ACTION}",
+        f"/www/{LANG}/{ACTION}/",
+        f"/{LANG}/{ACTION}",
+        f"/{ACTION}",
+        "/ETFReport/historical",
+    ]
+
+    for path in known_paths:
+        full = urljoin(
+            API_BASE,
+            path,
+        )
+
+        if full not in endpoints:
+            endpoints.append(full)
+
+    return endpoints
+
+
+def date_parameter_candidates(d: date):
+    roc_slash = roc_date_slash(d)
+    roc_compact = roc_date_compact(d)
+    gregorian = gregorian_compact(d)
+    iso = d.isoformat()
+
+    candidates = [
+        {"d": roc_slash},
+        {"d": roc_compact},
+        {"d": gregorian},
+        {"d": iso},
+        {"date": roc_slash},
+        {"date": roc_compact},
+        {"date": gregorian},
+        {"date": iso},
+        {"queryDate": roc_slash},
+        {"queryDate": roc_compact},
+        {"queryDate": gregorian},
+        {"queryDate": iso},
+        {"startDate": roc_slash},
+        {"startDate": roc_compact},
+        {"startDate": gregorian},
+        {"date": roc_slash, "l": LANG},
+        {"d": roc_slash, "l": LANG},
+        {"d": roc_slash, "l": LANG, "o": "json"},
+        {
+            "d": roc_slash,
+            "l": LANG,
+            "o": "json",
+            "s": "0,asc,0",
+        },
+    ]
+
+    unique = []
+    seen = set()
+
+    for item in candidates:
+        key = json.dumps(
+            item,
+            sort_keys=True,
+        )
+
+        if key not in seen:
+            seen.add(key)
+            unique.append(item)
+
+    return unique
+
+
+def response_contains_symbol(obj, symbol):
+    if isinstance(obj, dict):
+        for key, value in obj.items():
+            if normalize(key) == symbol:
+                return True
+
+            if response_contains_symbol(
+                value,
+                symbol,
+            ):
+                return True
+
+        return False
+
+    if isinstance(obj, list):
+        for value in obj:
+            if response_contains_symbol(
+                value,
+                symbol,
+            ):
+                return True
+
+        return False
+
+    return normalize(obj) == symbol
+
+
+def collect_rows_containing_symbol(
+    obj,
+    symbol,
+    path="root",
+):
+    matches = []
+
+    if isinstance(obj, dict):
+        for key, value in obj.items():
+
+            next_path = (
+                f"{path}.{key}"
+            )
+
+            if normalize(key) == symbol:
+                matches.append(
+                    {
+                        "path": next_path,
+                        "value": value,
+                    }
+                )
+
+            matches.extend(
+                collect_rows_containing_symbol(
+                    value,
+                    symbol,
+                    next_path,
+                )
+            )
+
+    elif isinstance(obj, list):
+        for index, value in enumerate(obj):
+            next_path = (
+                f"{path}[{index}]"
+            )
+
+            if (
+                isinstance(value, list)
+                or isinstance(value, dict)
+            ):
+                if response_contains_symbol(
+                    value,
+                    symbol,
+                ):
+                    matches.append(
+                        {
+                            "path": next_path,
+                            "value": value,
+                        }
+                    )
+
+            matches.extend(
+                collect_rows_containing_symbol(
+                    value,
+                    symbol,
+                    next_path,
+                )
+            )
+
+    return matches
+
+
+def summarize_json(payload):
+    if isinstance(payload, dict):
+        print(
+            "ROOT KEYS:"
+        )
+
+        for key in payload.keys():
+            print(f"  {key}")
+
+        print()
+
+        for key, value in payload.items():
+            if isinstance(value, list):
+                print(
+                    f"KEY [{key}] -> "
+                    f"list rows={len(value)}"
+                )
+
+            elif isinstance(value, dict):
+                print(
+                    f"KEY [{key}] -> dict "
+                    f"keys={len(value)}"
+                )
+
+            else:
+                print(
+                    f"KEY [{key}] -> "
+                    f"{type(value).__name__}: "
+                    f"{str(value)[:300]}"
+                )
+
+    elif isinstance(payload, list):
+        print(
+            f"ROOT LIST LENGTH: "
+            f"{len(payload)}"
+        )
+
+    else:
+        print(
+            f"ROOT VALUE: "
+            f"{type(payload).__name__}"
+        )
+
+
+def request_json(
+    session,
+    method,
+    url,
+    params,
+    referer=PAGE_URL,
+):
+    headers = {
+        **JSON_HEADERS,
+        "Referer": referer,
+    }
 
     try:
         if method == "GET":
             response = session.get(
-                API_URL,
+                url,
                 params=params,
+                headers=headers,
                 timeout=TIMEOUT,
             )
         else:
             response = session.post(
-                API_URL,
-                params=params,
-                data=data,
+                url,
+                data=params,
+                headers=headers,
                 timeout=TIMEOUT,
             )
     except requests.RequestException as exc:
-        print(f"REQUEST ERROR: {exc}")
+        print(
+            f"REQUEST ERROR: {exc}"
+        )
         return None
 
-    print()
-    print(f"HTTP STATUS: {response.status_code}")
     print(
-        "CONTENT TYPE: "
-        f"{response.headers.get('Content-Type', '')}"
+        f"HTTP STATUS: "
+        f"{response.status_code}"
     )
-    print(f"CONTENT LENGTH: {len(response.content)}")
+
+    content_type = response.headers.get(
+        "Content-Type",
+        "",
+    )
+
+    print(
+        f"CONTENT TYPE: {content_type}"
+    )
+
+    print(
+        f"CONTENT LENGTH: "
+        f"{len(response.content)}"
+    )
 
     if response.status_code != 200:
-        print("HTTP STATUS IS NOT 200")
         return None
 
-    response.encoding = response.apparent_encoding or "utf-8"
+    response.encoding = (
+        response.apparent_encoding
+        or "utf-8"
+    )
 
-    text = response.text.lstrip()
+    text = response.text.strip()
 
     if not text:
         print("EMPTY RESPONSE")
@@ -488,265 +824,337 @@ def request_candidate(
 
     try:
         payload = response.json()
-    except Exception as exc:
-        print(f"NOT JSON: {exc}")
-        print()
-        print("RESPONSE PREVIEW:")
-        print(text[:3000])
+    except Exception:
+        print("NOT JSON")
+
+        preview = text[:1000]
+
+        if "參數輸入錯誤" in text:
+            print(
+                "RESPONSE CONTAINS: "
+                "參數輸入錯誤"
+            )
+
+        print(
+            "RESPONSE PREVIEW:"
+        )
+        print(preview)
+
         return None
 
     print("JSON DECODE: OK")
-    print(f"ROOT TYPE: {type(payload).__name__}")
-
-    if isinstance(payload, dict):
-        print()
-        print("ROOT KEYS:")
-        for key in payload.keys():
-            print(f"  {key}")
-
-    print()
-    print("JSON PREVIEW:")
-    print(json_preview(payload))
 
     return payload
 
 
-def candidate_parameter_sets(
-    d: date,
-) -> list[tuple[str, dict, dict | None]]:
-    roc = roc_date(d)
+def test_endpoint(
+    session,
+    endpoint,
+    d,
+    successful_responses,
+):
+    print()
+    print_line("-")
+    print("TEST API")
+    print_line("-")
 
-    candidates: list[tuple[str, dict, dict | None]] = []
+    print(
+        f"URL: {endpoint}"
+    )
+    print(
+        f"DATE: {d.isoformat()}"
+    )
+    print(
+        f"ROC DATE: "
+        f"{roc_date_slash(d)}"
+    )
 
-    date_values = [
-        roc,
-        d.strftime("%Y/%m/%d"),
-        d.strftime("%Y-%m-%d"),
-        d.strftime("%Y%m%d"),
+    params_list = date_parameter_candidates(d)
+
+    methods = [
+        "GET",
+        "POST",
     ]
 
-    names = [
-        "date",
-        "d",
-        "queryDate",
-        "query_date",
-        "dateValue",
-        "dataDate",
-    ]
+    for method in methods:
+        for params in params_list:
 
-    for name in names:
-        for value in date_values:
-            candidates.append(
-                (
-                    f"GET {name}={value}",
-                    {
-                        name: value,
-                    },
-                    None,
+            print()
+            print("-" * 80)
+            print(
+                f"METHOD: {method}"
+            )
+            print(
+                f"URL: {endpoint}"
+            )
+            print("PARAMS:")
+            print(
+                json.dumps(
+                    params,
+                    ensure_ascii=False,
+                    indent=2,
                 )
             )
 
-    # Common combinations used by TPEx table APIs.
-    for value in date_values:
-        candidates.append(
-            (
-                f"GET date={value}, type=day",
-                {
-                    "date": value,
-                    "type": "day",
-                },
-                None,
-            )
-        )
-
-        candidates.append(
-            (
-                f"GET d={value}, type=day",
-                {
-                    "d": value,
-                    "type": "day",
-                },
-                None,
-            )
-        )
-
-        candidates.append(
-            (
-                f"GET date={value}, period=day",
-                {
-                    "date": value,
-                    "period": "day",
-                },
-                None,
-            )
-        )
-
-    # POST equivalents.
-    for value in date_values:
-        candidates.append(
-            (
-                f"POST date={value}",
-                {},
-                {
-                    "date": value,
-                },
-            )
-        )
-
-        candidates.append(
-            (
-                f"POST d={value}",
-                {},
-                {
-                    "d": value,
-                },
-            )
-        )
-
-    return candidates
-
-
-def test_api_candidates(dates: list[date]):
-    print_separator("STEP 6 - TEST OFFICIAL ETF API")
-
-    print()
-    print("IMPORTANT:")
-    print("These requests are diagnostic only.")
-    print("Production files will not be modified.")
-
-    successes = []
-
-    for d in dates:
-        print_separator(
-            f"TEST DATE: {d.isoformat()} / TPEx: {roc_date(d)}"
-        )
-
-        candidates = candidate_parameter_sets(d)
-
-        seen_response_fingerprints: set[str] = set()
-
-        for label, params, data in candidates:
-            print()
-            print("=" * 80)
-            print(f"TEST CANDIDATE: {label}")
-            print("=" * 80)
-
-            payload = request_candidate(
-                "GET" if not data else "POST",
+            payload = request_json(
+                session,
+                method,
+                endpoint,
                 params,
-                data,
             )
 
             if payload is None:
                 continue
 
-            fingerprint = json.dumps(
-                payload,
-                ensure_ascii=False,
-                sort_keys=True,
-                default=str,
-            )
+            if isinstance(payload, dict):
+                stat = payload.get("stat")
 
-            if fingerprint in seen_response_fingerprints:
-                print()
-                print("DUPLICATE RESPONSE: skip symbol scan")
-                continue
-
-            seen_response_fingerprints.add(fingerprint)
-
-            symbol_matches = recursive_symbol_search(
-                payload
-            )
-
-            if symbol_matches:
-                print()
-                print("!!! SYMBOL FOUND !!!")
-
-                for path, value in symbol_matches:
-                    print(f"PATH: {path}")
-                    print(f"VALUE: {value}")
-
-                successes.append(
-                    (
-                        d.isoformat(),
-                        label,
-                        payload,
+                if stat:
+                    print(
+                        f"STAT: {stat}"
                     )
-                )
 
-                # Do not stop the date immediately.
-                # Continue checking this response for structure.
-                continue
+                    if (
+                        str(stat).strip()
+                        == "參數輸入錯誤"
+                    ):
+                        print(
+                            "INVALID PARAMETER "
+                            "CONTRACT"
+                        )
+                        continue
 
-            # Search all textual occurrences as a secondary
-            # diagnostic because the symbol may be embedded
-            # inside a larger string.
-            text_matches = recursive_string_search(
+            if response_contains_symbol(
                 payload,
                 SYMBOL,
+            ):
+                print()
+                print_line()
+                print(
+                    "SUCCESS: SYMBOL FOUND"
+                )
+                print_line()
+
+                matches = (
+                    collect_rows_containing_symbol(
+                        payload,
+                        SYMBOL,
+                    )
+                )
+
+                print(
+                    f"MATCH COUNT: "
+                    f"{len(matches)}"
+                )
+
+                for match in matches[:20]:
+                    print()
+                    print(
+                        f"PATH: "
+                        f"{match['path']}"
+                    )
+                    print(
+                        json.dumps(
+                            match["value"],
+                            ensure_ascii=False,
+                            indent=2,
+                        )[:10000]
+                    )
+
+                successful_responses.append(
+                    {
+                        "date": d.isoformat(),
+                        "method": method,
+                        "url": endpoint,
+                        "params": params,
+                        "payload": payload,
+                    }
+                )
+
+                return True
+
+            # A JSON response without the symbol is
+            # still useful. Record only non-error JSON.
+            successful_responses.append(
+                {
+                    "date": d.isoformat(),
+                    "method": method,
+                    "url": endpoint,
+                    "params": params,
+                    "payload": payload,
+                }
             )
 
-            if text_matches:
-                print()
-                print("SYMBOL TEXT MATCH FOUND:")
+            print()
+            print(
+                "JSON RESPONSE ACCEPTED "
+                "BUT SYMBOL NOT FOUND"
+            )
 
-                for path, value in text_matches:
-                    print(
-                        f"  {path}: {value}"
-                    )
+            summarize_json(payload)
 
-    return successes
+    return False
 
 
-def inspect_stat_responses(successes) -> None:
-    print_separator("STEP 7 - SUCCESS RESPONSE ANALYSIS")
+def test_discovered_contracts(
+    session,
+    candidates,
+    successful_responses,
+):
+    print_line()
+    print("STEP 7 - TEST DISCOVERED API CONTRACTS")
+    print_line()
 
-    if not successes:
-        print("No successful symbol response to analyze.")
+    endpoints = build_endpoint_candidates()
+
+    # Add explicit URL candidates extracted from JS.
+    for candidate in candidates:
+        if candidate.get("kind") != "url":
+            continue
+
+        raw = candidate.get("url", "")
+
+        if not raw:
+            continue
+
+        if "{" in raw:
+            continue
+
+        full = urljoin(
+            API_BASE,
+            raw,
+        )
+
+        if full not in endpoints:
+            endpoints.append(full)
+
+    print()
+    print("ENDPOINT CANDIDATES:")
+
+    for endpoint in endpoints:
+        print(f"  {endpoint}")
+
+    print()
+    print(
+        f"TOTAL ENDPOINT CANDIDATES: "
+        f"{len(endpoints)}"
+    )
+
+    success_dates = []
+
+    for offset in range(TEST_DAYS):
+        d = (
+            DEFAULT_START_DATE
+            - timedelta(days=offset)
+        )
+
+        print()
+        print_line()
+        print(
+            f"TEST DATE: "
+            f"{d.isoformat()}"
+        )
+        print_line()
+
+        date_found = False
+
+        for endpoint in endpoints:
+            found = test_endpoint(
+                session,
+                endpoint,
+                d,
+                successful_responses,
+            )
+
+            if found:
+                date_found = True
+
+        if date_found:
+            success_dates.append(
+                d.isoformat()
+            )
+
+    return success_dates
+
+
+def print_success_summary(
+    success_dates,
+    successful_responses,
+):
+    print()
+    print_line()
+    print("STEP 8 - SUCCESS RESPONSE ANALYSIS")
+    print_line()
+
+    if not success_dates:
+        print(
+            "No response containing "
+            f"{SYMBOL} was found."
+        )
         return
 
-    for date_text, label, payload in successes:
+    print(
+        f"SUCCESS DATES: "
+        f"{len(success_dates)}"
+    )
+
+    for item in success_dates:
+        print(f"  {item}")
+
+    print()
+    print(
+        f"SUCCESSFUL JSON RESPONSES: "
+        f"{len(successful_responses)}"
+    )
+
+    symbol_responses = []
+
+    for item in successful_responses:
+        if response_contains_symbol(
+            item["payload"],
+            SYMBOL,
+        ):
+            symbol_responses.append(item)
+
+    print(
+        f"RESPONSES CONTAINING "
+        f"{SYMBOL}: "
+        f"{len(symbol_responses)}"
+    )
+
+    for item in symbol_responses[:10]:
         print()
-        print("-" * 80)
-        print(f"DATE: {date_text}")
-        print(f"REQUEST: {label}")
-
-        if isinstance(payload, dict):
-            print()
-            print("ROOT KEYS:")
-            for key in payload:
-                print(f"  {key}")
-
-            if "stat" in payload:
-                print()
-                print("STAT:")
-                print(
-                    json_preview(
-                        payload["stat"]
-                    )
-                )
-
-            for key, value in payload.items():
-                if key == "stat":
-                    continue
-
-                print()
-                print(f"FIELD: {key}")
-                print(
-                    json_preview(value)
-                )
+        print(
+            f"DATE: {item['date']}"
+        )
+        print(
+            f"METHOD: {item['method']}"
+        )
+        print(
+            f"URL: {item['url']}"
+        )
+        print("PARAMS:")
+        print(
+            json.dumps(
+                item["params"],
+                ensure_ascii=False,
+                indent=2,
+            )
+        )
 
 
-def main() -> int:
-    print("=" * 80)
-    print("00838B TPEx ETF OFFICIAL PRICE DIAGNOSTIC V6")
-    print("=" * 80)
+def main():
+    print_line()
+    print(
+        "00838B TPEx ETF OFFICIAL "
+        "API CONTRACT DIAGNOSTIC V6"
+    )
+    print_line()
 
     print()
     print(f"SYMBOL: {SYMBOL}")
     print("SOURCE: TPEx OFFICIAL")
     print("DATA TYPE: ETF HISTORICAL PRICE")
-
     print()
     print("Yahoo: NO")
     print("Universe: NO")
@@ -756,115 +1164,183 @@ def main() -> int:
     print("Data/universe.json: NOT MODIFIED")
 
     print()
-    print("OFFICIAL PAGE:")
-    print(PAGE_URL)
+    print("TEST STRATEGY:")
+    print("  1. Download official ETF historical page")
+    print("  2. Discover tables.init()")
+    print("  3. Discover API_PATTERN")
+    print("  4. Download tables.js")
+    print("  5. Inspect request functions")
+    print("  6. Build endpoint candidates")
+    print("  7. Test GET and POST contracts")
+    print("  8. Search JSON recursively for 00838B")
 
-    print()
-    print("CONFIRMED API ROUTE:")
-    print(API_URL)
+    session = requests.Session()
 
-    html = fetch_page()
+    # -------------------------------------------------------------
+    # STEP 1
+    # -------------------------------------------------------------
+    html = request_page(session)
 
     if html is None:
+        print()
+        print("FAILED: official page unavailable")
         return 1
 
-    script_urls = extract_script_urls(html)
-
-    scripts = download_scripts(
-        script_urls
+    # -------------------------------------------------------------
+    # STEP 2
+    # -------------------------------------------------------------
+    script_urls = extract_script_urls(
+        html
     )
 
-    inspect_api_configuration(
-        html,
-        scripts,
+    # -------------------------------------------------------------
+    # STEP 3
+    # -------------------------------------------------------------
+    scripts = download_all_scripts(
+        session,
+        script_urls,
     )
 
-    action_candidates = extract_action_candidates(
-        html,
-        scripts,
+    # Always explicitly attempt tables.js.
+    if TABLES_JS_URL not in scripts:
+        print()
+        print(
+            "Explicit tables.js download:"
+        )
+
+        tables_js = download_script(
+            session,
+            TABLES_JS_URL,
+        )
+
+        if tables_js is not None:
+            scripts[TABLES_JS_URL] = (
+                tables_js
+            )
+
+            print(
+                "OK: tables.js loaded"
+            )
+            print(
+                f"LENGTH: "
+                f"{len(tables_js)}"
+            )
+        else:
+            print(
+                "ERROR: unable to load "
+                "tables.js"
+            )
+
+    # -------------------------------------------------------------
+    # STEP 4
+    # -------------------------------------------------------------
+    extract_inline_api_config(
+        html
     )
 
+    # -------------------------------------------------------------
+    # STEP 5
+    # -------------------------------------------------------------
+    inspect_javascript_sources(
+        scripts
+    )
+
+    # -------------------------------------------------------------
+    # STEP 6
+    # -------------------------------------------------------------
+    candidates = (
+        extract_request_candidates(
+            scripts
+        )
+    )
+
+    # -------------------------------------------------------------
+    # STEP 7
+    # -------------------------------------------------------------
+    successful_responses = []
+
+    success_dates = (
+        test_discovered_contracts(
+            session,
+            candidates,
+            successful_responses,
+        )
+    )
+
+    # -------------------------------------------------------------
+    # STEP 8
+    # -------------------------------------------------------------
+    print_success_summary(
+        success_dates,
+        successful_responses,
+    )
+
+    # -------------------------------------------------------------
+    # FINAL
+    # -------------------------------------------------------------
     print()
-    print("ACTION CANDIDATES:")
-    if action_candidates:
-        for action in action_candidates:
-            print(f"  {action}")
-    else:
-        print("  NONE")
-
-    start_date = date(
-        2026,
-        8,
-        28,
-    )
-
-    dates = [
-        start_date - timedelta(days=offset)
-        for offset in range(10)
-    ]
-
-    successes = test_api_candidates(
-        dates
-    )
-
-    inspect_stat_responses(
-        successes
-    )
-
-    print_separator("FINAL RESULT")
+    print_line()
+    print("FINAL RESULT")
+    print_line()
 
     print(
-        f"HTTP / JSON test dates: {len(dates)}"
+        f"HTTP / JSON test dates: "
+        f"{TEST_DAYS}"
     )
 
     print(
         f"Successful responses containing "
-        f"{SYMBOL}: {len(successes)}"
+        f"{SYMBOL}: "
+        f"{len(success_dates)} dates"
     )
 
-    if successes:
-        print()
-        print("SUCCESS")
+    if success_dates:
         print()
         print(
-            "The official TPEx ETF API path has "
-            "returned a response containing "
-            f"{SYMBOL}."
+            "SUCCESS: official TPEx ETF "
+            "API contract found."
         )
+
+        print()
+        print("SUCCESS DATES:")
+
+        for item in success_dates:
+            print(f"  {item}")
+
         print()
         print(
-            "Production fetch_prices.py remains "
+            "IMPORTANT:"
+        )
+        print(
+            "The diagnostic has identified "
+            "a working official response "
+            "containing 00838B."
+        )
+
+        print()
+        print(
+            "Production files remain "
             "untouched."
-        )
-        print()
-        print(
-            "NEXT STEP:"
-        )
-        print(
-            "Use the confirmed request contract "
-            "to implement an isolated TPEx ETF "
-            "branch in fetch_prices.py."
         )
 
         return 0
 
     print()
     print(
-        f"00838B was NOT found in the tested "
-        f"official API responses."
+        f"NOT FOUND: {SYMBOL}"
     )
 
     print()
     print(
-        "IMPORTANT:"
+        "The diagnostic did not identify "
+        "a working official JSON response "
+        "containing this ETF."
     )
+
+    print()
     print(
-        "This does NOT mean the ETF is absent "
-        "from TPEx."
-    )
-    print(
-        "It means the exact query contract "
-        "has not yet been identified."
+        "The next investigation should use "
+        "the request blocks printed above."
     )
 
     print()
