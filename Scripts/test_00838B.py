@@ -2,15 +2,19 @@
 # -*- coding: utf-8 -*-
 
 """
-00838B TPEx Official Price Diagnostic V3
+00838B TPEx Official ETF Historical Price Diagnostic V4
+=========================================================
 
 目的：
-1. 使用 TPEx 正確的「上櫃股票行情」官方 endpoint
-2. 不使用 stk_wn1430_result.php
-3. 直接讀取 aaData
-4. 搜尋 00838B
-5. 驗證收盤價、成交量等欄位
-6. 不修改正式價格管線
+1. 00838B 已確認為 TPEx ETF
+2. 不再使用一般上櫃股票 stk_quote_result.php
+3. 改測 TPEx 官方 ETF 歷史行情資料
+4. 正確遍歷 tables[].data
+5. 不假設 tables[0]
+6. 不假設 aaData
+7. 搜尋所有 table 的 00838B
+8. 找到後輸出完整 table / fields / row
+9. 不修改正式 fetch_prices.py
 """
 
 from __future__ import annotations
@@ -24,10 +28,19 @@ import requests
 
 SYMBOL = "00838B"
 
-ENDPOINT = (
-    "https://www.tpex.org.tw/web/stock/aftertrading/"
-    "daily_close_quotes/stk_quote_result.php"
-)
+# TPEx 官方 ETF 歷史行情頁面所對應的資料服務
+ENDPOINTS = [
+    (
+        "ETF historical day",
+        "https://www.tpex.org.tw/web/stock/aftertrading/"
+        "etf_hist/etf_hist_result.php",
+    ),
+    (
+        "ETF historical price",
+        "https://www.tpex.org.tw/web/stock/aftertrading/"
+        "etf_hist/etf_hist_result.php",
+    ),
+]
 
 HEADERS = {
     "User-Agent": (
@@ -46,226 +59,449 @@ def roc_date(d: date) -> str:
     return f"{d.year - 1911:03d}/{d.month:02d}/{d.day:02d}"
 
 
-def fetch(d: date):
+def normalize(value) -> str:
+    if value is None:
+        return ""
+
+    return (
+        str(value)
+        .replace("\xa0", " ")
+        .replace("\u3000", " ")
+        .strip()
+        .upper()
+    )
+
+
+def symbol_matches(value) -> bool:
+    """
+    嚴格比對 00838B。
+
+    不做模糊包含，避免把其他商品誤判成 00838B。
+    """
+    return normalize(value) == SYMBOL.upper()
+
+
+def inspect_tables(payload):
+    """
+    正確處理 TPEx JSON：
+
+        root
+          └── tables[]
+                ├── fields
+                └── data[]
+
+    不假設 tables[0]。
+    """
+
+    tables = payload.get("tables")
+
+    print()
+    print("TABLE STRUCTURE")
+    print(f"tables type：{type(tables).__name__}")
+
+    if not isinstance(tables, list):
+        print("❌ root.tables 不是 list")
+
+        print()
+        print("ROOT PAYLOAD PREVIEW")
+        print(
+            json.dumps(
+                payload,
+                ensure_ascii=False,
+                indent=2,
+            )[:12000]
+        )
+
+        return []
+
+    print(f"tables count：{len(tables)}")
+
+    found = []
+
+    for table_index, table in enumerate(tables):
+
+        print()
+        print("-" * 80)
+        print(f"TABLE [{table_index}]")
+        print("-" * 80)
+
+        if not isinstance(table, dict):
+            print(f"type：{type(table).__name__}")
+            print("⚠️ table 不是 dict")
+            continue
+
+        print("keys：")
+        for key in table.keys():
+            print(f"  {key}")
+
+        fields = table.get("fields")
+        data = table.get("data")
+
+        print()
+        print(f"fields type：{type(fields).__name__}")
+        print(f"data type：{type(data).__name__}")
+
+        if isinstance(fields, list):
+            print(f"fields count：{len(fields)}")
+
+            for i, field in enumerate(fields):
+                print(f"  FIELD[{i:02d}]：{field}")
+
+        if not isinstance(data, list):
+            print("⚠️ table.data 不是 list")
+            continue
+
+        print(f"rows：{len(data)}")
+
+        if not data:
+            print("⚠️ table.data = 0 rows")
+            continue
+
+        # ---------------------------------------------------------
+        # 搜尋所有 row
+        # ---------------------------------------------------------
+
+        for row_index, row in enumerate(data):
+
+            if not isinstance(row, list):
+                continue
+
+            # 不是只看 row[0]。
+            # ETF endpoint 可能把代號放在不同欄位，
+            # 因此整列搜尋。
+            matched_positions = []
+
+            for column_index, value in enumerate(row):
+                if symbol_matches(value):
+                    matched_positions.append(column_index)
+
+            if not matched_positions:
+                continue
+
+            found.append(
+                {
+                    "table_index": table_index,
+                    "row_index": row_index,
+                    "matched_positions": matched_positions,
+                    "fields": fields,
+                    "row": row,
+                }
+            )
+
+    return found
+
+
+def fetch(endpoint_name: str, endpoint: str, d: date):
     tpex_date = roc_date(d)
 
-    params = {
-        "l": "zh-tw",
-        "o": "json",
-        "d": tpex_date,
-        "s": "0,asc,0",
-    }
+    params_candidates = [
+        {
+            "l": "zh-tw",
+            "o": "json",
+            "d": tpex_date,
+        },
+        {
+            "l": "zh-tw",
+            "o": "json",
+            "d": tpex_date,
+            "s": "0,asc,0",
+        },
+    ]
 
     print()
     print("=" * 80)
     print(f"TEST DATE：{d.isoformat()}")
     print(f"TPEx DATE：{tpex_date}")
+    print(f"ENDPOINT TYPE：{endpoint_name}")
+    print(f"ENDPOINT：{endpoint}")
     print("=" * 80)
 
-    print(f"ENDPOINT：{ENDPOINT}")
+    for attempt, params in enumerate(params_candidates, start=1):
 
-    try:
-        response = requests.get(
-            ENDPOINT,
-            params=params,
-            headers=HEADERS,
-            timeout=TIMEOUT,
+        print()
+        print(f"REQUEST ATTEMPT：{attempt}")
+        print(f"params：{params}")
+
+        try:
+            response = requests.get(
+                endpoint,
+                params=params,
+                headers=HEADERS,
+                timeout=TIMEOUT,
+            )
+        except Exception as exc:
+            print(f"❌ REQUEST ERROR：{exc}")
+            continue
+
+        print()
+        print("HTTP")
+        print(f"status_code：{response.status_code}")
+        print(
+            "content_type："
+            f"{response.headers.get('Content-Type', '')}"
         )
-    except Exception as exc:
-        print(f"❌ REQUEST ERROR：{exc}")
-        return False
+        print(f"content_length：{len(response.content)}")
 
-    print()
-    print("HTTP")
-    print(f"status_code：{response.status_code}")
-    print(f"content_type：{response.headers.get('Content-Type', '')}")
-    print(f"content_length：{len(response.content)}")
-
-    if response.status_code != 200:
-        print("❌ HTTP STATUS 非 200")
-        return False
-
-    try:
-        payload = response.json()
-    except Exception as exc:
-        print(f"❌ JSON decode failed：{exc}")
-        print(response.text[:3000])
-        return False
-
-    print()
-    print("JSON ROOT")
-    print(f"type：{type(payload).__name__}")
-
-    if not isinstance(payload, dict):
-        print("❌ JSON root 不是 dict")
-        return False
-
-    print()
-    print("ROOT KEYS")
-    for key in payload.keys():
-        print(f"  {key}")
-
-    aa_data = payload.get("aaData")
-
-    print()
-    print("DATA EXTRACTION")
-    print("來源結構：aaData")
-    print(f"type：{type(aa_data).__name__}")
-
-    if not isinstance(aa_data, list):
-        print("❌ aaData 不是 list")
-        print(json.dumps(payload, ensure_ascii=False, indent=2)[:5000])
-        return False
-
-    print(f"rows：{len(aa_data)}")
-
-    if not aa_data:
-        print("❌ aaData = 0 rows")
-        return False
-
-    print()
-    print("GLOBAL SYMBOL SEARCH")
-    print("=" * 80)
-
-    found = []
-
-    for row_index, row in enumerate(aa_data):
-        if not isinstance(row, list):
+        if response.status_code != 200:
+            print("❌ HTTP STATUS 非 200")
             continue
 
-        if not row:
+        try:
+            payload = response.json()
+        except Exception as exc:
+            print(f"❌ JSON decode failed：{exc}")
+            print()
+            print("RAW RESPONSE")
+            print(response.text[:12000])
             continue
 
-        symbol = str(row[0]).strip()
+        print()
+        print("JSON ROOT")
+        print(f"type：{type(payload).__name__}")
 
-        if symbol.upper() == SYMBOL.upper():
-            found.append((row_index, row))
-
-    if not found:
-        print(f"❌ {SYMBOL} 不在 aaData")
+        if not isinstance(payload, dict):
+            print("❌ JSON root 不是 dict")
+            continue
 
         print()
-        print("前 30 筆代號：")
+        print("ROOT KEYS")
 
-        for row in aa_data[:30]:
-            if isinstance(row, list) and row:
-                print(f"  {str(row[0]).strip()}")
+        for key in payload.keys():
+            print(f"  {key}")
 
-        return False
+        # ---------------------------------------------------------
+        # 重要：
+        #
+        # 這裡只接受 tables[].data。
+        # 不再把 aaData 當成唯一資料來源。
+        # ---------------------------------------------------------
 
-    print(f"✅ 找到 {SYMBOL}")
+        found = inspect_tables(payload)
 
-    for row_index, row in found:
-        print()
-        print(f"ROW INDEX：{row_index}")
-        print("RAW ROW：")
-        print(json.dumps(row, ensure_ascii=False))
-
-        print()
-        print("PRICE FIELDS")
-
-        labels = [
-            "代號",
-            "名稱",
-            "收盤",
-            "漲跌",
-            "開盤",
-            "最高",
-            "最低",
-            "成交股數",
-            "成交金額",
-            "成交筆數",
-            "最後買價",
-            "最後買量",
-            "最後賣價",
-            "最後賣量",
-            "發行股數",
-            "次日漲停價",
-            "次日跌停價",
-        ]
-
-        for i, value in enumerate(row):
-            label = labels[i] if i < len(labels) else f"FIELD_{i}"
-            print(f"  [{i:02d}] {label}：{value}")
-
-        if len(row) >= 8:
-            close_price = str(row[2]).strip()
-            volume = str(row[7]).strip()
+        if found:
 
             print()
-            print("VALIDATION")
+            print("=" * 80)
+            print(f"✅ GLOBAL SEARCH FOUND {SYMBOL}")
+            print("=" * 80)
 
-            if close_price and close_price not in ("-", "--"):
-                print(f"  ✅ close_price = {close_price}")
-            else:
-                print("  ❌ close_price 無有效資料")
-                return False
+            for item in found:
 
-            if volume and volume not in ("-", "--"):
-                print(f"  ✅ volume = {volume}")
-            else:
-                print("  ❌ volume 無有效資料")
-                return False
+                table_index = item["table_index"]
+                row_index = item["row_index"]
+                positions = item["matched_positions"]
+                fields = item["fields"]
+                row = item["row"]
 
-    return True
+                print()
+                print(
+                    f"TABLE INDEX：{table_index}"
+                )
+                print(
+                    f"ROW INDEX：{row_index}"
+                )
+                print(
+                    f"MATCHED COLUMN：{positions}"
+                )
+
+                print()
+                print("RAW ROW")
+                print(
+                    json.dumps(
+                        row,
+                        ensure_ascii=False,
+                    )
+                )
+
+                print()
+                print("ROW FIELDS")
+
+                for i, value in enumerate(row):
+
+                    if (
+                        isinstance(fields, list)
+                        and i < len(fields)
+                    ):
+                        label = fields[i]
+                    else:
+                        label = f"FIELD_{i}"
+
+                    print(
+                        f"  [{i:02d}] "
+                        f"{label}：{value}"
+                    )
+
+            return True
+
+        print()
+        print(f"❌ {SYMBOL} not found in tables[].data")
+
+        # 只在第一次 request 印 preview，
+        # 避免 Action log 爆量。
+        if attempt == 1:
+
+            print()
+            print("DATA STRUCTURE PREVIEW")
+
+            tables = payload.get("tables")
+
+            if isinstance(tables, list):
+
+                for i, table in enumerate(tables[:5]):
+
+                    if not isinstance(table, dict):
+                        continue
+
+                    print()
+                    print(f"TABLE {i} PREVIEW")
+
+                    data = table.get("data")
+
+                    if isinstance(data, list):
+
+                        print(
+                            f"rows={len(data)}"
+                        )
+
+                        for row in data[:3]:
+                            print(
+                                json.dumps(
+                                    row,
+                                    ensure_ascii=False,
+                                )
+                            )
+
+        # 第二組 params 不需要再被視為不同日期結果；
+        # 若兩次都沒有找到，就讓 endpoint/date 結束。
+        if attempt == len(params_candidates):
+            return False
+
+    return False
 
 
 def main():
+
     print("=" * 80)
-    print("00838B TPEx OFFICIAL PRICE DIAGNOSTIC V3")
+    print("00838B TPEx OFFICIAL ETF PRICE DIAGNOSTIC V4")
     print("=" * 80)
 
     print(f"測試商品：{SYMBOL}")
     print("資料來源：TPEx 官方")
-    print("資料類型：上櫃股票行情")
-    print(f"Endpoint：{ENDPOINT}")
+    print("資料類型：ETF 歷史行情")
     print()
     print("Yahoo：NO")
     print("Universe：NO")
     print("正式價格管線：NO")
+    print("正式 fetch_prices.py：NO TOUCH")
 
     today = date(2026, 8, 28)
 
-    success_dates = []
+    success = []
 
-    # 測試最近 10 個日曆日
-    for offset in range(10):
-        d = today - timedelta(days=offset)
+    # 最近 10 個日曆日
+    test_dates = [
+        today - timedelta(days=i)
+        for i in range(10)
+    ]
 
-        try:
-            ok = fetch(d)
-        except Exception as exc:
-            print(f"❌ TEST ERROR：{exc}")
-            ok = False
+    for endpoint_name, endpoint in ENDPOINTS:
 
-        if ok:
-            success_dates.append(d.isoformat())
+        print()
+        print()
+        print("#" * 80)
+        print(f"ENDPOINT TEST：{endpoint_name}")
+        print("#" * 80)
 
+        for d in test_dates:
+
+            try:
+                ok = fetch(
+                    endpoint_name,
+                    endpoint,
+                    d,
+                )
+            except Exception as exc:
+
+                print()
+                print(
+                    f"❌ UNHANDLED TEST ERROR：{exc}"
+                )
+
+                ok = False
+
+            if ok:
+
+                success.append(
+                    (
+                        endpoint_name,
+                        endpoint,
+                        d.isoformat(),
+                    )
+                )
+
+    print()
     print()
     print("=" * 80)
     print("FINAL RESULT")
     print("=" * 80)
 
-    print(f"HTTP / JSON 測試日期：10")
-    print(f"找到 {SYMBOL} 的日期：{len(success_dates)}")
+    print(
+        f"HTTP / JSON 測試日期："
+        f"{len(test_dates)}"
+    )
 
-    if success_dates:
+    print(
+        f"找到 {SYMBOL} 的結果："
+        f"{len(success)}"
+    )
+
+    if success:
+
         print()
         print("✅ SUCCESS")
-        for d in success_dates:
-            print(f"  {d}")
+
+        for endpoint_name, endpoint, d in success:
+
+            print()
+            print(f"日期：{d}")
+            print(f"類型：{endpoint_name}")
+            print(f"Endpoint：{endpoint}")
 
         print()
-        print("✅ 已確認 TPEx 官方價格資料可取得 00838B")
+        print(
+            "✅ 已找到 TPEx 官方 ETF "
+            "歷史行情資料。"
+        )
+
         print()
-        print("下一步才修改正式 fetch_prices.py。")
+        print(
+            "下一步才可以依實際 row/fields "
+            "修改正式價格管線。"
+        )
 
         return 0
 
     print()
-    print(f"❌ 最近測試期間仍沒有找到 {SYMBOL}")
+    print(
+        f"❌ 目前候選 ETF endpoint "
+        f"仍沒有找到 {SYMBOL}"
+    )
+
     print()
-    print("這次才需要繼續追查 TPEx 資料分類。")
+    print("目前已確認：")
+    print("1. 00838B 是 TPEx ETF")
+    print("2. 不應使用 stk_wn1430_result.php")
+    print("3. 不應使用一般上櫃股票 stk_quote_result.php")
+    print("4. TPEx 官方另有 ETF 歷史行情資料頁")
+    print("5. 本測試只認 tables[].data")
+    print("6. 正式 fetch_prices.py 尚未修改")
+
+    print()
+    print(
+        "❌ 若本測試失敗，下一步只追查 "
+        "ETF 歷史行情頁面的實際 API endpoint，"
+        "不再修改正式價格管線。"
+    )
 
     return 1
 
