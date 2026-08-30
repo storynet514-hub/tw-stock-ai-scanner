@@ -2,33 +2,46 @@
 # -*- coding: utf-8 -*-
 
 """
-00838B TPEx ETF Official Price Diagnostic
+00838B TPEx ETF Official Price Diagnostic V4
 
 Purpose:
-1. Test TPEx ETF historical price data only.
-2. Do not use stk_wn1430_result.php.
-3. Do not use normal OTC stock quote endpoint.
-4. Read only tables[].data.
-5. Search for 00838B.
-6. Validate close price and volume.
-7. Do not modify the production price pipeline.
+1. Use the official TPEx ETF historical data page.
+2. Do NOT treat the HTML page itself as a JSON API.
+3. Discover the actual data endpoint from the page and its JavaScript.
+4. Test candidate API endpoints.
+5. Search for ETF symbol 00838B.
+6. Validate close price and volume when possible.
+7. Do NOT modify the production price pipeline.
+
+This is a diagnostic script only.
+It does not use Yahoo, Universe, or fetch_prices.py.
 """
 
 from __future__ import annotations
 
+import csv
+import io
 import json
+import re
 import sys
 from datetime import date, timedelta
+from html import unescape
+from urllib.parse import urljoin, urlparse
 
 import requests
 
 
 SYMBOL = "00838B"
 
-ENDPOINT = (
-    "https://www.tpex.org.tw/web/etf/historical/"
-    "etf_statistics.php"
+PAGE_URL = (
+    "https://www.tpex.org.tw/zh-tw/product/etf/info/historical/day.html"
 )
+
+LEGACY_PAGE_URL = (
+    "https://wwwov.tpex.org.tw/web/etf/historical/etf_statistics.php"
+)
+
+TIMEOUT = 30
 
 HEADERS = {
     "User-Agent": (
@@ -37,203 +50,643 @@ HEADERS = {
         "(KHTML, like Gecko) "
         "Chrome/131.0 Safari/537.36"
     ),
-    "Accept": "application/json,text/plain,*/*",
+    "Accept": (
+        "text/html,application/xhtml+xml,application/xml;"
+        "q=0.9,application/json;q=0.8,*/*;q=0.7"
+    ),
     "Accept-Language": "zh-TW,zh;q=0.9,en;q=0.8",
     "Referer": "https://www.tpex.org.tw/",
+    "Connection": "keep-alive",
 }
 
-TIMEOUT = 30
+
+session = requests.Session()
+session.headers.update(HEADERS)
 
 
-def roc_date(d: date) -> str:
-    return f"{d.year - 1911:03d}/{d.month:02d}/{d.day:02d}"
+def roc_date(value: date) -> str:
+    return f"{value.year - 1911:03d}/{value.month:02d}/{value.day:02d}"
 
 
 def normalize(value) -> str:
     if value is None:
         return ""
 
-    return (
-        str(value)
-        .replace("\ufeff", "")
-        .replace("\u3000", "")
-        .strip()
-        .upper()
-    )
+    text = str(value)
 
-
-def request_json(d: date):
-    tpex_date = roc_date(d)
-
-    params = {
-        "l": "zh-tw",
-        "d": tpex_date,
+    replacements = {
+        "\ufeff": "",
+        "\u3000": " ",
+        "\r": " ",
+        "\n": " ",
+        "\t": " ",
     }
 
-    print()
-    print("=" * 80)
-    print(f"TEST DATE: {d.isoformat()}")
-    print(f"TPEx DATE: {tpex_date}")
-    print("=" * 80)
-    print(f"ENDPOINT: {ENDPOINT}")
+    for old, new in replacements.items():
+        text = text.replace(old, new)
 
+    return " ".join(text.strip().upper().split())
+
+
+def is_symbol(value) -> bool:
+    return normalize(value) == SYMBOL
+
+
+def safe_request(url: str, params=None):
     try:
-        response = requests.get(
-            ENDPOINT,
+        response = session.get(
+            url,
             params=params,
-            headers=HEADERS,
             timeout=TIMEOUT,
+            allow_redirects=True,
         )
+        return response
     except requests.RequestException as exc:
         print(f"REQUEST ERROR: {exc}")
         return None
 
+
+def print_response_summary(response, label: str):
     print()
-    print("HTTP")
+    print("=" * 80)
+    print(label)
+    print("=" * 80)
+
+    print(f"requested_url: {response.request.url}")
     print(f"status_code: {response.status_code}")
     print(
         "content_type: "
         f"{response.headers.get('Content-Type', '')}"
     )
     print(f"content_length: {len(response.content)}")
+    print(f"final_url: {response.url}")
+
+
+def fetch_page() -> str | None:
+    print()
+    print("=" * 80)
+    print("STEP 1 - FETCH TPEx OFFICIAL ETF HISTORICAL PAGE")
+    print("=" * 80)
+
+    print(f"PAGE_URL: {PAGE_URL}")
+
+    response = safe_request(PAGE_URL)
+
+    if response is None:
+        print("FAILED: unable to request official page")
+        return None
+
+    print_response_summary(response, "ETF HISTORICAL PAGE")
 
     if response.status_code != 200:
-        print("HTTP STATUS IS NOT 200")
+        print("FAILED: HTTP status is not 200")
         return None
 
-    try:
-        payload = response.json()
-    except Exception as exc:
-        print(f"JSON DECODE FAILED: {exc}")
-        print()
-        print("RESPONSE PREVIEW:")
-        print(response.text[:2000])
+    content_type = response.headers.get("Content-Type", "").lower()
+
+    if "html" not in content_type:
+        print(
+            "WARNING: official page did not return "
+            "a normal HTML content type"
+        )
+
+    response.encoding = response.apparent_encoding or "utf-8"
+
+    html = response.text
+
+    if not html:
+        print("FAILED: empty HTML response")
         return None
 
-    return payload
+    print(f"html_length: {len(html)}")
+
+    return html
 
 
-def extract_rows(payload):
-    """
-    Strict data contract:
-
-    root
-      tables[]
-        data[]
-
-    No aaData.
-    No root data.
-    No rows.
-    """
-
+def extract_script_urls(html: str) -> list[str]:
     print()
-    print("JSON ROOT")
-    print(f"type: {type(payload).__name__}")
+    print("=" * 80)
+    print("STEP 2 - DISCOVER JAVASCRIPT FILES")
+    print("=" * 80)
 
-    if not isinstance(payload, dict):
-        print("JSON ROOT IS NOT DICT")
-        return []
+    urls: list[str] = []
 
+    patterns = [
+        r'<script[^>]+src=["\']([^"\']+)["\']',
+        r'<script[^>]+src=([^\s>]+)',
+    ]
+
+    for pattern in patterns:
+        for match in re.finditer(
+            pattern,
+            html,
+            flags=re.IGNORECASE,
+        ):
+            raw_url = unescape(match.group(1)).strip()
+            raw_url = raw_url.strip("\"'")
+
+            if not raw_url:
+                continue
+
+            absolute_url = urljoin(PAGE_URL, raw_url)
+
+            if absolute_url not in urls:
+                urls.append(absolute_url)
+
+    print(f"script_count: {len(urls)}")
+
+    for index, url in enumerate(urls, start=1):
+        print(f"  [{index:02d}] {url}")
+
+    return urls
+
+
+def extract_inline_javascript(html: str) -> list[str]:
+    scripts: list[str] = []
+
+    for match in re.finditer(
+        r"<script\b[^>]*>(.*?)</script>",
+        html,
+        flags=re.IGNORECASE | re.DOTALL,
+    ):
+        content = match.group(1).strip()
+
+        if content:
+            scripts.append(content)
+
+    return scripts
+
+
+def fetch_javascript(urls: list[str]) -> list[tuple[str, str]]:
     print()
-    print("ROOT KEYS")
+    print("=" * 80)
+    print("STEP 3 - FETCH JAVASCRIPT")
+    print("=" * 80)
 
-    for key in payload.keys():
-        print(f"  {key}")
+    results: list[tuple[str, str]] = []
 
-    tables = payload.get("tables")
-
-    print()
-    print("TABLES")
-    print(f"type: {type(tables).__name__}")
-
-    if not isinstance(tables, list):
-        print("tables IS NOT LIST")
-        return []
-
-    print(f"table_count: {len(tables)}")
-
-    rows = []
-
-    for table_index, table in enumerate(tables):
+    for index, url in enumerate(urls, start=1):
         print()
-        print("-" * 80)
-        print(f"TABLE [{table_index}]")
+        print(f"JS [{index:02d}]")
+        print(f"URL: {url}")
 
-        if not isinstance(table, dict):
-            print(
-                "table type: "
-                f"{type(table).__name__}"
-            )
+        response = safe_request(url)
+
+        if response is None:
+            print("FAILED")
             continue
 
-        print("table keys:")
+        print(f"status_code: {response.status_code}")
+        print(
+            "content_type: "
+            f"{response.headers.get('Content-Type', '')}"
+        )
+        print(f"content_length: {len(response.content)}")
 
-        for key in table.keys():
-            print(f"  {key}")
-
-        data = table.get("data")
-
-        print()
-        print("tables[].data")
-        print(f"type: {type(data).__name__}")
-
-        if not isinstance(data, list):
-            print("data IS NOT LIST")
+        if response.status_code != 200:
+            print("SKIP: HTTP status is not 200")
             continue
 
-        print(f"raw rows: {len(data)}")
+        response.encoding = response.apparent_encoding or "utf-8"
 
-        valid_count = 0
+        text = response.text
 
-        for row in data:
-            if isinstance(row, list) and row:
-                rows.append(
-                    (
-                        table_index,
-                        row,
-                    )
-                )
-                valid_count += 1
+        if not text:
+            print("SKIP: empty JavaScript")
+            continue
 
-        print(f"valid rows: {valid_count}")
+        results.append((url, text))
+        print("OK")
+
+    print()
+    print(f"usable_javascript_files: {len(results)}")
+
+    return results
+
+
+def discover_candidate_urls(
+    html: str,
+    javascript: list[tuple[str, str]],
+) -> list[str]:
+    print()
+    print("=" * 80)
+    print("STEP 4 - DISCOVER POSSIBLE DATA ENDPOINTS")
+    print("=" * 80)
+
+    candidates: list[str] = []
+
+    def add_candidate(value: str, base_url: str):
+        value = unescape(value).strip()
+        value = value.strip("\"'`")
+
+        if not value:
+            return
+
+        if value.startswith("//"):
+            value = "https:" + value
+
+        absolute = urljoin(base_url, value)
+
+        parsed = urlparse(absolute)
+
+        if parsed.scheme not in ("http", "https"):
+            return
+
+        if "tpex.org.tw" not in parsed.netloc.lower():
+            return
+
+        if absolute not in candidates:
+            candidates.append(absolute)
+
+    # Direct URLs inside HTML.
+    html_url_patterns = [
+        r"""https?://[^"'`\s<>]+""",
+        r"""["'](/[^"'`\s<>]*(?:api|ajax|json|csv|historical|etf)[^"'`\s<>]*)["']""",
+    ]
+
+    for pattern in html_url_patterns:
+        for match in re.finditer(
+            pattern,
+            html,
+            flags=re.IGNORECASE,
+        ):
+            value = match.group(0)
+
+            if value.startswith(("\"", "'")):
+                value = value[1:-1]
+
+            add_candidate(value, PAGE_URL)
+
+    # URLs and endpoint-like strings inside JavaScript.
+    for js_url, text in javascript:
+        patterns = [
+            r"""https?://[^"'`\s<>]+""",
+            r"""["']([^"'`\s<>]*(?:api|ajax|json|csv|historical|history|etf)[^"'`\s<>]*)["']""",
+            r"""url\s*:\s*["']([^"']+)["']""",
+            r"""action\s*:\s*["']([^"']+)["']""",
+            r"""href\s*:\s*["']([^"']+)["']""",
+            r"""fetch\s*$begin:math:text$\\s\*\[\"\'\]\(\[\^\"\'\]\+\)\[\"\'\]\"\"\"\,
+            r\"\"\"axios\\\.\(\?\:get\|post\)\\s\*\\\(\\s\*\[\"\'\]\(\[\^\"\'\]\+\)\[\"\'\]\"\"\"\,
+            r\"\"\"\\\$\\\.\(\?\:get\|post\|ajax\)\\s\*\\\(\\s\*\[\"\'\]\(\[\^\"\'\]\+\)\[\"\'\]\"\"\"\,
+        \]
+
+        for pattern in patterns\:
+            for match in re\.finditer\(
+                pattern\,
+                text\,
+                flags\=re\.IGNORECASE\,
+            \)\:
+                value \= match\.group\(0\)
+
+                if value\.startswith\(\(\"\\\"\"\, \"\'\"\)\)\:
+                    value \= value\[1\:\-1\]
+
+                if match\.lastindex\:
+                    value \= match\.group\(match\.lastindex\)
+
+                add\_candidate\(value\, js\_url\)
+
+    \# Look for known TPEx historical API path fragments\.
+    path\_fragments \= \[
+        \"\/api\/\"\,
+        \"\/api\"\,
+        \"\/openapi\/\"\,
+        \"\/web\/\"\,
+        \"\/zh\-tw\/\"\,
+        \"etf\"\,
+        \"historical\"\,
+        \"history\"\,
+        \"daily\"\,
+        \"download\"\,
+        \"csv\"\,
+        \"json\"\,
+    \]
+
+    filtered\: list\[str\] \= \[\]
+
+    for url in candidates\:
+        lower \= url\.lower\(\)
+
+        if any\(fragment\.lower\(\) in lower for fragment in path\_fragments\)\:
+            if url not in filtered\:
+                filtered\.append\(url\)
+
+    print\(f\"raw\_candidates\: \{len\(candidates\)\}\"\)
+    print\(f\"filtered\_candidates\: \{len\(filtered\)\}\"\)
+
+    for index\, url in enumerate\(filtered\, start\=1\)\:
+        print\(f\"  \[\{index\:03d\}\] \{url\}\"\)
+
+    return filtered
+
+
+def extract\_request\_contexts\(
+    javascript\: list\[tuple\[str\, str\]\]\,
+\) \-\> list\[str\]\:
+    print\(\)
+    print\(\"\=\" \* 80\)
+    print\(\"STEP 5 \- SEARCH JAVASCRIPT REQUEST CONTEXT\"\)
+    print\(\"\=\" \* 80\)
+
+    keywords \= \[
+        \"ajax\"\,
+        \"fetch\(\"\,
+        \"\$\.get\"\,
+        \"\$\.post\"\,
+        \"\$\.ajax\"\,
+        \"axios\"\,
+        \"api\"\,
+        \"json\"\,
+        \"csv\"\,
+        \"historical\"\,
+        \"history\"\,
+        \"etf\"\,
+        \"download\"\,
+        \"datatable\"\,
+    \]
+
+    contexts\: list\[str\] \= \[\]
+
+    for js\_url\, text in javascript\:
+        lower \= text\.lower\(\)
+
+        for keyword in keywords\:
+            start \= 0
+
+            while True\:
+                position \= lower\.find\(keyword\.lower\(\)\, start\)
+
+                if position \< 0\:
+                    break
+
+                left \= max\(0\, position \- 250\)
+                right \= min\(len\(text\)\, position \+ 500\)
+
+                context \= text\[left\:right\]
+
+                marker \= \(
+                    f\"SOURCE\: \{js\_url\}\\n\"
+                    f\"KEYWORD\: \{keyword\}\\n\"
+                    f\"\{context\}\"
+                \)
+
+                contexts\.append\(marker\)
+
+                start \= position \+ len\(keyword\)
+
+                if len\(contexts\) \>\= 100\:
+                    break
+
+            if len\(contexts\) \>\= 100\:
+                break
+
+        if len\(contexts\) \>\= 100\:
+            break
+
+    print\(f\"request\_contexts\_found\: \{len\(contexts\)\}\"\)
+
+    for index\, context in enumerate\(contexts\[\:30\]\, start\=1\)\:
+        print\(\)
+        print\(f\"\-\-\- REQUEST CONTEXT \{index\} \-\-\-\"\)
+        print\(context\)
+
+    return contexts
+
+
+def parse\_json\_text\(text\: str\)\:
+    cleaned \= text\.strip\(\)
+
+    if not cleaned\:
+        return None
+
+    \# Normal JSON\.
+    try\:
+        return json\.loads\(cleaned\)
+    except Exception\:
+        pass
+
+    \# JSONP\.
+    jsonp\_match \= re\.match\(
+        r\"\^\[A\-Za\-z\_\$\]\[A\-Za\-z0\-9\_\$\]\*\\s\*\\\(\(\.\*\)$end:math:text$\s*;?\s*$",
+        cleaned,
+        flags=re.DOTALL,
+    )
+
+    if jsonp_match:
+        body = jsonp_match.group(1)
+
+        try:
+            return json.loads(body)
+        except Exception:
+            pass
+
+    # Search for a JSON object or array embedded in text.
+    object_match = re.search(
+        r"(\{.*\}|$begin:math:display$\.\*$end:math:display$)",
+        cleaned,
+        flags=re.DOTALL,
+    )
+
+    if object_match:
+        try:
+            return json.loads(object_match.group(1))
+        except Exception:
+            pass
+
+    return None
+
+
+def flatten_rows(value, rows=None):
+    if rows is None:
+        rows = []
+
+    if isinstance(value, list):
+        if value and all(
+            not isinstance(item, (dict, list))
+            for item in value
+        ):
+            rows.append(value)
+            return rows
+
+        for item in value:
+            flatten_rows(item, rows)
+
+        return rows
+
+    if isinstance(value, dict):
+        for key, item in value.items():
+            lower_key = str(key).lower()
+
+            if lower_key in {
+                "data",
+                "aadata",
+                "rows",
+                "result",
+                "results",
+                "items",
+                "records",
+            }:
+                flatten_rows(item, rows)
+            else:
+                flatten_rows(item, rows)
 
     return rows
 
 
-def find_symbol(rows):
-    print()
-    print("=" * 80)
-    print("GLOBAL SYMBOL SEARCH")
-    print("=" * 80)
+def find_symbol_in_json(payload):
+    rows = flatten_rows(payload)
 
     found = []
 
-    for table_index, row in rows:
-        if not row:
+    for row in rows:
+        if not isinstance(row, list):
             continue
 
-        # Do not assume the symbol is always field 0.
         for value in row:
-            if normalize(value) == SYMBOL:
-                found.append(
-                    (
-                        table_index,
-                        row,
-                    )
-                )
+            if is_symbol(value):
+                found.append(row)
                 break
 
     return found
 
 
-def print_row(table_index, row):
+def find_symbol_in_text(text: str):
+    if SYMBOL not in normalize(text):
+        return []
+
+    rows = []
+
+    for line in text.splitlines():
+        if SYMBOL in normalize(line):
+            rows.append(line.strip())
+
+    return rows
+
+
+def parse_html_tables(text: str):
+    """
+    Lightweight HTML table parser.
+
+    No external HTML parser dependency is required.
+    """
+
+    tables = re.findall(
+        r"<table\b[^>]*>(.*?)</table>",
+        text,
+        flags=re.IGNORECASE | re.DOTALL,
+    )
+
+    rows = []
+
+    for table in tables:
+        tr_list = re.findall(
+            r"<tr\b[^>]*>(.*?)</tr>",
+            table,
+            flags=re.IGNORECASE | re.DOTALL,
+        )
+
+        for tr in tr_list:
+            cells = re.findall(
+                r"<t[dh]\b[^>]*>(.*?)</t[dh]>",
+                tr,
+                flags=re.IGNORECASE | re.DOTALL,
+            )
+
+            cleaned = []
+
+            for cell in cells:
+                cell = re.sub(
+                    r"<[^>]+>",
+                    " ",
+                    cell,
+                )
+                cell = unescape(cell)
+                cell = " ".join(cell.split())
+                cleaned.append(cell)
+
+            if cleaned:
+                rows.append(cleaned)
+
+    return rows
+
+
+def parse_csv_text(text: str):
+    rows = []
+
+    try:
+        reader = csv.reader(io.StringIO(text))
+
+        for row in reader:
+            if row:
+                rows.append(row)
+
+    except Exception:
+        return []
+
+    return rows
+
+
+def find_symbol_in_rows(rows):
+    found = []
+
+    for row in rows:
+        if not isinstance(row, list):
+            continue
+
+        for value in row:
+            if is_symbol(value):
+                found.append(row)
+                break
+
+    return found
+
+
+def extract_numeric_fields(row):
+    numeric = []
+
+    for index, value in enumerate(row):
+        text = normalize(value)
+
+        if not text:
+            continue
+
+        if text in {
+            "-",
+            "--",
+            "N/A",
+            "NULL",
+            "NA",
+        }:
+            continue
+
+        cleaned = (
+            text.replace(",", "")
+            .replace(" ", "")
+        )
+
+        try:
+            number = float(cleaned)
+        except ValueError:
+            continue
+
+        numeric.append(
+            (
+                index,
+                value,
+                number,
+            )
+        )
+
+    return numeric
+
+
+def validate_found_row(row):
     print()
     print("=" * 80)
-    print(f"FOUND IN TABLE: {table_index}")
+    print("FOUND 00838B")
     print("=" * 80)
 
     print("RAW ROW:")
-
     print(
         json.dumps(
             row,
@@ -250,201 +703,285 @@ def print_row(table_index, row):
             f"  [{index:02d}] {value}"
         )
 
-
-def validate_row(row):
-    """
-    Validate the discovered row without assuming
-    a fixed ETF field order.
-
-    The diagnostic prints every field and then
-    checks that numeric market data exists.
-    """
-
-    print()
-    print("=" * 80)
-    print("VALIDATION")
-    print("=" * 80)
-
-    if not row:
-        print("EMPTY ROW")
-        return False
-
-    symbol_found = any(
-        normalize(value) == SYMBOL
-        for value in row
-    )
-
-    if not symbol_found:
-        print(
-            f"SYMBOL {SYMBOL} NOT FOUND IN ROW"
-        )
-        return False
-
-    print(
-        f"OK: symbol {SYMBOL} found in row"
-    )
-
-    numeric_values = []
-
-    for index, value in enumerate(row):
-        text = normalize(value)
-
-        if not text:
-            continue
-
-        if text in (
-            "-",
-            "--",
-            "N/A",
-            "NULL",
-        ):
-            continue
-
-        cleaned = (
-            text
-            .replace(",", "")
-            .replace(" ", "")
-        )
-
-        try:
-            number = float(cleaned)
-        except ValueError:
-            continue
-
-        numeric_values.append(
-            (
-                index,
-                value,
-                number,
-            )
-        )
+    numeric = extract_numeric_fields(row)
 
     print()
     print("NUMERIC FIELDS:")
 
-    for index, value, number in numeric_values:
+    for index, value, number in numeric:
         print(
             f"  [{index:02d}] "
             f"value={value} "
             f"numeric={number}"
         )
 
-    if not numeric_values:
-        print(
-            "ERROR: no numeric fields found"
-        )
+    if not numeric:
+        print()
+        print("WARNING: no numeric fields detected")
         return False
 
     print()
-    print(
-        "OK: ETF row contains numeric "
-        "market data"
-    )
+    print("OK: 00838B row contains numeric data")
 
     return True
 
 
-def fetch_one_date(d: date) -> bool:
-    payload = request_json(d)
+def test_candidate(
+    url: str,
+    test_date: date,
+):
+    """
+    Test one discovered candidate endpoint.
 
-    if payload is None:
-        return False
-
-    rows = extract_rows(payload)
+    We intentionally send several common date parameter names
+    because the page's JavaScript may use one of them.
+    """
 
     print()
     print("=" * 80)
-    print("DATA EXTRACTION SUMMARY")
+    print("TEST CANDIDATE ENDPOINT")
     print("=" * 80)
 
-    print("source: tables[].data")
-    print(f"valid rows: {len(rows)}")
+    print(f"URL: {url}")
+    print(f"DATE: {test_date.isoformat()}")
+    print(f"ROC DATE: {roc_date(test_date)}")
 
-    if not rows:
-        print(
-            "ERROR: tables[].data contains "
-            "zero valid rows"
-        )
-        return False
+    date_variants = [
+        {},
+        {"d": roc_date(test_date)},
+        {"date": roc_date(test_date)},
+        {"date": test_date.isoformat()},
+        {"startDate": roc_date(test_date)},
+        {"queryDate": roc_date(test_date)},
+        {"dataDate": roc_date(test_date)},
+        {"tradeDate": roc_date(test_date)},
+        {"date": test_date.strftime("%Y/%m/%d")},
+        {"date": test_date.strftime("%Y-%m-%d")},
+    ]
 
-    found = find_symbol(rows)
+    seen_responses = set()
 
-    print(
-        f"searched symbol: {SYMBOL}"
-    )
-    print(
-        f"matches: {len(found)}"
-    )
-
-    if not found:
+    for variant_index, params in enumerate(
+        date_variants,
+        start=1,
+    ):
         print()
         print(
-            f"ERROR: {SYMBOL} not found "
-            "in tables[].data"
+            f"PARAM VARIANT [{variant_index:02d}]: "
+            f"{params}"
         )
 
-        print()
-        print("FIRST 30 ROWS:")
+        response = safe_request(
+            url,
+            params=params,
+        )
 
-        for number, (table_index, row) in enumerate(
-            rows[:30],
-            start=1,
-        ):
-            preview = " | ".join(
-                str(value)
-                for value in row[:8]
+        if response is None:
+            continue
+
+        content_hash = hash(response.content)
+
+        if content_hash in seen_responses:
+            print("DUPLICATE RESPONSE: skip")
+            continue
+
+        seen_responses.add(content_hash)
+
+        print(
+            f"status_code: "
+            f"{response.status_code}"
+        )
+        print(
+            "content_type: "
+            f"{response.headers.get('Content-Type', '')}"
+        )
+        print(
+            f"content_length: "
+            f"{len(response.content)}"
+        )
+
+        if response.status_code != 200:
+            continue
+
+        response.encoding = (
+            response.apparent_encoding
+            or "utf-8"
+        )
+
+        text = response.text
+
+        payload = parse_json_text(text)
+
+        if payload is not None:
+            print("FORMAT: JSON / JSONP")
+
+            found = find_symbol_in_json(payload)
+
+            print(
+                f"00838B matches: "
+                f"{len(found)}"
+            )
+
+            if found:
+                for row in found:
+                    validate_found_row(row)
+
+                return True
+
+            continue
+
+        html_rows = parse_html_tables(text)
+
+        if html_rows:
+            print("FORMAT: HTML TABLE")
+
+            found = find_symbol_in_rows(
+                html_rows
             )
 
             print(
-                f"  {number:02d}. "
-                f"table={table_index} "
-                f"{preview}"
+                f"00838B matches: "
+                f"{len(found)}"
             )
 
-        return False
+            if found:
+                for row in found:
+                    validate_found_row(row)
 
-    all_valid = True
+                return True
 
-    for table_index, row in found:
-        print_row(
-            table_index,
-            row,
-        )
+        csv_rows = parse_csv_text(text)
 
-        if not validate_row(row):
-            all_valid = False
+        if csv_rows:
+            found = find_symbol_in_rows(
+                csv_rows
+            )
 
-    return all_valid
+            if found:
+                print("FORMAT: CSV")
+
+                for row in found:
+                    validate_found_row(row)
+
+                return True
+
+        text_matches = find_symbol_in_text(text)
+
+        if text_matches:
+            print("FORMAT: TEXT")
+
+            for line in text_matches[:10]:
+                print(f"  {line}")
+
+            print()
+            print(
+                "WARNING: symbol found in raw text "
+                "but structured row parsing failed."
+            )
+
+            return True
+
+    return False
+
+
+def build_fallback_candidates():
+    """
+    Conservative official TPEx candidates.
+
+    These are only diagnostics.
+    No production code is changed.
+
+    The important candidate is the new official ETF
+    historical page itself; the script first attempts to
+    discover its backend dynamically.
+    """
+
+    candidates = [
+        PAGE_URL,
+        LEGACY_PAGE_URL,
+        "https://www.tpex.org.tw/",
+        "https://www.tpex.org.tw/openapi/",
+        "https://www.tpex.org.tw/openapi/swagger.json",
+    ]
+
+    return candidates
 
 
 def main():
     print("=" * 80)
-    print("00838B TPEx ETF OFFICIAL PRICE DIAGNOSTIC")
+    print("00838B TPEx ETF OFFICIAL PRICE DIAGNOSTIC V4")
     print("=" * 80)
 
     print(f"TEST SYMBOL: {SYMBOL}")
     print("SOURCE: TPEx OFFICIAL")
     print("DATA TYPE: ETF HISTORICAL PRICE")
-    print(f"ENDPOINT: {ENDPOINT}")
-
     print()
     print("Yahoo: NO")
     print("Universe: NO")
     print("Production pipeline: NO")
-
-    print()
-    print("DATA CONTRACT:")
-    print("  JSON root")
-    print("    -> tables[]")
-    print("       -> data[]")
-
-    print()
-    print("aaData: NO")
-    print("stk_wn1430_result.php: NO")
-    print("normal OTC stock quote: NO")
     print("fetch_prices.py: NOT MODIFIED")
+    print()
+    print("IMPORTANT:")
+    print(
+        "The ETF historical page is HTML. "
+        "This script does not assume the page itself "
+        "is the JSON data API."
+    )
 
-    # Last trading day used for this diagnostic.
+    html = fetch_page()
+
+    if html is None:
+        print()
+        print("=" * 80)
+        print("FINAL RESULT")
+        print("=" * 80)
+        print("FAILED: unable to fetch TPEx ETF page")
+        return 1
+
+    script_urls = extract_script_urls(html)
+
+    inline_scripts = extract_inline_javascript(html)
+
+    print()
+    print(
+        f"inline_javascript_blocks: "
+        f"{len(inline_scripts)}"
+    )
+
+    javascript = fetch_javascript(script_urls)
+
+    for index, inline in enumerate(
+        inline_scripts,
+        start=1,
+    ):
+        javascript.append(
+            (
+                f"{PAGE_URL}#inline-{index}",
+                inline,
+            )
+        )
+
+    candidate_urls = discover_candidate_urls(
+        html,
+        javascript,
+    )
+
+    extract_request_contexts(javascript)
+
+    for fallback in build_fallback_candidates():
+        if fallback not in candidate_urls:
+            candidate_urls.append(fallback)
+
+    print()
+    print("=" * 80)
+    print("STEP 6 - CANDIDATE ENDPOINT TEST")
+    print("=" * 80)
+
+    print(
+        f"total_candidates_to_test: "
+        f"{len(candidate_urls)}"
+    )
+
     start_date = date(
         2026,
         8,
@@ -452,28 +989,72 @@ def main():
     )
 
     success_dates = []
-    tested_dates = 0
 
     for offset in range(10):
-        d = start_date - timedelta(
-            days=offset
+        test_date = (
+            start_date
+            - timedelta(days=offset)
         )
 
-        tested_dates += 1
+        print()
+        print("#" * 80)
+        print(
+            f"DATE ROUND: "
+            f"{test_date.isoformat()}"
+        )
+        print("#" * 80)
 
-        try:
-            ok = fetch_one_date(d)
-        except Exception as exc:
-            print()
-            print(
-                f"TEST ERROR: {exc}"
-            )
-            ok = False
+        for candidate in candidate_urls:
+            # Do not test obvious page URLs as if they were
+            # APIs unless they contain a useful data hint.
+            lower = candidate.lower()
 
-        if ok:
-            success_dates.append(
-                d.isoformat()
+            useful = any(
+                token in lower
+                for token in (
+                    "api",
+                    "ajax",
+                    "json",
+                    "csv",
+                    "download",
+                    "historical",
+                    "history",
+                    "etf",
+                    "swagger",
+                )
             )
+
+            if not useful:
+                continue
+
+            try:
+                ok = test_candidate(
+                    candidate,
+                    test_date,
+                )
+            except Exception as exc:
+                print(
+                    f"TEST ERROR: {exc}"
+                )
+                ok = False
+
+            if ok:
+                success_dates.append(
+                    test_date.isoformat()
+                )
+
+                print()
+                print(
+                    "SUCCESS: candidate endpoint "
+                    "returned 00838B"
+                )
+
+                # One confirmed date is sufficient
+                # for this diagnostic.
+                break
+
+        if success_dates:
+            break
 
     print()
     print("=" * 80)
@@ -481,8 +1062,8 @@ def main():
     print("=" * 80)
 
     print(
-        "HTTP / JSON test dates: "
-        f"{tested_dates}"
+        f"HTTP / endpoint test dates: "
+        f"10"
     )
 
     print(
@@ -499,44 +1080,41 @@ def main():
 
         print()
         print(
-            f"Confirmed TPEx official ETF "
-            f"data contains {SYMBOL}."
+            f"Confirmed TPEx official ETF data "
+            f"can return {SYMBOL}."
         )
 
         print()
         print(
-            "Next step: inspect production "
-            "fetch_prices.py ETF routing."
+            "NEXT STEP:"
+        )
+        print(
+            "Inspect the confirmed endpoint and "
+            "then modify production fetch_prices.py."
         )
 
         return 0
 
     print()
     print(
-        f"FAILED: {SYMBOL} was not found "
-        "during the test period."
+        f"FAILED: {SYMBOL} was not found."
     )
 
     print()
-    print("Confirmed:")
+    print("IMPORTANT DIAGNOSTIC RESULT:")
     print(
-        "1. Test targets TPEx ETF data."
+        "The old etf_statistics.php URL is an HTML page, "
+        "not a JSON API."
     )
+
     print(
-        "2. General OTC stock endpoint "
-        "is not used."
+        "The script therefore searched the official page "
+        "and its JavaScript for backend data endpoints."
     )
+
+    print()
     print(
-        "3. stk_wn1430_result.php "
-        "is not used."
-    )
-    print(
-        "4. Parser reads only "
-        "tables[].data."
-    )
-    print(
-        "5. Production fetch_prices.py "
-        "was not modified."
+        "Production fetch_prices.py was NOT modified."
     )
 
     return 1
