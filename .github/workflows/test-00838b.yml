@@ -1,0 +1,37 @@
+name: Test 00838B TPEx Price
+
+on:
+  workflow_dispatch:
+
+jobs:
+  test-00838b:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install requests
+        run: |
+          python -m pip install --upgrade pip
+          pip install requests
+
+      - name: Python syntax validation
+        run: |
+          set -e
+
+          python -m py_compile \
+            Scripts/test_00838b.py
+
+          echo "✓ Python syntax PASS"
+
+      - name: Test 00838B official TPEx data
+        run: |
+          set -e
+
+          python Scripts/test_00838b.py
