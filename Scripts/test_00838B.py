@@ -2,17 +2,25 @@
 # -*- coding: utf-8 -*-
 
 """
-00838B TPEx ETF Official Price Diagnostic V4
+00838B TPEx ETF Official Price Diagnostic V5
 
-Purpose:
-1. Diagnose the official TPEx ETF historical-data page.
-2. Do not use stk_wn1430_result.php.
-3. Do not use the normal OTC stock quote endpoint.
-4. Do not modify the production price pipeline.
-5. Do not assume that the historical page itself is a JSON API.
-6. Inspect the actual HTML page, forms, scripts, links, and data clues.
-7. Search for 00838B.
-8. If an official data endpoint is exposed by the page, test it.
+Scope:
+- Diagnostic only.
+- Does NOT modify fetch_prices.py.
+- Does NOT modify Data/prices.json.
+- Does NOT modify Data/universe.json.
+- Does NOT use stk_wn1430_result.php.
+- Does NOT use the normal OTC stock quote endpoint.
+
+Strategy:
+1. Open the official TPEx ETF historical daily page.
+2. Inspect HTML and linked JavaScript.
+3. Locate the actual ETF historical data request configuration.
+4. Test discovered candidate API endpoints.
+5. Accept JSON only when the response is actually JSON.
+6. Search recursively for symbol 00838B.
+7. Print the exact response structure and matching row.
+8. Never modify the production price pipeline.
 """
 
 from __future__ import annotations
@@ -21,1162 +29,918 @@ import json
 import re
 import sys
 from datetime import date, timedelta
-from html import unescape
-from urllib.parse import parse_qs, urljoin, urlparse
+from urllib.parse import urljoin, urlparse
 
 import requests
 
 
 SYMBOL = "00838B"
 
-BASE_URL = "https://www.tpex.org.tw"
-
-HISTORICAL_PAGE = (
+OFFICIAL_PAGE = (
     "https://www.tpex.org.tw/zh-tw/product/etf/info/historical/day.html"
 )
 
-OLD_HISTORICAL_PAGE = (
-    "https://www.tpex.org.tw/web/etf/historical/etf_statistics.php"
-)
+BASE_URL = "https://www.tpex.org.tw"
+
+TIMEOUT = 30
 
 HEADERS = {
     "User-Agent": (
-        "Mozilla/5.0 (X11; Linux x86_64) "
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
         "AppleWebKit/537.36 "
         "(KHTML, like Gecko) "
         "Chrome/131.0 Safari/537.36"
     ),
     "Accept": (
         "text/html,application/xhtml+xml,"
-        "application/xml;q=0.9,*/*;q=0.8"
+        "application/json,text/plain,*/*"
     ),
     "Accept-Language": "zh-TW,zh;q=0.9,en;q=0.8",
-    "Referer": BASE_URL + "/",
+    "Referer": OFFICIAL_PAGE,
 }
 
-TIMEOUT = 30
+
+def normalize(value) -> str:
+    if value is None:
+        return ""
+
+    return (
+        str(value)
+        .replace("\ufeff", "")
+        .replace("\u3000", " ")
+        .strip()
+        .upper()
+    )
 
 
 def roc_date(value: date) -> str:
     return f"{value.year - 1911:03d}/{value.month:02d}/{value.day:02d}"
 
 
-def normalize_text(value) -> str:
-    if value is None:
-        return ""
-
-    text = str(value)
-
-    replacements = {
-        "\ufeff": "",
-        "\u3000": " ",
-        "\xa0": " ",
-        "\r": " ",
-        "\n": " ",
-        "\t": " ",
-    }
-
-    for old, new in replacements.items():
-        text = text.replace(old, new)
-
-    return " ".join(text.split()).strip()
+def get_session() -> requests.Session:
+    session = requests.Session()
+    session.headers.update(HEADERS)
+    return session
 
 
-def request_page(url: str, params=None):
+def request_page(session: requests.Session) -> str | None:
+    print("=" * 80)
+    print("STEP 1 - OFFICIAL TPEx ETF HISTORICAL PAGE")
+    print("=" * 80)
+    print(f"URL: {OFFICIAL_PAGE}")
     print()
-    print("=" * 80)
-    print("HTTP REQUEST")
-    print("=" * 80)
-    print(f"URL: {url}")
-
-    if params:
-        print("PARAMS:")
-        for key, value in params.items():
-            print(f"  {key} = {value}")
 
     try:
-        response = requests.get(
-            url,
-            params=params,
-            headers=HEADERS,
+        response = session.get(
+            OFFICIAL_PAGE,
             timeout=TIMEOUT,
         )
     except requests.RequestException as exc:
         print(f"REQUEST ERROR: {exc}")
         return None
 
-    print()
-    print("HTTP RESPONSE")
-    print(f"status_code: {response.status_code}")
+    print(f"HTTP STATUS: {response.status_code}")
     print(
-        "content_type: "
+        "CONTENT TYPE: "
         f"{response.headers.get('Content-Type', '')}"
     )
-    print(f"content_length: {len(response.content)}")
-    print(f"final_url: {response.url}")
+    print(f"CONTENT LENGTH: {len(response.content)}")
 
     if response.status_code != 200:
         print("ERROR: HTTP status is not 200")
         return None
 
-    return response
+    response.encoding = response.apparent_encoding or "utf-8"
+
+    html = response.text
+
+    print()
+    print("PAGE CHECK")
+    print(f"HTML LENGTH: {len(html)}")
+
+    if "ETF" not in html.upper():
+        print("WARNING: ETF text not found in page")
+
+    return html
 
 
-def decode_response(response) -> str:
-    """
-    Decode the response using the server encoding when available.
-    TPEx pages are UTF-8 in the current site.
-    """
-    content_type = response.headers.get("Content-Type", "").lower()
-
-    if "charset=" in content_type:
-        charset = content_type.split("charset=", 1)[1]
-        charset = charset.split(";", 1)[0].strip()
-
-        try:
-            return response.content.decode(charset, errors="replace")
-        except LookupError:
-            pass
-
-    try:
-        return response.content.decode("utf-8", errors="replace")
-    except Exception:
-        return response.text
-
-
-def print_page_identity(html: str):
+def extract_script_urls(html: str) -> list[str]:
     print()
     print("=" * 80)
-    print("PAGE IDENTITY")
+    print("STEP 2 - LINKED JAVASCRIPT FILES")
     print("=" * 80)
 
-    title_match = re.search(
-        r"<title[^>]*>(.*?)</title>",
-        html,
-        flags=re.IGNORECASE | re.DOTALL,
-    )
+    urls: list[str] = []
 
-    if title_match:
-        title = normalize_text(
-            unescape(title_match.group(1))
-        )
-        print(f"title: {title}")
-    else:
-        print("title: NOT FOUND")
-
-    charset_match = re.search(
-        r"<meta[^>]+charset=[\"']?([^\"' >]+)",
-        html,
-        flags=re.IGNORECASE,
-    )
-
-    if charset_match:
-        print(f"charset: {charset_match.group(1)}")
-    else:
-        print("charset: NOT FOUND")
-
-
-def extract_links(html: str, base_url: str):
-    links = []
-
-    pattern = re.compile(
-        r"<a\b[^>]*href\s*=\s*[\"']([^\"']+)[\"'][^>]*>"
-        r"(.*?)"
-        r"</a>",
-        flags=re.IGNORECASE | re.DOTALL,
-    )
-
-    for match in pattern.finditer(html):
-        href = unescape(match.group(1)).strip()
-        text = normalize_text(
-            re.sub(
-                r"<[^>]+>",
-                " ",
-                match.group(2),
-            )
-        )
-
-        absolute = urljoin(base_url, href)
-
-        links.append(
-            {
-                "text": text,
-                "href": href,
-                "url": absolute,
-            }
-        )
-
-    return links
-
-
-def extract_forms(html: str, base_url: str):
-    forms = []
-
-    form_pattern = re.compile(
-        r"<form\b([^>]*)>(.*?)</form>",
-        flags=re.IGNORECASE | re.DOTALL,
-    )
-
-    for form_match in form_pattern.finditer(html):
-        attributes = form_match.group(1)
-        body = form_match.group(2)
-
-        action_match = re.search(
-            r"\baction\s*=\s*[\"']([^\"']*)[\"']",
-            attributes,
-            flags=re.IGNORECASE,
-        )
-
-        method_match = re.search(
-            r"\bmethod\s*=\s*[\"']([^\"']*)[\"']",
-            attributes,
-            flags=re.IGNORECASE,
-        )
-
-        action = (
-            action_match.group(1).strip()
-            if action_match
-            else ""
-        )
-
-        method = (
-            method_match.group(1).strip().upper()
-            if method_match
-            else "GET"
-        )
-
-        fields = []
-
-        input_pattern = re.compile(
-            r"<input\b([^>]*)>",
-            flags=re.IGNORECASE | re.DOTALL,
-        )
-
-        for input_match in input_pattern.finditer(body):
-            attrs = input_match.group(1)
-
-            name_match = re.search(
-                r"\bname\s*=\s*[\"']([^\"']*)[\"']",
-                attrs,
-                flags=re.IGNORECASE,
-            )
-
-            value_match = re.search(
-                r"\bvalue\s*=\s*[\"']([^\"']*)[\"']",
-                attrs,
-                flags=re.IGNORECASE,
-            )
-
-            type_match = re.search(
-                r"\btype\s*=\s*[\"']([^\"']*)[\"']",
-                attrs,
-                flags=re.IGNORECASE,
-            )
-
-            if not name_match:
-                continue
-
-            fields.append(
-                {
-                    "name": name_match.group(1),
-                    "value": (
-                        value_match.group(1)
-                        if value_match
-                        else ""
-                    ),
-                    "type": (
-                        type_match.group(1)
-                        if type_match
-                        else ""
-                    ),
-                }
-            )
-
-        select_pattern = re.compile(
-            r"<select\b([^>]*)>(.*?)</select>",
-            flags=re.IGNORECASE | re.DOTALL,
-        )
-
-        for select_match in select_pattern.finditer(body):
-            attrs = select_match.group(1)
-            select_body = select_match.group(2)
-
-            name_match = re.search(
-                r"\bname\s*=\s*[\"']([^\"']*)[\"']",
-                attrs,
-                flags=re.IGNORECASE,
-            )
-
-            if not name_match:
-                continue
-
-            options = []
-
-            option_pattern = re.compile(
-                r"<option\b([^>]*)>(.*?)</option>",
-                flags=re.IGNORECASE | re.DOTALL,
-            )
-
-            for option_match in option_pattern.finditer(
-                select_body
-            ):
-                option_attrs = option_match.group(1)
-                option_text = normalize_text(
-                    re.sub(
-                        r"<[^>]+>",
-                        " ",
-                        option_match.group(2),
-                    )
-                )
-
-                option_value_match = re.search(
-                    r"\bvalue\s*=\s*[\"']([^\"']*)[\"']",
-                    option_attrs,
-                    flags=re.IGNORECASE,
-                )
-
-                options.append(
-                    {
-                        "value": (
-                            option_value_match.group(1)
-                            if option_value_match
-                            else ""
-                        ),
-                        "text": option_text,
-                    }
-                )
-
-            fields.append(
-                {
-                    "name": name_match.group(1),
-                    "type": "select",
-                    "options": options,
-                }
-            )
-
-        forms.append(
-            {
-                "action": urljoin(base_url, action),
-                "method": method,
-                "fields": fields,
-            }
-        )
-
-    return forms
-
-
-def extract_scripts(html: str, base_url: str):
-    scripts = []
-
-    pattern = re.compile(
-        r"<script\b([^>]*)>(.*?)</script>",
-        flags=re.IGNORECASE | re.DOTALL,
-    )
-
-    for match in pattern.finditer(html):
-        attrs = match.group(1)
-        body = match.group(2)
-
-        src_match = re.search(
-            r"\bsrc\s*=\s*[\"']([^\"']+)[\"']",
-            attrs,
-            flags=re.IGNORECASE,
-        )
-
-        src = ""
-
-        if src_match:
-            src = urljoin(
-                base_url,
-                unescape(src_match.group(1)),
-            )
-
-        scripts.append(
-            {
-                "src": src,
-                "body": body,
-            }
-        )
-
-    return scripts
-
-
-def extract_data_candidates(html: str, base_url: str):
-    """
-    Find URLs that look like data/API/download endpoints.
-
-    This is deliberately heuristic. We do not assume an endpoint.
-    """
-
-    candidates = set()
-
-    url_patterns = [
-        r"""["']([^"']+\.(?:json|csv|ashx|php|jsp)(?:\?[^"']*)?)["']""",
-        r"""["']([^"']*(?:api|ajax|query|search|download|export|history|historical)[^"']*)["']""",
+    patterns = [
+        r'<script[^>]+src=["\']([^"\']+)["\']',
+        r'<link[^>]+href=["\']([^"\']+\.js[^"\']*)["\']',
     ]
 
-    for pattern in url_patterns:
+    for pattern in patterns:
         for match in re.finditer(
             pattern,
             html,
             flags=re.IGNORECASE,
         ):
-            raw = unescape(match.group(1)).strip()
+            raw = match.group(1).strip()
 
             if not raw:
                 continue
 
-            if raw.startswith("javascript:"):
+            absolute = urljoin(BASE_URL, raw)
+
+            if absolute not in urls:
+                urls.append(absolute)
+
+    for url in urls:
+        print(f"  {url}")
+
+    print()
+    print(f"TOTAL SCRIPT URLS: {len(urls)}")
+
+    return urls
+
+
+def download_scripts(
+    session: requests.Session,
+    urls: list[str],
+) -> dict[str, str]:
+    print()
+    print("=" * 80)
+    print("STEP 3 - DOWNLOAD JAVASCRIPT")
+    print("=" * 80)
+
+    results: dict[str, str] = {}
+
+    for url in urls:
+        try:
+            response = session.get(
+                url,
+                timeout=TIMEOUT,
+            )
+        except requests.RequestException as exc:
+            print(f"ERROR: {url}")
+            print(f"  {exc}")
+            continue
+
+        content_type = response.headers.get(
+            "Content-Type",
+            "",
+        )
+
+        if response.status_code != 200:
+            print(
+                f"SKIP: {url} "
+                f"HTTP {response.status_code}"
+            )
+            continue
+
+        text = response.text
+
+        results[url] = text
+
+        print()
+        print(f"OK: {url}")
+        print(f"  content_type: {content_type}")
+        print(f"  length: {len(text)}")
+
+    print()
+    print(f"JAVASCRIPT FILES LOADED: {len(results)}")
+
+    return results
+
+
+def find_relevant_fragments(
+    html: str,
+    scripts: dict[str, str],
+) -> list[tuple[str, str]]:
+    print()
+    print("=" * 80)
+    print("STEP 4 - SEARCH ETF API CONFIGURATION")
+    print("=" * 80)
+
+    keywords = [
+        "ETFReport",
+        "historical",
+        "tables.init",
+        "API_PATTERN",
+        "api_pattern",
+        "action",
+        "ETF",
+        "download",
+        "csv",
+    ]
+
+    fragments: list[tuple[str, str]] = []
+
+    sources = [("HTML", html)]
+
+    for url, text in scripts.items():
+        sources.append((url, text))
+
+    for source_name, text in sources:
+        upper = text.upper()
+
+        matched = False
+
+        for keyword in keywords:
+            position = upper.find(keyword.upper())
+
+            if position < 0:
                 continue
 
-            absolute = urljoin(base_url, raw)
+            matched = True
+
+            start = max(0, position - 500)
+            end = min(
+                len(text),
+                position + 1500,
+            )
+
+            fragment = text[start:end]
+
+            fragments.append(
+                (
+                    source_name,
+                    fragment,
+                )
+            )
+
+            print()
+            print("-" * 80)
+            print(f"SOURCE: {source_name}")
+            print(f"KEYWORD: {keyword}")
+            print("-" * 80)
+            print(fragment)
+
+            break
+
+        if not matched:
+            continue
+
+    print()
+    print(
+        f"RELEVANT CONFIGURATION BLOCKS: "
+        f"{len(fragments)}"
+    )
+
+    return fragments
+
+
+def extract_api_candidates(
+    html: str,
+    scripts: dict[str, str],
+) -> list[str]:
+    print()
+    print("=" * 80)
+    print("STEP 5 - EXTRACT REAL HTTP CANDIDATES")
+    print("=" * 80)
+
+    candidates: list[str] = []
+
+    all_text = [html]
+
+    for text in scripts.values():
+        all_text.append(text)
+
+    combined = "\n".join(all_text)
+
+    # Absolute HTTP URLs.
+    absolute_pattern = re.compile(
+        r'https?://[^\s"\'<>]+',
+        flags=re.IGNORECASE,
+    )
+
+    for match in absolute_pattern.finditer(combined):
+        url = match.group(0).rstrip(
+            ".,;)]}"
+        )
+
+        lower = url.lower()
+
+        if (
+            "tpex.org.tw" not in lower
+            and "tpex.org.tw" not in lower.replace(
+                "https://",
+                "",
+            )
+        ):
+            continue
+
+        if url not in candidates:
+            candidates.append(url)
+
+    # Relative PHP / API paths.
+    relative_patterns = [
+        r'["\']([^"\']+\.php(?:\?[^"\']*)?)["\']',
+        r'["\']([^"\']+/api/[^"\']*)["\']',
+        r'["\']([^"\']*ETFReport[^"\']*)["\']',
+        r'["\']([^"\']*historical[^"\']*)["\']',
+    ]
+
+    for pattern in relative_patterns:
+        for match in re.finditer(
+            pattern,
+            combined,
+            flags=re.IGNORECASE,
+        ):
+            raw = match.group(1).strip()
+
+            if not raw:
+                continue
+
+            if raw.startswith(
+                (
+                    "javascript:",
+                    "#",
+                )
+            ):
+                continue
+
+            absolute = urljoin(
+                BASE_URL,
+                raw,
+            )
 
             parsed = urlparse(absolute)
 
-            if parsed.scheme not in ("http", "https"):
+            if parsed.scheme not in (
+                "http",
+                "https",
+            ):
                 continue
 
-            candidates.add(absolute)
+            if "tpex.org.tw" not in parsed.netloc:
+                continue
 
-    return sorted(candidates)
+            if absolute not in candidates:
+                candidates.append(absolute)
 
+    # Important:
+    # Do NOT treat arbitrary JavaScript text such as
+    # tables.init(...) as an endpoint.
+    filtered: list[str] = []
 
-def print_forms(forms):
-    print()
-    print("=" * 80)
-    print("FORMS")
-    print("=" * 80)
+    for candidate in candidates:
+        lower = candidate.lower()
 
-    if not forms:
-        print("No forms found.")
-        return
-
-    for index, form in enumerate(forms):
-        print()
-        print(f"FORM [{index}]")
-        print(f"method: {form['method']}")
-        print(f"action: {form['action']}")
-
-        for field in form["fields"]:
-            print(
-                f"  field: {field.get('name', '')}"
-                f" type={field.get('type', '')}"
-                f" value={field.get('value', '')}"
-            )
-
-            options = field.get("options")
-
-            if options:
-                for option in options[:20]:
-                    print(
-                        "    option: "
-                        f"value={option['value']} "
-                        f"text={option['text']}"
-                    )
-
-
-def print_relevant_links(links):
-    print()
-    print("=" * 80)
-    print("RELEVANT LINKS")
-    print("=" * 80)
-
-    keywords = (
-        "csv",
-        "download",
-        "export",
-        "query",
-        "search",
-        "historical",
-        "history",
-        "daily",
-        "day",
-        "etf",
-        "api",
-        "ajax",
-    )
-
-    selected = []
-
-    for link in links:
-        combined = (
-            f"{link['text']} "
-            f"{link['href']} "
-            f"{link['url']}"
-        ).lower()
-
-        if any(
-            keyword in combined
-            for keyword in keywords
-        ):
-            selected.append(link)
-
-    if not selected:
-        print("No obvious data links found.")
-        return
-
-    seen = set()
-
-    for link in selected:
-        key = link["url"]
-
-        if key in seen:
+        if "tables.init" in lower:
             continue
 
-        seen.add(key)
+        if "function(" in lower:
+            continue
 
-        print()
-        print(f"text: {link['text']}")
-        print(f"href: {link['href']}")
-        print(f"url:  {link['url']}")
+        if candidate not in filtered:
+            filtered.append(candidate)
 
-
-def print_data_candidates(candidates):
-    print()
-    print("=" * 80)
-    print("DATA / API CANDIDATES")
-    print("=" * 80)
-
-    if not candidates:
-        print("No obvious API/data endpoint found.")
-        return
-
-    for index, url in enumerate(
-        candidates,
+    for index, candidate in enumerate(
+        filtered,
         start=1,
     ):
-        print(f"{index:02d}. {url}")
-
-
-def search_symbol_in_html(
-    html: str,
-    symbol: str,
-):
-    print()
-    print("=" * 80)
-    print("SYMBOL SEARCH IN PAGE HTML")
-    print("=" * 80)
-
-    upper_html = html.upper()
-    upper_symbol = symbol.upper()
-
-    positions = []
-
-    start = 0
-
-    while True:
-        position = upper_html.find(
-            upper_symbol,
-            start,
-        )
-
-        if position < 0:
-            break
-
-        positions.append(position)
-        start = position + len(upper_symbol)
-
-    print(
-        f"symbol: {symbol}"
-    )
-    print(
-        f"matches_in_html: {len(positions)}"
-    )
-
-    for index, position in enumerate(
-        positions[:20],
-        start=1,
-    ):
-        left = max(0, position - 250)
-        right = min(
-            len(html),
-            position + len(symbol) + 250,
-        )
-
-        snippet = normalize_text(
-            html[left:right]
-        )
-
-        print()
         print(
-            f"MATCH [{index}]"
+            f"{index:02d}. {candidate}"
         )
-        print(snippet)
 
-
-def inspect_script_sources(
-    scripts,
-    base_url: str,
-):
     print()
-    print("=" * 80)
-    print("SCRIPT SOURCES")
-    print("=" * 80)
+    print(
+        f"REAL HTTP CANDIDATES: "
+        f"{len(filtered)}"
+    )
 
-    external = [
-        script["src"]
-        for script in scripts
-        if script.get("src")
+    return filtered
+
+
+def build_date_params(d: date) -> list[dict[str, str]]:
+    roc = roc_date(d)
+
+    return [
+        {
+            "l": "zh-tw",
+            "d": roc,
+            "o": "json",
+        },
+        {
+            "l": "zh-tw",
+            "d": roc,
+        },
+        {
+            "date": roc,
+            "l": "zh-tw",
+        },
+        {
+            "date": roc,
+        },
+        {
+            "d": roc,
+        },
     ]
 
-    if not external:
-        print("No external scripts found.")
-        return
 
-    seen = set()
+def contains_symbol(value, symbol: str) -> bool:
+    target = normalize(symbol)
 
-    for src in external:
-        if src in seen:
-            continue
-
-        seen.add(src)
-        print(src)
-
-
-def inspect_inline_scripts(
-    scripts,
-):
-    print()
-    print("=" * 80)
-    print("INLINE DATA-REQUEST CLUES")
-    print("=" * 80)
-
-    patterns = (
-        "ajax",
-        "$.get",
-        "$.post",
-        "fetch(",
-        "axios",
-        "XMLHttpRequest",
-        ".csv",
-        ".json",
-        "download",
-        "export",
-        "api/",
-        "api.",
-        "query",
-        "historical",
-        "etf",
-    )
-
-    found_any = False
-
-    for index, script in enumerate(scripts):
-        body = script.get("body", "")
-
-        if not body.strip():
-            continue
-
-        body_lower = body.lower()
-
-        hits = [
-            pattern
-            for pattern in patterns
-            if pattern.lower() in body_lower
-        ]
-
-        if not hits:
-            continue
-
-        found_any = True
-
-        print()
-        print(
-            f"SCRIPT [{index}] "
-            f"hits={', '.join(hits)}"
-        )
-
-        lines = body.splitlines()
-
-        printed = 0
-
-        for line_number, line in enumerate(
-            lines,
-            start=1,
-        ):
-            line_lower = line.lower()
-
-            if any(
-                pattern.lower() in line_lower
-                for pattern in patterns
-            ):
-                print(
-                    f"  {line_number:04d}: "
-                    f"{line.strip()[:500]}"
-                )
-
-                printed += 1
-
-                if printed >= 30:
-                    break
-
-    if not found_any:
-        print(
-            "No obvious inline data-request "
-            "code found."
-        )
-
-
-def request_candidate(
-    url: str,
-):
-    """
-    Only inspect candidate endpoints.
-    Never treat an endpoint as valid solely
-    because HTTP status is 200.
-    """
-
-    print()
-    print("=" * 80)
-    print("TEST CANDIDATE ENDPOINT")
-    print("=" * 80)
-    print(url)
-
-    try:
-        response = requests.get(
-            url,
-            headers=HEADERS,
-            timeout=TIMEOUT,
-        )
-    except requests.RequestException as exc:
-        print(
-            f"REQUEST ERROR: {exc}"
-        )
-        return
-
-    content_type = response.headers.get(
-        "Content-Type",
-        "",
-    )
-
-    print(
-        f"status_code: "
-        f"{response.status_code}"
-    )
-    print(
-        f"content_type: "
-        f"{content_type}"
-    )
-    print(
-        f"content_length: "
-        f"{len(response.content)}"
-    )
-
-    if response.status_code != 200:
-        return
-
-    text = decode_response(response)
-
-    stripped = text.lstrip()
-
-    if (
-        stripped.startswith("{")
-        or stripped.startswith("[")
-    ):
-        try:
-            payload = response.json()
-
-            print(
-                "JSON: YES"
+    if isinstance(value, dict):
+        return any(
+            contains_symbol(
+                item,
+                symbol,
             )
+            for item in value.values()
+        )
 
-            print(
-                f"root_type: "
-                f"{type(payload).__name__}"
+    if isinstance(value, list):
+        return any(
+            contains_symbol(
+                item,
+                symbol,
             )
-
-            find_symbol_in_object(
-                payload,
-                SYMBOL,
-            )
-
-            return
-        except Exception:
-            pass
-
-    print(
-        "JSON: NO"
-    )
-
-    upper = text.upper()
-
-    if SYMBOL.upper() in upper:
-        print(
-            f"SYMBOL {SYMBOL} FOUND "
-            "IN RESPONSE TEXT"
+            for item in value
         )
 
-        position = upper.find(
-            SYMBOL.upper()
-        )
-
-        left = max(
-            0,
-            position - 300,
-        )
-
-        right = min(
-            len(text),
-            position + len(SYMBOL) + 500,
-        )
-
-        print()
-        print(
-            normalize_text(
-                text[left:right]
-            )
-        )
-    else:
-        print(
-            f"SYMBOL {SYMBOL} NOT FOUND "
-            "IN RESPONSE TEXT"
-        )
+    return normalize(value) == target
 
 
-def find_symbol_in_object(
+def find_symbol_rows(
     value,
     symbol: str,
-    path="root",
-):
-    """
-    Recursive exact-symbol search for JSON.
-    """
-
-    target = symbol.upper()
+    path: str = "root",
+) -> list[tuple[str, object]]:
+    matches: list[tuple[str, object]] = []
 
     if isinstance(value, dict):
         for key, item in value.items():
-            current_path = (
+            child_path = (
                 f"{path}.{key}"
             )
 
-            if isinstance(item, str):
-                if (
-                    normalize_text(item).upper()
-                    == target
-                ):
-                    print(
-                        "EXACT SYMBOL MATCH:"
-                        f" {current_path}"
-                        f" = {item}"
-                    )
-
-            find_symbol_in_object(
+            if contains_symbol(
                 item,
                 symbol,
-                current_path,
+            ):
+                matches.append(
+                    (
+                        child_path,
+                        item,
+                    )
+                )
+
+            matches.extend(
+                find_symbol_rows(
+                    item,
+                    symbol,
+                    child_path,
+                )
             )
 
-        return
-
-    if isinstance(value, list):
+    elif isinstance(value, list):
         for index, item in enumerate(value):
-            current_path = (
+            child_path = (
                 f"{path}[{index}]"
             )
 
-            find_symbol_in_object(
+            if contains_symbol(
                 item,
                 symbol,
-                current_path,
+            ):
+                matches.append(
+                    (
+                        child_path,
+                        item,
+                    )
+                )
+
+            matches.extend(
+                find_symbol_rows(
+                    item,
+                    symbol,
+                    child_path,
+                )
             )
 
-        return
+    return matches
 
 
-def diagnose_page(
-    url: str,
-    params=None,
-):
-    response = request_page(
-        url,
-        params=params,
+def inspect_json_payload(
+    payload,
+    symbol: str,
+) -> bool:
+    print()
+    print("=" * 80)
+    print("JSON STRUCTURE")
+    print("=" * 80)
+
+    if isinstance(payload, dict):
+        print("ROOT TYPE: dict")
+        print("ROOT KEYS:")
+
+        for key in payload.keys():
+            print(f"  {key}")
+
+    elif isinstance(payload, list):
+        print("ROOT TYPE: list")
+        print(f"ROOT LENGTH: {len(payload)}")
+
+    else:
+        print(
+            "ROOT TYPE: "
+            f"{type(payload).__name__}"
+        )
+
+    matches = find_symbol_rows(
+        payload,
+        symbol,
     )
 
-    if response is None:
-        return None
+    # De-duplicate by path + serialized value.
+    unique: list[tuple[str, object]] = []
+    seen: set[str] = set()
 
-    html = decode_response(response)
+    for path, value in matches:
+        try:
+            marker = (
+                path
+                + "|"
+                + json.dumps(
+                    value,
+                    ensure_ascii=False,
+                    sort_keys=True,
+                    default=str,
+                )
+            )
+        except Exception:
+            marker = path + "|" + str(value)
 
-    print_page_identity(
-        html
+        if marker in seen:
+            continue
+
+        seen.add(marker)
+        unique.append(
+            (
+                path,
+                value,
+            )
+        )
+
+    print()
+    print(
+        f"SYMBOL SEARCH: {symbol}"
     )
+    print(
+        f"MATCH COUNT: {len(unique)}"
+    )
+
+    if not unique:
+        return False
 
     print()
     print("=" * 80)
-    print("HTML VALIDATION")
+    print(f"FOUND {symbol}")
     print("=" * 80)
 
-    if "<html" in html.lower():
-        print(
-            "HTML document: YES"
-        )
-    else:
-        print(
-            "HTML document: NO"
-        )
-
-    if "<table" in html.lower():
-        print(
-            "table elements: YES"
-        )
-    else:
-        print(
-            "table elements: NO"
-        )
-
-    if "application/json" in (
-        response.headers
-        .get("Content-Type", "")
-        .lower()
+    for index, (path, value) in enumerate(
+        unique[:20],
+        start=1,
     ):
-        print(
-            "server claims JSON: YES"
-        )
-    else:
-        print(
-            "server claims JSON: NO"
-        )
-
-    links = extract_links(
-        html,
-        response.url,
-    )
-
-    forms = extract_forms(
-        html,
-        response.url,
-    )
-
-    scripts = extract_scripts(
-        html,
-        response.url,
-    )
-
-    candidates = extract_data_candidates(
-        html,
-        response.url,
-    )
-
-    print_forms(
-        forms
-    )
-
-    print_relevant_links(
-        links
-    )
-
-    print_data_candidates(
-        candidates
-    )
-
-    search_symbol_in_html(
-        html,
-        SYMBOL,
-    )
-
-    inspect_script_sources(
-        scripts,
-        response.url,
-    )
-
-    inspect_inline_scripts(
-        scripts,
-    )
-
-    return {
-        "response": response,
-        "html": html,
-        "links": links,
-        "forms": forms,
-        "scripts": scripts,
-        "candidates": candidates,
-    }
-
-
-def main():
-    print("=" * 80)
-    print(
-        "00838B TPEx ETF OFFICIAL "
-        "PRICE DIAGNOSTIC V4"
-    )
-    print("=" * 80)
-
-    print(
-        f"TEST SYMBOL: {SYMBOL}"
-    )
-
-    print(
-        "SOURCE: TPEx OFFICIAL"
-    )
-
-    print(
-        "DATA TYPE: ETF HISTORICAL "
-        "PRICE"
-    )
-
-    print()
-    print(
-        "Yahoo: NO"
-    )
-
-    print(
-        "Universe: NO"
-    )
-
-    print(
-        "Production pipeline: NO"
-    )
-
-    print(
-        "fetch_prices.py: NOT MODIFIED"
-    )
-
-    print()
-    print(
-        "IMPORTANT:"
-    )
-
-    print(
-        "The old etf_statistics.php "
-        "URL is a page, not assumed JSON."
-    )
-
-    print()
-    print("=" * 80)
-    print(
-        "CURRENT TPEx ETF DAILY "
-        "HISTORICAL PAGE"
-    )
-    print("=" * 80)
-
-    result = diagnose_page(
-        HISTORICAL_PAGE
-    )
-
-    if result is None:
         print()
         print(
-            "CURRENT PAGE REQUEST FAILED."
+            f"MATCH {index}"
+        )
+        print(
+            f"PATH: {path}"
+        )
+        print("VALUE:")
+
+        print(
+            json.dumps(
+                value,
+                ensure_ascii=False,
+                indent=2,
+                default=str,
+            )
+        )
+
+    return True
+
+
+def test_candidate(
+    session: requests.Session,
+    url: str,
+    d: date,
+) -> bool:
+    print()
+    print("=" * 80)
+    print("TEST CANDIDATE")
+    print("=" * 80)
+    print(f"URL: {url}")
+    print(f"DATE: {d.isoformat()}")
+    print(f"ROC DATE: {roc_date(d)}")
+
+    for params in build_date_params(d):
+        print()
+        print("PARAMS:")
+        print(
+            json.dumps(
+                params,
+                ensure_ascii=False,
+            )
+        )
+
+        try:
+            response = session.get(
+                url,
+                params=params,
+                timeout=TIMEOUT,
+            )
+        except requests.RequestException as exc:
+            print(
+                f"REQUEST ERROR: {exc}"
+            )
+            continue
+
+        content_type = response.headers.get(
+            "Content-Type",
+            "",
+        )
+
+        print(
+            f"HTTP STATUS: "
+            f"{response.status_code}"
+        )
+        print(
+            f"CONTENT TYPE: "
+            f"{content_type}"
+        )
+        print(
+            f"CONTENT LENGTH: "
+            f"{len(response.content)}"
+        )
+
+        if response.status_code != 200:
+            continue
+
+        # First test the actual HTTP content.
+        stripped = response.text.lstrip()
+
+        looks_json = (
+            "json" in content_type.lower()
+            or stripped.startswith("{")
+            or stripped.startswith("[")
+        )
+
+        if not looks_json:
+            print(
+                "NOT JSON - skip this response"
+            )
+            continue
+
+        try:
+            payload = response.json()
+        except Exception as exc:
+            print(
+                f"JSON DECODE FAILED: {exc}"
+            )
+            continue
+
+        print()
+        print("JSON RESPONSE ACCEPTED")
+
+        found = inspect_json_payload(
+            payload,
+            SYMBOL,
+        )
+
+        if found:
+            print()
+            print(
+                "SUCCESS: "
+                "candidate contains "
+                f"{SYMBOL}"
+            )
+            return True
+
+    return False
+
+
+def fallback_page_search(
+    html: str,
+) -> bool:
+    print()
+    print("=" * 80)
+    print("STEP 6 - DIRECT PAGE SYMBOL CHECK")
+    print("=" * 80)
+
+    normalized_html = normalize(html)
+
+    if SYMBOL in normalized_html:
+        print(
+            f"FOUND {SYMBOL} directly "
+            "inside official HTML"
+        )
+        return True
+
+    print(
+        f"{SYMBOL} not present directly "
+        "in official HTML"
+    )
+
+    return False
+
+
+def main() -> int:
+    print("=" * 80)
+    print("00838B TPEx ETF OFFICIAL PRICE DIAGNOSTIC V5")
+    print("=" * 80)
+    print()
+    print(f"SYMBOL: {SYMBOL}")
+    print("SOURCE: TPEx OFFICIAL")
+    print("DATA TYPE: ETF HISTORICAL PRICE")
+    print()
+    print("Yahoo: NO")
+    print("Universe: NO")
+    print("Production pipeline: NO")
+    print("fetch_prices.py: NOT MODIFIED")
+    print("Data/prices.json: NOT MODIFIED")
+    print("Data/universe.json: NOT MODIFIED")
+    print()
+    print("IMPORTANT:")
+    print(
+        "This script does not assume that "
+        "etf_statistics.php is a JSON API."
+    )
+
+    session = get_session()
+
+    html = request_page(session)
+
+    if html is None:
+        print()
+        print(
+            "FINAL RESULT: "
+            "OFFICIAL PAGE REQUEST FAILED"
         )
         return 1
 
-    candidates = result["candidates"]
+    script_urls = extract_script_urls(
+        html
+    )
+
+    scripts = download_scripts(
+        session,
+        script_urls,
+    )
+
+    find_relevant_fragments(
+        html,
+        scripts,
+    )
+
+    candidates = extract_api_candidates(
+        html,
+        scripts,
+    )
+
+    if fallback_page_search(html):
+        print()
+        print(
+            "FINAL RESULT: "
+            f"{SYMBOL} found in official page."
+        )
+        return 0
 
     print()
     print("=" * 80)
-    print(
-        "OLD TPEx ETF PAGE CHECK"
-    )
+    print("STEP 7 - TEST DISCOVERED API CANDIDATES")
     print("=" * 80)
 
-    old_result = diagnose_page(
-        OLD_HISTORICAL_PAGE
+    # Use the latest known trading date first.
+    start_date = date(
+        2026,
+        8,
+        28,
     )
 
-    if old_result is None:
+    # Do not test arbitrary candidates forever.
+    # Only actual HTTP candidates extracted from
+    # the official page / scripts are tested.
+    max_candidates = 30
+
+    candidates = candidates[:max_candidates]
+
+    if not candidates:
         print(
-            "Old page request failed."
+            "NO REAL HTTP API CANDIDATES FOUND."
         )
-
-    all_candidates = set(
-        candidates
-    )
-
-    if old_result:
-        all_candidates.update(
-            old_result["candidates"]
+        print()
+        print(
+            "The official page may construct "
+            "the request dynamically."
         )
+        print()
+        print(
+            "FINAL RESULT: "
+            "API endpoint still unresolved."
+        )
+        return 1
 
+    success = False
+
+    for candidate in candidates:
+        if test_candidate(
+            session,
+            candidate,
+            start_date,
+        ):
+            success = True
+            break
+
+    if success:
+        print()
+        print("=" * 80)
+        print("FINAL RESULT")
+        print("=" * 80)
+        print(
+            f"SUCCESS: "
+            f"{SYMBOL} found in a TPEx ETF "
+            "official data response."
+        )
+        print()
+        print(
+            "Production fetch_prices.py "
+            "was NOT modified."
+        )
+        return 0
+
+    # If the latest date did not work, test
+    # the previous nine calendar dates using
+    # the same discovered candidates.
     print()
     print("=" * 80)
-    print(
-        "OFFICIAL DATA CANDIDATE TEST"
-    )
+    print("STEP 8 - 10-DAY CONFIRMATION")
     print("=" * 80)
 
-    candidate_list = sorted(
-        all_candidates
-    )
+    tested_dates = 0
 
-    if not candidate_list:
-        print(
-            "No data/API candidate "
-            "was exposed directly "
-            "in the HTML."
-        )
-    else:
-        print(
-            f"candidate_count: "
-            f"{len(candidate_list)}"
+    for offset in range(1, 10):
+        d = start_date - timedelta(
+            days=offset
         )
 
-        for url in candidate_list[:30]:
-            request_candidate(
-                url
-            )
+        tested_dates += 1
+
+        for candidate in candidates:
+            if test_candidate(
+                session,
+                candidate,
+                d,
+            ):
+                success = True
+                break
+
+        if success:
+            break
 
     print()
     print("=" * 80)
     print("FINAL RESULT")
     print("=" * 80)
 
-    print(
-        "This diagnostic does NOT "
-        "modify fetch_prices.py."
-    )
-
-    print(
-        "This diagnostic does NOT "
-        "modify Universe."
-    )
-
-    print(
-        "This diagnostic does NOT "
-        "use stk_wn1430_result.php."
-    )
-
-    print(
-        "This diagnostic does NOT "
-        "use the normal OTC stock "
-        "quote endpoint."
-    )
-
-    print()
-
-    if SYMBOL.upper() in (
-        result["html"].upper()
-    ):
+    if success:
         print(
-            f"FOUND {SYMBOL} "
-            "IN CURRENT TPEx PAGE HTML."
+            f"SUCCESS: "
+            f"{SYMBOL} found."
         )
-    else:
+        print()
         print(
-            f"{SYMBOL} NOT FOUND "
-            "IN CURRENT TPEx PAGE HTML."
+            "The TPEx ETF official data "
+            "route is now confirmed."
         )
+        print()
+        print(
+            "Production fetch_prices.py "
+            "was NOT modified."
+        )
+        return 0
 
+    print(
+        f"NOT FOUND: "
+        f"{SYMBOL}"
+    )
     print()
     print(
-        "NEXT STEP:"
+        "The diagnostic could not identify "
+        "a working official JSON endpoint "
+        "containing this ETF."
     )
-
-    print(
-        "Use the printed form/action/"
-        "script/data candidates to identify "
-        "the actual TPEx ETF historical "
-        "data request."
-    )
-
     print()
     print(
-        "The test intentionally exits "
-        "with code 0 after completing "
-        "the endpoint diagnosis."
+        "NO production files were modified."
     )
 
-    return 0
+    # Diagnostic failure is intentional here:
+    # the workflow can inspect the output without
+    # accidentally changing the production pipeline.
+    return 1
 
 
 if __name__ == "__main__":
