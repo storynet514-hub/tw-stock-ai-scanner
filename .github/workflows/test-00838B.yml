@@ -1,0 +1,62 @@
+name: Test 00838B TPEx Official Price
+
+on:
+  workflow_dispatch:
+
+jobs:
+  test-00838b:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Verify diagnostic file
+        run: |
+          set -e
+
+          echo "============================================================"
+          echo "VERIFY DIAGNOSTIC FILE"
+          echo "============================================================"
+
+          test -f Scripts/test_00838B.py
+
+          echo "OK: Scripts/test_00838B.py exists"
+          echo
+          echo "File:"
+          ls -lh Scripts/test_00838B.py
+
+      - name: Install requests
+        run: |
+          set -e
+
+          python -m pip install --upgrade pip
+          python -m pip install requests
+
+      - name: Python syntax check
+        run: |
+          set -e
+
+          echo "============================================================"
+          echo "PYTHON SYNTAX CHECK"
+          echo "============================================================"
+
+          python -m py_compile Scripts/test_00838B.py
+
+          echo
+          echo "OK: Python syntax is valid"
+
+      - name: Run 00838B diagnostic
+        run: |
+          set -e
+
+          echo "============================================================"
+          echo "RUN 00838B TPEx ETF DIAGNOSTIC"
+          echo "============================================================"
+
+          python Scripts/test_00838B.py
