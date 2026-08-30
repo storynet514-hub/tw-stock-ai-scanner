@@ -1,10 +1,10 @@
-name: Diagnose 00838B TPEx ETF API Contract
+name: Test 00838B TPEx Official API Contract
 
 on:
   workflow_dispatch:
 
 jobs:
-  diagnose-00838b:
+  test-00838b:
     runs-on: ubuntu-latest
 
     steps:
@@ -18,29 +18,21 @@ jobs:
 
       - name: Install requests
         run: |
-          set -e
           python -m pip install --upgrade pip
-          python -m pip install requests
+          pip install requests
 
       - name: Python syntax check
         run: |
           set -e
-
-          echo "============================================================"
-          echo "PYTHON SYNTAX CHECK"
-          echo "============================================================"
-
-          python -m py_compile Scripts/test_00838B_api_contract.py
-
-          echo
+          python -m py_compile Scripts/test_00838B.py
           echo "OK: Python syntax is valid"
 
-      - name: Run API contract diagnostic
+      - name: Run 00838B diagnostic
         run: |
           set -e
 
           echo "============================================================"
-          echo "RUN 00838B TPEx API CONTRACT DIAGNOSTIC"
+          echo "RUN 00838B TPEx ETF API CONTRACT DIAGNOSTIC"
           echo "============================================================"
 
-          python Scripts/test_00838B_api_contract.py
+          python Scripts/test_00838B.py
