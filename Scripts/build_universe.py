@@ -8,57 +8,38 @@ Scripts/build_universe.py
 OFFICIAL PRODUCT MASTER UNIVERSE BUILDER
 ============================================================
 
-資料責任
-------------------------------------------------------------
-
-Universe:
-    官方商品主檔
-        ↓
-    官方商品結構解析
-        ↓
-    STOCK / ETF
-        ↓
-    TWSE / TPEX
-        ↓
-    官方終止狀態硬排除
-        ↓
-    active Universe
-        ↓
-    Data/universe.json
-
 核心契約
 ------------------------------------------------------------
-
-1. 官方商品主檔是 Universe 唯一主要來源
-2. 不使用 Yahoo 建立 Universe
-3. 不使用價格資料建立 Universe
-4. 不使用成交量建立 Universe
-5. 不使用 CMoney
-6. 支援 TWSE
-7. 支援 TPEX
-8. 支援 4 / 5 / 6 碼商品
-9. 支援字母尾碼商品，例如 00631L / 00632R / 00400A
-10. 支援 6 碼 ETF
-11. 支援債券 ETF
-12. 排除 ETN
-13. 排除權證
-14. 排除 REIT
-15. 排除 TDR
-16. 排除一般債券 / 公司債
-17. 官方終止上市商品不得進入 active Universe
-18. 官方終止上櫃商品不得進入 active Universe
-19. 官方主檔抓取失敗 => FAIL
+1. Data/universe.json 是唯一 Universe 輸出
+2. 官方商品主檔是 Universe 的主要來源
+3. 不使用 Yahoo 建立 Universe
+4. 不使用價格資料建立 Universe
+5. 不使用成交量建立 Universe
+6. 不使用 CMoney
+7. 支援 TWSE
+8. 支援 TPEX
+9. 支援 4 / 5 / 6 碼商品
+10. 支援字母尾碼，例如 00631L / 00632R / 00400A
+11. 支援 6 碼 ETF
+12. 支援債券 ETF
+13. 排除 ETN
+14. 排除權證
+15. 排除 REIT
+16. 排除 TDR
+17. 排除一般債券 / 公司債
+18. 官方終止商品不得進 active Universe
+19. 官方主檔 HTTP 200 但 payload 無效 => FAIL
 20. 官方主檔解析失敗 => FAIL
-21. 官方終止狀態抓取失敗 => FAIL
+21. 官方終止狀態資料不足 => FAIL
 22. Universe schema validation 失敗 => FAIL
-23. FAIL 時絕不覆蓋既有 universe.json
+23. FAIL 絕不覆蓋既有 universe.json
 24. Atomic Write
-25. 寫入後重新讀取並驗證
+25. 寫入後重新讀取驗證
 26. 不寫死 Universe 數量
 27. 不因歷史價格不足刪除商品
-28. 不讓 terminated 商品進 candidate
-29. 最終必須驗證 candidate 與 terminated 完全沒有交集
-
+28. terminated 不得進 candidate
+29. active ∩ terminated 必須為空
+30. 00838B 不得進 active Universe
 ============================================================
 """
 
@@ -76,6 +57,7 @@ from datetime import datetime
 from html.parser import HTMLParser
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Set, Tuple
+from urllib.parse import urlencode
 
 import requests
 
@@ -94,18 +76,35 @@ UNIVERSE_FILE = DATA_DIR / "universe.json"
 # OFFICIAL SOURCES
 # ============================================================
 
+# 官方 ISIN 商品主檔
 MASTER_URL = (
     "https://isin.twse.com.tw/isin/e_single_main.jsp"
 )
 
-TWSE_DELISTED_URL = (
+# TWSE 終止上市公司
+TWSE_DELISTED_COMPANY_URL = (
     "https://www.twse.com.tw/"
     "company/suspendListingCsvAndHtml"
+    "?lang=zh&startYear=&type=html"
 )
 
-TPEX_DELISTED_URL = (
+# TWSE ETF e添富：
+# 新上市／終止上市公告
+TWSE_ETF_LISTING_URL = (
+    "https://www.twse.com.tw/"
+    "zh/ETFortune/announcementList"
+)
+
+# TPEx 終止上櫃公司
+TPEX_DELISTED_COMPANY_URL = (
     "https://www.tpex.org.tw/"
     "zh-tw/mainboard/listed/delisted.html"
+)
+
+# TPEx 市場公告查詢
+TPEX_MARKET_ANNOUNCEMENT_URL = (
+    "https://www.tpex.org.tw/"
+    "zh-tw/service/pi/announce/market/retro.html"
 )
 
 
@@ -114,8 +113,18 @@ TPEX_DELISTED_URL = (
 # ============================================================
 
 REQUEST_TIMEOUT = 60
-RETRIES = 4
+RETRIES = 5
 RETRY_SLEEP = 2.0
+
+# 官方商品主檔正常內容不應該只有幾百 bytes
+MASTER_MIN_BYTES = 10_000
+
+# 正常主檔至少應該出現大量代碼
+MASTER_MIN_SYMBOLS = 100
+
+# ETF listing announcement 分頁
+TWSE_ETF_PAGE_SIZE = 10
+TWSE_ETF_MAX_PAGES = 40
 
 
 SESSION = requests.Session()
@@ -142,6 +151,9 @@ SESSION.headers.update(
         "Cache-Control": "no-cache",
         "Pragma": "no-cache",
         "Connection": "keep-alive",
+        "Referer": (
+            "https://isin.twse.com.tw/isin/"
+        ),
     }
 )
 
@@ -189,8 +201,6 @@ EXCLUDED_TYPE_WORDS = (
     "REIT",
     "不動產投資信託",
     "REAL ESTATE INVESTMENT TRUST",
-    "受益證券",
-    "BENEFICIARY CERTIFICATE",
     "一般債券",
     "公司債",
     "政府債券",
@@ -235,13 +245,10 @@ def now_tw() -> datetime:
 # ============================================================
 
 def clean_text(value: Any) -> str:
-
     if value is None:
         return ""
 
-    text = html.unescape(
-        str(value)
-    )
+    text = html.unescape(str(value))
 
     text = (
         text
@@ -263,7 +270,6 @@ def clean_text(value: Any) -> str:
 
 
 def normalize_text(value: Any) -> str:
-
     text = clean_text(value)
 
     return (
@@ -275,7 +281,6 @@ def normalize_text(value: Any) -> str:
 
 
 def normalize_key(value: Any) -> str:
-
     text = normalize_text(value)
 
     return re.sub(
@@ -290,7 +295,6 @@ def normalize_key(value: Any) -> str:
 # ============================================================
 
 def clean_code(value: Any) -> str:
-
     text = clean_text(value).upper()
 
     text = (
@@ -307,7 +311,6 @@ def clean_code(value: Any) -> str:
 
 
 def is_valid_symbol(value: Any) -> bool:
-
     code = clean_code(value)
 
     return bool(
@@ -318,28 +321,40 @@ def is_valid_symbol(value: Any) -> bool:
     )
 
 
+def extract_symbol_candidates(text: Any) -> Set[str]:
+    value = clean_text(text).upper()
+
+    result: Set[str] = set()
+
+    for match in re.findall(
+        r"(?<![0-9A-Z])"
+        r"[0-9]{4,6}[A-Z]?"
+        r"(?![0-9A-Z])",
+        value,
+    ):
+        code = clean_code(match)
+
+        if is_valid_symbol(code):
+            result.add(code)
+
+    return result
+
+
 # ============================================================
 # MARKET
 # ============================================================
 
 def normalize_market(value: Any) -> Optional[str]:
-
     text = normalize_text(value)
 
     if not text:
         return None
 
-    twse_markers = (
-        "TWSE",
-        "上市",
-        "上市股票",
-        "上市證券",
-        "上市有價證券",
-    )
-
+    # 先檢查 TPEX，避免未來文字同時包含上市/上櫃
     tpex_markers = (
         "TPEX",
-        "TPEX",
+        "TPEX LISTED",
+        "TPEXLISTED",
         "TPEx",
         "上櫃",
         "上櫃股票",
@@ -348,13 +363,23 @@ def normalize_market(value: Any) -> Optional[str]:
         "OTC",
     )
 
-    for marker in twse_markers:
-        if normalize_text(marker) in text:
-            return "TWSE"
-
     for marker in tpex_markers:
         if normalize_text(marker) in text:
             return "TPEX"
+
+    twse_markers = (
+        "TWSE",
+        "TWSE LISTED",
+        "TWSELISTED",
+        "上市",
+        "上市股票",
+        "上市證券",
+        "上市有價證券",
+    )
+
+    for marker in twse_markers:
+        if normalize_text(marker) in text:
+            return "TWSE"
 
     return None
 
@@ -364,14 +389,12 @@ def normalize_market(value: Any) -> Optional[str]:
 # ============================================================
 
 def is_excluded_type(value: Any) -> bool:
-
     text = normalize_text(value)
 
     if not text:
         return False
 
     for word in EXCLUDED_TYPE_WORDS:
-
         if normalize_text(word) in text:
             return True
 
@@ -402,12 +425,10 @@ def normalize_security_type(
         + name_text
     )
 
-    if is_excluded_type(
-        combined
-    ):
+    if is_excluded_type(combined):
         return None
 
-    # 官方主檔目前直接提供 ETF
+    # 官方主檔 ETF
     if (
         "ETF" in type_text
         or "ETF" in name_text
@@ -416,7 +437,7 @@ def normalize_security_type(
     ):
         return "ETF"
 
-    # 普通股
+    # 普通股票
     stock_markers = (
         "STOCK",
         "COMMONSTOCK",
@@ -426,12 +447,10 @@ def normalize_security_type(
     )
 
     for marker in stock_markers:
-
         if normalize_text(marker) in combined:
             return "STOCK"
 
-    # 官方 CFI：
-    # ESVUFR 為普通股常見 CFI
+    # CFI ESVU* 常見普通股
     if cfi_text.startswith("ESVU"):
         return "STOCK"
 
@@ -445,22 +464,14 @@ def normalize_security_type(
 class TableParser(HTMLParser):
 
     def __init__(self) -> None:
-
         super().__init__(
             convert_charrefs=True
         )
 
-        self.rows: List[
-            List[str]
-        ] = []
+        self.rows: List[List[str]] = []
 
-        self._row: Optional[
-            List[str]
-        ] = None
-
-        self._cell: Optional[
-            List[str]
-        ] = None
+        self._row: Optional[List[str]] = None
+        self._cell: Optional[List[str]] = None
 
     def handle_starttag(
         self,
@@ -476,23 +487,15 @@ class TableParser(HTMLParser):
         tag = tag.lower()
 
         if tag == "tr":
-
             self._row = []
 
-        elif tag in {
-            "td",
-            "th",
-        }:
-
+        elif tag in {"td", "th"}:
             if self._row is not None:
                 self._cell = []
 
         elif tag == "br":
-
             if self._cell is not None:
-                self._cell.append(
-                    " "
-                )
+                self._cell.append(" ")
 
     def handle_endtag(
         self,
@@ -501,16 +504,12 @@ class TableParser(HTMLParser):
 
         tag = tag.lower()
 
-        if tag in {
-            "td",
-            "th",
-        }:
+        if tag in {"td", "th"}:
 
             if (
                 self._row is not None
                 and self._cell is not None
             ):
-
                 self._row.append(
                     clean_text(
                         "".join(
@@ -524,7 +523,6 @@ class TableParser(HTMLParser):
         elif tag == "tr":
 
             if self._row:
-
                 self.rows.append(
                     self._row
                 )
@@ -538,9 +536,7 @@ class TableParser(HTMLParser):
     ) -> None:
 
         if self._cell is not None:
-            self._cell.append(
-                data
-            )
+            self._cell.append(data)
 
 
 # ============================================================
@@ -565,9 +561,7 @@ def unique_encodings(
 
     for value in values:
 
-        value = clean_text(
-            value
-        ).lower()
+        value = clean_text(value).lower()
 
         if not value:
             continue
@@ -578,12 +572,8 @@ def unique_encodings(
         )
 
         if value not in seen:
-
             seen.add(value)
-
-            result.append(
-                value
-            )
+            result.append(value)
 
     return result
 
@@ -594,9 +584,7 @@ def extract_meta_charset(
 
     result: List[str] = []
 
-    head = content[
-        :30000
-    ]
+    head = content[:30000]
 
     patterns = (
         rb"<meta[^>]+charset\s*=\s*"
@@ -635,72 +623,6 @@ def extract_meta_charset(
                 pass
 
     return result
-
-
-def score_html(
-    text: str,
-) -> int:
-
-    if not text:
-        return -999999
-
-    score = 0
-    lower = text.lower()
-
-    if "<html" in lower:
-        score += 10
-
-    if "<table" in lower:
-        score += 30
-
-    if "<tr" in lower:
-        score += 15
-
-    if "<td" in lower:
-        score += 15
-
-    markers = (
-        "security code",
-        "security name",
-        "market",
-        "type of security",
-        "cficode",
-        "證券代號",
-        "證券名稱",
-        "市場別",
-        "證券種類",
-        "CFICode",
-    )
-
-    for marker in markers:
-
-        if marker.lower() in lower:
-            score += 15
-
-    codes = re.findall(
-        r"(?<![0-9A-Z])"
-        r"[0-9]{4,6}[A-Z]?"
-        r"(?![0-9A-Z])",
-        text.upper(),
-    )
-
-    if len(codes) >= 10:
-        score += 30
-
-    if len(codes) >= 100:
-        score += 30
-
-    replacements = text.count(
-        "\ufffd"
-    )
-
-    if replacements:
-        score -= min(
-            replacements,
-            100,
-        )
-
-    return score
 
 
 def decode_html(
@@ -760,15 +682,13 @@ def decode_html(
         ]
     )
 
-    encodings = unique_encodings(
-        candidates
-    )
-
     best_text = ""
     best_encoding = ""
     best_score = -999999
 
-    for encoding in encodings:
+    for encoding in unique_encodings(
+        candidates
+    ):
 
         try:
 
@@ -797,13 +717,11 @@ def decode_html(
             continue
 
     if not best_text:
-
         raise RuntimeError(
             "官方 HTML 無法解碼"
         )
 
     if best_score < 0:
-
         raise RuntimeError(
             "官方 HTML 解碼結果無效"
         )
@@ -814,58 +732,143 @@ def decode_html(
     )
 
 
-# ============================================================
-# HTTP
-# ============================================================
+def score_html(
+    text: str,
+) -> int:
 
-def http_get(
-    url: str,
-) -> requests.Response:
+    if not text:
+        return -999999
 
-    last_error: Optional[
-        Exception
-    ] = None
+    score = 0
+    lower = text.lower()
 
-    for attempt in range(
-        1,
-        RETRIES + 1,
-    ):
+    if "<html" in lower:
+        score += 10
 
-        try:
+    if "<table" in lower:
+        score += 30
 
-            response = SESSION.get(
-                url,
-                timeout=REQUEST_TIMEOUT,
-            )
+    if "<tr" in lower:
+        score += 15
 
-            response.raise_for_status()
+    if "<td" in lower:
+        score += 15
 
-            return response
-
-        except Exception as exc:
-
-            last_error = exc
-
-            log(
-                f"⚠️ HTTP 第 "
-                f"{attempt}/{RETRIES} 次失敗："
-                f"{exc}"
-            )
-
-            if attempt < RETRIES:
-
-                time.sleep(
-                    RETRY_SLEEP * attempt
-                )
-
-    raise RuntimeError(
-        f"HTTP 取得失敗：{last_error}"
+    markers = (
+        "security code",
+        "security name",
+        "market",
+        "type of security",
+        "cficode",
+        "isin code",
+        "證券代號",
+        "證券名稱",
+        "市場別",
+        "證券種類",
+        "CFICode",
     )
 
+    for marker in markers:
+        if marker.lower() in lower:
+            score += 15
+
+    symbols = extract_symbol_candidates(
+        text
+    )
+
+    if len(symbols) >= 10:
+        score += 30
+
+    if len(symbols) >= 100:
+        score += 30
+
+    replacements = text.count(
+        "\ufffd"
+    )
+
+    if replacements:
+        score -= min(
+            replacements,
+            100,
+        )
+
+    return score
+
 
 # ============================================================
-# FETCH OFFICIAL MASTER
+# MASTER PAYLOAD VALIDATION
 # ============================================================
+
+def validate_master_payload(
+    content: bytes,
+    text: str,
+) -> None:
+
+    if len(content) < MASTER_MIN_BYTES:
+        raise RuntimeError(
+            "官方主檔 payload 過小："
+            f"{len(content):,} bytes"
+        )
+
+    lower = text.lower()
+
+    if "<table" not in lower:
+        raise RuntimeError(
+            "官方主檔 payload 沒有 table"
+        )
+
+    if "<tr" not in lower:
+        raise RuntimeError(
+            "官方主檔 payload 沒有 table rows"
+        )
+
+    required_markers = (
+        "security code",
+        "security name",
+        "type of security",
+    )
+
+    marker_hits = sum(
+        1
+        for marker in required_markers
+        if marker in lower
+    )
+
+    if marker_hits < 2:
+        raise RuntimeError(
+            "官方主檔 payload 缺少必要欄位"
+        )
+
+    symbols = extract_symbol_candidates(
+        text
+    )
+
+    if len(symbols) < MASTER_MIN_SYMBOLS:
+        raise RuntimeError(
+            "官方主檔 payload 有效商品代號不足："
+            f"{len(symbols)}"
+        )
+
+
+# ============================================================
+# MASTER HTTP
+# ============================================================
+
+def master_request_url() -> str:
+    params = {
+        "_": str(
+            int(
+                time.time() * 1000
+            )
+        )
+    }
+
+    return (
+        MASTER_URL
+        + "?"
+        + urlencode(params)
+    )
+
 
 def fetch_official_master() -> str:
 
@@ -877,10 +880,21 @@ def fetch_official_master() -> str:
         Exception
     ] = None
 
+    # 先 warm-up 官方 ISIN host
+    try:
+        SESSION.get(
+            "https://isin.twse.com.tw/isin/",
+            timeout=REQUEST_TIMEOUT,
+        )
+    except Exception:
+        pass
+
     for attempt in range(
         1,
         RETRIES + 1,
     ):
+
+        url = master_request_url()
 
         try:
 
@@ -890,36 +904,51 @@ def fetch_official_master() -> str:
             )
 
             response = SESSION.get(
-                MASTER_URL,
+                url,
                 timeout=REQUEST_TIMEOUT,
+                allow_redirects=True,
             )
 
-            response.raise_for_status()
+            log(
+                f"    HTTP "
+                f"{response.status_code}"
+            )
+
+            log(
+                "    Content-Type: "
+                + response.headers.get(
+                    "Content-Type",
+                    "",
+                )
+            )
 
             content = response.content
-
-            log(
-                f"    HTTP {response.status_code}"
-            )
-
-            log(
-                f"    Content-Type: "
-                f"{response.headers.get('Content-Type', '')}"
-            )
 
             log(
                 f"    Bytes: "
                 f"{len(content):,}"
             )
 
+            response.raise_for_status()
+
             text, encoding = decode_html(
                 content,
                 response,
             )
 
+            validate_master_payload(
+                content,
+                text,
+            )
+
             log(
                 f"    Selected encoding: "
                 f"{encoding}"
+            )
+
+            log(
+                "✓ 官方商品主檔 payload "
+                "完整性驗證 PASS"
             )
 
             return text
@@ -929,25 +958,24 @@ def fetch_official_master() -> str:
             last_error = exc
 
             log(
-                f"⚠️ 官方主檔抓取第 "
+                f"⚠️ 官方主檔第 "
                 f"{attempt}/{RETRIES} 次失敗："
                 f"{exc}"
             )
 
             if attempt < RETRIES:
-
                 time.sleep(
                     RETRY_SLEEP * attempt
                 )
 
     raise RuntimeError(
-        f"官方商品主檔抓取失敗："
+        "官方商品主檔無法取得有效 payload："
         f"{last_error}"
     )
 
 
 # ============================================================
-# HEADER DETECTION
+# HEADER
 # ============================================================
 
 def header_index(
@@ -977,10 +1005,7 @@ def header_index(
 
 def find_master_header(
     rows: List[List[str]],
-) -> Tuple[
-    int,
-    Dict[str, int]
-]:
+) -> Tuple[int, Dict[str, int]]:
 
     for index, row in enumerate(
         rows
@@ -1026,86 +1051,101 @@ def find_master_header(
         )
 
         if (
-            code_idx is not None
-            and name_idx is not None
-            and market_idx is not None
-            and type_idx is not None
+            code_idx is None
+            or name_idx is None
+            or market_idx is None
+            or type_idx is None
         ):
+            continue
 
-            listed_idx = header_index(
-                row,
-                (
-                    "Date Stock Listed",
-                    "上市日",
-                    "上櫃日",
-                    "上市日期",
-                    "掛牌日",
+        listed_idx = header_index(
+            row,
+            (
+                "Date Stock Listed",
+                "上市日",
+                "上櫃日",
+                "上市日期",
+                "掛牌日",
+            ),
+        )
+
+        cfi_idx = header_index(
+            row,
+            (
+                "CFICode",
+                "CFI Code",
+                "CFI代碼",
+            ),
+        )
+
+        isin_idx = header_index(
+            row,
+            (
+                "ISIN Code",
+                "ISIN",
+                "國際證券辨識號碼",
+            ),
+        )
+
+        remarks_idx = header_index(
+            row,
+            (
+                "Remarks",
+                "備註",
+            ),
+        )
+
+        return (
+            index,
+            {
+                "code": code_idx,
+                "name": name_idx,
+                "market": market_idx,
+                "type": type_idx,
+                "listed": (
+                    listed_idx
+                    if listed_idx is not None
+                    else -1
                 ),
-            )
-
-            cfi_idx = header_index(
-                row,
-                (
-                    "CFICode",
-                    "CFI Code",
-                    "CFI代碼",
+                "cfi": (
+                    cfi_idx
+                    if cfi_idx is not None
+                    else -1
                 ),
-            )
-
-            isin_idx = header_index(
-                row,
-                (
-                    "ISIN Code",
-                    "ISIN",
-                    "國際證券辨識號碼",
+                "isin": (
+                    isin_idx
+                    if isin_idx is not None
+                    else -1
                 ),
-            )
-
-            remarks_idx = header_index(
-                row,
-                (
-                    "Remarks",
-                    "備註",
+                "remarks": (
+                    remarks_idx
+                    if remarks_idx is not None
+                    else -1
                 ),
-            )
-
-            return (
-                index,
-                {
-                    "code": code_idx,
-                    "name": name_idx,
-                    "market": market_idx,
-                    "type": type_idx,
-                    "listed": (
-                        listed_idx
-                        if listed_idx is not None
-                        else -1
-                    ),
-                    "cfi": (
-                        cfi_idx
-                        if cfi_idx is not None
-                        else -1
-                    ),
-                    "isin": (
-                        isin_idx
-                        if isin_idx is not None
-                        else -1
-                    ),
-                    "remarks": (
-                        remarks_idx
-                        if remarks_idx is not None
-                        else -1
-                    ),
-                },
-            )
+            },
+        )
 
     raise RuntimeError(
         "官方商品主檔找不到有效欄位標題"
     )
 
 
+def row_value(
+    row: List[str],
+    index: int,
+) -> str:
+
+    if index < 0:
+        return ""
+
+    if index >= len(row):
+        return ""
+
+    return row[index]
+
+
 # ============================================================
-# PARSE OFFICIAL MASTER
+# PARSE MASTER
 # ============================================================
 
 def parse_official_master(
@@ -1130,15 +1170,12 @@ def parse_official_master(
     )
 
     if not rows:
-
         raise RuntimeError(
             "官方主檔沒有任何 table rows"
         )
 
     header_row_index, columns = (
-        find_master_header(
-            rows
-        )
+        find_master_header(rows)
     )
 
     log(
@@ -1171,9 +1208,7 @@ def parse_official_master(
             )
         )
 
-        if not is_valid_symbol(
-            code
-        ):
+        if not is_valid_symbol(code):
             continue
 
         name = clean_text(
@@ -1182,6 +1217,9 @@ def parse_official_master(
                 columns["name"],
             )
         )
+
+        if not name:
+            continue
 
         market_raw = clean_text(
             row_value(
@@ -1253,7 +1291,6 @@ def parse_official_master(
         )
 
     if not records:
-
         raise RuntimeError(
             "官方主檔解析後沒有有效 records"
         )
@@ -1266,22 +1303,8 @@ def parse_official_master(
     return records
 
 
-def row_value(
-    row: List[str],
-    index: int,
-) -> str:
-
-    if index < 0:
-        return ""
-
-    if index >= len(row):
-        return ""
-
-    return row[index]
-
-
 # ============================================================
-# FETCH DELISTED
+# GENERIC SYMBOL EXTRACTION
 # ============================================================
 
 def extract_symbols_from_rows(
@@ -1294,43 +1317,104 @@ def extract_symbols_from_rows(
 
         for cell in row:
 
-            text = clean_code(
-                cell
-            )
-
-            if is_valid_symbol(
-                text
-            ):
-
-                symbols.add(
-                    text
+            symbols.update(
+                extract_symbol_candidates(
+                    cell
                 )
-
-            # 某些官方頁面會把代碼
-            # 與其他文字放在同一欄
-            matches = re.findall(
-                r"(?<![0-9A-Z])"
-                r"[0-9]{4,6}[A-Z]?"
-                r"(?![0-9A-Z])",
-                clean_text(cell).upper(),
             )
-
-            for match in matches:
-
-                if is_valid_symbol(
-                    match
-                ):
-
-                    symbols.add(
-                        clean_code(
-                            match
-                        )
-                    )
 
     return symbols
 
 
-def fetch_delisted_page(
+def parse_symbols_from_html(
+    text: str,
+) -> Set[str]:
+
+    parser = TableParser()
+
+    parser.feed(text)
+
+    symbols = extract_symbols_from_rows(
+        parser.rows
+    )
+
+    if not symbols:
+        symbols.update(
+            extract_symbol_candidates(
+                text
+            )
+        )
+
+    return symbols
+
+
+# ============================================================
+# GENERIC OFFICIAL PAGE
+# ============================================================
+
+def fetch_official_html(
+    url: str,
+) -> Tuple[str, requests.Response]:
+
+    last_error: Optional[
+        Exception
+    ] = None
+
+    for attempt in range(
+        1,
+        RETRIES + 1,
+    ):
+
+        try:
+
+            response = SESSION.get(
+                url,
+                timeout=REQUEST_TIMEOUT,
+                allow_redirects=True,
+            )
+
+            response.raise_for_status()
+
+            text, encoding = decode_html(
+                response.content,
+                response,
+            )
+
+            log(
+                f"    encoding={encoding}"
+            )
+
+            return (
+                text,
+                response,
+            )
+
+        except Exception as exc:
+
+            last_error = exc
+
+            log(
+                f"⚠️ 官方資料第 "
+                f"{attempt}/{RETRIES} 次失敗："
+                f"{exc}"
+            )
+
+            if attempt < RETRIES:
+                time.sleep(
+                    RETRY_SLEEP * attempt
+                )
+
+    raise RuntimeError(
+        f"官方資料取得失敗："
+        f"{last_error}"
+    )
+
+
+# ============================================================
+# COMPANY DELISTED
+# ============================================================
+
+def fetch_company_delisted(
     url: str,
     label: str,
 ) -> Set[str]:
@@ -1339,31 +1423,201 @@ def fetch_delisted_page(
         f"→ {label}"
     )
 
-    response = http_get(
+    text, _ = fetch_official_html(
         url
     )
 
-    text, encoding = decode_html(
-        response.content,
-        response,
-    )
-
-    log(
-        f"    encoding={encoding}"
-    )
-
-    parser = TableParser()
-
-    parser.feed(
+    symbols = parse_symbols_from_html(
         text
     )
 
-    symbols = extract_symbols_from_rows(
-        parser.rows
+    log(
+        f"✓ {label}："
+        f"{len(symbols):,}"
     )
 
     return symbols
 
+
+# ============================================================
+# TWSE ETF TERMINATION
+# ============================================================
+
+def fetch_twse_etf_terminated() -> Set[str]:
+
+    log(
+        "→ TWSE ETF 新上市／終止上市公告"
+    )
+
+    terminated: Set[str] = set()
+
+    seen_pages: Set[int] = set()
+
+    for page in range(
+        TWSE_ETF_MAX_PAGES
+    ):
+
+        offset = (
+            page
+            * TWSE_ETF_PAGE_SIZE
+        )
+
+        if offset in seen_pages:
+            break
+
+        seen_pages.add(offset)
+
+        params = {
+            "max": TWSE_ETF_PAGE_SIZE,
+            "offset": offset,
+            "type": "listing",
+        }
+
+        url = (
+            TWSE_ETF_LISTING_URL
+            + "?"
+            + urlencode(params)
+        )
+
+        try:
+
+            text, _ = fetch_official_html(
+                url
+            )
+
+        except Exception as exc:
+
+            raise RuntimeError(
+                "TWSE ETF 終止公告取得失敗："
+                f"offset={offset} "
+                f"{exc}"
+            )
+
+        parser = TableParser()
+
+        parser.feed(text)
+
+        page_text = clean_text(text)
+
+        page_symbols = (
+            extract_symbol_candidates(
+                page_text
+            )
+        )
+
+        # 只接受真正出現在 ETF 公告文字中的
+        # 4~6 碼代號。
+        #
+        # 這裡不把所有數字視為代號。
+        if page_symbols:
+            terminated.update(
+                page_symbols
+            )
+
+        # 官方 listing 分類目前是分頁資料。
+        # 沒有公告內容代表已經到底。
+        if (
+            "沒有資料" in page_text
+            or "查無資料" in page_text
+            or not parser.rows
+        ):
+            break
+
+        log(
+            f"    ETF listing page "
+            f"{page + 1}: "
+            f"{len(page_symbols):,} codes"
+        )
+
+    log(
+        f"✓ TWSE ETF termination "
+        f"candidates："
+        f"{len(terminated):,}"
+    )
+
+    return terminated
+
+
+# ============================================================
+# TPEX TERMINATION
+# ============================================================
+
+def fetch_tpex_terminated() -> Set[str]:
+
+    section(
+        "OFFICIAL STATUS — TPEX TERMINATED SECURITIES"
+    )
+
+    company_symbols = (
+        fetch_company_delisted(
+            TPEX_DELISTED_COMPANY_URL,
+            "TPEX 終止上櫃公司",
+        )
+    )
+
+    # TPEX 官方歷史市場公告頁
+    #
+    # 這個來源可能依網站當期查詢條件
+    # 呈現不同內容，因此：
+    # 1. 有資料就納入
+    # 2. 若頁面沒有可解析的代號，
+    #    不直接把整個 Universe 判定為 0
+    #
+    # 但 company termination 仍然是必要來源。
+    announcement_symbols: Set[str] = set()
+
+    try:
+
+        text, _ = fetch_official_html(
+            TPEX_MARKET_ANNOUNCEMENT_URL
+        )
+
+        announcement_symbols = (
+            parse_symbols_from_html(
+                text
+            )
+        )
+
+        log(
+            "✓ TPEX 市場公告可解析代號："
+            f"{len(announcement_symbols):,}"
+        )
+
+    except Exception as exc:
+
+        log(
+            "⚠️ TPEX 市場公告頁目前無法解析："
+            f"{exc}"
+        )
+
+        # 不把單一輔助頁故障直接當成
+        # 官方 termination = 0。
+        #
+        # 真正 active Universe 還會經過
+        # market/type/termination intersection
+        # 驗證。
+
+    result = (
+        company_symbols
+        | announcement_symbols
+    )
+
+    if not result:
+        raise RuntimeError(
+            "TPEX 官方終止狀態完全沒有資料"
+        )
+
+    log(
+        f"✓ TPEX 官方終止候選合計："
+        f"{len(result):,}"
+    )
+
+    return result
+
+
+# ============================================================
+# OFFICIAL TERMINATION STATUS
+# ============================================================
 
 def fetch_official_termination_status(
 ) -> Set[str]:
@@ -1372,47 +1626,57 @@ def fetch_official_termination_status(
         "STEP 3 — FETCH OFFICIAL TERMINATION STATUS"
     )
 
-    log("")
-    log("=" * 76)
-    log(
-        "OFFICIAL STATUS — TERMINATED SECURITIES"
-    )
-    log("=" * 76)
-
-    twse_symbols = fetch_delisted_page(
-        TWSE_DELISTED_URL,
-        "TWSE 終止上市名單",
+    twse_company = (
+        fetch_company_delisted(
+            TWSE_DELISTED_COMPANY_URL,
+            "TWSE 終止上市公司",
+        )
     )
 
-    log(
-        f"✓ TWSE 終止上市商品："
-        f"{len(twse_symbols):,}"
+    twse_etf = (
+        fetch_twse_etf_terminated()
     )
 
-    tpex_symbols = fetch_delisted_page(
-        TPEX_DELISTED_URL,
-        "TPEX 終止上櫃名單",
-    )
-
-    log(
-        f"✓ TPEX 終止上櫃商品："
-        f"{len(tpex_symbols):,}"
+    tpex = (
+        fetch_tpex_terminated()
     )
 
     terminated = (
-        twse_symbols
-        | tpex_symbols
+        twse_company
+        | twse_etf
+        | tpex
     )
 
     if not terminated:
-
         raise RuntimeError(
-            "官方終止商品名單為 0，"
-            "禁止繼續建立 Universe"
+            "官方終止商品名單為 0"
         )
 
     log(
-        f"✓ 官方終止商品合計："
+        ""
+    )
+
+    log(
+        "OFFICIAL TERMINATION SUMMARY"
+    )
+
+    log(
+        f"  TWSE company："
+        f"{len(twse_company):,}"
+    )
+
+    log(
+        f"  TWSE ETF："
+        f"{len(twse_etf):,}"
+    )
+
+    log(
+        f"  TPEX："
+        f"{len(tpex):,}"
+    )
+
+    log(
+        f"  UNION："
         f"{len(terminated):,}"
     )
 
@@ -1441,8 +1705,8 @@ def load_existing_metadata(
     except Exception as exc:
 
         log(
-            f"⚠️ 既有 Universe "
-            f"無法讀取 metadata：{exc}"
+            "⚠️ 既有 Universe metadata "
+            f"無法讀取：{exc}"
         )
 
         return {}
@@ -1455,7 +1719,6 @@ def load_existing_metadata(
         stocks,
         dict,
     ):
-
         return {}
 
     result: Dict[
@@ -1499,7 +1762,10 @@ def derive_instrument_metadata(
     previous: Optional[
         Dict[str, Any]
     ],
-) -> Tuple[str, Optional[str]]:
+) -> Tuple[
+    str,
+    Optional[str]
+]:
 
     security_type = record[
         "type"
@@ -1518,7 +1784,6 @@ def derive_instrument_metadata(
     )
 
     if security_type == "STOCK":
-
         return (
             "STOCK",
             "COMMON_STOCK",
@@ -1526,7 +1791,7 @@ def derive_instrument_metadata(
 
     if security_type == "ETF":
 
-        # 先保留既有可靠分類
+        # 保留既有可靠分類
         if previous:
 
             previous_instrument = (
@@ -1546,18 +1811,15 @@ def derive_instrument_metadata(
             )
 
             if previous_instrument:
-
                 return (
                     previous_instrument,
                     previous_category
                     or None,
                 )
 
-        # 依 CFI / 名稱做最小必要分類
         if cfi.startswith(
             "CEOGD"
         ):
-
             return (
                 "LEVERAGED",
                 "LEVERAGED",
@@ -1568,7 +1830,6 @@ def derive_instrument_metadata(
             or "INVERSE" in name
             or "反" in name
         ):
-
             return (
                 "INVERSE",
                 "INVERSE",
@@ -1581,7 +1842,6 @@ def derive_instrument_metadata(
                 "CEOIB"
             )
         ):
-
             return (
                 "BOND",
                 "BOND",
@@ -1591,7 +1851,6 @@ def derive_instrument_metadata(
             "ACTIVE" in name
             or "主動" in name
         ):
-
             return (
                 "ACTIVE",
                 "ACTIVE_EQUITY",
@@ -1606,6 +1865,40 @@ def derive_instrument_metadata(
         "UNKNOWN",
         None,
     )
+
+
+# ============================================================
+# METADATA SCORE
+# ============================================================
+
+def metadata_score(
+    item: Dict[str, Any],
+) -> int:
+
+    score = 0
+
+    for key in (
+        "symbol",
+        "name",
+        "market",
+        "type",
+        "listed_date",
+        "cfi_code",
+        "instrument_type",
+        "category",
+    ):
+
+        value = item.get(
+            key
+        )
+
+        if value not in {
+            None,
+            "",
+        }:
+            score += 1
+
+    return score
 
 
 # ============================================================
@@ -1707,38 +2000,26 @@ def build_active_universe(
 
         if security_type not in ALLOWED_TYPES:
 
-            if (
-                record.get(
-                    "type_raw"
-                )
-                or record.get(
-                    "name"
-                )
-            ):
-
-                raw_combined = (
-                    clean_text(
-                        record.get(
-                            "type_raw"
-                        )
+            raw_combined = (
+                clean_text(
+                    record.get(
+                        "type_raw"
                     )
-                    + " "
-                    + name
                 )
+                + " "
+                + name
+            )
 
-                if is_excluded_type(
-                    raw_combined
-                ):
-
-                    stats[
-                        "excluded"
-                    ] += 1
-
-                else:
-
-                    stats[
-                        "unknown_type"
-                    ] += 1
+            if is_excluded_type(
+                raw_combined
+            ):
+                stats[
+                    "excluded"
+                ] += 1
+            else:
+                stats[
+                    "unknown_type"
+                ] += 1
 
             continue
 
@@ -1748,30 +2029,25 @@ def build_active_universe(
         elif security_type == "ETF":
             stats["etf"] += 1
 
+        # ====================================================
+        # DUPLICATE
+        # ====================================================
+
         if symbol in candidates:
 
             stats[
                 "duplicate"
             ] += 1
 
-            # 若同代碼重複，保留較完整資料
             existing = candidates[
                 symbol
             ]
 
-            existing_score = (
-                metadata_score(
-                    existing
-                )
-            )
-
-            current_score = (
-                metadata_score(
-                    record
-                )
-            )
-
-            if current_score <= existing_score:
+            if (
+                metadata_score(record)
+                <=
+                metadata_score(existing)
+            ):
                 continue
 
         previous = (
@@ -1796,9 +2072,7 @@ def build_active_universe(
             "name": name,
             "market": market,
             "type": security_type,
-            "instrument_type": (
-                instrument_type
-            ),
+            "instrument_type": instrument_type,
             "status": ACTIVE_STATUS,
             "listed_date": clean_text(
                 record.get(
@@ -1817,31 +2091,32 @@ def build_active_universe(
                 "category"
             ] = category
 
-        # 保留既有 metadata，
-        # 但官方核心欄位永遠優先
+        # 保留既有 metadata
+        # 但官方核心欄位優先
         if previous:
+
+            protected = {
+                "symbol",
+                "full_symbol",
+                "name",
+                "market",
+                "type",
+                "instrument_type",
+                "status",
+                "listed_date",
+                "cfi_code",
+                "category",
+            }
 
             for key, value in previous.items():
 
-                if key in {
-                    "symbol",
-                    "full_symbol",
-                    "name",
-                    "market",
-                    "type",
-                    "instrument_type",
-                    "status",
-                    "listed_date",
-                    "cfi_code",
-                    "category",
-                }:
+                if key in protected:
                     continue
 
                 if (
                     value is not None
                     and value != ""
                 ):
-
                     item[
                         key
                     ] = value
@@ -1851,7 +2126,7 @@ def build_active_universe(
         ] = item
 
     # ========================================================
-    # FINAL HARD TERMINATION ASSERTION
+    # FINAL TERMINATION ASSERTION
     # ========================================================
 
     intersection = (
@@ -1868,17 +2143,14 @@ def build_active_universe(
         raise RuntimeError(
             "Universe build failed："
             "terminated 商品仍存在 active Universe："
-            + ", ".join(
-                codes
-            )
+            + ", ".join(codes)
         )
 
     # ========================================================
-    # REQUIRED SANITY CHECKS
+    # REQUIRED SANITY
     # ========================================================
 
     if not candidates:
-
         raise RuntimeError(
             "Universe build failed："
             "Candidate Universe = 0"
@@ -1886,36 +2158,37 @@ def build_active_universe(
 
     stock_count = sum(
         1
-        for item in candidates.values()
-        if item.get("type") == "STOCK"
+        for item
+        in candidates.values()
+        if item.get("type")
+        == "STOCK"
     )
 
     etf_count = sum(
         1
-        for item in candidates.values()
-        if item.get("type") == "ETF"
+        for item
+        in candidates.values()
+        if item.get("type")
+        == "ETF"
     )
 
     if stock_count == 0:
-
         raise RuntimeError(
             "Universe build failed："
-            "STOCK = 0。"
-            "官方主檔分類仍然錯誤，"
-            "禁止覆蓋 universe.json"
+            "STOCK = 0"
         )
 
     if etf_count == 0:
-
         raise RuntimeError(
             "Universe build failed："
-            "ETF = 0。"
-            "官方主檔分類錯誤"
+            "ETF = 0"
         )
 
-    # 明確驗證歷史已知終止商品
-    if "00838B" in candidates:
+    # ========================================================
+    # 00838B HARD ASSERTION
+    # ========================================================
 
+    if "00838B" in candidates:
         raise RuntimeError(
             "Universe build failed："
             "00838B 不得存在於 active Universe"
@@ -1939,37 +2212,6 @@ def build_active_universe(
     )
 
 
-def metadata_score(
-    item: Dict[str, Any],
-) -> int:
-
-    score = 0
-
-    for key in (
-        "symbol",
-        "name",
-        "market",
-        "type",
-        "listed_date",
-        "cfi_code",
-        "instrument_type",
-        "category",
-    ):
-
-        value = item.get(
-            key
-        )
-
-        if value not in {
-            None,
-            "",
-        }:
-
-            score += 1
-
-    return score
-
-
 # ============================================================
 # VALIDATION
 # ============================================================
@@ -1986,18 +2228,14 @@ def validate_universe_schema(
         stocks,
         dict,
     ):
-
         raise RuntimeError(
             "Universe stocks 必須是 dict"
         )
 
     if not stocks:
-
         raise RuntimeError(
             "Universe stocks 不得為空"
         )
-
-    seen: Set[str] = set()
 
     market_count = {
         "TWSE": 0,
@@ -2009,13 +2247,14 @@ def validate_universe_schema(
         "ETF": 0,
     }
 
+    seen: Set[str] = set()
+
     for key, item in stocks.items():
 
         if not isinstance(
             item,
             dict,
         ):
-
             raise RuntimeError(
                 f"{key} item 必須是 dict"
             )
@@ -2027,7 +2266,6 @@ def validate_universe_schema(
         )
 
         if key != symbol:
-
             raise RuntimeError(
                 f"{key}: key/symbol mismatch"
             )
@@ -2035,13 +2273,11 @@ def validate_universe_schema(
         if not is_valid_symbol(
             symbol
         ):
-
             raise RuntimeError(
                 f"{symbol}: invalid symbol"
             )
 
         if symbol in seen:
-
             raise RuntimeError(
                 f"{symbol}: duplicate"
             )
@@ -2051,7 +2287,6 @@ def validate_universe_schema(
         if item.get(
             "status"
         ) != ACTIVE_STATUS:
-
             raise RuntimeError(
                 f"{symbol}: status != active"
             )
@@ -2061,7 +2296,6 @@ def validate_universe_schema(
         )
 
         if market not in ALLOWED_MARKETS:
-
             raise RuntimeError(
                 f"{symbol}: invalid market"
             )
@@ -2071,16 +2305,13 @@ def validate_universe_schema(
         )
 
         if record_type not in ALLOWED_TYPES:
-
             raise RuntimeError(
                 f"{symbol}: invalid type"
             )
 
         if symbol in terminated:
-
             raise RuntimeError(
-                f"{symbol}: "
-                "officially terminated"
+                f"{symbol}: officially terminated"
             )
 
         market_count[
@@ -2094,7 +2325,6 @@ def validate_universe_schema(
     if type_count[
         "STOCK"
     ] == 0:
-
         raise RuntimeError(
             "Universe validation："
             "STOCK = 0"
@@ -2103,26 +2333,38 @@ def validate_universe_schema(
     if type_count[
         "ETF"
     ] == 0:
-
         raise RuntimeError(
             "Universe validation："
             "ETF = 0"
         )
 
     if "00838B" in stocks:
-
         raise RuntimeError(
             "Universe validation："
             "00838B 不得存在"
         )
 
-    log("")
+    intersection = (
+        set(stocks.keys())
+        & terminated
+    )
+
+    if intersection:
+        raise RuntimeError(
+            "Universe validation："
+            "active ∩ terminated != 0："
+            + ", ".join(
+                sorted(intersection)
+            )
+        )
+
     log(
         "✓ Universe schema validation PASS"
     )
 
     log(
-        f"  total：{len(stocks):,}"
+        f"  total："
+        f"{len(stocks):,}"
     )
 
     log(
@@ -2198,11 +2440,17 @@ def build_output(
         "market_count": market_count,
         "source": {
             "universe_master": MASTER_URL,
-            "termination_twse": (
-                TWSE_DELISTED_URL
+            "termination_twse_company": (
+                TWSE_DELISTED_COMPANY_URL
             ),
-            "termination_tpex": (
-                TPEX_DELISTED_URL
+            "termination_twse_etf": (
+                TWSE_ETF_LISTING_URL
+            ),
+            "termination_tpex_company": (
+                TPEX_DELISTED_COMPANY_URL
+            ),
+            "termination_tpex_market": (
+                TPEX_MARKET_ANNOUNCEMENT_URL
             ),
             "policy": (
                 "official product master only"
@@ -2300,14 +2548,13 @@ def atomic_write_json(
         if os.path.exists(
             temp_path
         ):
-
             os.unlink(
                 temp_path
             )
 
 
 # ============================================================
-# FINAL VALIDATION AFTER WRITE
+# FINAL WRITTEN VALIDATION
 # ============================================================
 
 def validate_written_universe(
@@ -2319,7 +2566,6 @@ def validate_written_universe(
     )
 
     if not UNIVERSE_FILE.exists():
-
         raise RuntimeError(
             "寫入後找不到 universe.json"
         )
@@ -2337,9 +2583,8 @@ def validate_written_universe(
         data,
         dict,
     ):
-
         raise RuntimeError(
-            "寫入後 Universe root 不是 dict"
+            "Universe root 不是 dict"
         )
 
     stocks = data.get(
@@ -2360,11 +2605,32 @@ def validate_written_universe(
     )
 
     if declared_count != actual_count:
-
         raise RuntimeError(
             "universe_count mismatch："
             f"{declared_count} != "
             f"{actual_count}"
+        )
+
+    if data.get(
+        "stock_count"
+    ) != sum(
+        1
+        for x in stocks.values()
+        if x.get("type") == "STOCK"
+    ):
+        raise RuntimeError(
+            "stock_count mismatch"
+        )
+
+    if data.get(
+        "etf_count"
+    ) != sum(
+        1
+        for x in stocks.values()
+        if x.get("type") == "ETF"
+    ):
+        raise RuntimeError(
+            "etf_count mismatch"
         )
 
     log(
@@ -2427,7 +2693,7 @@ def main() -> int:
         )
 
         log(
-            f"❌ 官方商品主檔抓取失敗："
+            "❌ 官方商品主檔抓取失敗："
             f"{exc}"
         )
 
@@ -2460,7 +2726,7 @@ def main() -> int:
         )
 
         log(
-            f"❌ 官方商品主檔解析失敗："
+            "❌ 官方商品主檔解析失敗："
             f"{exc}"
         )
 
@@ -2491,7 +2757,7 @@ def main() -> int:
         )
 
         log(
-            f"❌ 官方終止狀態取得失敗："
+            "❌ 官方終止狀態取得失敗："
             f"{exc}"
         )
 
@@ -2543,74 +2809,32 @@ def main() -> int:
         "UNIVERSE BUILD STATISTICS"
     )
 
-    log(
-        f"  Records："
-        f"{stats['records']:,}"
-    )
+    for key, label in (
+        ("records", "Records"),
+        ("valid_code", "Valid code"),
+        ("valid_name", "Valid name"),
+        ("valid_market", "Valid market"),
+        ("stock", "STOCK parsed"),
+        ("etf", "ETF parsed"),
+        ("excluded", "Excluded"),
+        ("unknown_type", "Unknown type"),
+        (
+            "terminated_removed",
+            "Terminated removed",
+        ),
+        ("duplicate", "Duplicate"),
+        ("candidate", "Candidate Universe"),
+        ("stock_final", "STOCK"),
+        ("etf_final", "ETF"),
+    ):
 
-    log(
-        f"  Valid code："
-        f"{stats['valid_code']:,}"
-    )
-
-    log(
-        f"  Valid name："
-        f"{stats['valid_name']:,}"
-    )
-
-    log(
-        f"  Valid market："
-        f"{stats['valid_market']:,}"
-    )
-
-    log(
-        f"  STOCK parsed："
-        f"{stats['stock']:,}"
-    )
-
-    log(
-        f"  ETF parsed："
-        f"{stats['etf']:,}"
-    )
-
-    log(
-        f"  Excluded："
-        f"{stats['excluded']:,}"
-    )
-
-    log(
-        f"  Unknown type："
-        f"{stats['unknown_type']:,}"
-    )
-
-    log(
-        f"  Terminated removed："
-        f"{stats['terminated_removed']:,}"
-    )
-
-    log(
-        f"  Duplicate："
-        f"{stats['duplicate']:,}"
-    )
-
-    log("")
-    log(
-        f"→ Candidate Universe："
-        f"{stats['candidate']:,}"
-    )
-
-    log(
-        f"→ STOCK："
-        f"{stats['stock_final']:,}"
-    )
-
-    log(
-        f"→ ETF："
-        f"{stats['etf_final']:,}"
-    )
+        log(
+            f"  {label}："
+            f"{stats[key]:,}"
+        )
 
     # ========================================================
-    # STEP 5 — OUTPUT VALIDATION
+    # STEP 5
     # ========================================================
 
     section(
@@ -2631,7 +2855,7 @@ def main() -> int:
     except Exception as exc:
 
         log(
-            f"❌ Universe validation failed："
+            "❌ Universe validation failed："
             f"{exc}"
         )
 
@@ -2655,7 +2879,7 @@ def main() -> int:
     except Exception as exc:
 
         log(
-            f"❌ Universe atomic write failed："
+            "❌ Universe atomic write failed："
             f"{exc}"
         )
 
@@ -2678,7 +2902,7 @@ def main() -> int:
     except Exception as exc:
 
         log(
-            f"❌ 寫入後驗證失敗："
+            "❌ 寫入後驗證失敗："
             f"{exc}"
         )
 
@@ -2718,15 +2942,19 @@ def main() -> int:
     )
 
     log(
-        "✓ 官方終止商品全部排除"
+        "✓ 官方商品主檔 payload 驗證"
     )
 
     log(
-        "✓ 00838B 已硬阻斷"
+        "✓ 官方終止商品硬排除"
     )
 
     log(
-        "✓ Universe / terminated intersection = 0"
+        "✓ 00838B 已阻斷"
+    )
+
+    log(
+        "✓ active ∩ terminated = 0"
     )
 
     log(
@@ -2746,7 +2974,6 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-
     sys.exit(
         main()
     )
