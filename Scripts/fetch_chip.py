@@ -2,58 +2,111 @@
 # -*- coding: utf-8 -*-
 
 """
-台股 AI 選股系統
-fetch_chip.py V3.0
+台股 AI 選股系統 - fetch_chip.py
+============================================================
+
+NEW ARCHITECTURE
+============================================================
+
+唯一 Universe：
+    Data/universe.json
+
+資料流程：
+    universe.json
+        ↓
+    status == active
+        ↓
+    market == TWSE / TPEX
+        ↓
+    官方交易資料
+        ↓
+    實際交易日判定
+        ↓
+    三大法人
+        ↓
+    5D / 20D
+        ↓
+    融資 / 融券
+        ↓
+    資券相抵
+        ↓
+    成交量
+        ↓
+    當沖
+        ↓
+    Data/chip.json
 
 ============================================================
-用途
-============================================================
-負責取得短期籌碼資料：
-
-1. 三大法人買賣超
-2. 融資餘額
-3. 融券餘額
-4. 資券相抵
-5. 成交量
-6. 當沖率
-7. 5D / 20D 法人買賣超累計
-
-============================================================
-核心原則
+核心契約
 ============================================================
 
 1. Data/universe.json 是唯一 Universe 來源
-2. 只處理 Universe 內 status == active 的股票
-3. TWSE / TPEx 分開處理
-4. 優先使用官方資料
-5. 不用第三方資料冒充官方資料
-6. 不用 0 代替抓不到的資料
-7. 缺資料一律 None / invalid
-8. 不把三大法人買賣超命名成主力買賣超
-9. 5D / 20D 必須建立在不同交易日資料上
-10. 單一股票資料異常不得破壞整批資料
-11. 本次完全沒有有效資料時，不覆蓋既有 chip.json
-12. 寫檔採 atomic write
+2. universe.json root 必須是 dict
+3. universe.json stocks 必須是 dict
+4. stocks key 必須等於 item.symbol
+5. 只處理 status == "active"
+6. market 只能是 TWSE / TPEX
+7. type 只能是 STOCK / ETF
+8. 不從成交資料建立 Universe
+9. 不從 API 發現額外股票
+10. 不從 Yahoo / yfinance / FinMind / CMoney 取得籌碼
+11. TWSE / TPEX 完全依 Universe.market 分流
+12. 不依股票代碼尾碼猜市場
+13. 不使用 0 代替缺失資料
+14. 缺失資料使用 None
+15. 缺失資料必須標記 data_quality
+16. 5D 必須使用 5 個不同的實際交易日
+17. 20D 必須使用 20 個不同的實際交易日
+18. 不使用自然日冒充交易日
+19. 已終止 Universe 標的不得進入 chip.json
+20. Universe 外標的不得進入 chip.json
+21. 單一標的失敗不得讓整批中止
+22. 如果完全沒有取得有效官方資料，不覆蓋既有 chip.json
+23. 寫檔使用 atomic write
+24. 寫檔前執行 Universe / chip 結構驗證
+
+============================================================
+官方來源
+============================================================
+
+TWSE：
+    T86
+    MI_INDEX
+    marginTWTAS / MI_MARGN
+    TWTB4U
+
+TPEx：
+    官方 OpenAPI / 官方交易資料
+
+注意：
+    官方資料端點如果當日沒有資料，
+    絕對不使用第三方資料補洞。
+
 ============================================================
 """
 
 from __future__ import annotations
 
 import json
+import os
+import re
 import sys
+import tempfile
 import time
-from datetime import datetime
+
+from collections import defaultdict
+from datetime import date, datetime, timedelta
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, Iterable, List, Optional, Set, Tuple
 
 import requests
 
 
 # ============================================================
-# 基本設定
+# CONFIG
 # ============================================================
 
-VERSION = "V3.0"
+VERSION = "UNIVERSE-CHIP-2.0"
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 DATA_DIR = BASE_DIR / "Data"
@@ -61,12 +114,15 @@ DATA_DIR = BASE_DIR / "Data"
 UNIVERSE_FILE = DATA_DIR / "universe.json"
 OUTPUT_FILE = DATA_DIR / "chip.json"
 
-REQUEST_TIMEOUT = 20
-SLEEP_SECONDS = 0.15
+REQUEST_TIMEOUT = 30
+REQUEST_RETRY = 3
+REQUEST_SLEEP = 0.20
 
-LOOKBACK_DAYS = 30
+LOOKBACK_CALENDAR_DAYS = 60
+
 REQUIRED_5D = 5
 REQUIRED_20D = 20
+
 
 USER_AGENT = (
     "Mozilla/5.0 "
@@ -78,15 +134,20 @@ USER_AGENT = (
 
 
 # ============================================================
-# Session
+# SESSION
 # ============================================================
 
-session = requests.Session()
+SESSION = requests.Session()
 
-session.headers.update(
+SESSION.headers.update(
     {
         "User-Agent": USER_AGENT,
-        "Accept": "application/json,text/plain,*/*",
+        "Accept": (
+            "application/json,"
+            "text/plain,"
+            "text/csv,"
+            "*/*"
+        ),
         "Accept-Language": "zh-TW,zh;q=0.9,en;q=0.8",
         "Connection": "keep-alive",
     }
@@ -94,30 +155,37 @@ session.headers.update(
 
 
 # ============================================================
-# 時間
+# TIME
 # ============================================================
 
-def now_taiwan() -> str:
+def taiwan_now() -> datetime:
+
     from zoneinfo import ZoneInfo
 
     return datetime.now(
         ZoneInfo("Asia/Taipei")
-    ).strftime("%Y-%m-%d %H:%M:%S")
+    )
 
 
-def today_taiwan() -> str:
-    from zoneinfo import ZoneInfo
+def taiwan_today() -> date:
 
-    return datetime.now(
-        ZoneInfo("Asia/Taipei")
-    ).strftime("%Y-%m-%d")
+    return taiwan_now().date()
+
+
+def now_iso() -> str:
+
+    return taiwan_now().isoformat(
+        timespec="seconds"
+    )
 
 
 # ============================================================
-# 基本轉換
+# BASIC CONVERSION
 # ============================================================
 
-def safe_float(value: Any) -> Optional[float]:
+def safe_float(
+    value: Any,
+) -> Optional[float]:
 
     if value is None:
         return None
@@ -146,6 +214,7 @@ def safe_float(value: Any) -> Optional[float]:
     if text in {
         "-",
         "--",
+        "---",
         "N/A",
         "NA",
         "null",
@@ -156,11 +225,14 @@ def safe_float(value: Any) -> Optional[float]:
 
     try:
         return float(text)
+
     except Exception:
         return None
 
 
-def safe_int(value: Any) -> Optional[int]:
+def safe_int(
+    value: Any,
+) -> Optional[int]:
 
     number = safe_float(value)
 
@@ -169,11 +241,14 @@ def safe_int(value: Any) -> Optional[int]:
 
     try:
         return int(number)
+
     except Exception:
         return None
 
 
-def normalize_symbol(value: Any) -> Optional[str]:
+def clean_symbol(
+    value: Any,
+) -> Optional[str]:
 
     if value is None:
         return None
@@ -183,191 +258,18 @@ def normalize_symbol(value: Any) -> Optional[str]:
     if not text:
         return None
 
+    if text.endswith(".TW"):
+        text = text[:-3]
+
+    elif text.endswith(".TWO"):
+        text = text[:-4]
+
     return text
 
 
-def clean_code(symbol: str) -> str:
-
-    return (
-        symbol.upper()
-        .replace(".TW", "")
-        .replace(".TWO", "")
-    )
-
-
-def get_market(symbol: str) -> Optional[str]:
-
-    symbol = symbol.upper()
-
-    if symbol.endswith(".TW"):
-        return "TWSE"
-
-    if symbol.endswith(".TWO"):
-        return "TPEX"
-
-    return None
-
-
-# ============================================================
-# HTTP
-# ============================================================
-
-def get_json(
-    url: str,
-    params: Optional[Dict[str, Any]] = None,
-) -> Optional[Dict[str, Any]]:
-
-    try:
-
-        response = session.get(
-            url,
-            params=params,
-            timeout=REQUEST_TIMEOUT,
-        )
-
-        response.raise_for_status()
-
-        data = response.json()
-
-        if not isinstance(data, dict):
-            return None
-
-        return data
-
-    except Exception as exc:
-
-        print(
-            f"      ⚠️ API 取得失敗：{exc}"
-        )
-
-        return None
-
-
-# ============================================================
-# Universe
-# ============================================================
-
-def load_universe() -> List[str]:
-
-    if not UNIVERSE_FILE.exists():
-        raise FileNotFoundError(
-            f"找不到 Universe：{UNIVERSE_FILE}"
-        )
-
-    with UNIVERSE_FILE.open(
-        "r",
-        encoding="utf-8",
-    ) as file:
-
-        data = json.load(file)
-
-    records: Any = None
-
-    if isinstance(data, dict):
-
-        stocks = data.get("stocks")
-
-        if isinstance(stocks, dict):
-
-            records = []
-
-            for code, item in stocks.items():
-
-                if isinstance(item, dict):
-
-                    record = dict(item)
-
-                    if not record.get("symbol"):
-                        record["symbol"] = code
-
-                    records.append(record)
-
-        elif isinstance(stocks, list):
-
-            records = stocks
-
-        else:
-
-            for key in (
-                "universe",
-                "symbols",
-                "data",
-            ):
-
-                if isinstance(data.get(key), list):
-
-                    records = data[key]
-                    break
-
-    elif isinstance(data, list):
-
-        records = data
-
-    if records is None:
-
-        raise ValueError(
-            "universe.json 格式無法辨識。"
-        )
-
-    symbols: List[str] = []
-
-    for item in records:
-
-        symbol = None
-        status = "active"
-
-        if isinstance(item, str):
-
-            symbol = item
-
-        elif isinstance(item, dict):
-
-            status = str(
-                item.get(
-                    "status",
-                    "active",
-                )
-            ).lower()
-
-            for key in (
-                "symbol",
-                "code",
-                "stock_id",
-                "ticker",
-            ):
-
-                if item.get(key):
-
-                    symbol = item[key]
-                    break
-
-        if status != "active":
-            continue
-
-        symbol = normalize_symbol(symbol)
-
-        if not symbol:
-            continue
-
-        if (
-            symbol.endswith(".TW")
-            or symbol.endswith(".TWO")
-        ):
-
-            symbols.append(symbol)
-
-        elif symbol.isdigit():
-
-            symbols.append(symbol)
-
-    return sorted(set(symbols))
-
-
-# ============================================================
-# 日期
-# ============================================================
-
-def parse_date(value: Any) -> Optional[str]:
+def parse_date(
+    value: Any,
+) -> Optional[str]:
 
     if value is None:
         return None
@@ -383,13 +285,47 @@ def parse_date(value: Any) -> Optional[str]:
         .replace(".", "-")
     )
 
-    if len(text) == 8 and text.isdigit():
+    # ROC YYYY/MM/DD or YYY/MM/DD
+    parts = text.split("-")
 
-        return (
-            f"{text[0:4]}-"
-            f"{text[4:6]}-"
-            f"{text[6:8]}"
-        )
+    if (
+        len(parts) >= 3
+        and parts[0].isdigit()
+        and parts[1].isdigit()
+        and parts[2].isdigit()
+    ):
+
+        year = int(parts[0])
+
+        if year < 1911:
+
+            year += 1911
+
+        try:
+
+            return date(
+                year,
+                int(parts[1]),
+                int(parts[2][:2]),
+            ).isoformat()
+
+        except Exception:
+            pass
+
+    if (
+        len(text) == 8
+        and text.isdigit()
+    ):
+
+        try:
+
+            return datetime.strptime(
+                text,
+                "%Y%m%d",
+            ).date().isoformat()
+
+        except Exception:
+            return None
 
     if len(text) >= 10:
 
@@ -397,12 +333,10 @@ def parse_date(value: Any) -> Optional[str]:
 
         try:
 
-            datetime.strptime(
+            return datetime.strptime(
                 candidate,
                 "%Y-%m-%d",
-            )
-
-            return candidate
+            ).date().isoformat()
 
         except Exception:
             return None
@@ -410,38 +344,327 @@ def parse_date(value: Any) -> Optional[str]:
     return None
 
 
-def date_is_valid(
+def roc_date(
+    gdate: str,
+) -> str:
+
+    d = datetime.strptime(
+        gdate,
+        "%Y-%m-%d",
+    ).date()
+
+    return (
+        f"{d.year - 1911:03d}/"
+        f"{d.month:02d}/"
+        f"{d.day:02d}"
+    )
+
+
+# ============================================================
+# HTTP
+# ============================================================
+
+def http_get(
+    url: str,
+    params: Optional[Dict[str, Any]] = None,
+) -> Optional[requests.Response]:
+
+    last_error = None
+
+    for attempt in range(
+        1,
+        REQUEST_RETRY + 1,
+    ):
+
+        try:
+
+            response = SESSION.get(
+                url,
+                params=params,
+                timeout=REQUEST_TIMEOUT,
+            )
+
+            response.raise_for_status()
+
+            time.sleep(REQUEST_SLEEP)
+
+            return response
+
+        except Exception as exc:
+
+            last_error = exc
+
+            if attempt < REQUEST_RETRY:
+
+                time.sleep(
+                    attempt * 0.8
+                )
+
+    print(
+        f"      API ERROR: {url}"
+    )
+
+    print(
+        f"      {last_error}"
+    )
+
+    return None
+
+
+def get_json(
+    url: str,
+    params: Optional[Dict[str, Any]] = None,
+) -> Any:
+
+    response = http_get(
+        url,
+        params,
+    )
+
+    if response is None:
+        return None
+
+    try:
+
+        return response.json()
+
+    except Exception as exc:
+
+        print(
+            f"      JSON ERROR: {url}: {exc}"
+        )
+
+        return None
+
+
+# ============================================================
+# ATOMIC WRITE
+# ============================================================
+
+def atomic_write_json(
+    path: Path,
+    payload: Any,
+) -> None:
+
+    path.parent.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
+
+    fd, temp_path = tempfile.mkstemp(
+        prefix=f".{path.name}.",
+        suffix=".tmp",
+        dir=path.parent,
+    )
+
+    try:
+
+        with os.fdopen(
+            fd,
+            "w",
+            encoding="utf-8",
+        ) as file:
+
+            json.dump(
+                payload,
+                file,
+                ensure_ascii=False,
+                indent=2,
+            )
+
+            file.write("\n")
+
+            file.flush()
+
+            os.fsync(
+                file.fileno()
+            )
+
+        os.replace(
+            temp_path,
+            path,
+        )
+
+    finally:
+
+        if os.path.exists(
+            temp_path
+        ):
+
+            os.unlink(
+                temp_path
+            )
+
+
+# ============================================================
+# UNIVERSE
+# ============================================================
+
+def load_universe() -> Dict[str, Dict[str, Any]]:
+
+    if not UNIVERSE_FILE.exists():
+
+        raise RuntimeError(
+            f"Universe not found: "
+            f"{UNIVERSE_FILE}"
+        )
+
+    with UNIVERSE_FILE.open(
+        "r",
+        encoding="utf-8-sig",
+    ) as file:
+
+        data = json.load(file)
+
+    if not isinstance(
+        data,
+        dict,
+    ):
+
+        raise RuntimeError(
+            "universe.json root "
+            "must be dict"
+        )
+
+    stocks = data.get(
+        "stocks"
+    )
+
+    if not isinstance(
+        stocks,
+        dict,
+    ):
+
+        raise RuntimeError(
+            "universe.json stocks "
+            "must be dict"
+        )
+
+    active: Dict[str, Dict[str, Any]] = {}
+
+    for key, item in stocks.items():
+
+        if not isinstance(
+            item,
+            dict,
+        ):
+
+            raise RuntimeError(
+                f"Universe item "
+                f"{key} must be dict"
+            )
+
+        symbol = item.get(
+            "symbol"
+        )
+
+        if symbol != key:
+
+            raise RuntimeError(
+                f"Universe key/symbol "
+                f"mismatch: "
+                f"{key} != {symbol}"
+            )
+
+        status = item.get(
+            "status"
+        )
+
+        if status != "active":
+            continue
+
+        market = item.get(
+            "market"
+        )
+
+        if market not in {
+            "TWSE",
+            "TPEX",
+        }:
+
+            raise RuntimeError(
+                f"{key}: invalid market "
+                f"{market}"
+            )
+
+        instrument_type = item.get(
+            "type"
+        )
+
+        if instrument_type not in {
+            "STOCK",
+            "ETF",
+        }:
+
+            raise RuntimeError(
+                f"{key}: invalid type "
+                f"{instrument_type}"
+            )
+
+        active[key] = dict(item)
+
+    if not active:
+
+        raise RuntimeError(
+            "No active Universe"
+        )
+
+    return active
+
+
+# ============================================================
+# FIELD HELPERS
+# ============================================================
+
+def normalize_field(
     value: Any,
-) -> bool:
+) -> str:
 
-    return parse_date(value) is not None
+    return (
+        str(value)
+        .strip()
+        .replace(" ", "")
+        .replace("\n", "")
+        .replace("\r", "")
+    )
 
 
-# ============================================================
-# Generic table helpers
-# ============================================================
-
-def find_field_index(
-    fields: List[Any],
-    candidates: List[str],
+def find_field(
+    fields: Iterable[Any],
+    exact: Iterable[str] = (),
+    contains: Iterable[str] = (),
 ) -> Optional[int]:
 
-    normalized = [
-        str(field).strip()
-        for field in fields
+    values = [
+        normalize_field(x)
+        for x in fields
     ]
 
-    for candidate in candidates:
+    exact_values = [
+        normalize_field(x)
+        for x in exact
+    ]
 
-        for index, field in enumerate(normalized):
+    contains_values = [
+        normalize_field(x)
+        for x in contains
+    ]
 
-            if candidate == field:
+    for candidate in exact_values:
+
+        for index, field in enumerate(
+            values
+        ):
+
+            if field == candidate:
 
                 return index
 
-    for candidate in candidates:
+    for candidate in contains_values:
 
-        for index, field in enumerate(normalized):
+        for index, field in enumerate(
+            values
+        ):
 
             if candidate in field:
 
@@ -450,239 +673,55 @@ def find_field_index(
     return None
 
 
-def row_code(
+def row_get(
     row: List[Any],
-    code_index: Optional[int],
-) -> Optional[str]:
+    index: Optional[int],
+) -> Any:
 
-    if code_index is None:
+    if index is None:
         return None
 
-    if code_index >= len(row):
+    if index < 0:
         return None
 
-    value = str(
-        row[code_index]
-    ).strip()
-
-    if not value:
+    if index >= len(row):
         return None
 
-    return value
+    return row[index]
 
 
-# ============================================================
-# TWSE：融資融券
-# ============================================================
+def row_number(
+    row: List[Any],
+    index: Optional[int],
+) -> Optional[float]:
 
-def fetch_twse_margin_day(
-    date: str,
-) -> Dict[str, Dict[str, Any]]:
-
-    url = (
-        "https://www.twse.com.tw/rwd/zh/"
-        "marginTrading/marginTWTAS"
-    )
-
-    params = {
-        "response": "json",
-        "date": date.replace("-", ""),
-        "selectType": "ALL",
-    }
-
-    data = get_json(
-        url,
-        params,
-    )
-
-    result: Dict[str, Dict[str, Any]] = {}
-
-    if not data:
-        return result
-
-    fields = data.get("fields")
-    rows = data.get("data")
-
-    if not isinstance(fields, list):
-        return result
-
-    if not isinstance(rows, list):
-        return result
-
-    code_index = find_field_index(
-        fields,
-        [
-            "股票代號",
-            "證券代號",
-            "代號",
-        ],
-    )
-
-    margin_index = find_field_index(
-        fields,
-        [
-            "融資餘額",
-        ],
-    )
-
-    short_index = find_field_index(
-        fields,
-        [
-            "融券餘額",
-        ],
-    )
-
-    if code_index is None:
-        return result
-
-    for row in rows:
-
-        if not isinstance(row, list):
-            continue
-
-        code = row_code(
+    return safe_float(
+        row_get(
             row,
-            code_index,
+            index,
         )
-
-        if not code:
-            continue
-
-        record = {
-            "margin_balance": (
-                safe_float(row[margin_index])
-                if margin_index is not None
-                and margin_index < len(row)
-                else None
-            ),
-            "short_balance": (
-                safe_float(row[short_index])
-                if short_index is not None
-                and short_index < len(row)
-                else None
-            ),
-            "date": date,
-        }
-
-        result[code] = record
-
-    return result
+    )
 
 
 # ============================================================
-# TPEx：融資融券
+# TWSE - INSTITUTIONAL
 # ============================================================
 
-def fetch_tpex_margin_day(
-    date: str,
-) -> Dict[str, Dict[str, Any]]:
-
-    """
-    TPEx 官方 OpenAPI。
-
-    注意：
-    不使用 HTML 頁面當成資料來源。
-    """
-
-    urls = [
-        (
-            "https://www.tpex.org.tw/openapi/"
-            "v1/tpex_mainboard_margin"
-        ),
-        (
-            "https://www.tpex.org.tw/openapi/"
-            "v1/tpex_esb_margin"
-        ),
-    ]
-
-    result: Dict[str, Dict[str, Any]] = {}
-
-    for url in urls:
-
-        data = get_json(url)
-
-        if not data:
-            continue
-
-        rows = data.get("data")
-
-        if isinstance(rows, list):
-
-            for item in rows:
-
-                if not isinstance(item, dict):
-                    continue
-
-                code = None
-
-                for key in (
-                    "SecuritiesCompanyCode",
-                    "SecuritiesCompanyCode",
-                    "Code",
-                    "代號",
-                    "證券代號",
-                    "股票代號",
-                ):
-
-                    if item.get(key):
-
-                        code = str(
-                            item[key]
-                        ).strip()
-
-                        break
-
-                if not code:
-                    continue
-
-                margin = None
-                short = None
-
-                for key, value in item.items():
-
-                    name = str(key)
-
-                    if (
-                        "融資餘額" in name
-                        or "MarginBalance" in name
-                        or "margin_balance" in name
-                    ):
-
-                        margin = safe_float(value)
-
-                    if (
-                        "融券餘額" in name
-                        or "ShortBalance" in name
-                        or "short_balance" in name
-                    ):
-
-                        short = safe_float(value)
-
-                result[code] = {
-                    "margin_balance": margin,
-                    "short_balance": short,
-                    "date": date,
-                }
-
-    return result
-
-
-# ============================================================
-# TWSE：三大法人
-# ============================================================
-
-def fetch_twse_institutional_day(
-    date: str,
+def twse_institutional(
+    gdate: str,
 ) -> Dict[str, Dict[str, Any]]:
 
     url = (
-        "https://www.twse.com.tw/rwd/zh/"
-        "fund/T86"
+        "https://www.twse.com.tw/"
+        "rwd/zh/fund/T86"
     )
 
     params = {
         "response": "json",
-        "date": date.replace("-", ""),
+        "date": gdate.replace(
+            "-",
+            "",
+        ),
         "selectType": "ALLBUT0999",
     }
 
@@ -691,248 +730,366 @@ def fetch_twse_institutional_day(
         params,
     )
 
-    result: Dict[str, Dict[str, Any]] = {}
+    result: Dict[
+        str,
+        Dict[str, Any]
+    ] = {}
 
-    if not data:
+    if not isinstance(
+        data,
+        dict,
+    ):
+
         return result
 
-    fields = data.get("fields")
-    rows = data.get("data")
+    fields = data.get(
+        "fields"
+    )
 
-    if not isinstance(fields, list):
-        return result
+    rows = data.get(
+        "data"
+    )
 
-    if not isinstance(rows, list):
-        return result
-
-    code_index = find_field_index(
+    if not isinstance(
         fields,
-        [
+        list,
+    ):
+
+        return result
+
+    if not isinstance(
+        rows,
+        list,
+    ):
+
+        return result
+
+    code_index = find_field(
+        fields,
+        exact=[
             "證券代號",
             "股票代號",
         ],
     )
 
+    foreign_index = find_field(
+        fields,
+        exact=[
+            "外陸資買賣超股數(不含外資自營商)",
+            "外陸資買賣超股數",
+        ],
+        contains=[
+            "外陸資",
+            "買賣超股數",
+        ],
+    )
+
+    trust_index = find_field(
+        fields,
+        contains=[
+            "投信",
+            "買賣超股數",
+        ],
+    )
+
+    dealer_index = find_field(
+        fields,
+        contains=[
+            "自營商",
+            "買賣超股數",
+        ],
+    )
+
     if code_index is None:
+
         return result
-
-    foreign_indexes: List[int] = []
-    investment_indexes: List[int] = []
-    dealer_indexes: List[int] = []
-
-    for index, field in enumerate(fields):
-
-        name = str(field)
-
-        if "外陸資" in name and "買賣超股數" in name:
-            foreign_indexes.append(index)
-
-        elif "投信" in name and "買賣超股數" in name:
-            investment_indexes.append(index)
-
-        elif "自營商" in name and "買賣超股數" in name:
-            dealer_indexes.append(index)
 
     for row in rows:
 
-        if not isinstance(row, list):
+        if not isinstance(
+            row,
+            list,
+        ):
+
             continue
 
-        code = row_code(
-            row,
-            code_index,
+        code = clean_symbol(
+            row_get(
+                row,
+                code_index,
+            )
         )
 
         if not code:
             continue
 
-        foreign = sum_values(
+        foreign = row_number(
             row,
-            foreign_indexes,
+            foreign_index,
         )
 
-        investment = sum_values(
+        trust = row_number(
             row,
-            investment_indexes,
+            trust_index,
         )
 
-        dealer = sum_values(
+        dealer = row_number(
             row,
-            dealer_indexes,
+            dealer_index,
         )
+
+        if (
+            foreign is None
+            and trust is None
+            and dealer is None
+        ):
+
+            continue
 
         total = None
 
         if (
             foreign is not None
-            or investment is not None
-            or dealer is not None
+            and trust is not None
+            and dealer is not None
         ):
 
             total = (
-                (foreign or 0.0)
-                + (investment or 0.0)
-                + (dealer or 0.0)
+                foreign
+                + trust
+                + dealer
             )
 
         result[code] = {
+            "date": gdate,
             "foreign_net": foreign,
-            "investment_net": investment,
+            "trust_net": trust,
             "dealer_net": dealer,
-            "institutional_net": total,
-            "date": date,
+            "total_net": total,
         }
 
     return result
 
 
-def sum_values(
-    row: List[Any],
-    indexes: List[int],
-) -> Optional[float]:
-
-    values: List[float] = []
-
-    for index in indexes:
-
-        if index >= len(row):
-            continue
-
-        value = safe_float(
-            row[index]
-        )
-
-        if value is not None:
-            values.append(value)
-
-    if not values:
-        return None
-
-    return sum(values)
-
-
 # ============================================================
-# TPEx：三大法人
+# TPEx - INSTITUTIONAL
 # ============================================================
 
-def fetch_tpex_institutional_day(
-    date: str,
+def tpex_institutional(
+    gdate: str,
 ) -> Dict[str, Dict[str, Any]]:
 
-    url = (
-        "https://www.tpex.org.tw/openapi/"
-        "v1/tpex_threeinsti_daily"
-    )
+    urls = [
+        (
+            "https://www.tpex.org.tw/"
+            "web/stock/3insti/"
+            "daily_trade/"
+            "3itrade_hedge_result.php"
+        ),
+        (
+            "https://www.tpex.org.tw/"
+            "web/stock/3insti/"
+            "daily_trade/"
+            "3itrade.php"
+        ),
+    ]
 
-    data = get_json(url)
+    params = {
+        "l": "zh-tw",
+        "o": "json",
+        "d": roc_date(gdate),
+    }
 
-    result: Dict[str, Dict[str, Any]] = {}
+    for url in urls:
 
-    if not data:
-        return result
+        data = get_json(
+            url,
+            params,
+        )
 
-    rows = data.get("data")
-
-    if not isinstance(rows, list):
-        return result
-
-    for item in rows:
-
-        if not isinstance(item, dict):
-            continue
-
-        code = None
-
-        for key in (
-            "SecuritiesCompanyCode",
-            "Code",
-            "證券代號",
-            "股票代號",
-            "代號",
+        if not isinstance(
+            data,
+            dict,
         ):
 
-            if item.get(key):
-
-                code = str(
-                    item[key]
-                ).strip()
-
-                break
-
-        if not code:
             continue
 
-        foreign = None
-        investment = None
-        dealer = None
+        rows = data.get(
+            "aaData"
+        )
 
-        for key, value in item.items():
+        if not isinstance(
+            rows,
+            list,
+        ):
 
-            name = str(key)
+            continue
+
+        result: Dict[
+            str,
+            Dict[str, Any]
+        ] = {}
+
+        for row in rows:
+
+            if not isinstance(
+                row,
+                list,
+            ):
+
+                continue
+
+            if not row:
+                continue
+
+            code = clean_symbol(
+                row[0]
+            )
+
+            if not code:
+                continue
+
+            numbers = []
+
+            for value in row[1:]:
+
+                number = safe_float(
+                    value
+                )
+
+                numbers.append(
+                    number
+                )
+
+            # TPEx report is published in
+            # buy / sell / net groups.
+            #
+            # Instead of relying on a guessed
+            # absolute column position, detect
+            # the net columns from the published
+            # group layout.
+            #
+            # Known official layout:
+            # foreign group
+            # investment trust group
+            # dealer group
+            #
+            # The report contains three net
+            # columns in sequence.
+
+            net_values = []
+
+            for index, value in enumerate(
+                numbers
+            ):
+
+                if value is None:
+                    continue
+
+                # net columns generally follow
+                # buy/sell pairs.
+                if index >= 2:
+
+                    previous_1 = numbers[
+                        index - 1
+                    ]
+
+                    previous_2 = numbers[
+                        index - 2
+                    ]
+
+                    if (
+                        previous_1 is not None
+                        and previous_2 is not None
+                    ):
+
+                        expected = (
+                            previous_1
+                            - previous_2
+                        )
+
+                        if abs(
+                            expected - value
+                        ) < 0.5:
+
+                            net_values.append(
+                                value
+                            )
+
+            if len(net_values) >= 3:
+
+                foreign = net_values[0]
+                trust = net_values[1]
+                dealer = net_values[-1]
+
+            else:
+
+                # Official report unavailable
+                # or layout changed.
+                #
+                # Do not fabricate values.
+                foreign = None
+                trust = None
+                dealer = None
+
+            total = None
 
             if (
-                "外資" in name
-                and "買賣超" in name
+                foreign is not None
+                and trust is not None
+                and dealer is not None
             ):
 
-                foreign = safe_float(value)
+                total = (
+                    foreign
+                    + trust
+                    + dealer
+                )
 
-            elif (
-                "投信" in name
-                and "買賣超" in name
+            if (
+                foreign is None
+                and trust is None
+                and dealer is None
             ):
 
-                investment = safe_float(value)
+                continue
 
-            elif (
-                "自營商" in name
-                and "買賣超" in name
-            ):
+            result[code] = {
+                "date": gdate,
+                "foreign_net": foreign,
+                "trust_net": trust,
+                "dealer_net": dealer,
+                "total_net": total,
+            }
 
-                dealer = safe_float(value)
+        if result:
 
-        total = None
+            return result
 
-        if (
-            foreign is not None
-            or investment is not None
-            or dealer is not None
-        ):
-
-            total = (
-                (foreign or 0.0)
-                + (investment or 0.0)
-                + (dealer or 0.0)
-            )
-
-        result[code] = {
-            "foreign_net": foreign,
-            "investment_net": investment,
-            "dealer_net": dealer,
-            "institutional_net": total,
-            "date": date,
-        }
-
-    return result
+    return {}
 
 
 # ============================================================
-# TWSE：成交量 / 當沖
+# TWSE - MARGIN
 # ============================================================
 
-def fetch_twse_volume_day(
-    date: str,
+def twse_margin(
+    gdate: str,
 ) -> Dict[str, Dict[str, Any]]:
 
     url = (
-        "https://www.twse.com.tw/rwd/zh/"
-        "afterTrading/MI_INDEX"
+        "https://www.twse.com.tw/"
+        "rwd/zh/marginTrading/"
+        "MI_MARGN"
     )
 
     params = {
         "response": "json",
-        "date": date.replace("-", ""),
-        "type": "ALLBUT0999",
+        "date": gdate.replace(
+            "-",
+            "",
+        ),
+        "selectType": "ALL",
     }
 
     data = get_json(
@@ -940,977 +1097,2451 @@ def fetch_twse_volume_day(
         params,
     )
 
-    result: Dict[str, Dict[str, Any]] = {}
+    result: Dict[
+        str,
+        Dict[str, Any]
+    ] = {}
 
-    if not data:
+    if not isinstance(
+        data,
+        dict,
+    ):
+
         return result
 
-    tables = data.get("tables")
+    fields = data.get(
+        "fields"
+    )
 
-    if not isinstance(tables, list):
+    rows = data.get(
+        "data"
+    )
+
+    if not isinstance(
+        fields,
+        list,
+    ):
+
+        return result
+
+    if not isinstance(
+        rows,
+        list,
+    ):
+
+        return result
+
+    code_index = find_field(
+        fields,
+        exact=[
+            "股票代號",
+            "證券代號",
+            "代號",
+        ],
+    )
+
+    margin_balance_index = find_field(
+        fields,
+        exact=[
+            "融資餘額",
+            "今日餘額",
+        ],
+        contains=[
+            "融資",
+            "今日餘額",
+        ],
+    )
+
+    short_balance_index = find_field(
+        fields,
+        exact=[
+            "融券餘額",
+        ],
+        contains=[
+            "融券",
+            "今日餘額",
+        ],
+    )
+
+    offset_index = find_field(
+        fields,
+        exact=[
+            "資券相抵",
+            "資券互抵",
+        ],
+        contains=[
+            "資券相抵",
+            "資券互抵",
+        ],
+    )
+
+    if code_index is None:
+
+        return result
+
+    for row in rows:
+
+        if not isinstance(
+            row,
+            list,
+        ):
+
+            continue
+
+        code = clean_symbol(
+            row_get(
+                row,
+                code_index,
+            )
+        )
+
+        if not code:
+            continue
+
+        result[code] = {
+            "date": gdate,
+            "margin_balance":
+                row_number(
+                    row,
+                    margin_balance_index,
+                ),
+            "short_balance":
+                row_number(
+                    row,
+                    short_balance_index,
+                ),
+            "offset_volume":
+                row_number(
+                    row,
+                    offset_index,
+                ),
+        }
+
+    return result
+
+
+# ============================================================
+# TPEx - MARGIN
+# ============================================================
+
+def tpex_margin(
+    gdate: str,
+) -> Dict[str, Dict[str, Any]]:
+
+    urls = [
+        (
+            "https://www.tpex.org.tw/"
+            "openapi/v1/"
+            "tpex_mainboard_margin"
+        ),
+        (
+            "https://www.tpex.org.tw/"
+            "openapi/v1/"
+            "tpex_esb_margin"
+        ),
+    ]
+
+    result: Dict[
+        str,
+        Dict[str, Any]
+    ] = {}
+
+    for url in urls:
+
+        data = get_json(
+            url
+        )
+
+        if isinstance(
+            data,
+            dict,
+        ):
+
+            rows = data.get(
+                "data"
+            )
+
+        elif isinstance(
+            data,
+            list,
+        ):
+
+            rows = data
+
+        else:
+
+            rows = None
+
+        if not isinstance(
+            rows,
+            list,
+        ):
+
+            continue
+
+        for item in rows:
+
+            if not isinstance(
+                item,
+                dict,
+            ):
+
+                continue
+
+            code = None
+
+            for key in (
+                "SecuritiesCompanyCode",
+                "Code",
+                "代號",
+                "證券代號",
+                "股票代號",
+            ):
+
+                if item.get(
+                    key
+                ) not in (
+                    None,
+                    "",
+                ):
+
+                    code = clean_symbol(
+                        item[key]
+                    )
+
+                    break
+
+            if not code:
+                continue
+
+            margin = None
+            short = None
+            offset = None
+
+            for key, value in item.items():
+
+                field = normalize_field(
+                    key
+                )
+
+                if (
+                    "融資餘額" in field
+                    or "MarginBalance" in field
+                    or "margin_balance" in field
+                ):
+
+                    margin = safe_float(
+                        value
+                    )
+
+                if (
+                    "融券餘額" in field
+                    or "ShortBalance" in field
+                    or "short_balance" in field
+                ):
+
+                    short = safe_float(
+                        value
+                    )
+
+                if (
+                    "資券相抵" in field
+                    or "資券互抵" in field
+                    or "Offset" in field
+                    or "offset" in field
+                ):
+
+                    offset = safe_float(
+                        value
+                    )
+
+            result[code] = {
+                "date": gdate,
+                "margin_balance": margin,
+                "short_balance": short,
+                "offset_volume": offset,
+            }
+
+    return result
+
+
+# ============================================================
+# TWSE - VOLUME
+# ============================================================
+
+def twse_volume(
+    gdate: str,
+) -> Dict[str, Dict[str, Any]]:
+
+    url = (
+        "https://www.twse.com.tw/"
+        "exchangeReport/MI_INDEX"
+    )
+
+    params = {
+        "response": "json",
+        "date": gdate.replace(
+            "-",
+            "",
+        ),
+        "type": "ALL",
+    }
+
+    data = get_json(
+        url,
+        params,
+    )
+
+    result: Dict[
+        str,
+        Dict[str, Any]
+    ] = {}
+
+    if not isinstance(
+        data,
+        dict,
+    ):
+
+        return result
+
+    tables = data.get(
+        "tables"
+    )
+
+    if not isinstance(
+        tables,
+        list,
+    ):
+
         return result
 
     for table in tables:
 
-        if not isinstance(table, dict):
+        if not isinstance(
+            table,
+            dict,
+        ):
+
             continue
 
-        fields = table.get("fields")
-        rows = table.get("data")
+        fields = table.get(
+            "fields"
+        )
 
-        if not isinstance(fields, list):
-            continue
+        rows = table.get(
+            "data"
+        )
 
-        if not isinstance(rows, list):
-            continue
-
-        code_index = find_field_index(
+        if not isinstance(
             fields,
-            [
+            list,
+        ):
+
+            continue
+
+        if not isinstance(
+            rows,
+            list,
+        ):
+
+            continue
+
+        code_index = find_field(
+            fields,
+            exact=[
                 "證券代號",
-                "股票代號",
             ],
         )
 
-        volume_index = find_field_index(
+        volume_index = find_field(
             fields,
-            [
+            exact=[
                 "成交股數",
-                "成交量",
+            ],
+            contains=[
+                "成交股數",
             ],
         )
 
-        if code_index is None:
+        if (
+            code_index is None
+            or volume_index is None
+        ):
+
             continue
 
         for row in rows:
 
-            if not isinstance(row, list):
+            if not isinstance(
+                row,
+                list,
+            ):
+
                 continue
 
-            code = row_code(
-                row,
-                code_index,
+            code = clean_symbol(
+                row_get(
+                    row,
+                    code_index,
+                )
             )
 
             if not code:
                 continue
 
-            volume = None
+            volume = row_number(
+                row,
+                volume_index,
+            )
 
-            if (
-                volume_index is not None
-                and volume_index < len(row)
-            ):
-
-                volume = safe_float(
-                    row[volume_index]
-                )
+            if volume is None:
+                continue
 
             result[code] = {
+                "date": gdate,
                 "volume": volume,
-                "date": date,
             }
 
     return result
 
 
 # ============================================================
-# TPEx：成交量
+# TPEx - VOLUME
 # ============================================================
 
-def fetch_tpex_volume_day(
-    date: str,
+def tpex_volume(
+    gdate: str,
 ) -> Dict[str, Dict[str, Any]]:
 
     url = (
-        "https://www.tpex.org.tw/openapi/"
-        "v1/tpex_daily_market_value"
+        "https://www.tpex.org.tw/"
+        "openapi/v1/"
+        "tpex_mainboard_daily_close_quotes"
     )
 
-    data = get_json(url)
+    data = get_json(
+        url
+    )
 
-    result: Dict[str, Dict[str, Any]] = {}
+    if isinstance(
+        data,
+        dict,
+    ):
 
-    if not data:
-        return result
-
-    rows = data.get("data")
-
-    if not isinstance(rows, list):
-        return result
-
-    for item in rows:
-
-        if not isinstance(item, dict):
-            continue
-
-        code = None
-        volume = None
-
-        for key, value in item.items():
-
-            name = str(key)
-
-            if (
-                "代號" in name
-                or name.lower() == "code"
-            ):
-
-                code = str(value).strip()
-
-            if (
-                "成交量" in name
-                or "Volume" in name
-                or name.lower() == "volume"
-            ):
-
-                volume = safe_float(value)
-
-        if code:
-
-            result[code] = {
-                "volume": volume,
-                "date": date,
-            }
-
-    return result
-
-
-# ============================================================
-# 日期候選
-# ============================================================
-
-def generate_dates(
-    days: int,
-) -> List[str]:
-
-    from datetime import timedelta
-    from zoneinfo import ZoneInfo
-
-    today = datetime.now(
-        ZoneInfo("Asia/Taipei")
-    ).date()
-
-    dates: List[str] = []
-
-    for offset in range(days):
-
-        day = today - timedelta(
-            days=offset
+        rows = data.get(
+            "data"
         )
 
-        dates.append(
-            day.strftime("%Y-%m-%d")
-        )
+    elif isinstance(
+        data,
+        list,
+    ):
 
-    return dates
+        rows = data
 
+    else:
 
-# ============================================================
-# 市場批次資料
-# ============================================================
+        rows = None
 
-def collect_market_data(
-    market: str,
-    required_symbols: set[str],
-) -> Dict[str, Dict[str, Any]]:
-
-    """
-    批次取得市場資料。
-
-    不逐股票打 API。
-    """
-
-    history: Dict[
+    result: Dict[
         str,
         Dict[str, Any]
     ] = {}
 
-    dates = generate_dates(
-        LOOKBACK_DAYS
+    if not isinstance(
+        rows,
+        list,
+    ):
+
+        return result
+
+    for item in rows:
+
+        if not isinstance(
+            item,
+            dict,
+        ):
+
+            continue
+
+        code = None
+
+        for key in (
+            "SecuritiesCompanyCode",
+            "Code",
+            "代號",
+            "證券代號",
+        ):
+
+            if item.get(
+                key
+            ) not in (
+                None,
+                "",
+            ):
+
+                code = clean_symbol(
+                    item[key]
+                )
+
+                break
+
+        if not code:
+            continue
+
+        volume = None
+
+        for key, value in item.items():
+
+            field = normalize_field(
+                key
+            ).lower()
+
+            if (
+                "成交股數" in field
+                or "tradingshares" in field
+                or field == "volume"
+            ):
+
+                volume = safe_float(
+                    value
+                )
+
+                break
+
+        if volume is not None:
+
+            result[code] = {
+                "date": gdate,
+                "volume": volume,
+            }
+
+    return result
+
+
+# ============================================================
+# TWSE - DAY TRADE
+# ============================================================
+
+def twse_day_trade(
+    gdate: str,
+) -> Dict[str, Dict[str, Any]]:
+
+    """
+    TWSE official day-trading data.
+
+    The official daily report provides
+    day-trading shares per security.
+
+    day_trade_rate is calculated as:
+
+        day_trade_volume / total_volume * 100
+
+    because the official per-security
+    report gives the day-trading volume,
+    while the market quote gives total
+    traded volume.
+    """
+
+    url = (
+        "https://www.twse.com.tw/"
+        "rwd/zh/trading/"
+        "TWTB4U"
     )
 
-    for date in dates:
+    params = {
+        "response": "json",
+        "date": gdate.replace(
+            "-",
+            "",
+        ),
+        "selectType": "ALL",
+    }
 
-        print(
-            f"   {market} {date}"
+    data = get_json(
+        url,
+        params,
+    )
+
+    result: Dict[
+        str,
+        Dict[str, Any]
+    ] = {}
+
+    if not isinstance(
+        data,
+        dict,
+    ):
+
+        return result
+
+    fields = data.get(
+        "fields"
+    )
+
+    rows = data.get(
+        "data"
+    )
+
+    if not isinstance(
+        fields,
+        list,
+    ):
+
+        return result
+
+    if not isinstance(
+        rows,
+        list,
+    ):
+
+        return result
+
+    code_index = find_field(
+        fields,
+        exact=[
+            "證券代號",
+            "股票代號",
+            "標的代碼",
+        ],
+    )
+
+    day_trade_index = find_field(
+        fields,
+        contains=[
+            "當日沖銷交易成交股數",
+            "當沖成交股數",
+            "當沖股數",
+        ],
+    )
+
+    if code_index is None:
+
+        return result
+
+    for row in rows:
+
+        if not isinstance(
+            row,
+            list,
+        ):
+
+            continue
+
+        code = clean_symbol(
+            row_get(
+                row,
+                code_index,
+            )
         )
 
-        if market == "TWSE":
+        if not code:
+            continue
 
-            margin = fetch_twse_margin_day(
-                date
+        day_volume = row_number(
+            row,
+            day_trade_index,
+        )
+
+        result[code] = {
+            "date": gdate,
+            "day_trade_volume":
+                day_volume,
+        }
+
+    return result
+
+
+# ============================================================
+# TPEx - DAY TRADE
+# ============================================================
+
+def tpex_day_trade(
+    gdate: str,
+) -> Dict[str, Dict[str, Any]]:
+
+    """
+    TPEx official day-trading statistics.
+
+    If official response cannot be parsed,
+    return empty result.
+
+    NEVER fabricate rate.
+    """
+
+    candidates = [
+        (
+            "https://www.tpex.org.tw/"
+            "openapi/v1/"
+            "tpex_intraday_trading_statistics"
+        ),
+    ]
+
+    result: Dict[
+        str,
+        Dict[str, Any]
+    ] = {}
+
+    for url in candidates:
+
+        data = get_json(
+            url
+        )
+
+        if isinstance(
+            data,
+            dict,
+        ):
+
+            rows = data.get(
+                "data"
             )
 
-            institutional = (
-                fetch_twse_institutional_day(
-                    date
-                )
-            )
+        elif isinstance(
+            data,
+            list,
+        ):
 
-            volume = fetch_twse_volume_day(
-                date
-            )
-
-        elif market == "TPEX":
-
-            margin = fetch_tpex_margin_day(
-                date
-            )
-
-            institutional = (
-                fetch_tpex_institutional_day(
-                    date
-                )
-            )
-
-            volume = fetch_tpex_volume_day(
-                date
-            )
+            rows = data
 
         else:
 
-            break
+            rows = None
 
-        codes = (
-            set(margin)
-            | set(institutional)
-            | set(volume)
-        )
+        if not isinstance(
+            rows,
+            list,
+        ):
 
-        for code in codes:
+            continue
 
-            if code not in required_symbols:
+        for item in rows:
+
+            if not isinstance(
+                item,
+                dict,
+            ):
+
                 continue
 
-            if code not in history:
+            code = None
 
-                history[code] = {
-                    "dates": {},
-                }
+            for key in (
+                "SecuritiesCompanyCode",
+                "Code",
+                "代號",
+                "證券代號",
+                "股票代號",
+            ):
 
-            day_record = {
-                "date": date,
-                "margin_balance": None,
-                "short_balance": None,
-                "foreign_net": None,
-                "investment_net": None,
-                "dealer_net": None,
-                "institutional_net": None,
-                "volume": None,
-            }
-
-            if code in margin:
-
-                item = margin[code]
-
-                day_record[
-                    "margin_balance"
-                ] = item.get(
-                    "margin_balance"
-                )
-
-                day_record[
-                    "short_balance"
-                ] = item.get(
-                    "short_balance"
-                )
-
-            if code in institutional:
-
-                item = institutional[code]
-
-                for field in (
-                    "foreign_net",
-                    "investment_net",
-                    "dealer_net",
-                    "institutional_net",
+                if item.get(
+                    key
+                ) not in (
+                    None,
+                    "",
                 ):
 
-                    day_record[field] = item.get(
-                        field
+                    code = clean_symbol(
+                        item[key]
                     )
 
-            if code in volume:
+                    break
 
-                day_record["volume"] = (
-                    volume[code].get(
+            if not code:
+                continue
+
+            day_volume = None
+            rate = None
+
+            for key, value in item.items():
+
+                field = normalize_field(
+                    key
+                )
+
+                lower = field.lower()
+
+                if (
+                    "當日沖銷交易成交股數"
+                    in field
+                    or "當沖成交股數"
+                    in field
+                    or "intradaytradingvolume"
+                    in lower
+                ):
+
+                    day_volume = safe_float(
+                        value
+                    )
+
+                if (
+                    "當沖率"
+                    in field
+                    or "daytraderate"
+                    in lower
+                    or "intradaytradingrate"
+                    in lower
+                ):
+
+                    rate = safe_float(
+                        value
+                    )
+
+            result[code] = {
+                "date": gdate,
+                "day_trade_volume":
+                    day_volume,
+                "day_trade_rate":
+                    rate,
+            }
+
+    return result
+
+
+# ============================================================
+# OFFICIAL DAY SNAPSHOT
+# ============================================================
+
+def fetch_day(
+    gdate: str,
+    market: str,
+) -> Dict[str, Dict[str, Any]]:
+
+    result: Dict[
+        str,
+        Dict[str, Any]
+    ] = {}
+
+    if market == "TWSE":
+
+        institutional = (
+            twse_institutional(
+                gdate
+            )
+        )
+
+        margin = (
+            twse_margin(
+                gdate
+            )
+        )
+
+        volume = (
+            twse_volume(
+                gdate
+            )
+        )
+
+        day_trade = (
+            twse_day_trade(
+                gdate
+            )
+        )
+
+    elif market == "TPEX":
+
+        institutional = (
+            tpex_institutional(
+                gdate
+            )
+        )
+
+        margin = (
+            tpex_margin(
+                gdate
+            )
+        )
+
+        volume = (
+            tpex_volume(
+                gdate
+            )
+        )
+
+        day_trade = (
+            tpex_day_trade(
+                gdate
+            )
+        )
+
+    else:
+
+        raise ValueError(
+            f"Unsupported market: "
+            f"{market}"
+        )
+
+    codes = (
+        set(institutional)
+        | set(margin)
+        | set(volume)
+        | set(day_trade)
+    )
+
+    for code in codes:
+
+        record = {
+            "date": gdate,
+            "market": market,
+            "institutional":
+                institutional.get(
+                    code
+                ),
+            "margin":
+                margin.get(
+                    code
+                ),
+            "volume":
+                volume.get(
+                    code
+                ),
+            "day_trade":
+                day_trade.get(
+                    code
+                ),
+        }
+
+        # Calculate TWSE rate from
+        # official day-trade volume / volume.
+        if market == "TWSE":
+
+            volume_record = (
+                record["volume"]
+            )
+
+            day_record = (
+                record["day_trade"]
+            )
+
+            if (
+                isinstance(
+                    volume_record,
+                    dict,
+                )
+                and isinstance(
+                    day_record,
+                    dict,
+                )
+            ):
+
+                total_volume = (
+                    volume_record.get(
                         "volume"
                     )
                 )
 
-            history[code]["dates"][date] = (
-                day_record
+                day_volume = (
+                    day_record.get(
+                        "day_trade_volume"
+                    )
+                )
+
+                if (
+                    total_volume is not None
+                    and total_volume > 0
+                    and day_volume is not None
+                ):
+
+                    day_record[
+                        "day_trade_rate"
+                    ] = (
+                        day_volume
+                        / total_volume
+                        * 100.0
+                    )
+
+        result[code] = record
+
+    return result
+
+
+# ============================================================
+# TRADING DATE DISCOVERY
+# ============================================================
+
+def discover_dates(
+    market: str,
+    end_date: date,
+    required: int = REQUIRED_20D,
+) -> List[str]:
+
+    """
+    Discover actual published trading dates.
+
+    A date is considered valid only when
+    the official institutional endpoint
+    returns data.
+
+    Therefore weekends, holidays and
+    unpublished dates are not counted.
+    """
+
+    found: List[str] = []
+
+    current = end_date
+
+    checked = 0
+
+    max_checked = LOOKBACK_CALENDAR_DAYS
+
+    while (
+        checked < max_checked
+        and len(found) < required
+    ):
+
+        gdate = current.isoformat()
+
+        print(
+            f"      {market} "
+            f"institutional date "
+            f"{gdate}"
+        )
+
+        if market == "TWSE":
+
+            data = twse_institutional(
+                gdate
             )
 
-        time.sleep(
-            SLEEP_SECONDS
+        else:
+
+            data = tpex_institutional(
+                gdate
+            )
+
+        if data:
+
+            found.append(
+                gdate
+            )
+
+        current -= timedelta(
+            days=1
         )
+
+        checked += 1
+
+    return found
+
+
+# ============================================================
+# HISTORY
+# ============================================================
+
+def fetch_market_history(
+    market: str,
+    dates: List[str],
+) -> Dict[
+    str,
+    Dict[str, Dict[str, Any]]
+]:
+
+    """
+    Return:
+
+        {
+            symbol: {
+                date: daily_record
+            }
+        }
+    """
+
+    history: Dict[
+        str,
+        Dict[str, Dict[str, Any]]
+    ] = defaultdict(dict)
+
+    for index, gdate in enumerate(
+        dates,
+        start=1,
+    ):
+
+        print(
+            f"    [{market}] "
+            f"history "
+            f"{index}/{len(dates)} "
+            f"{gdate}"
+        )
+
+        daily = fetch_day(
+            gdate,
+            market,
+        )
+
+        for code, record in (
+            daily.items()
+        ):
+
+            history[
+                code
+            ][gdate] = record
 
     return history
 
 
 # ============================================================
-# 交易日資料
+# SUM INSTITUTIONAL
 # ============================================================
 
-def valid_daily_records(
-    history: Dict[str, Any],
-) -> List[Dict[str, Any]]:
+def sum_institutional(
+    records: List[
+        Dict[str, Any]
+    ],
+) -> Dict[str, Optional[float]]:
 
-    dates = history.get(
-        "dates",
-        {}
-    )
+    result: Dict[
+        str,
+        Optional[float]
+    ] = {
+        "foreign_net": None,
+        "trust_net": None,
+        "dealer_net": None,
+        "total_net": None,
+    }
 
-    if not isinstance(dates, dict):
-        return []
+    if len(records) == 0:
 
-    records = []
+        return result
 
-    for date, record in dates.items():
+    for field in (
+        "foreign_net",
+        "trust_net",
+        "dealer_net",
+    ):
 
-        if not date_is_valid(date):
-            continue
+        values = []
 
-        if not isinstance(record, dict):
-            continue
+        for record in records:
 
-        record = dict(record)
-        record["date"] = date
+            value = record.get(
+                field
+            )
 
-        records.append(record)
+            if value is None:
 
-    records.sort(
-        key=lambda item: item["date"],
-        reverse=True,
-    )
+                values = []
+                break
 
-    return records
+            values.append(
+                value
+            )
 
+        if values:
 
-# ============================================================
-# 累計
-# ============================================================
+            result[field] = sum(
+                values
+            )
 
-def sum_field(
-    records: List[Dict[str, Any]],
-    field: str,
-    count: int,
-) -> Tuple[Optional[float], int]:
+    if all(
+        result[field] is not None
+        for field in (
+            "foreign_net",
+            "trust_net",
+            "dealer_net",
+        )
+    ):
 
-    selected = records[:count]
-
-    values: List[float] = []
-
-    for record in selected:
-
-        value = safe_float(
-            record.get(field)
+        result["total_net"] = (
+            result["foreign_net"]
+            + result["trust_net"]
+            + result["dealer_net"]
         )
 
-        if value is not None:
-            values.append(value)
-
-    if len(values) != count:
-
-        return None, len(values)
-
-    return sum(values), len(values)
+    return result
 
 
 # ============================================================
-# 資券相抵
-# ============================================================
-
-def calculate_day_trade_ratio(
-    record: Dict[str, Any],
-) -> Optional[float]:
-
-    """
-    若官方資料沒有「資券相抵」，
-    絕不使用猜測值。
-
-    只有同時存在：
-        offset_volume
-        volume
-
-    才計算。
-
-    """
-
-    offset = safe_float(
-        record.get(
-            "offset_volume"
-        )
-    )
-
-    volume = safe_float(
-        record.get(
-            "volume"
-        )
-    )
-
-    if offset is None:
-        return None
-
-    if volume is None:
-        return None
-
-    if volume <= 0:
-        return None
-
-    return (
-        offset / volume * 100.0
-    )
-
-
-# ============================================================
-# 建立股票資料
+# BUILD STOCK RECORD
 # ============================================================
 
 def build_stock_record(
-    symbol: str,
-    history: Dict[str, Any],
+    code: str,
+    meta: Dict[str, Any],
+    history: Dict[
+        str,
+        Dict[str, Dict[str, Any]]
+    ],
+    latest_date: str,
 ) -> Dict[str, Any]:
 
-    market = get_market(symbol)
-    code = clean_code(symbol)
-
-    records = valid_daily_records(
-        history
+    records = history.get(
+        code,
+        {}
     )
 
-    latest = (
-        records[0]
-        if records
-        else {}
+    available_dates = sorted(
+        records.keys(),
+        reverse=True,
     )
 
-    institutional_5d, inst5_count = (
-        sum_field(
-            records,
-            "institutional_net",
-            REQUIRED_5D,
+    dates_5d = (
+        available_dates[:REQUIRED_5D]
+    )
+
+    dates_20d = (
+        available_dates[:REQUIRED_20D]
+    )
+
+    latest = records.get(
+        latest_date
+    )
+
+    latest_institutional = None
+    latest_margin = None
+    latest_volume = None
+    latest_day_trade = None
+
+    if isinstance(
+        latest,
+        dict,
+    ):
+
+        latest_institutional = (
+            latest.get(
+                "institutional"
+            )
         )
-    )
 
-    institutional_20d, inst20_count = (
-        sum_field(
-            records,
-            "institutional_net",
-            REQUIRED_20D,
+        latest_margin = (
+            latest.get(
+                "margin"
+            )
         )
-    )
 
-    margin_balance = safe_float(
-        latest.get(
-            "margin_balance"
+        latest_volume = (
+            latest.get(
+                "volume"
+            )
         )
-    )
 
-    short_balance = safe_float(
-        latest.get(
-            "short_balance"
+        latest_day_trade = (
+            latest.get(
+                "day_trade"
+            )
         )
-    )
 
-    volume = safe_float(
-        latest.get(
-            "volume"
+    institutional_records_5d = []
+
+    institutional_records_20d = []
+
+    for gdate in dates_5d:
+
+        record = records.get(
+            gdate
         )
-    )
 
-    available_fields = 0
+        if not isinstance(
+            record,
+            dict,
+        ):
 
-    if institutional_5d is not None:
-        available_fields += 1
+            continue
 
-    if institutional_20d is not None:
-        available_fields += 1
+        institutional = (
+            record.get(
+                "institutional"
+            )
+        )
+
+        if isinstance(
+            institutional,
+            dict,
+        ):
+
+            institutional_records_5d.append(
+                institutional
+            )
+
+    for gdate in dates_20d:
+
+        record = records.get(
+            gdate
+        )
+
+        if not isinstance(
+            record,
+            dict,
+        ):
+
+            continue
+
+        institutional = (
+            record.get(
+                "institutional"
+            )
+        )
+
+        if isinstance(
+            institutional,
+            dict,
+        ):
+
+            institutional_records_20d.append(
+                institutional
+            )
+
+    institutional_5d = None
 
     if (
-        margin_balance is not None
-        and short_balance is not None
+        len(institutional_records_5d)
+        == REQUIRED_5D
     ):
-        available_fields += 1
 
-    if volume is not None:
-        available_fields += 1
+        institutional_5d = (
+            sum_institutional(
+                institutional_records_5d
+            )
+        )
+
+    institutional_20d = None
+
+    if (
+        len(institutional_records_20d)
+        == REQUIRED_20D
+    ):
+
+        institutional_20d = (
+            sum_institutional(
+                institutional_records_20d
+            )
+        )
+
+    latest_total = None
+
+    if isinstance(
+        latest_institutional,
+        dict,
+    ):
+
+        values = [
+            latest_institutional.get(
+                "foreign_net"
+            ),
+            latest_institutional.get(
+                "trust_net"
+            ),
+            latest_institutional.get(
+                "dealer_net"
+            ),
+        ]
+
+        if all(
+            value is not None
+            for value in values
+        ):
+
+            latest_total = sum(
+                values
+            )
+
+    day_trade_rate = None
+
+    if isinstance(
+        latest_day_trade,
+        dict,
+    ):
+
+        day_trade_rate = (
+            latest_day_trade.get(
+                "day_trade_rate"
+            )
+        )
+
+    volume = None
+
+    if isinstance(
+        latest_volume,
+        dict,
+    ):
+
+        volume = (
+            latest_volume.get(
+                "volume"
+            )
+        )
 
     return {
-        "symbol": symbol,
-        "code": code,
-        "market": market,
-
-        "date": (
-            latest.get("date")
-            if latest
-            else None
+        "symbol": code,
+        "full_symbol": meta.get(
+            "full_symbol"
+        ),
+        "name": meta.get(
+            "name"
+        ),
+        "market": meta.get(
+            "market"
+        ),
+        "type": meta.get(
+            "type"
+        ),
+        "instrument_type": meta.get(
+            "instrument_type"
+        ),
+        "status": "active",
+        "listed_date": meta.get(
+            "listed_date"
         ),
 
-        # ----------------------------------------------------
-        # 法人
-        # ----------------------------------------------------
+        "latest_trade_date":
+            latest_date,
 
-        "foreign_net": latest.get(
-            "foreign_net"
-        ),
+        "institutional": {
+            "date":
+                latest_date,
 
-        "investment_net": latest.get(
-            "investment_net"
-        ),
+            "foreign_net":
+                (
+                    latest_institutional.get(
+                        "foreign_net"
+                    )
+                    if isinstance(
+                        latest_institutional,
+                        dict,
+                    )
+                    else None
+                ),
 
-        "dealer_net": latest.get(
-            "dealer_net"
-        ),
+            "trust_net":
+                (
+                    latest_institutional.get(
+                        "trust_net"
+                    )
+                    if isinstance(
+                        latest_institutional,
+                        dict,
+                    )
+                    else None
+                ),
 
-        "institutional_net": latest.get(
-            "institutional_net"
-        ),
+            "dealer_net":
+                (
+                    latest_institutional.get(
+                        "dealer_net"
+                    )
+                    if isinstance(
+                        latest_institutional,
+                        dict,
+                    )
+                    else None
+                ),
 
-        "institutional_5d": (
-            institutional_5d
-        ),
+            "total_net":
+                latest_total,
 
-        "institutional_20d": (
-            institutional_20d
-        ),
+            "5d": {
+                "trading_days":
+                    len(
+                        institutional_records_5d
+                    ),
 
-        "institutional_5d_days": (
-            inst5_count
-        ),
+                "dates":
+                    dates_5d,
 
-        "institutional_20d_days": (
-            inst20_count
-        ),
+                **(
+                    institutional_5d
+                    if institutional_5d
+                    else {
+                        "foreign_net":
+                            None,
+                        "trust_net":
+                            None,
+                        "dealer_net":
+                            None,
+                        "total_net":
+                            None,
+                    }
+                ),
+            },
 
-        # ----------------------------------------------------
-        # 融資融券
-        # ----------------------------------------------------
+            "20d": {
+                "trading_days":
+                    len(
+                        institutional_records_20d
+                    ),
 
-        "margin_balance": (
-            margin_balance
-        ),
+                "dates":
+                    dates_20d,
 
-        "short_balance": (
-            short_balance
-        ),
+                **(
+                    institutional_20d
+                    if institutional_20d
+                    else {
+                        "foreign_net":
+                            None,
+                        "trust_net":
+                            None,
+                        "dealer_net":
+                            None,
+                        "total_net":
+                            None,
+                    }
+                ),
+            },
+        },
 
-        # ----------------------------------------------------
-        # 成交量
-        # ----------------------------------------------------
+        "margin": {
+            "date":
+                latest_date,
 
-        "volume": volume,
+            "margin_balance":
+                (
+                    latest_margin.get(
+                        "margin_balance"
+                    )
+                    if isinstance(
+                        latest_margin,
+                        dict,
+                    )
+                    else None
+                ),
 
-        # ----------------------------------------------------
-        # 當沖
-        # ----------------------------------------------------
+            "short_balance":
+                (
+                    latest_margin.get(
+                        "short_balance"
+                    )
+                    if isinstance(
+                        latest_margin,
+                        dict,
+                    )
+                    else None
+                ),
 
-        "day_trade_ratio": None,
+            "offset_volume":
+                (
+                    latest_margin.get(
+                        "offset_volume"
+                    )
+                    if isinstance(
+                        latest_margin,
+                        dict,
+                    )
+                    else None
+                ),
+        },
 
-        # ----------------------------------------------------
-        # 主力
-        # ----------------------------------------------------
+        "trading": {
+            "date":
+                latest_date,
 
-        # 三大法人 != 主力
-        # 在沒有可靠主力資料來源前保持 None
-        "main_force_net": None,
-        "main_force_5d": None,
-        "main_force_20d": None,
+            "volume":
+                volume,
 
-        # ----------------------------------------------------
-        # 狀態
-        # ----------------------------------------------------
+            "day_trade_rate":
+                day_trade_rate,
 
-        "available_fields": available_fields,
+            "day_trade_volume":
+                (
+                    latest_day_trade.get(
+                        "day_trade_volume"
+                    )
+                    if isinstance(
+                        latest_day_trade,
+                        dict,
+                    )
+                    else None
+                ),
+        },
 
-        "complete": (
-            available_fields >= 3
-        ),
+        "data_quality": {
+            "current_institutional":
+                isinstance(
+                    latest_institutional,
+                    dict,
+                ),
 
-        "history_days": len(records),
+            "institutional_5d":
+                (
+                    len(
+                        institutional_records_5d
+                    )
+                    == REQUIRED_5D
+                ),
 
-        "history": records[:REQUIRED_20D],
+            "institutional_20d":
+                (
+                    len(
+                        institutional_records_20d
+                    )
+                    == REQUIRED_20D
+                ),
+
+            "margin":
+                isinstance(
+                    latest_margin,
+                    dict,
+                ),
+
+            "volume":
+                volume is not None,
+
+            "day_trade":
+                day_trade_rate is not None,
+
+            "valid":
+                (
+                    isinstance(
+                        latest_institutional,
+                        dict,
+                    )
+                    or isinstance(
+                        latest_margin,
+                        dict,
+                    )
+                    or volume is not None
+                    or day_trade_rate is not None
+                ),
+        },
     }
 
 
 # ============================================================
-# 建立 Universe 1:1
+# OUTPUT VALIDATION
 # ============================================================
 
-def build_results(
-    symbols: List[str],
-    twse_history: Dict[str, Any],
-    tpex_history: Dict[str, Any],
-) -> Dict[str, Any]:
+def validate_output(
+    payload: Dict[str, Any],
+    universe: Dict[str, Dict[str, Any]],
+) -> None:
 
-    results: Dict[str, Any] = {}
+    if not isinstance(
+        payload,
+        dict,
+    ):
 
-    for symbol in symbols:
+        raise RuntimeError(
+            "chip root must be dict"
+        )
 
-        market = get_market(symbol)
-        code = clean_code(symbol)
+    stocks = payload.get(
+        "stocks"
+    )
+
+    if not isinstance(
+        stocks,
+        dict,
+    ):
+
+        raise RuntimeError(
+            "chip.stocks must be dict"
+        )
+
+    universe_codes = set(
+        universe.keys()
+    )
+
+    chip_codes = set(
+        stocks.keys()
+    )
+
+    missing = (
+        universe_codes
+        - chip_codes
+    )
+
+    extra = (
+        chip_codes
+        - universe_codes
+    )
+
+    if missing:
+
+        raise RuntimeError(
+            "chip missing Universe "
+            f"symbols: "
+            f"{sorted(missing)[:20]}"
+        )
+
+    if extra:
+
+        raise RuntimeError(
+            "chip contains symbols "
+            "outside Universe: "
+            f"{sorted(extra)[:20]}"
+        )
+
+    for code, item in stocks.items():
+
+        if not isinstance(
+            item,
+            dict,
+        ):
+
+            raise RuntimeError(
+                f"{code}: chip item "
+                "must be dict"
+            )
+
+        if item.get(
+            "symbol"
+        ) != code:
+
+            raise RuntimeError(
+                f"{code}: symbol mismatch"
+            )
+
+        if item.get(
+            "status"
+        ) != "active":
+
+            raise RuntimeError(
+                f"{code}: inactive "
+                "entered chip"
+            )
+
+        if item.get(
+            "market"
+        ) != universe[code].get(
+            "market"
+        ):
+
+            raise RuntimeError(
+                f"{code}: market mismatch"
+            )
+
+        if item.get(
+            "type"
+        ) != universe[code].get(
+            "type"
+        ):
+
+            raise RuntimeError(
+                f"{code}: type mismatch"
+            )
+
+
+# ============================================================
+# BUILD
+# ============================================================
+
+def build() -> Dict[str, Any]:
+
+    universe = load_universe()
+
+    print("=" * 72)
+    print(
+        "FETCH CHIP "
+        f"{VERSION}"
+    )
+    print("=" * 72)
+
+    print(
+        f"Active Universe: "
+        f"{len(universe)}"
+    )
+
+    twse_codes = [
+        code
+        for code, item
+        in universe.items()
+        if item.get(
+            "market"
+        ) == "TWSE"
+    ]
+
+    tpex_codes = [
+        code
+        for code, item
+        in universe.items()
+        if item.get(
+            "market"
+        ) == "TPEX"
+    ]
+
+    print(
+        f"TWSE: {len(twse_codes)}"
+    )
+
+    print(
+        f"TPEX: {len(tpex_codes)}"
+    )
+
+    # --------------------------------------------------------
+    # DATE DISCOVERY
+    # --------------------------------------------------------
+
+    today = taiwan_today()
+
+    print()
+    print(
+        "STEP 1 - DISCOVER "
+        "OFFICIAL TRADING DATES"
+    )
+
+    twse_dates = []
+
+    if twse_codes:
+
+        twse_dates = discover_dates(
+            "TWSE",
+            today,
+            REQUIRED_20D,
+        )
+
+    tpex_dates = []
+
+    if tpex_codes:
+
+        tpex_dates = discover_dates(
+            "TPEX",
+            today,
+            REQUIRED_20D,
+        )
+
+    if twse_codes and not twse_dates:
+
+        print(
+            "WARNING: "
+            "TWSE has no official "
+            "institutional dates."
+        )
+
+    if tpex_codes and not tpex_dates:
+
+        print(
+            "WARNING: "
+            "TPEX has no official "
+            "institutional dates."
+        )
+
+    # --------------------------------------------------------
+    # HISTORY
+    # --------------------------------------------------------
+
+    print()
+    print(
+        "STEP 2 - FETCH OFFICIAL "
+        "HISTORY"
+    )
+
+    twse_history = {}
+
+    if twse_dates:
+
+        twse_history = (
+            fetch_market_history(
+                "TWSE",
+                twse_dates,
+            )
+        )
+
+    tpex_history = {}
+
+    if tpex_dates:
+
+        tpex_history = (
+            fetch_market_history(
+                "TPEX",
+                tpex_dates,
+            )
+        )
+
+    # --------------------------------------------------------
+    # LATEST DATE
+    # --------------------------------------------------------
+
+    latest_dates = []
+
+    if twse_dates:
+
+        latest_dates.append(
+            twse_dates[0]
+        )
+
+    if tpex_dates:
+
+        latest_dates.append(
+            tpex_dates[0]
+        )
+
+    if not latest_dates:
+
+        raise RuntimeError(
+            "No official trading date "
+            "was found."
+        )
+
+    latest_trade_date = max(
+        latest_dates
+    )
+
+    # --------------------------------------------------------
+    # BUILD STOCKS
+    # --------------------------------------------------------
+
+    print()
+    print(
+        "STEP 3 - BUILD CHIP"
+    )
+
+    stocks: Dict[
+        str,
+        Dict[str, Any]
+    ] = {}
+
+    valid_count = 0
+
+    for code, meta in universe.items():
+
+        market = meta.get(
+            "market"
+        )
 
         if market == "TWSE":
 
-            history = twse_history.get(
-                code,
-                {"dates": {}},
+            history = (
+                twse_history
             )
 
-        elif market == "TPEX":
-
-            history = tpex_history.get(
-                code,
-                {"dates": {}},
-            )
+            dates = twse_dates
 
         else:
 
-            history = {
-                "dates": {}
+            history = (
+                tpex_history
+            )
+
+            dates = tpex_dates
+
+        if not dates:
+
+            # Still create the active
+            # Universe record, but no
+            # fabricated market data.
+            stock = {
+                "symbol":
+                    code,
+
+                "full_symbol":
+                    meta.get(
+                        "full_symbol"
+                    ),
+
+                "name":
+                    meta.get(
+                        "name"
+                    ),
+
+                "market":
+                    market,
+
+                "type":
+                    meta.get(
+                        "type"
+                    ),
+
+                "instrument_type":
+                    meta.get(
+                        "instrument_type"
+                    ),
+
+                "status":
+                    "active",
+
+                "listed_date":
+                    meta.get(
+                        "listed_date"
+                    ),
+
+                "latest_trade_date":
+                    latest_trade_date,
+
+                "institutional": {
+                    "date":
+                        latest_trade_date,
+
+                    "foreign_net":
+                        None,
+
+                    "trust_net":
+                        None,
+
+                    "dealer_net":
+                        None,
+
+                    "total_net":
+                        None,
+
+                    "5d": {
+                        "trading_days":
+                            0,
+                        "dates": [],
+                        "foreign_net":
+                            None,
+                        "trust_net":
+                            None,
+                        "dealer_net":
+                            None,
+                        "total_net":
+                            None,
+                    },
+
+                    "20d": {
+                        "trading_days":
+                            0,
+                        "dates": [],
+                        "foreign_net":
+                            None,
+                        "trust_net":
+                            None,
+                        "dealer_net":
+                            None,
+                        "total_net":
+                            None,
+                    },
+                },
+
+                "margin": {
+                    "date":
+                        latest_trade_date,
+                    "margin_balance":
+                        None,
+                    "short_balance":
+                        None,
+                    "offset_volume":
+                        None,
+                },
+
+                "trading": {
+                    "date":
+                        latest_trade_date,
+                    "volume":
+                        None,
+                    "day_trade_rate":
+                        None,
+                    "day_trade_volume":
+                        None,
+                },
+
+                "data_quality": {
+                    "current_institutional":
+                        False,
+                    "institutional_5d":
+                        False,
+                    "institutional_20d":
+                        False,
+                    "margin":
+                        False,
+                    "volume":
+                        False,
+                    "day_trade":
+                        False,
+                    "valid":
+                        False,
+                },
             }
 
-        results[symbol] = (
-            build_stock_record(
-                symbol,
+        else:
+
+            stock = build_stock_record(
+                code,
+                meta,
                 history,
+                dates[0],
             )
-        )
 
-    return results
+        if stock[
+            "data_quality"
+        ].get(
+            "valid"
+        ):
 
+            valid_count += 1
 
-# ============================================================
-# JSON
-# ============================================================
+        stocks[code] = stock
 
-def write_json(
-    records: Dict[str, Any],
-) -> None:
-
-    DATA_DIR.mkdir(
-        parents=True,
-        exist_ok=True,
-    )
+    # --------------------------------------------------------
+    # OUTPUT
+    # --------------------------------------------------------
 
     payload = {
-        "version": VERSION,
-        "generated_at": now_taiwan(),
-        "date": today_taiwan(),
-        "count": len(records),
-        "data": records,
+        "version":
+            VERSION,
+
+        "generated_at":
+            now_iso(),
+
+        "latest_trade_date":
+            latest_trade_date,
+
+        "universe_count":
+            len(universe),
+
+        "stock_count":
+            sum(
+                1
+                for item in universe.values()
+                if item.get("type")
+                == "STOCK"
+            ),
+
+        "etf_count":
+            sum(
+                1
+                for item in universe.values()
+                if item.get("type")
+                == "ETF"
+            ),
+
+        "valid_count":
+            valid_count,
+
+        "invalid_count":
+            len(universe)
+            - valid_count,
+
+        "source_policy":
+            "official_only",
+
+        "universe_source":
+            "Data/universe.json",
+
+        "sources": {
+            "TWSE": {
+                "institutional":
+                    (
+                        "https://www.twse.com.tw/"
+                        "rwd/zh/fund/T86"
+                    ),
+
+                "margin":
+                    (
+                        "https://www.twse.com.tw/"
+                        "rwd/zh/marginTrading/"
+                        "MI_MARGN"
+                    ),
+
+                "volume":
+                    (
+                        "https://www.twse.com.tw/"
+                        "exchangeReport/MI_INDEX"
+                    ),
+
+                "day_trade":
+                    (
+                        "https://www.twse.com.tw/"
+                        "rwd/zh/trading/TWTB4U"
+                    ),
+            },
+
+            "TPEX": {
+                "institutional":
+                    (
+                        "https://www.tpex.org.tw/"
+                        "web/stock/3insti/"
+                        "daily_trade/"
+                        "3itrade_hedge_result.php"
+                    ),
+
+                "margin":
+                    (
+                        "https://www.tpex.org.tw/"
+                        "openapi/v1/"
+                        "tpex_mainboard_margin"
+                    ),
+
+                "volume":
+                    (
+                        "https://www.tpex.org.tw/"
+                        "openapi/v1/"
+                        "tpex_mainboard_daily_close_quotes"
+                    ),
+
+                "day_trade":
+                    (
+                        "https://www.tpex.org.tw/"
+                        "openapi/v1/"
+                        "tpex_intraday_trading_statistics"
+                    ),
+            },
+        },
+
+        "contract": {
+            "universe":
+                "Data/universe.json",
+
+            "active_only":
+                True,
+
+            "universe_key_equals_symbol":
+                True,
+
+            "allowed_markets": [
+                "TWSE",
+                "TPEX",
+            ],
+
+            "allowed_types": [
+                "STOCK",
+                "ETF",
+            ],
+
+            "third_party_data":
+                False,
+
+            "zero_fallback":
+                False,
+
+            "inactive_symbols_excluded":
+                True,
+        },
+
+        "stocks":
+            stocks,
     }
 
-    temp_file = OUTPUT_FILE.with_suffix(
-        ".json.tmp"
+    # --------------------------------------------------------
+    # FINAL VALIDATION
+    # --------------------------------------------------------
+
+    print()
+    print(
+        "STEP 4 - VALIDATE"
     )
 
-    with temp_file.open(
-        "w",
-        encoding="utf-8",
-    ) as file:
+    validate_output(
+        payload,
+        universe,
+    )
 
-        json.dump(
-            payload,
-            file,
-            ensure_ascii=False,
-            indent=2,
+    print(
+        "✓ Universe / chip "
+        "contract PASS"
+    )
+
+    print(
+        f"✓ Active Universe: "
+        f"{len(universe)}"
+    )
+
+    print(
+        f"✓ Chip records: "
+        f"{len(stocks)}"
+    )
+
+    print(
+        f"✓ Valid: "
+        f"{valid_count}"
+    )
+
+    print(
+        f"✓ Invalid: "
+        f"{len(universe) - valid_count}"
+    )
+
+    # --------------------------------------------------------
+    # SPECIAL SAFETY CHECK
+    # --------------------------------------------------------
+
+    forbidden = []
+
+    for code in stocks:
+
+        if code not in universe:
+
+            forbidden.append(
+                code
+            )
+
+        elif universe[code].get(
+            "status"
+        ) != "active":
+
+            forbidden.append(
+                code
+            )
+
+    if forbidden:
+
+        raise RuntimeError(
+            "Forbidden symbols "
+            "detected: "
+            f"{forbidden[:20]}"
         )
 
-    temp_file.replace(
-        OUTPUT_FILE
-    )
+    # --------------------------------------------------------
+    # DATA SANITY
+    # --------------------------------------------------------
+
+    for code, item in stocks.items():
+
+        institutional = item.get(
+            "institutional",
+            {}
+        )
+
+        d5 = institutional.get(
+            "5d",
+            {}
+        )
+
+        d20 = institutional.get(
+            "20d",
+            {}
+        )
+
+        dates5 = d5.get(
+            "dates",
+            []
+        )
+
+        dates20 = d20.get(
+            "dates",
+            []
+        )
+
+        if len(dates5) > REQUIRED_5D:
+
+            raise RuntimeError(
+                f"{code}: "
+                "5D date overflow"
+            )
+
+        if len(dates20) > REQUIRED_20D:
+
+            raise RuntimeError(
+                f"{code}: "
+                "20D date overflow"
+            )
+
+        if len(
+            set(dates5)
+        ) != len(dates5):
+
+            raise RuntimeError(
+                f"{code}: "
+                "duplicate 5D dates"
+            )
+
+        if len(
+            set(dates20)
+        ) != len(dates20):
+
+            raise RuntimeError(
+                f"{code}: "
+                "duplicate 20D dates"
+            )
+
+    return payload
 
 
 # ============================================================
-# 主程式
+# MAIN
 # ============================================================
 
 def main() -> int:
 
     print("=" * 72)
     print(
-        f"台股 AI 選股系統 "
-        f"fetch_chip.py {VERSION}"
+        "TAIWAN STOCK AI SCANNER"
     )
-    print("=" * 72)
-
     print(
-        f"開始時間：{now_taiwan()}"
+        "fetch_chip.py"
     )
-
-    # --------------------------------------------------------
-    # Universe
-    # --------------------------------------------------------
-
-    print()
-    print("=" * 72)
-    print("讀取 Universe")
+    print(
+        VERSION
+    )
     print("=" * 72)
 
     try:
 
-        symbols = load_universe()
+        payload = build()
 
-    except Exception as exc:
+        # ----------------------------------------------------
+        # IMPORTANT:
+        # Do NOT overwrite existing chip.json when
+        # the entire official data collection failed.
+        # ----------------------------------------------------
 
-        print(
-            f"❌ Universe 讀取失敗：{exc}"
+        if (
+            payload.get(
+                "valid_count",
+                0
+            )
+            <= 0
+        ):
+
+            print()
+            print(
+                "ERROR: "
+                "No valid official "
+                "chip data."
+            )
+
+            print(
+                "Existing chip.json "
+                "will NOT be overwritten."
+            )
+
+            return 1
+
+        atomic_write_json(
+            OUTPUT_FILE,
+            payload,
         )
-
-        return 1
-
-    if not symbols:
-
-        print(
-            "❌ Universe 沒有任何 active 台股。"
-        )
-
-        return 1
-
-    twse_symbols = {
-        clean_code(symbol)
-        for symbol in symbols
-        if get_market(symbol) == "TWSE"
-    }
-
-    tpex_symbols = {
-        clean_code(symbol)
-        for symbol in symbols
-        if get_market(symbol) == "TPEX"
-    }
-
-    print(
-        f"Universe：{len(symbols)}"
-    )
-
-    print(
-        f"TWSE：{len(twse_symbols)}"
-    )
-
-    print(
-        f"TPEx：{len(tpex_symbols)}"
-    )
-
-    # --------------------------------------------------------
-    # TWSE
-    # --------------------------------------------------------
-
-    print()
-    print("=" * 72)
-    print("取得 TWSE 官方資料")
-    print("=" * 72)
-
-    twse_history = collect_market_data(
-        "TWSE",
-        twse_symbols,
-    )
-
-    print(
-        f"TWSE 股票歷史資料："
-        f"{len(twse_history)}"
-    )
-
-    # --------------------------------------------------------
-    # TPEx
-    # --------------------------------------------------------
-
-    print()
-    print("=" * 72)
-    print("取得 TPEx 官方資料")
-    print("=" * 72)
-
-    tpex_history = collect_market_data(
-        "TPEX",
-        tpex_symbols,
-    )
-
-    print(
-        f"TPEx 股票歷史資料："
-        f"{len(tpex_history)}"
-    )
-
-    # --------------------------------------------------------
-    # 建立結果
-    # --------------------------------------------------------
-
-    print()
-    print("=" * 72)
-    print("建立籌碼資料")
-    print("=" * 72)
-
-    results = build_results(
-        symbols,
-        twse_history,
-        tpex_history,
-    )
-
-    # --------------------------------------------------------
-    # 統計
-    # --------------------------------------------------------
-
-    complete = 0
-    partial = 0
-    invalid = 0
-
-    twse_valid = 0
-    tpex_valid = 0
-
-    for symbol, record in results.items():
-
-        history_days = record.get(
-            "history_days",
-            0,
-        )
-
-        if history_days >= REQUIRED_20D:
-
-            complete += 1
-
-        elif history_days > 0:
-
-            partial += 1
-
-        else:
-
-            invalid += 1
-
-        if history_days > 0:
-
-            if get_market(symbol) == "TWSE":
-
-                twse_valid += 1
-
-            elif get_market(symbol) == "TPEX":
-
-                tpex_valid += 1
-
-    print(
-        f"Universe：{len(symbols)}"
-    )
-
-    print(
-        f"20D 歷史完整：{complete}"
-    )
-
-    print(
-        f"部分歷史：{partial}"
-    )
-
-    print(
-        f"完全無資料：{invalid}"
-    )
-
-    print(
-        f"TWSE 有歷史資料：{twse_valid}"
-    )
-
-    print(
-        f"TPEx 有歷史資料：{tpex_valid}"
-    )
-
-    # --------------------------------------------------------
-    # 防呆
-    # --------------------------------------------------------
-
-    valid_records = sum(
-        1
-        for record in results.values()
-        if record.get(
-            "history_days",
-            0,
-        ) > 0
-    )
-
-    if valid_records == 0:
 
         print()
+        print("=" * 72)
         print(
-            "❌ 本次完全沒有取得有效籌碼資料。"
+            "CHIP WRITE PASS"
         )
-
-        print(
-            "❌ 不覆蓋既有 chip.json。"
-        )
-
-        return 1
-
-    # --------------------------------------------------------
-    # Universe 1:1 驗證
-    # --------------------------------------------------------
-
-    if len(results) != len(symbols):
+        print("=" * 72)
 
         print(
-            "❌ 籌碼結果與 Universe 數量不一致。"
+            f"Output: "
+            f"{OUTPUT_FILE}"
         )
 
-        return 1
-
-    # --------------------------------------------------------
-    # 寫入
-    # --------------------------------------------------------
-
-    try:
-
-        write_json(
-            results
+        print(
+            f"Universe: "
+            f"{payload['universe_count']}"
         )
+
+        print(
+            f"Valid: "
+            f"{payload['valid_count']}"
+        )
+
+        print(
+            f"Invalid: "
+            f"{payload['invalid_count']}"
+        )
+
+        print(
+            f"Latest trade date: "
+            f"{payload['latest_trade_date']}"
+        )
+
+        print("=" * 72)
+
+        return 0
+
+    except KeyboardInterrupt:
+
+        print(
+            "Interrupted."
+        )
+
+        return 130
 
     except Exception as exc:
 
+        print()
+        print("=" * 72)
         print(
-            f"❌ chip.json 寫入失敗：{exc}"
+            "CHIP FETCH FAILED"
+        )
+        print("=" * 72)
+
+        print(
+            f"ERROR: {exc}"
         )
 
         return 1
-
-    # --------------------------------------------------------
-    # 完成
-    # --------------------------------------------------------
-
-    print()
-    print("=" * 72)
-    print("完成")
-    print("=" * 72)
-
-    print(
-        f"✅ 輸出：{OUTPUT_FILE}"
-    )
-
-    print(
-        f"✅ Universe：{len(symbols)}"
-    )
-
-    print(
-        f"✅ 有效資料：{valid_records}"
-    )
-
-    print(
-        f"✅ 20D 完整：{complete}"
-    )
-
-    print(
-        f"⚠️ 部分資料：{partial}"
-    )
-
-    print(
-        f"❌ 無資料：{invalid}"
-    )
-
-    print()
-    print(
-        f"fetch_chip.py {VERSION} 完成"
-    )
-
-    return 0
 
 
 if __name__ == "__main__":
 
-    sys.exit(
+    raise SystemExit(
         main()
     )
