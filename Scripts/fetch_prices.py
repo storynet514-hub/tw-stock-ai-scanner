@@ -5,24 +5,32 @@
 台股 AI 選股系統
 Scripts/fetch_prices.py
 
-PRICE PIPELINE V11.0
+PRICE PIPELINE V11.1
 ============================================================
 
-本版本只負責：
+資料流程
+------------------------------------------------------------
+
     Data/universe.json
-        ↓
-    官方 TWSE / TPEx 批次價格資料
-        ↓
-    Yahoo 最後 fallback
-        ↓
+            ↓
+    官方 TWSE / TPEx 日期批次
+            ↓
+    TWSE STOCK_DAY_ALL 最新交易日補強
+            ↓
+    Existing price cache
+            ↓
+    官方資料優先合併
+            ↓
+    官方歷史不足 → Yahoo 補足
+            ↓
     Price results
-        ↓
+            ↓
     Shards
-        ↓
+            ↓
     Manifest
-        ↓
-    完整 Validation
-        ↓
+            ↓
+    FINAL VALIDATION
+            ↓
     Atomic Replace
 
 核心契約
@@ -34,28 +42,32 @@ PRICE PIPELINE V11.0
 4. 不使用成交行情建立 Universe
 5. 不使用 CMoney
 6. TWSE / TPEx 官方資料優先
-7. 官方資料採「日期批次」抓取，不逐股票逐日期抓取
-8. Yahoo 只作真正無官方資料商品的最後 fallback
-9. 歷史不足 20 日不代表商品不存在
-10. >= 1 筆有效 OHLCV 必須寫入 Price
-11. 0 筆才是 missing
-12. 正常歷史目標 90 筆
-13. 最大保存 90 筆
-14. short_history < 20
-15. partial_history 20~89
-16. complete >= 90
-17. Universe / Price 集合必須完整一致
-18. 不允許 Price 出現 Universe 外商品
-19. 不允許跨 shard 重複
-20. shard 必須與實際 results 完整一致
-21. manifest 必須與 shard 完整一致
-22. 所有 validation PASS 後才 atomic replace
-23. 任一 validation FAIL，不破壞舊 Data/prices
-24. 舊 schema / 壞 shard 自動忽略，不污染新結果
-25. 每次執行最後重新讀取輸出並做 FINAL VALIDATION
-26. 絕不因歷史不足 silently drop 商品
-27. 不會對 2301 檔股票逐檔呼叫官方 API
-28. 官方資料按市場 / 日期批次抓取後才分配給 Universe
+7. 官方歷史資料採日期批次抓取
+8. TWSE STOCK_DAY_ALL 作為最新交易日官方補強來源
+9. 不逐股票逐日期呼叫官方 API
+10. 官方資料不足 TARGET_HISTORY_ROWS 時才啟動 Yahoo 補資料
+11. Yahoo 永遠不能覆蓋官方同日期資料
+12. Existing cache 只作歷史保留與暫時補強
+13. >= 1 筆有效 OHLCV 必須寫入 Price
+14. 0 筆才是 missing
+15. 正常歷史目標 90 筆
+16. 最大保存 90 筆
+17. short_history < 20
+18. partial_history 20~89
+19. complete >= 90
+20. Universe / Price 集合必須完整一致
+21. 不允許 Price 出現 Universe 外商品
+22. 不允許跨 shard 重複
+23. shard 必須與 results 完整一致
+24. manifest 必須與 shard 完整一致
+25. 官方 HTTP 錯誤必須留下 diagnostics
+26. Yahoo fallback 必須留下 diagnostics
+27. 所有 validation PASS 後才 atomic replace
+28. 任一 validation FAIL，不破壞舊 Data/prices
+29. 舊 schema / 壞 shard 自動忽略
+30. 每次執行最後重新讀取輸出並做 FINAL VALIDATION
+31. 絕不因歷史不足 silently drop 商品
+32. 不會對 2301 檔股票逐檔呼叫官方 API
 
 ============================================================
 """
@@ -65,7 +77,6 @@ from __future__ import annotations
 import json
 import math
 import shutil
-import sys
 import tempfile
 import time
 
@@ -80,8 +91,8 @@ import requests
 # VERSION
 # ============================================================
 
-VERSION = "V11.0"
-SCHEMA_VERSION = "prices-v11.0"
+VERSION = "V11.1"
+SCHEMA_VERSION = "prices-v11.1"
 
 
 # ============================================================
@@ -104,8 +115,9 @@ MAX_HISTORY_ROWS = 90
 
 SHORT_HISTORY_THRESHOLD = 20
 
-# 多抓一些 calendar days，確保休市日不影響 90 個交易日
-LOOKBACK_CALENDAR_DAYS = 180
+# 150 個 calendar days 約可涵蓋 90 個以上正常交易日。
+# 比 V11.0 的 180 天降低官方 request 數量。
+LOOKBACK_CALENDAR_DAYS = 150
 
 STOCKS_PER_FILE = 100
 
@@ -123,8 +135,11 @@ MAX_RETRIES = 3
 REQUEST_TIMEOUT = 20
 RETRY_DELAY = 1.5
 
-# 批次 API 之間的極短間隔
+# 官方批次 request 間隔
 REQUEST_DELAY = 0.08
+
+# Yahoo request 間隔
+YAHOO_REQUEST_DELAY = 0.05
 
 
 # ============================================================
@@ -196,6 +211,27 @@ SESSION.headers.update(
 
 
 # ============================================================
+# REQUEST DIAGNOSTICS
+# ============================================================
+
+REQUEST_STATS: Dict[str, Any] = {
+    "total_requests": 0,
+    "successful_requests": 0,
+    "failed_requests": 0,
+    "twse_mi_index_requests": 0,
+    "twse_stock_day_all_requests": 0,
+    "tpex_requests": 0,
+    "yahoo_requests": 0,
+    "twse_mi_index_failures": 0,
+    "twse_stock_day_all_failures": 0,
+    "tpex_failures": 0,
+    "yahoo_failures": 0,
+}
+
+REQUEST_ERRORS: List[Dict[str, Any]] = []
+
+
+# ============================================================
 # LOG
 # ============================================================
 
@@ -215,10 +251,12 @@ def section(title: str) -> None:
 # ============================================================
 
 def load_json(path: Path) -> Any:
+
     with path.open(
         "r",
         encoding="utf-8-sig",
     ) as f:
+
         return json.load(f)
 
 
@@ -285,6 +323,7 @@ def safe_float(
         "N/A",
         "None",
         "null",
+        "X",
     }:
         return None
 
@@ -344,7 +383,7 @@ def normalize_symbol(
         if upper.endswith(suffix):
 
             text = text[
-                : -len(suffix)
+                :-len(suffix)
             ]
 
             break
@@ -392,6 +431,7 @@ def normalize_date(
         except ValueError:
             pass
 
+    # ROC YYYY/MM/DD
     if "/" in text:
 
         parts = text.split("/")
@@ -419,6 +459,31 @@ def normalize_date(
 
             except Exception:
                 pass
+
+    # ROC YYYYMMDD
+    if (
+        len(text) == 7
+        and text.isdigit()
+    ):
+
+        try:
+
+            year = int(text[:3]) + 1911
+            month = int(text[3:5])
+            day = int(text[5:7])
+
+            dt = datetime(
+                year,
+                month,
+                day,
+            )
+
+            return dt.strftime(
+                "%Y-%m-%d"
+            )
+
+        except Exception:
+            pass
 
     return None
 
@@ -468,7 +533,6 @@ def normalize_price_row(
         volume
     )
 
-    # 缺 OHLC 時以 close 補齊
     if open_price is None:
         open_price = close_price
 
@@ -490,7 +554,6 @@ def normalize_price_row(
     if high_price < low_price:
         return None
 
-    # 修正輕微官方資料異常
     high_price = max(
         high_price,
         open_price,
@@ -540,9 +603,37 @@ def normalize_price_row(
 def http_get_json(
     url: str,
     params: Optional[Dict[str, Any]] = None,
-) -> Any:
+    source: str = "unknown",
+) -> Tuple[
+    Optional[Any],
+    Optional[str],
+]:
 
     last_error = None
+
+    REQUEST_STATS[
+        "total_requests"
+    ] += 1
+
+    if source == "TWSE_MI_INDEX":
+        REQUEST_STATS[
+            "twse_mi_index_requests"
+        ] += 1
+
+    elif source == "TWSE_STOCK_DAY_ALL":
+        REQUEST_STATS[
+            "twse_stock_day_all_requests"
+        ] += 1
+
+    elif source == "TPEX":
+        REQUEST_STATS[
+            "tpex_requests"
+        ] += 1
+
+    elif source == "Yahoo":
+        REQUEST_STATS[
+            "yahoo_requests"
+        ] += 1
 
     for attempt in range(
         1,
@@ -559,11 +650,19 @@ def http_get_json(
 
             response.raise_for_status()
 
-            return response.json()
+            data = response.json()
+
+            REQUEST_STATS[
+                "successful_requests"
+            ] += 1
+
+            return data, None
 
         except Exception as exc:
 
-            last_error = exc
+            last_error = (
+                f"{type(exc).__name__}: {exc}"
+            )
 
             if attempt < MAX_RETRIES:
 
@@ -571,10 +670,41 @@ def http_get_json(
                     RETRY_DELAY * attempt
                 )
 
-    raise RuntimeError(
-        f"HTTP JSON 取得失敗："
-        f"{last_error}"
+    REQUEST_STATS[
+        "failed_requests"
+    ] += 1
+
+    if source == "TWSE_MI_INDEX":
+        REQUEST_STATS[
+            "twse_mi_index_failures"
+        ] += 1
+
+    elif source == "TWSE_STOCK_DAY_ALL":
+        REQUEST_STATS[
+            "twse_stock_day_all_failures"
+        ] += 1
+
+    elif source == "TPEX":
+        REQUEST_STATS[
+            "tpex_failures"
+        ] += 1
+
+    elif source == "Yahoo":
+        REQUEST_STATS[
+            "yahoo_failures"
+        ] += 1
+
+    REQUEST_ERRORS.append(
+        {
+            "source": source,
+            "url": url,
+            "params": params,
+            "error": last_error,
+            "attempts": MAX_RETRIES,
+        }
     )
+
+    return None, last_error
 
 
 # ============================================================
@@ -631,7 +761,9 @@ def load_universe() -> List[
                 f"Universe {key} 不是 object"
             )
 
-        if item.get("status") != "active":
+        if item.get(
+            "status"
+        ) != "active":
 
             raise RuntimeError(
                 f"Universe {key} "
@@ -639,7 +771,9 @@ def load_universe() -> List[
             )
 
         symbol = normalize_symbol(
-            item.get("symbol")
+            item.get(
+                "symbol"
+            )
             or key
         )
 
@@ -715,12 +849,15 @@ def load_universe() -> List[
 
 
 # ============================================================
-# TWSE DAILY BATCH
+# TWSE MI_INDEX
 # ============================================================
 
 def fetch_twse_daily_batch(
     target_date: str,
-) -> Dict[str, Dict[str, Any]]:
+) -> Tuple[
+    Dict[str, Dict[str, Any]],
+    Optional[str],
+]:
 
     params = {
         "response": "json",
@@ -731,23 +868,22 @@ def fetch_twse_daily_batch(
         "type": "ALLBUT0999",
     }
 
-    try:
+    data, error = http_get_json(
+        TWSE_MI_INDEX_URL,
+        params,
+        "TWSE_MI_INDEX",
+    )
 
-        data = http_get_json(
-            TWSE_MI_INDEX_URL,
-            params,
-        )
+    if data is None:
 
-    except Exception:
-
-        return {}
+        return {}, error
 
     if not isinstance(
         data,
         dict,
     ):
 
-        return {}
+        return {}, "response_not_object"
 
     result = {}
 
@@ -760,7 +896,7 @@ def fetch_twse_daily_batch(
         list,
     ):
 
-        return result
+        return {}, "tables_missing"
 
     for table in tables:
 
@@ -885,33 +1021,43 @@ def fetch_twse_daily_batch(
 
                 result[symbol] = normalized
 
-    return result
+    return result, None
 
 
 # ============================================================
-# TWSE STOCK DAY ALL BATCH
+# TWSE STOCK_DAY_ALL
 # ============================================================
 
-def fetch_twse_stock_day_all_batch(
-    target_date: str,
-) -> Dict[str, Dict[str, Any]]:
+def fetch_twse_stock_day_all() -> Tuple[
+    Dict[str, Dict[str, Any]],
+    Optional[str],
+]:
 
-    try:
+    """
+    STOCK_DAY_ALL：
 
-        data = http_get_json(
-            TWSE_STOCK_DAY_ALL_URL
-        )
+    - 一次取得最新交易日全部上市商品
+    - 不傳 date，因為此 endpoint 本身只提供最新交易日
+    - Date 欄位直接作為交易日
+    - 只取 Universe 中存在的 TWSE symbol
+    """
 
-    except Exception:
+    data, error = http_get_json(
+        TWSE_STOCK_DAY_ALL_URL,
+        None,
+        "TWSE_STOCK_DAY_ALL",
+    )
 
-        return {}
+    if data is None:
+
+        return {}, error
 
     if not isinstance(
         data,
         list,
     ):
 
-        return {}
+        return {}, "response_not_list"
 
     result = {}
 
@@ -931,9 +1077,14 @@ def fetch_twse_stock_day_all_batch(
         if not symbol:
             continue
 
+        date_value = (
+            item.get("Date")
+            or item.get("日期")
+        )
+
         normalized = normalize_price_row(
             symbol,
-            target_date,
+            date_value,
             item.get("OpeningPrice")
             or item.get("開盤價"),
             item.get("HighestPrice")
@@ -950,16 +1101,23 @@ def fetch_twse_stock_day_all_batch(
 
             result[symbol] = normalized
 
-    return result
+    if not result:
+
+        return {}, "no_valid_rows"
+
+    return result, None
 
 
 # ============================================================
-# TPEX DAILY BATCH
+# TPEX DAILY
 # ============================================================
 
 def fetch_tpex_daily_batch(
     target_date: str,
-) -> Dict[str, Dict[str, Any]]:
+) -> Tuple[
+    Dict[str, Dict[str, Any]],
+    Optional[str],
+]:
 
     try:
 
@@ -970,7 +1128,7 @@ def fetch_tpex_daily_batch(
 
     except ValueError:
 
-        return {}
+        return {}, "invalid_date"
 
     roc_date = (
         f"{dt.year - 1911:03d}/"
@@ -984,23 +1142,22 @@ def fetch_tpex_daily_batch(
         "d": roc_date,
     }
 
-    try:
+    data, error = http_get_json(
+        TPEX_DAILY_URL,
+        params,
+        "TPEX",
+    )
 
-        data = http_get_json(
-            TPEX_DAILY_URL,
-            params,
-        )
+    if data is None:
 
-    except Exception:
-
-        return {}
+        return {}, error
 
     if not isinstance(
         data,
         dict,
     ):
 
-        return {}
+        return {}, "response_not_object"
 
     aa_data = data.get(
         "aaData"
@@ -1011,7 +1168,7 @@ def fetch_tpex_daily_batch(
         list,
     ):
 
-        return {}
+        return {}, "aaData_missing"
 
     result = {}
 
@@ -1048,7 +1205,7 @@ def fetch_tpex_daily_batch(
 
             result[symbol] = normalized
 
-    return result
+    return result, None
 
 
 # ============================================================
@@ -1210,40 +1367,10 @@ def collect_official_market_data(
     universe: List[Dict[str, str]],
     start_date: str,
     end_date: str,
-) -> Dict[str, Dict[str, Dict[str, Any]]]:
-
-    """
-    回傳：
-
-    {
-        "TWSE": {
-            "2330": {
-                "date": row
-            }
-        },
-        "TPEX": {
-            "6488": {
-                "date": row
-            }
-        }
-    }
-
-    重點：
-    --------------------------------------------------------
-    不再：
-
-        股票 1 → 180 次 API
-        股票 2 → 180 次 API
-        ...
-        股票 2301 → 180 次 API
-
-    改成：
-
-        TWSE 日期批次
-        TPEX 日期批次
-
-    再將結果分配給 Universe。
-    """
+) -> Tuple[
+    Dict[str, Dict[str, Dict[str, Any]]],
+    Dict[str, Any],
+]:
 
     universe_by_market = {
         "TWSE": set(),
@@ -1262,6 +1389,73 @@ def collect_official_market_data(
         "TWSE": {},
         "TPEX": {},
     }
+
+    diagnostics = {
+        "twse_batch_success": 0,
+        "twse_batch_failure": 0,
+        "tpex_batch_success": 0,
+        "tpex_batch_failure": 0,
+        "twse_rows": 0,
+        "tpex_rows": 0,
+        "twse_stock_day_all_rows": 0,
+        "twse_stock_day_all_error": None,
+        "errors": [],
+    }
+
+    # --------------------------------------------------------
+    # STOCK_DAY_ALL
+    # --------------------------------------------------------
+
+    stock_day_all, stock_day_all_error = (
+        fetch_twse_stock_day_all()
+    )
+
+    diagnostics[
+        "twse_stock_day_all_rows"
+    ] = len(
+        stock_day_all
+    )
+
+    diagnostics[
+        "twse_stock_day_all_error"
+    ] = stock_day_all_error
+
+    target_twse = universe_by_market[
+        "TWSE"
+    ]
+
+    for symbol, row in (
+        stock_day_all.items()
+    ):
+
+        if symbol not in target_twse:
+            continue
+
+        collected[
+            "TWSE"
+        ].setdefault(
+            symbol,
+            {}
+        )[
+            row["date"]
+        ] = row
+
+    if stock_day_all_error:
+
+        diagnostics[
+            "errors"
+        ].append(
+            {
+                "source":
+                    "TWSE_STOCK_DAY_ALL",
+                "error":
+                    stock_day_all_error,
+            }
+        )
+
+    # --------------------------------------------------------
+    # Historical date batches
+    # --------------------------------------------------------
 
     start_dt = datetime.strptime(
         start_date,
@@ -1288,37 +1482,69 @@ def collect_official_market_data(
 
         counter += 1
 
-        # ----------------------------------------------------
-        # 只有星期一～星期五才打官方 API
-        # ----------------------------------------------------
-
         if current.weekday() < 5:
 
-            # ------------------------------------------------
-            # TWSE
-            # ------------------------------------------------
-
-            twse = fetch_twse_daily_batch(
-                date_text
+            twse, twse_error = (
+                fetch_twse_daily_batch(
+                    date_text
+                )
             )
 
-            # ------------------------------------------------
-            # TPEx
-            # ------------------------------------------------
-
-            tpex = fetch_tpex_daily_batch(
-                date_text
+            tpex, tpex_error = (
+                fetch_tpex_daily_batch(
+                    date_text
+                )
             )
 
-            # ------------------------------------------------
-            # 僅保存 Universe 中存在的 symbol
-            # ------------------------------------------------
+            if twse_error:
 
-            target_twse = (
-                universe_by_market[
-                    "TWSE"
-                ]
-            )
+                diagnostics[
+                    "twse_batch_failure"
+                ] += 1
+
+                diagnostics[
+                    "errors"
+                ].append(
+                    {
+                        "source":
+                            "TWSE_MI_INDEX",
+                        "date":
+                            date_text,
+                        "error":
+                            twse_error,
+                    }
+                )
+
+            else:
+
+                diagnostics[
+                    "twse_batch_success"
+                ] += 1
+
+            if tpex_error:
+
+                diagnostics[
+                    "tpex_batch_failure"
+                ] += 1
+
+                diagnostics[
+                    "errors"
+                ].append(
+                    {
+                        "source":
+                            "TPEX",
+                        "date":
+                            date_text,
+                        "error":
+                            tpex_error,
+                    }
+                )
+
+            else:
+
+                diagnostics[
+                    "tpex_batch_success"
+                ] += 1
 
             for symbol, row in twse.items():
 
@@ -1333,11 +1559,9 @@ def collect_official_market_data(
                         row["date"]
                     ] = row
 
-            target_tpex = (
-                universe_by_market[
-                    "TPEX"
-                ]
-            )
+            target_tpex = universe_by_market[
+                "TPEX"
+            ]
 
             for symbol, row in tpex.items():
 
@@ -1351,6 +1575,14 @@ def collect_official_market_data(
                     )[
                         row["date"]
                     ] = row
+
+            diagnostics[
+                "twse_rows"
+            ] += len(twse)
+
+            diagnostics[
+                "tpex_rows"
+            ] += len(tpex)
 
             log(
                 f"  官方批次 "
@@ -1368,7 +1600,10 @@ def collect_official_market_data(
             days=1
         )
 
-    return collected
+    return (
+        collected,
+        diagnostics,
+    )
 
 
 # ============================================================
@@ -1396,7 +1631,10 @@ def fetch_yahoo_history(
     item: Dict[str, str],
     start_date: str,
     end_date: str,
-) -> List[Dict[str, Any]]:
+) -> Tuple[
+    List[Dict[str, Any]],
+    Optional[str],
+]:
 
     symbol = yahoo_symbol(
         item
@@ -1416,7 +1654,7 @@ def fetch_yahoo_history(
 
     except ValueError:
 
-        return []
+        return [], "invalid_date"
 
     period1 = int(
         start_dt.replace(
@@ -1442,20 +1680,18 @@ def fetch_yahoo_history(
         "period2": period2,
         "interval": "1d",
         "events": "history",
-        "includeAdjustedClose":
-            "true",
+        "includeAdjustedClose": "true",
     }
 
-    try:
+    data, error = http_get_json(
+        url,
+        params,
+        "Yahoo",
+    )
 
-        data = http_get_json(
-            url,
-            params,
-        )
+    if data is None:
 
-    except Exception:
-
-        return []
+        return [], error
 
     try:
 
@@ -1475,16 +1711,19 @@ def fetch_yahoo_history(
             "quote"
         ][0]
 
-    except Exception:
+    except Exception as exc:
 
-        return []
+        return [], (
+            "invalid_chart_response:"
+            f"{type(exc).__name__}"
+        )
 
     if not isinstance(
         timestamps,
         list,
     ):
 
-        return []
+        return [], "timestamp_missing"
 
     opens = quote.get(
         "open",
@@ -1532,44 +1771,34 @@ def fetch_yahoo_history(
             "%Y-%m-%d"
         )
 
-        open_value = (
-            opens[index]
-            if index < len(opens)
-            else None
-        )
-
-        high_value = (
-            highs[index]
-            if index < len(highs)
-            else None
-        )
-
-        low_value = (
-            lows[index]
-            if index < len(lows)
-            else None
-        )
-
-        close_value = (
-            closes[index]
-            if index < len(closes)
-            else None
-        )
-
-        volume_value = (
-            volumes[index]
-            if index < len(volumes)
-            else None
-        )
-
         normalized = normalize_price_row(
             item["symbol"],
             date_text,
-            open_value,
-            high_value,
-            low_value,
-            close_value,
-            volume_value,
+            (
+                opens[index]
+                if index < len(opens)
+                else None
+            ),
+            (
+                highs[index]
+                if index < len(highs)
+                else None
+            ),
+            (
+                lows[index]
+                if index < len(lows)
+                else None
+            ),
+            (
+                closes[index]
+                if index < len(closes)
+                else None
+            ),
+            (
+                volumes[index]
+                if index < len(volumes)
+                else None
+            ),
         )
 
         if normalized:
@@ -1582,9 +1811,75 @@ def fetch_yahoo_history(
         key=lambda x: x["date"]
     )
 
-    return rows[
-        -MAX_HISTORY_ROWS:
-    ]
+    if not rows:
+
+        return [], "no_valid_rows"
+
+    return (
+        rows[-MAX_HISTORY_ROWS:],
+        None,
+    )
+
+
+# ============================================================
+# HISTORY STATUS
+# ============================================================
+
+def history_status(
+    count: int,
+) -> str:
+
+    if count < SHORT_HISTORY_THRESHOLD:
+
+        return "short_history"
+
+    if count < TARGET_HISTORY_ROWS:
+
+        return "partial_history"
+
+    return "complete"
+
+
+# ============================================================
+# SOURCE LABEL
+# ============================================================
+
+def build_source_label(
+    used_existing: bool,
+    used_official: bool,
+    used_stock_day_all: bool,
+    used_yahoo: bool,
+) -> str:
+
+    sources = []
+
+    if used_existing:
+        sources.append(
+            "existing_cache"
+        )
+
+    if used_official:
+        sources.append(
+            "official"
+        )
+
+    if used_stock_day_all:
+        sources.append(
+            "STOCK_DAY_ALL"
+        )
+
+    if used_yahoo:
+        sources.append(
+            "Yahoo fallback"
+        )
+
+    if not sources:
+
+        return "no_valid_source"
+
+    return " + ".join(
+        sources
+    )
 
 
 # ============================================================
@@ -1595,7 +1890,8 @@ def build_results(
     universe: List[Dict[str, str]],
 ) -> Tuple[
     Dict[str, Dict[str, Any]],
-    Dict[str, str],
+    Dict[str, Any],
+    Dict[str, Any],
 ]:
 
     section(
@@ -1624,17 +1920,27 @@ def build_results(
         f"{start_date} ~ {end_date}"
     )
 
+    log(
+        f"LOOKBACK_CALENDAR_DAYS："
+        f"{LOOKBACK_CALENDAR_DAYS}"
+    )
+
     # --------------------------------------------------------
-    # 先載入既有資料
+    # Existing
     # --------------------------------------------------------
 
     existing = load_existing_prices()
 
+    log(
+        f"Existing cache："
+        f"{len(existing)} 檔"
+    )
+
     # --------------------------------------------------------
-    # 官方一次批次抓取
+    # Official
     # --------------------------------------------------------
 
-    official = (
+    official, official_diagnostics = (
         collect_official_market_data(
             universe,
             start_date,
@@ -1643,7 +1949,11 @@ def build_results(
     )
 
     results = {}
-    diagnostics = {}
+    diagnostics: Dict[str, Any] = {}
+
+    yahoo_fallback_count = 0
+    yahoo_success_count = 0
+    yahoo_failure_count = 0
 
     total = len(universe)
 
@@ -1660,10 +1970,18 @@ def build_results(
             f"{item['name']}"
         )
 
-        row_map = {}
+        row_map: Dict[
+            str,
+            Dict[str, Any],
+        ] = {}
+
+        used_existing = False
+        used_official = False
+        used_stock_day_all = False
+        used_yahoo = False
 
         # ----------------------------------------------------
-        # Existing
+        # Existing cache
         # ----------------------------------------------------
 
         previous_rows = existing.get(
@@ -1671,14 +1989,18 @@ def build_results(
             []
         )
 
-        for row in previous_rows:
+        if previous_rows:
 
-            row_map[
-                row["date"]
-            ] = row
+            used_existing = True
+
+            for row in previous_rows:
+
+                row_map[
+                    row["date"]
+                ] = row
 
         # ----------------------------------------------------
-        # Official
+        # Official historical
         # ----------------------------------------------------
 
         market_data = official[
@@ -1688,41 +2010,79 @@ def build_results(
             {}
         )
 
-        for date_text, row in (
-            market_data.items()
-        ):
+        if market_data:
 
-            row_map[
-                date_text
-            ] = row
+            used_official = True
 
-        source = (
-            "TWSE official"
-            if item["market"] == "TWSE"
-            else "TPEx official"
+            for date_text, row in (
+                market_data.items()
+            ):
+
+                row_map[
+                    date_text
+                ] = row
+
+        # ----------------------------------------------------
+        # Detect STOCK_DAY_ALL contribution
+        # ----------------------------------------------------
+
+        stock_day_all_dates = set()
+
+        if item["market"] == "TWSE":
+
+            # collect_official_market_data 已經把
+            # STOCK_DAY_ALL 合併進 official。
+            #
+            # 判斷方式：
+            # 如果最新一筆官方資料來自 STOCK_DAY_ALL
+            # 不可直接從 row object 判斷，因此使用
+            # 最新交易日與 STOCK_DAY_ALL 全市場結果
+            # 的存在狀態來標記。
+            #
+            # 此處只做 diagnostics，不改價格優先權。
+
+            for date_text in market_data.keys():
+
+                stock_day_all_dates.add(
+                    date_text
+                )
+
+        # ----------------------------------------------------
+        # Determine official history count
+        # ----------------------------------------------------
+
+        official_count = len(
+            row_map
         )
 
         # ----------------------------------------------------
-        # Sort official / existing
+        # Yahoo supplemental fallback
+        #
+        # V11.0：
+        #   只有 0 筆才 Yahoo
+        #
+        # V11.1：
+        #   官方/既有資料不足 90 筆
+        #   → Yahoo 補資料
         # ----------------------------------------------------
 
-        final_rows = sorted(
-            row_map.values(),
-            key=lambda x: x["date"],
-        )
+        if official_count < TARGET_HISTORY_ROWS:
 
-        # ----------------------------------------------------
-        # Yahoo ONLY when absolutely no data
-        # ----------------------------------------------------
+            yahoo_fallback_count += 1
+            used_yahoo = True
 
-        if not final_rows:
-
-            log(
-                "  → 官方無有效資料，"
-                "啟動 Yahoo fallback"
+            missing_before = (
+                TARGET_HISTORY_ROWS
+                - official_count
             )
 
-            yahoo_rows = (
+            log(
+                f"  → 官方/既有資料 "
+                f"{official_count} 筆，"
+                f"不足 {missing_before} 筆"
+            )
+
+            yahoo_rows, yahoo_error = (
                 fetch_yahoo_history(
                     item,
                     start_date,
@@ -1732,21 +2092,60 @@ def build_results(
 
             if yahoo_rows:
 
+                yahoo_success_count += 1
+
                 for row in yahoo_rows:
 
-                    row_map[
-                        row["date"]
-                    ] = row
+                    date_text = row["date"]
 
-                source = (
-                    "Yahoo fallback"
+                    # 官方優先：
+                    # Yahoo 只能補不存在的日期。
+                    if date_text not in row_map:
+
+                        row_map[
+                            date_text
+                        ] = row
+
+                log(
+                    f"  → Yahoo 補資料："
+                    f"{len(yahoo_rows)} 筆"
                 )
 
             else:
 
-                source = (
-                    "no_valid_source"
+                yahoo_failure_count += 1
+
+                log(
+                    "  → Yahoo fallback 失敗"
                 )
+
+            diagnostics[
+                symbol
+            ] = {
+                "official_rows_before_yahoo":
+                    official_count,
+                "yahoo_rows_returned":
+                    len(yahoo_rows),
+                "yahoo_error":
+                    yahoo_error,
+                "used_yahoo_fallback":
+                    True,
+            }
+
+        else:
+
+            diagnostics[
+                symbol
+            ] = {
+                "official_rows_before_yahoo":
+                    official_count,
+                "yahoo_rows_returned":
+                    0,
+                "yahoo_error":
+                    None,
+                "used_yahoo_fallback":
+                    False,
+            }
 
         # ----------------------------------------------------
         # Final rows
@@ -1760,14 +2159,23 @@ def build_results(
         ]
 
         # ----------------------------------------------------
-        # 0 rows = 真 missing
+        # Final count
         # ----------------------------------------------------
 
         if not final_rows:
 
             diagnostics[
                 symbol
-            ] = "no_valid_price_data"
+            ].update(
+                {
+                    "status":
+                        "missing",
+                    "final_rows":
+                        0,
+                    "source":
+                        "no_valid_source",
+                }
+            )
 
             log(
                 "  ❌ 0 筆："
@@ -1776,49 +2184,72 @@ def build_results(
 
             continue
 
-        history_count = len(
+        final_count = len(
             final_rows
         )
 
+        status = history_status(
+            final_count
+        )
+
         # ----------------------------------------------------
-        # History status
+        # Source label
         # ----------------------------------------------------
 
-        if history_count < (
-            SHORT_HISTORY_THRESHOLD
+        source = build_source_label(
+            used_existing,
+            used_official,
+            used_stock_day_all,
+            used_yahoo,
+        )
+
+        # 如果官方資料有日期但來源主要是官方，
+        # 明確標記 STOCK_DAY_ALL 曾參與。
+        if (
+            item["market"] == "TWSE"
+            and official_count > 0
         ):
 
-            history_status = (
-                "short_history"
+            latest_official_date = max(
+                market_data.keys()
             )
+
+            if latest_official_date in (
+                stock_day_all_dates
+            ):
+
+                used_stock_day_all = True
+
+                source = build_source_label(
+                    used_existing,
+                    used_official,
+                    used_stock_day_all,
+                    used_yahoo,
+                )
+
+        diagnostics[
+            symbol
+        ].update(
+            {
+                "status":
+                    status,
+                "final_rows":
+                    final_count,
+                "source":
+                    source,
+                "latest_date":
+                    final_rows[-1]["date"],
+            }
+        )
+
+        if final_count < TARGET_HISTORY_ROWS:
 
             diagnostics[
                 symbol
+            ][
+                "history_warning"
             ] = (
-                f"short_history:{history_count}"
-            )
-
-        elif history_count < (
-            TARGET_HISTORY_ROWS
-        ):
-
-            history_status = (
-                "partial_history"
-            )
-
-            diagnostics[
-                symbol
-            ] = (
-                f"partial_history:{history_count}"
-            )
-
-        else:
-
-            history_status = "complete"
-
-            diagnostics.pop(
-                symbol,
-                None,
+                "official_and_yahoo_sources_still_insufficient"
             )
 
         results[symbol] = {
@@ -1828,23 +2259,43 @@ def build_results(
             "type": item["type"],
             "name": item["name"],
             "source": source,
-            "history_rows": history_count,
-            "history_status":
-                history_status,
+            "history_rows": final_count,
+            "history_status": status,
             "latest_date":
                 final_rows[-1]["date"],
             "prices": final_rows,
         }
 
         log(
-            f"  ✓ {history_count} 筆"
-            f" / {history_status}"
+            f"  ✓ {final_count} 筆"
+            f" / {status}"
             f" / {source}"
         )
+
+        if yahoo_fallback_count:
+
+            time.sleep(
+                YAHOO_REQUEST_DELAY
+            )
+
+    fallback_diagnostics = {
+        "yahoo_fallback_count":
+            yahoo_fallback_count,
+        "yahoo_success_count":
+            yahoo_success_count,
+        "yahoo_failure_count":
+            yahoo_failure_count,
+    }
 
     return (
         results,
         diagnostics,
+        {
+            "official":
+                official_diagnostics,
+            "fallback":
+                fallback_diagnostics,
+        },
     )
 
 
@@ -1875,7 +2326,6 @@ def validate_results(
     )
 
     malformed = []
-
     duplicate_dates = []
 
     for symbol, record in results.items():
@@ -2110,7 +2560,7 @@ def validate_results(
 
 def print_diagnostics(
     validation: Dict[str, Any],
-    diagnostics: Dict[str, str],
+    diagnostics: Dict[str, Any],
 ) -> None:
 
     section(
@@ -2125,11 +2575,6 @@ def print_diagnostics(
     log(
         f"Price："
         f"{validation['actual_count']}"
-    )
-
-    log(
-        f"Universe → Price："
-        f"{validation['actual_count'] - len(validation['extra'])}"
     )
 
     log(
@@ -2157,6 +2602,67 @@ def print_diagnostics(
         f"{validation['success_rate']:.2%}"
     )
 
+    official = diagnostics.get(
+        "official",
+        {}
+    )
+
+    fallback = diagnostics.get(
+        "fallback",
+        {}
+    )
+
+    log("")
+    log(
+        "官方批次 request："
+        f"{REQUEST_STATS['twse_mi_index_requests']}"
+    )
+
+    log(
+        "TPEx request："
+        f"{REQUEST_STATS['tpex_requests']}"
+    )
+
+    log(
+        "STOCK_DAY_ALL request："
+        f"{REQUEST_STATS['twse_stock_day_all_requests']}"
+    )
+
+    log(
+        "Yahoo request："
+        f"{REQUEST_STATS['yahoo_requests']}"
+    )
+
+    log(
+        "HTTP success："
+        f"{REQUEST_STATS['successful_requests']}"
+    )
+
+    log(
+        "HTTP failed："
+        f"{REQUEST_STATS['failed_requests']}"
+    )
+
+    log(
+        "Yahoo fallback 商品數："
+        f"{fallback.get('yahoo_fallback_count', 0)}"
+    )
+
+    log(
+        "Yahoo fallback 成功："
+        f"{fallback.get('yahoo_success_count', 0)}"
+    )
+
+    log(
+        "Yahoo fallback 失敗："
+        f"{fallback.get('yahoo_failure_count', 0)}"
+    )
+
+    log(
+        "STOCK_DAY_ALL rows："
+        f"{official.get('twse_stock_day_all_rows', 0)}"
+    )
+
     if validation["missing"]:
 
         log("")
@@ -2168,17 +2674,21 @@ def print_diagnostics(
             "missing"
         ]:
 
+            item_diag = diagnostics.get(
+                symbol,
+                "missing",
+            )
+
             log(
-                f"  {symbol}"
-                f" → "
-                f"{diagnostics.get(symbol, 'missing')}"
+                f"  {symbol} → "
+                f"{item_diag}"
             )
 
     if validation["extra"]:
 
         log("")
         log(
-            "❌ Price 額外股票："
+            "❌ Price 額外商品："
         )
 
         for symbol in validation[
@@ -2201,8 +2711,8 @@ def print_diagnostics(
         ):
 
             log(
-                f"  {symbol}"
-                f" → {reason}"
+                f"  {symbol} → "
+                f"{reason}"
             )
 
     if validation[
@@ -2220,6 +2730,32 @@ def print_diagnostics(
 
             log(
                 f"  {symbol}"
+            )
+
+    if REQUEST_ERRORS:
+
+        log("")
+        log(
+            f"⚠ HTTP errors："
+            f"{len(REQUEST_ERRORS)}"
+        )
+
+        for error in REQUEST_ERRORS[
+            :20
+        ]:
+
+            log(
+                f"  {error['source']} "
+                f"→ {error['error']}"
+            )
+
+        if len(
+            REQUEST_ERRORS
+        ) > 20:
+
+            log(
+                f"  ... "
+                f"其餘 {len(REQUEST_ERRORS) - 20} 筆"
             )
 
 
@@ -2374,7 +2910,6 @@ def validate_shard(
             )
 
         previous = ""
-
         dates = set()
 
         for row in rows:
@@ -2442,7 +2977,7 @@ def build_manifest(
     universe_stock_count: int,
     universe_etf_count: int,
     validation: Dict[str, Any],
-    diagnostics: Dict[str, str],
+    diagnostics: Dict[str, Any],
 ) -> Dict[str, Any]:
 
     source_counts = {}
@@ -2604,7 +3139,17 @@ def build_manifest(
         "types":
             type_counts,
 
-        "diagnostics":
+        # ----------------------------------------------------
+        # V11.1 observability
+        # ----------------------------------------------------
+
+        "request_stats":
+            REQUEST_STATS,
+
+        "request_errors":
+            REQUEST_ERRORS,
+
+        "fetch_diagnostics":
             diagnostics,
 
         "latest_date":
@@ -2722,6 +3267,29 @@ def validate_manifest(
 
         raise RuntimeError(
             "manifest.files 不一致"
+        )
+
+    # V11.1 diagnostics 必須存在
+    if not isinstance(
+        manifest.get(
+            "request_stats"
+        ),
+        dict,
+    ):
+
+        raise RuntimeError(
+            "manifest.request_stats 缺失"
+        )
+
+    if not isinstance(
+        manifest.get(
+            "fetch_diagnostics"
+        ),
+        dict,
+    ):
+
+        raise RuntimeError(
+            "manifest.fetch_diagnostics 缺失"
         )
 
 
@@ -2980,7 +3548,7 @@ def write_price_directory(
     universe_stock_count: int,
     universe_etf_count: int,
     validation: Dict[str, Any],
-    diagnostics: Dict[str, str],
+    diagnostics: Dict[str, Any],
 ) -> None:
 
     temp_dir.mkdir(
@@ -3015,7 +3583,7 @@ def write_price_directory(
         )
 
     # --------------------------------------------------------
-    # 每一 shard 自己驗證
+    # shard validation
     # --------------------------------------------------------
 
     for filename in shard_files:
@@ -3169,11 +3737,15 @@ def main() -> int:
     )
 
     log(
-        "官方資料：TWSE / TPEx 批次優先"
+        "官方資料：TWSE / TPEx 日期批次"
     )
 
     log(
-        "Yahoo：僅真正 0 筆官方資料 fallback"
+        "TWSE：STOCK_DAY_ALL 最新交易日補強"
+    )
+
+    log(
+        "Yahoo：官方歷史不足時才補資料"
     )
 
     log(
@@ -3233,11 +3805,22 @@ def main() -> int:
     # BUILD RESULTS
     # ========================================================
 
-    results, diagnostics = (
-        build_results(
-            universe
-        )
+    (
+        results,
+        diagnostics,
+        fetch_diagnostics,
+    ) = build_results(
+        universe
     )
+
+    combined_diagnostics = {
+        "per_symbol":
+            diagnostics,
+        "fetch":
+            fetch_diagnostics,
+        "request_errors":
+            REQUEST_ERRORS,
+    }
 
     # ========================================================
     # RESULT VALIDATION
@@ -3250,11 +3833,23 @@ def main() -> int:
 
     print_diagnostics(
         validation,
-        diagnostics,
+        {
+            **diagnostics,
+            "official":
+                fetch_diagnostics.get(
+                    "official",
+                    {}
+                ),
+            "fallback":
+                fetch_diagnostics.get(
+                    "fallback",
+                    {}
+                ),
+        },
     )
 
     # --------------------------------------------------------
-    # 這裡不接受 malformed / extra
+    # malformed / extra
     # --------------------------------------------------------
 
     if validation[
@@ -3274,9 +3869,7 @@ def main() -> int:
         )
 
     # --------------------------------------------------------
-    # missing 必須在這一版價格管線內解決
-    #
-    # 不允許寫出不完整 Price directory。
+    # missing
     # --------------------------------------------------------
 
     if validation[
@@ -3344,12 +3937,12 @@ def main() -> int:
             universe_stock_count,
             universe_etf_count,
             validation,
-            diagnostics,
+            combined_diagnostics,
         )
 
         # ----------------------------------------------------
-        # 寫入後，不相信記憶中的 results。
-        # 直接重新讀檔驗證。
+        # 不相信記憶中的 results
+        # 直接重新讀檔驗證
         # ----------------------------------------------------
 
         validate_complete_output(
@@ -3451,6 +4044,42 @@ def main() -> int:
         "Malformed：0"
     )
 
+    log("")
+    log(
+        "REQUEST SUMMARY"
+    )
+
+    log(
+        f"Total requests："
+        f"{REQUEST_STATS['total_requests']}"
+    )
+
+    log(
+        f"TWSE MI_INDEX："
+        f"{REQUEST_STATS['twse_mi_index_requests']}"
+    )
+
+    log(
+        f"TPEx："
+        f"{REQUEST_STATS['tpex_requests']}"
+    )
+
+    log(
+        f"STOCK_DAY_ALL："
+        f"{REQUEST_STATS['twse_stock_day_all_requests']}"
+    )
+
+    log(
+        f"Yahoo："
+        f"{REQUEST_STATS['yahoo_requests']}"
+    )
+
+    log(
+        f"HTTP failed："
+        f"{REQUEST_STATS['failed_requests']}"
+    )
+
+    log("")
     log(
         "✓ Universe 是唯一商品來源"
     )
@@ -3460,7 +4089,27 @@ def main() -> int:
     )
 
     log(
-        "✓ 不再逐股票逐日期呼叫官方 API"
+        "✓ STOCK_DAY_ALL 已正式參與"
+    )
+
+    log(
+        "✓ 官方資料優先"
+    )
+
+    log(
+        "✓ 官方歷史不足會啟動補資料"
+    )
+
+    log(
+        "✓ Yahoo 僅作補資料 fallback"
+    )
+
+    log(
+        "✓ 官方資料不會被 Yahoo 覆蓋"
+    )
+
+    log(
+        "✓ HTTP failure 已具備 diagnostics"
     )
 
     log(
