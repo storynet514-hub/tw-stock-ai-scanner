@@ -953,17 +953,14 @@ def fetch_tpex_daily_batch(
     )
 
     if not isinstance(
-    aa_data = data.get(
-        "aaData"
-    )
-
-    if not isinstance(
         aa_data,
         list,
     ):
+
         return {}, "aaData_missing"
 
     if not aa_data:
+
         return {}, "aaData_empty"
 
     result = {}
@@ -977,6 +974,7 @@ def fetch_tpex_daily_batch(
             continue
 
         if len(row) < 8:
+
             continue
 
         symbol = normalize_symbol(
@@ -984,6 +982,7 @@ def fetch_tpex_daily_batch(
         )
 
         if not symbol:
+
             continue
 
         normalized = normalize_price_row(
@@ -997,10 +996,16 @@ def fetch_tpex_daily_batch(
         )
 
         if normalized:
+
             result[symbol] = normalized
 
+    if not result:
+
+        return {}, "aaData_no_valid_rows"
+
     return result, None
-    
+
+
 # ============================================================
 # EXISTING PRICES
 # ============================================================
@@ -1013,6 +1018,7 @@ def load_existing_prices() -> Dict[
     result = {}
 
     if not OUTPUT_DIR.exists():
+
         return result
 
     manifest_path = (
@@ -1021,6 +1027,7 @@ def load_existing_prices() -> Dict[
     )
 
     if not manifest_path.exists():
+
         return result
 
     try:
@@ -1037,6 +1044,7 @@ def load_existing_prices() -> Dict[
         manifest,
         dict,
     ):
+
         return result
 
     files = manifest.get(
@@ -1047,6 +1055,7 @@ def load_existing_prices() -> Dict[
         files,
         list,
     ):
+
         return result
 
     for filename in files:
@@ -1056,6 +1065,7 @@ def load_existing_prices() -> Dict[
         ).name
 
         if filename == "manifest.json":
+
             continue
 
         path = (
@@ -1064,6 +1074,7 @@ def load_existing_prices() -> Dict[
         )
 
         if not path.exists():
+
             continue
 
         try:
@@ -1080,6 +1091,7 @@ def load_existing_prices() -> Dict[
             data,
             dict,
         ):
+
             continue
 
         stocks = data.get(
@@ -1090,6 +1102,7 @@ def load_existing_prices() -> Dict[
             stocks,
             dict,
         ):
+
             continue
 
         for symbol, rows in stocks.items():
@@ -1099,12 +1112,14 @@ def load_existing_prices() -> Dict[
             )
 
             if not symbol:
+
                 continue
 
             if not isinstance(
                 rows,
                 list,
             ):
+
                 continue
 
             clean_rows = []
@@ -1115,6 +1130,7 @@ def load_existing_prices() -> Dict[
                     row,
                     dict,
                 ):
+
                     continue
 
                 normalized = normalize_price_row(
@@ -1568,6 +1584,7 @@ def merge_rows(
             row,
             dict,
         ):
+
             continue
 
         date_text = normalize_date(
@@ -1575,6 +1592,7 @@ def merge_rows(
         )
 
         if not date_text:
+
             continue
 
         normalized = normalize_price_row(
@@ -1599,6 +1617,7 @@ def merge_rows(
             row,
             dict,
         ):
+
             continue
 
         date_text = normalize_date(
@@ -1606,6 +1625,7 @@ def merge_rows(
         )
 
         if not date_text:
+
             continue
 
         normalized = normalize_price_row(
