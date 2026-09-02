@@ -954,23 +954,16 @@ def fetch_tpex_daily_batch(
 
     if not isinstance(
     aa_data = data.get(
-
         "aaData"
-
     )
 
     if not isinstance(
-
         aa_data,
-
         list,
-
     ):
-
         return {}, "aaData_missing"
 
     if not aa_data:
-
         return {}, "aaData_empty"
 
     result = {}
@@ -1004,11 +997,9 @@ def fetch_tpex_daily_batch(
         )
 
         if normalized:
-
             result[symbol] = normalized
 
     return result, None
-
 
 # ============================================================
 # EXISTING PRICES
