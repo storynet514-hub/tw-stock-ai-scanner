@@ -1000,7 +1000,7 @@ def fetch_tpex_daily_batch(
             result[symbol] = normalized
 
     return result, None
-
+    
 # ============================================================
 # EXISTING PRICES
 # ============================================================
