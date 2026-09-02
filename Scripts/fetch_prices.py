@@ -953,15 +953,25 @@ def fetch_tpex_daily_batch(
     )
 
     if not isinstance(
+    aa_data = data.get(
+
+        "aaData"
+
+    )
+
+    if not isinstance(
+
         aa_data,
+
         list,
+
     ):
 
         return {}, "aaData_missing"
-        
+
     if not aa_data:
-        
-         return {}, "aaData_empty"
+
+        return {}, "aaData_empty"
 
     result = {}
 
