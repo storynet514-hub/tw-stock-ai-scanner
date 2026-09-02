@@ -929,6 +929,7 @@ def fetch_tpex_daily_batch(
         "l": "zh-tw",
         "o": "json",
         "d": roc_date,
+        "se": "EW",
     }
 
     data, error = http_get_json(
@@ -957,6 +958,10 @@ def fetch_tpex_daily_batch(
     ):
 
         return {}, "aaData_missing"
+        
+    if not aa_data:
+        
+         return {}, "aaData_empty"
 
     result = {}
 
