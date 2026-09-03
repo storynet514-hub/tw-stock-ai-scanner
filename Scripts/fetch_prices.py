@@ -5,10 +5,11 @@
 台股 AI 選股系統
 Scripts/fetch_prices.py
 
-PRICE PIPELINE V12.0
+PRICE PIPELINE V12.1
 ============================================================
 
 本檔案唯一責任：
+
     Data/universe.json
         ↓
     官方 TWSE / TPEx 歷史價格批次資料
@@ -53,20 +54,24 @@ PRICE PIPELINE V12.0
 19. 官方 API 失敗必須留下 diagnostics
 20. Yahoo fallback 成功 / 失敗必須留下 diagnostics
 21. 0 筆才是真正 missing
-22. Universe / Price 集合必須完整一致
-23. 不允許 Price 出現 Universe 外商品
-24. 不允許跨 shard 重複
-25. shard 必須與 results 完整一致
-26. manifest 必須與實際 shard 完整一致
-27. 任一 validation FAIL，不破壞舊 Data/prices
-28. 所有 validation PASS 後才 atomic replace
-29. Atomic replace 後再次從磁碟重新讀取驗證
-30. 舊 schema / 壞 shard 自動忽略
-31. 不因歷史不足 silently drop 商品
-32. 不對 2300+ 股票逐檔呼叫官方歷史 API
-33. Yahoo 只會對官方資料不足的商品啟動
-34. 官方資料優先、Yahoo 補洞
-35. 所有資料來源狀態可觀測
+22. 新上市且 listed_date > end_date 為 not_started，
+    不視為 missing
+23. Universe / Price 集合必須完整一致
+24. 不允許 Price 出現 Universe 外商品
+25. 不允許跨 shard 重複
+26. shard 必須與 results 完整一致
+27. manifest 必須與實際 shard 完整一致
+28. 任一 validation FAIL，不破壞舊 Data/prices
+29. 所有 validation PASS 後才 atomic replace
+30. Atomic replace 後再次從磁碟重新讀取驗證
+31. 舊 schema / 壞 shard 自動忽略
+32. 不因歷史不足 silently drop 商品
+33. 不對 2300+ 股票逐檔呼叫官方歷史 API
+34. Yahoo 只會對官方 / Existing 資料不足的商品啟動
+35. 官方資料優先、Yahoo 補洞
+36. 所有資料來源狀態可觀測
+37. TPEx JSON 失敗時使用同一官方 endpoint HTML fallback
+38. 不因新上市商品尚未開始交易而呼叫 Yahoo
 
 ============================================================
 """
@@ -80,6 +85,7 @@ import tempfile
 import time
 
 from datetime import datetime, timedelta, timezone
+from html.parser import HTMLParser
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -90,8 +96,8 @@ import requests
 # VERSION
 # ============================================================
 
-VERSION = "V12.0"
-SCHEMA_VERSION = "prices-v12.0"
+VERSION = "V12.1"
+SCHEMA_VERSION = "prices-v12.1"
 
 
 # ============================================================
@@ -114,8 +120,6 @@ MAX_HISTORY_ROWS = 90
 
 SHORT_HISTORY_THRESHOLD = 20
 
-# 90 個交易日約需 125~140 個 calendar days。
-# 留足市場假日 / 長假 / API 缺資料空間。
 LOOKBACK_CALENDAR_DAYS = 240
 
 STOCKS_PER_FILE = 100
@@ -141,11 +145,7 @@ REQUEST_DELAY = 0.08
 # FALLBACK
 # ============================================================
 
-# 官方資料少於這個數量就必須檢查 Yahoo 補洞。
 YAHOO_FILL_TRIGGER = TARGET_HISTORY_ROWS
-
-# Yahoo 單一商品最多補幾次。
-# 1 次 request 可取得整段歷史，因此不是逐日期抓取。
 YAHOO_MAX_RETRIES = 3
 
 
@@ -194,6 +194,7 @@ SESSION.headers.update(
         "Accept": (
             "application/json,"
             "text/plain,"
+            "text/html,"
             "*/*"
         ),
         "Accept-Language": (
@@ -225,10 +226,12 @@ def section(title: str) -> None:
 # ============================================================
 
 def load_json(path: Path) -> Any:
+
     with path.open(
         "r",
         encoding="utf-8-sig",
     ) as f:
+
         return json.load(f)
 
 
@@ -305,8 +308,11 @@ def safe_float(
     )
 
     try:
+
         number = float(text)
+
     except Exception:
+
         return None
 
     if not math.isfinite(number):
@@ -400,6 +406,7 @@ def normalize_date(
             )
 
         except ValueError:
+
             pass
 
     if "/" in text:
@@ -428,6 +435,7 @@ def normalize_date(
                 )
 
             except Exception:
+
                 pass
 
     return None
@@ -454,7 +462,9 @@ def normalize_price_row(
     if not date_text:
         return None
 
-    close_price = safe_float(close)
+    close_price = safe_float(
+        close
+    )
 
     if close_price is None:
         return None
@@ -586,6 +596,56 @@ def http_get_json(
 
 
 # ============================================================
+# HTTP TEXT
+# ============================================================
+
+def http_get_text(
+    url: str,
+    params: Optional[Dict[str, Any]] = None,
+    retries: int = MAX_RETRIES,
+) -> Tuple[Optional[str], Optional[str]]:
+
+    last_error = None
+
+    for attempt in range(
+        1,
+        retries + 1,
+    ):
+
+        try:
+
+            response = SESSION.get(
+                url,
+                params=params,
+                timeout=REQUEST_TIMEOUT,
+            )
+
+            response.raise_for_status()
+
+            response.encoding = (
+                response.apparent_encoding
+                or response.encoding
+                or "utf-8"
+            )
+
+            return response.text, None
+
+        except Exception as exc:
+
+            last_error = (
+                f"{type(exc).__name__}: {exc}"
+            )
+
+            if attempt < retries:
+
+                time.sleep(
+                    RETRY_DELAY * attempt
+                )
+
+    return None, last_error
+
+
+# ============================================================
 # UNIVERSE
 # ============================================================
 
@@ -693,6 +753,10 @@ def load_universe() -> List[
                 f"{record_type}"
             )
 
+        listed_date = normalize_date(
+            item.get("listed_date")
+        )
+
         seen.add(symbol)
 
         result.append(
@@ -710,6 +774,8 @@ def load_universe() -> List[
                             "instrument_type"
                         )
                     ),
+                "listed_date":
+                    listed_date or "",
             }
         )
 
@@ -894,6 +960,437 @@ def fetch_twse_daily_batch(
 
                 result[symbol] = normalized
 
+    if not result:
+
+        return {}, "tables_no_valid_rows"
+
+    return result, None
+
+
+# ============================================================
+# TPEX HTML PARSER
+# ============================================================
+
+class TpexTableParser(
+    HTMLParser
+):
+
+    def __init__(self) -> None:
+
+        super().__init__(
+            convert_charrefs=True
+        )
+
+        self.rows = []
+
+        self.current_row = None
+        self.current_cell = None
+
+        self.in_tr = False
+        self.in_cell = False
+
+    def handle_starttag(
+        self,
+        tag: str,
+        attrs: List[Tuple[str, Optional[str]]],
+    ) -> None:
+
+        tag = tag.lower()
+
+        if tag == "tr":
+
+            if self.in_tr:
+
+                self._finish_row()
+
+            self.in_tr = True
+            self.current_row = []
+
+        elif tag in {
+            "td",
+            "th",
+        }:
+
+            if not self.in_tr:
+
+                self.in_tr = True
+                self.current_row = []
+
+            self.in_cell = True
+            self.current_cell = []
+
+        elif tag == "br":
+
+            if self.in_cell:
+
+                self.current_cell.append(
+                    " "
+                )
+
+    def handle_endtag(
+        self,
+        tag: str,
+    ) -> None:
+
+        tag = tag.lower()
+
+        if tag in {
+            "td",
+            "th",
+        }:
+
+            if self.in_cell:
+
+                text = clean_text(
+                    "".join(
+                        self.current_cell
+                        or []
+                    )
+                )
+
+                if self.current_row is None:
+
+                    self.current_row = []
+
+                self.current_row.append(
+                    text
+                )
+
+                self.current_cell = None
+                self.in_cell = False
+
+        elif tag == "tr":
+
+            self._finish_row()
+
+    def handle_data(
+        self,
+        data: str,
+    ) -> None:
+
+        if self.in_cell:
+
+            if self.current_cell is None:
+
+                self.current_cell = []
+
+            self.current_cell.append(
+                data
+            )
+
+    def _finish_row(self) -> None:
+
+        if (
+            self.current_row is not None
+            and self.current_row
+        ):
+
+            self.rows.append(
+                self.current_row
+            )
+
+        self.current_row = None
+        self.current_cell = None
+        self.in_tr = False
+        self.in_cell = False
+
+    def close(self) -> None:
+
+        if self.in_tr:
+
+            self._finish_row()
+
+        super().close()
+
+
+# ============================================================
+# TPEX HEADER NORMALIZATION
+# ============================================================
+
+def normalize_header(
+    value: Any,
+) -> str:
+
+    return (
+        clean_text(value)
+        .replace(" ", "")
+        .replace("\n", "")
+        .replace("\r", "")
+    )
+
+
+# ============================================================
+# TPEX HTML DAILY BATCH
+# ============================================================
+
+def fetch_tpex_html_batch(
+    target_date: str,
+    roc_date: str,
+) -> Tuple[
+    Dict[str, Dict[str, Any]],
+    Optional[str],
+]:
+
+    params = {
+        "l": "zh-tw",
+        "o": "htm",
+        "d": roc_date,
+        "se": "EW",
+    }
+
+    text, error = http_get_text(
+        TPEX_DAILY_URL,
+        params,
+    )
+
+    if error:
+
+        return {}, error
+
+    if not text:
+
+        return {}, "empty_html"
+
+    parser = TpexTableParser()
+
+    try:
+
+        parser.feed(text)
+        parser.close()
+
+    except Exception as exc:
+
+        return {}, (
+            f"html_parse_error:"
+            f"{type(exc).__name__}"
+        )
+
+    rows = parser.rows
+
+    if not rows:
+
+        return {}, "html_no_rows"
+
+    # --------------------------------------------------------
+    # 動態找 header
+    # --------------------------------------------------------
+
+    symbol_aliases = {
+        "證券代號",
+        "股票代號",
+        "代號",
+    }
+
+    close_aliases = {
+        "收盤價",
+        "收盤",
+    }
+
+    open_aliases = {
+        "開盤價",
+        "開盤",
+    }
+
+    high_aliases = {
+        "最高價",
+        "最高",
+    }
+
+    low_aliases = {
+        "最低價",
+        "最低",
+    }
+
+    volume_aliases = {
+        "成交股數",
+        "成交量",
+    }
+
+    header_indexes = None
+
+    for row_index, row in enumerate(
+        rows
+    ):
+
+        normalized_headers = [
+            normalize_header(cell)
+            for cell in row
+        ]
+
+        found = {
+            "symbol": None,
+            "open": None,
+            "high": None,
+            "low": None,
+            "close": None,
+            "volume": None,
+        }
+
+        for index, header in enumerate(
+            normalized_headers
+        ):
+
+            if (
+                found["symbol"] is None
+                and header in symbol_aliases
+            ):
+
+                found["symbol"] = index
+
+            if (
+                found["open"] is None
+                and header in open_aliases
+            ):
+
+                found["open"] = index
+
+            if (
+                found["high"] is None
+                and header in high_aliases
+            ):
+
+                found["high"] = index
+
+            if (
+                found["low"] is None
+                and header in low_aliases
+            ):
+
+                found["low"] = index
+
+            if (
+                found["close"] is None
+                and header in close_aliases
+            ):
+
+                found["close"] = index
+
+            if (
+                found["volume"] is None
+                and header in volume_aliases
+            ):
+
+                found["volume"] = index
+
+        if all(
+            value is not None
+            for value in found.values()
+        ):
+
+            header_indexes = (
+                row_index,
+                found,
+            )
+
+            break
+
+    result = {}
+
+    # --------------------------------------------------------
+    # 動態 header 解析
+    # --------------------------------------------------------
+
+    if header_indexes is not None:
+
+        header_row_index, indexes = (
+            header_indexes
+        )
+
+        for row in rows[
+            header_row_index + 1:
+        ]:
+
+            def get_value(
+                key: str,
+            ) -> Any:
+
+                index = indexes[key]
+
+                if (
+                    index is None
+                    or index >= len(row)
+                ):
+
+                    return None
+
+                return row[index]
+
+            symbol = normalize_symbol(
+                get_value("symbol")
+            )
+
+            if not symbol:
+                continue
+
+            normalized = normalize_price_row(
+                symbol,
+                target_date,
+                get_value("open"),
+                get_value("high"),
+                get_value("low"),
+                get_value("close"),
+                get_value("volume"),
+            )
+
+            if normalized:
+
+                result[symbol] = normalized
+
+    # --------------------------------------------------------
+    # 官方固定欄位 fallback
+    #
+    # TPEx stk_wn1430_result.php
+    # 常見欄位：
+    #
+    # 0 證券代號
+    # 2 收盤
+    # 4 開盤
+    # 5 最高
+    # 6 最低
+    # 7 成交股數
+    # --------------------------------------------------------
+
+    if not result:
+
+        for row in rows:
+
+            if not isinstance(
+                row,
+                list,
+            ):
+
+                continue
+
+            if len(row) < 8:
+
+                continue
+
+            symbol = normalize_symbol(
+                row[0]
+            )
+
+            if not symbol:
+
+                continue
+
+            normalized = normalize_price_row(
+                symbol,
+                target_date,
+                row[4],
+                row[5],
+                row[6],
+                row[2],
+                row[7],
+            )
+
+            if normalized:
+
+                result[symbol] = normalized
+
+    if not result:
+
+        return {}, "html_no_valid_rows"
+
     return result, None
 
 
@@ -925,85 +1422,124 @@ def fetch_tpex_daily_batch(
         f"{dt.day:02d}"
     )
 
-    params = {
+    # --------------------------------------------------------
+    # 1. Official JSON
+    # --------------------------------------------------------
+
+    json_params = {
         "l": "zh-tw",
         "o": "json",
         "d": roc_date,
         "se": "EW",
     }
 
-    data, error = http_get_json(
+    data, json_error = http_get_json(
         TPEX_DAILY_URL,
-        params,
+        json_params,
     )
 
-    if error:
+    json_reason = None
 
-        return {}, error
+    if json_error:
 
-    if not isinstance(
+        json_reason = json_error
+
+    elif not isinstance(
         data,
         dict,
     ):
 
-        return {}, "response_not_object"
+        json_reason = "response_not_object"
 
-    aa_data = data.get(
-        "aaData"
-    )
+    else:
 
-    if not isinstance(
-        aa_data,
-        list,
-    ):
-
-        return {}, "aaData_missing"
-
-    if not aa_data:
-
-        return {}, "aaData_empty"
-
-    result = {}
-
-    for row in aa_data:
+        aa_data = data.get(
+            "aaData"
+        )
 
         if not isinstance(
-            row,
+            aa_data,
             list,
         ):
-            continue
 
-        if len(row) < 8:
+            json_reason = "aaData_missing"
 
-            continue
+        elif not aa_data:
 
-        symbol = normalize_symbol(
-            row[0]
-        )
+            json_reason = "aaData_empty"
 
-        if not symbol:
+        else:
 
-            continue
+            result = {}
 
-        normalized = normalize_price_row(
-            symbol,
+            for row in aa_data:
+
+                if not isinstance(
+                    row,
+                    list,
+                ):
+
+                    continue
+
+                if len(row) < 8:
+
+                    continue
+
+                symbol = normalize_symbol(
+                    row[0]
+                )
+
+                if not symbol:
+
+                    continue
+
+                normalized = normalize_price_row(
+                    symbol,
+                    target_date,
+                    row[4],
+                    row[5],
+                    row[6],
+                    row[2],
+                    row[7],
+                )
+
+                if normalized:
+
+                    result[symbol] = normalized
+
+            if result:
+
+                return result, None
+
+            json_reason = (
+                "aaData_no_valid_rows"
+            )
+
+    # --------------------------------------------------------
+    # 2. Official HTML fallback
+    # --------------------------------------------------------
+
+    html_result, html_error = (
+        fetch_tpex_html_batch(
             target_date,
-            row[4],
-            row[5],
-            row[6],
-            row[2],
-            row[7],
+            roc_date,
         )
+    )
 
-        if normalized:
+    if html_result:
 
-            result[symbol] = normalized
+        return html_result, None
 
-    if not result:
+    html_reason = (
+        html_error
+        or "unknown"
+    )
 
-        return {}, "aaData_no_valid_rows"
-
-    return result, None
+    return {}, (
+        "tpex_official_failed:"
+        f"json={json_reason or 'unknown'};"
+        f"html={html_reason}"
+    )
 
 
 # ============================================================
@@ -1466,7 +2002,9 @@ def fetch_yahoo_history(
         list,
     ):
 
-        return [], "yahoo_timestamp_missing"
+        return [], (
+            "yahoo_timestamp_missing"
+        )
 
     opens = quote.get(
         "open",
@@ -1640,8 +2178,6 @@ def merge_rows(
 
         if normalized:
 
-            # supplement 只補不存在日期。
-            # 已有官方 / existing 日期不覆蓋。
             if date_text not in merged:
 
                 merged[
@@ -1670,9 +2206,17 @@ def build_results(
         "FETCH PRICE HISTORY"
     )
 
-    today = datetime.now(
-        timezone.utc
-    ).date()
+    # --------------------------------------------------------
+    # 使用台灣日期，不使用 UTC 跨日造成上市日期判斷錯誤。
+    # --------------------------------------------------------
+
+    taiwan_now = datetime.now(
+        timezone(
+            timedelta(hours=8)
+        )
+    )
+
+    today = taiwan_now.date()
 
     start_date = (
         today
@@ -1753,9 +2297,75 @@ def build_results(
         )
 
         # ----------------------------------------------------
-        # 官方優先。
+        # 3. 新上市生命週期判斷
         #
-        # Existing 只補官方不存在的日期。
+        # listed_date > end_date：
+        #
+        # 代表資料範圍結束時尚未開始交易。
+        #
+        # 例如：
+        # 3718 listed_date = 2026-09-03
+        # 若 end_date = 2026-09-02
+        # 就不能要求它有歷史價格。
+        # ----------------------------------------------------
+
+        listed_date = normalize_date(
+            item.get("listed_date")
+        )
+
+        not_started = bool(
+            listed_date
+            and listed_date > end_date
+        )
+
+        if not_started:
+
+            diagnostics[
+                symbol
+            ] = (
+                f"not_started:"
+                f"listed_date={listed_date};"
+                f"end_date={end_date}"
+            )
+
+            results[symbol] = {
+                "symbol": symbol,
+                "code": item["code"],
+                "market": item["market"],
+                "type": item["type"],
+                "name": item["name"],
+                "source": "not_started",
+                "history_rows": 0,
+                "history_status":
+                    "not_started",
+                "latest_date": None,
+                "prices": [],
+            }
+
+            source_counts[
+                "not_started"
+            ] = (
+                source_counts.get(
+                    "not_started",
+                    0,
+                )
+                + 1
+            )
+
+            log(
+                f"  ✓ "
+                f"listed_date={listed_date} "
+                f"> end_date={end_date} "
+                f"/ not_started"
+            )
+
+            continue
+
+        # ----------------------------------------------------
+        # 4. Official + Existing
+        #
+        # Official 優先。
+        # Existing 只補官方不存在日期。
         # ----------------------------------------------------
 
         merged = merge_rows(
@@ -1774,11 +2384,9 @@ def build_results(
         )
 
         # ----------------------------------------------------
-        # 3. Yahoo 補洞
+        # 5. Yahoo 補洞
         #
-        # 只要最終資料 < 90 就啟動。
-        #
-        # Yahoo 不覆蓋官方 / existing。
+        # 僅在非 not_started 商品且資料 < 90 時啟動。
         # ----------------------------------------------------
 
         yahoo_rows = []
@@ -1879,7 +2487,7 @@ def build_results(
                 )
 
         # ----------------------------------------------------
-        # 4. 最終只保存最近 90 筆
+        # 6. 最終只保存最近 90 筆
         # ----------------------------------------------------
 
         merged = sorted(
@@ -1890,7 +2498,7 @@ def build_results(
         ]
 
         # ----------------------------------------------------
-        # 5. 0 rows = 真 missing
+        # 7. 0 rows = 真 missing
         # ----------------------------------------------------
 
         if not merged:
@@ -1915,7 +2523,7 @@ def build_results(
         )
 
         # ----------------------------------------------------
-        # 6. History status
+        # 8. History status
         # ----------------------------------------------------
 
         if history_count < (
@@ -1951,15 +2559,6 @@ def build_results(
         else:
 
             history_status = "complete"
-
-            # complete 仍可能有 fallback，
-            # 所以只有沒有異常時才清掉 diagnostics。
-            if symbol not in diagnostics:
-
-                diagnostics.pop(
-                    symbol,
-                    None,
-                )
 
         source_counts[source] = (
             source_counts.get(
@@ -2019,6 +2618,11 @@ def validate_results(
 
     expected = {
         item["symbol"]
+        for item in universe
+    }
+
+    universe_by_symbol = {
+        item["symbol"]: item
         for item in universe
     }
 
@@ -2083,6 +2687,90 @@ def validate_results(
 
             continue
 
+        listed_date = normalize_date(
+            universe_by_symbol[
+                symbol
+            ].get("listed_date")
+        )
+
+        expected_not_started = bool(
+            listed_date
+            and listed_date > datetime.now(
+                timezone(
+                    timedelta(hours=8)
+                )
+            ).date().strftime(
+                "%Y-%m-%d"
+            )
+        )
+
+        # ----------------------------------------------------
+        # not_started 可以 0 rows
+        # ----------------------------------------------------
+
+        if (
+            record.get(
+                "history_status"
+            ) == "not_started"
+        ):
+
+            if not expected_not_started:
+
+                malformed.append(
+                    (
+                        symbol,
+                        "invalid_not_started_status",
+                    )
+                )
+
+            if len(rows) != 0:
+
+                malformed.append(
+                    (
+                        symbol,
+                        "not_started_has_price_rows",
+                    )
+                )
+
+            if record.get(
+                "history_rows"
+            ) != 0:
+
+                malformed.append(
+                    (
+                        symbol,
+                        "not_started_history_rows_not_zero",
+                    )
+                )
+
+            if record.get(
+                "latest_date"
+            ) is not None:
+
+                malformed.append(
+                    (
+                        symbol,
+                        "not_started_latest_date_not_null",
+                    )
+                )
+
+            if record.get(
+                "source"
+            ) != "not_started":
+
+                malformed.append(
+                    (
+                        symbol,
+                        "not_started_source_invalid",
+                    )
+                )
+
+            continue
+
+        # ----------------------------------------------------
+        # 一般商品必須 >= 1 rows
+        # ----------------------------------------------------
+
         if len(rows) < 1:
 
             malformed.append(
@@ -2145,9 +2833,20 @@ def validate_results(
 
                 break
 
-            date_text = row.get(
-                "date"
+            date_text = normalize_date(
+                row.get("date")
             )
+
+            if not date_text:
+
+                malformed.append(
+                    (
+                        symbol,
+                        "invalid_date",
+                    )
+                )
+
+                break
 
             if date_text in dates:
 
@@ -2561,11 +3260,12 @@ def validate_shard(
                 "不是 list"
             )
 
-        if len(rows) < 1:
-
-            raise RuntimeError(
-                f"{symbol} 沒有價格資料"
-            )
+        # ----------------------------------------------------
+        # 新上市 not_started 可為 0 rows。
+        # shard 本身沒有 record metadata，
+        # 因此 0 rows 只代表它可能是 not_started。
+        # 完整生命週期驗證由 FINAL OUTPUT 使用 Universe 做。
+        # ----------------------------------------------------
 
         if len(rows) > MAX_HISTORY_ROWS:
 
@@ -2573,6 +3273,10 @@ def validate_shard(
                 f"{symbol} 超過 "
                 f"{MAX_HISTORY_ROWS} 筆"
             )
+
+        if len(rows) == 0:
+
+            continue
 
         previous = ""
 
@@ -2606,7 +3310,15 @@ def validate_shard(
                     f"{symbol} OHLCV 異常"
                 )
 
-            date_text = row["date"]
+            date_text = normalize_date(
+                row.get("date")
+            )
+
+            if not date_text:
+
+                raise RuntimeError(
+                    f"{symbol} 日期無效"
+                )
 
             if date_text in dates:
 
@@ -2653,6 +3365,7 @@ def build_manifest(
     complete_count = 0
     partial_count = 0
     short_count = 0
+    not_started_count = 0
 
     latest_dates = []
 
@@ -2699,6 +3412,10 @@ def build_manifest(
         elif status == "short_history":
 
             short_count += 1
+
+        elif status == "not_started":
+
+            not_started_count += 1
 
         latest = record.get(
             "latest_date"
@@ -2786,6 +3503,9 @@ def build_manifest(
 
         "short_history_count":
             short_count,
+
+        "not_started_count":
+            not_started_count,
 
         "short_history_threshold":
             SHORT_HISTORY_THRESHOLD,
@@ -2961,6 +3681,11 @@ def validate_complete_output(
         if item["type"] == "ETF"
     )
 
+    universe_by_symbol = {
+        item["symbol"]: item
+        for item in universe
+    }
+
     manifest_path = (
         output_dir
         / "manifest.json"
@@ -3109,6 +3834,74 @@ def validate_complete_output(
             "Universe / Price 數量不一致"
         )
 
+    # --------------------------------------------------------
+    # 驗證 0 rows 商品：
+    #
+    # 只有 listed_date > 今天者可以 0 rows。
+    # --------------------------------------------------------
+
+    zero_row_symbols = []
+
+    for filename in files:
+
+        data = load_json(
+            output_dir
+            / filename
+        )
+
+        stocks = data[
+            "stocks"
+        ]
+
+        for symbol, rows in stocks.items():
+
+            if len(rows) != 0:
+
+                continue
+
+            item = universe_by_symbol[
+                symbol
+            ]
+
+            listed_date = normalize_date(
+                item.get("listed_date")
+            )
+
+            if not listed_date:
+
+                zero_row_symbols.append(
+                    (
+                        symbol,
+                        "zero_rows_without_listed_date",
+                    )
+                )
+
+                continue
+
+            if listed_date <= datetime.now(
+                timezone(
+                    timedelta(hours=8)
+                )
+            ).date().strftime(
+                "%Y-%m-%d"
+            ):
+
+                zero_row_symbols.append(
+                    (
+                        symbol,
+                        f"zero_rows_but_listed_date="
+                        f"{listed_date}",
+                    )
+                )
+
+    if zero_row_symbols:
+
+        raise RuntimeError(
+            "FINAL VALIDATION："
+            "存在不合法 0 rows 商品："
+            f"{zero_row_symbols[:50]}"
+        )
+
     stock_count = 0
     etf_count = 0
 
@@ -3180,6 +3973,10 @@ def validate_complete_output(
 
     log(
         "✓ Price missing = 0"
+    )
+
+    log(
+        "✓ not_started lifecycle validation PASS"
     )
 
     log(
@@ -3403,6 +4200,10 @@ def main() -> int:
     )
 
     log(
+        "TPEx：JSON → 官方 HTML fallback"
+    )
+
+    log(
         "Existing：僅補歷史連續性"
     )
 
@@ -3424,6 +4225,11 @@ def main() -> int:
 
     log(
         "最小存在條件：>= 1 筆有效 OHLCV"
+    )
+
+    log(
+        "新上市生命週期：listed_date > end_date "
+        "→ not_started"
     )
 
     # ========================================================
@@ -3515,8 +4321,8 @@ def main() -> int:
     # --------------------------------------------------------
     # missing 不允許寫入
     #
-    # 這裡故意 fail closed。
-    # 舊資料不會被破壞。
+    # not_started 已經在 build_results 中成為合法 record，
+    # 因此真正 missing 才會進入這裡。
     # --------------------------------------------------------
 
     if validation[
@@ -3655,6 +4461,14 @@ def main() -> int:
         ) == "short_history"
     )
 
+    final_not_started = sum(
+        1
+        for record in results.values()
+        if record.get(
+            "history_status"
+        ) == "not_started"
+    )
+
     section(
         "PRICE PIPELINE PASS"
     )
@@ -3680,6 +4494,10 @@ def main() -> int:
     )
 
     log(
+        f"Not Started：{final_not_started}"
+    )
+
+    log(
         "Missing：0"
     )
 
@@ -3697,6 +4515,10 @@ def main() -> int:
 
     log(
         "✓ TWSE / TPEx 官方資料優先"
+    )
+
+    log(
+        "✓ TPEx JSON → 官方 HTML fallback"
     )
 
     log(
@@ -3725,6 +4547,10 @@ def main() -> int:
 
     log(
         "✓ Yahoo fallback 具備 diagnostics"
+    )
+
+    log(
+        "✓ 新上市商品正確處理 not_started"
     )
 
     log(
