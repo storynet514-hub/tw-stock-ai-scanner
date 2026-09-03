@@ -30,7 +30,6 @@ permissions:
 jobs:
   update:
     runs-on: ubuntu-latest
-
     timeout-minutes: 45
 
     steps:
@@ -275,27 +274,6 @@ jobs:
 
       # ======================================================
       # 10. Validate Price Data
-      #
-      # 正式價格契約：
-      #
-      # 1. 老商品缺價格 => FAIL
-      # 2. 新掛牌商品尚未累積足夠交易日
-      #    => 可以暫時沒有完整價格歷史
-      # 3. 新掛牌商品仍必須屬於 Universe
-      # 4. Price 不得出現 Universe 外商品
-      # 5. 不得跨 shard 重複
-      #
-      # 20 個交易日約等於 30 個日曆日。
-      #
-      # 因此上市後 30 日內：
-      #   missing price = ALLOWED_NEW_LISTING
-      #
-      # 超過 30 日仍缺：
-      #   => HARD FAIL
-      #
-      # 這避免新 ETF 一上市就把整條
-      # Data Pipeline 卡死，同時避免把
-      # 老股票缺資料偷偷吞掉。
       # ======================================================
 
       - name: Validate Price Data
@@ -304,7 +282,7 @@ jobs:
 
           python - <<'PY'
           import json
-          from datetime import date, datetime, timedelta
+          from datetime import date, datetime
           from pathlib import Path
 
           DATA_DIR = Path("Data")
@@ -663,10 +641,6 @@ jobs:
               - universe_symbols
           )
 
-          # --------------------------------------------------
-          # 新掛牌商品豁免
-          # --------------------------------------------------
-
           today = date.today()
 
           allowed_new_listing_missing = set()
@@ -850,13 +824,9 @@ jobs:
               )
 
           effective_coverage = (
-              len(
-                  price_symbols
-              )
+              len(price_symbols)
               +
-              len(
-                  allowed_new_listing_missing
-              )
+              len(allowed_new_listing_missing)
           )
 
           if effective_coverage != universe_count:
@@ -868,30 +838,14 @@ jobs:
               )
 
           print("")
-          print(
-              "✓ manifest JSON OK"
-          )
-          print(
-              "✓ 所有 price shard JSON OK"
-          )
-          print(
-              "✓ 老商品價格資料完整"
-          )
-          print(
-              "✓ 新掛牌商品正確豁免"
-          )
-          print(
-              "✓ 無 Universe 外股票"
-          )
-          print(
-              "✓ 無跨 shard 重複"
-          )
-          print(
-              "✓ Price Data validation PASS"
-          )
-          print(
-              "========================================"
-          )
+          print("✓ manifest JSON OK")
+          print("✓ 所有 price shard JSON OK")
+          print("✓ 老商品價格資料完整")
+          print("✓ 新掛牌商品正確豁免")
+          print("✓ 無 Universe 外股票")
+          print("✓ 無跨 shard 重複")
+          print("✓ Price Data validation PASS")
+          print("========================================")
           PY
 
       # ======================================================
@@ -932,12 +886,6 @@ jobs:
 
       # ======================================================
       # 13. Final Data Contract
-      #
-      # 注意：
-      #
-      # Price 新掛牌豁免規則必須在這裡再次套用。
-      # 否則前面的 Validate Price Data 即使 PASS，
-      # 這裡仍然會因 4 檔新商品不存在而 FAIL。
       # ======================================================
 
       - name: Validate final data chain
@@ -1559,6 +1507,20 @@ jobs:
 
           # --------------------------------------------------
           # UI Data
+          #
+          # UI 的唯一股票來源：
+          # analysis.json
+          #
+          # 因此 Analysis → UI 必須：
+          #
+          # Analysis 有 → UI 必須有
+          # UI 有 → 必須存在於 Analysis
+          #
+          # 新掛牌豁免只適用於：
+          # Universe → Price
+          # Universe → Analysis
+          #
+          # 不適用於 Analysis → UI。
           # --------------------------------------------------
 
           if not isinstance(
@@ -1597,26 +1559,31 @@ jobs:
                       symbol
                   )
 
+          # --------------------------------------------------
+          # 正確契約：
+          #
+          # Analysis → UI
+          # --------------------------------------------------
+
           ui_missing = (
-              universe_symbols
+              analysis_symbols
               - ui_symbols
-              - allowed_new_listing_missing
           )
 
           ui_extra = (
               ui_symbols
-              - universe_symbols
+              - analysis_symbols
           )
 
           if ui_missing:
               fail(
-                  "UI Data 缺少 Universe 股票："
+                  "UI Data 缺少 Analysis 股票："
                   f"{sorted(ui_missing)[:20]}"
               )
 
           if ui_extra:
               fail(
-                  "UI Data 出現 Universe 外股票："
+                  "UI Data 出現 Analysis 以外股票："
                   f"{sorted(ui_extra)[:20]}"
               )
 
@@ -1721,7 +1688,7 @@ jobs:
           )
 
           print(
-              "✓ UI 無 Universe 外股票"
+              "✓ UI 無 Analysis 外股票"
           )
 
           print(
