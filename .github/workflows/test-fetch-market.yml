@@ -1,4 +1,4 @@
-name: TEST - Fetch Market
+name: TEST - Fetch Market V2.1
 
 on:
   workflow_dispatch:
@@ -7,22 +7,46 @@ permissions:
   contents: read
 
 jobs:
+
   test-fetch-market:
+
     runs-on: ubuntu-latest
 
+    timeout-minutes: 20
+
     steps:
+
+      # ======================================================
+      # 1. Checkout
+      # ======================================================
+
       - name: Checkout
         uses: actions/checkout@v4
+
+      # ======================================================
+      # 2. Python
+      # ======================================================
 
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
 
+      # ======================================================
+      # 3. Dependencies
+      # ======================================================
+
       - name: Install dependencies
         run: |
+          set -e
+
           python -m pip install --upgrade pip
+
           pip install requests
+
+      # ======================================================
+      # 4. Syntax
+      # ======================================================
 
       - name: Syntax Check
         run: |
@@ -32,118 +56,393 @@ jobs:
           echo "SYNTAX CHECK"
           echo "========================================"
 
-          python -m py_compile Scripts/fetch_market.py
+          python -m py_compile \
+            Scripts/fetch_market.py
 
-          echo "✓ Scripts/fetch_market.py syntax OK"
+          echo "✓ Scripts/fetch_market.py syntax PASS"
 
-      - name: Test Fetch Market
+      # ======================================================
+      # 5. Fetch
+      # ======================================================
+
+      - name: Fetch Market
         run: |
           set -e
 
           echo "========================================"
-          echo "FETCH MARKET DATA TEST"
+          echo "FETCH MARKET V2.1"
           echo "========================================"
 
           python Scripts/fetch_market.py
+
+          test -f Data/market.json
+
+          echo "✓ Data/market.json"
+
+      # ======================================================
+      # 6. Validate
+      # ======================================================
 
       - name: Validate market.json
         run: |
           set -e
 
           echo "========================================"
-          echo "VALIDATE MARKET.JSON"
+          echo "VALIDATE MARKET.JSON V2.1"
           echo "========================================"
-
-          test -f Data/market.json
 
           python - <<'PY'
           import json
+          import math
           from pathlib import Path
 
           path = Path("Data/market.json")
 
-          with path.open("r", encoding="utf-8") as f:
-              data = json.load(f)
+          if not path.exists():
+              raise SystemExit(
+                  "❌ Data/market.json 不存在"
+              )
 
-          assert isinstance(data, dict), "market.json must be an object"
+          data = json.loads(
+              path.read_text(
+                  encoding="utf-8"
+              )
+          )
 
-          required = [
+          assert isinstance(
+              data,
+              dict
+          )
+
+          # --------------------------------------------------
+          # Root
+          # --------------------------------------------------
+
+          required = {
               "schema_version",
               "generated_at",
               "market_status",
               "latest_trading_date",
               "index",
+              "trend",
+              "breadth",
+              "volume",
+              "institutional",
               "sentiment",
+              "conditions",
               "source",
-          ]
+              "config",
+          }
 
-          for key in required:
-              assert key in data, f"Missing root field: {key}"
+          missing = (
+              required
+              - set(data)
+          )
 
-          assert data["market_status"] in {
+          assert not missing, (
+              f"Missing root fields: {sorted(missing)}"
+          )
+
+          assert (
+              data["schema_version"]
+              == "market-v2.1"
+          )
+
+          assert data[
+              "market_status"
+          ] in {
               "open",
               "closed",
-          }, f"Invalid market_status: {data['market_status']}"
+          }
 
-          assert isinstance(
-              data["latest_trading_date"], str
-          ), "latest_trading_date must be string"
+          # --------------------------------------------------
+          # Index
+          # --------------------------------------------------
 
           index = data["index"]
 
-          assert isinstance(index, dict), "index must be object"
+          assert isinstance(
+              index,
+              dict
+          )
 
-          for key in [
+          for key in (
               "name",
               "value",
               "change",
               "change_pct",
-          ]:
-              assert key in index, f"Missing index field: {key}"
+          ):
 
-          assert isinstance(index["value"], (int, float))
-          assert isinstance(index["change"], (int, float))
-          assert isinstance(index["change_pct"], (int, float))
-
-          sentiment = data["sentiment"]
+              assert key in index, (
+                  f"Missing index field: {key}"
+              )
 
           assert isinstance(
-              sentiment, dict
-          ), "sentiment must be object"
+              index["value"],
+              (int, float)
+          )
 
-          assert "level" in sentiment
-          assert "description" in sentiment
+          assert math.isfinite(
+              float(index["value"])
+          )
 
-          assert sentiment["level"] in {
+          # --------------------------------------------------
+          # Conditions
+          # --------------------------------------------------
+
+          conditions = data[
+              "conditions"
+          ]
+
+          assert isinstance(
+              conditions,
+              list
+          )
+
+          assert len(
+              conditions
+          ) == 10
+
+          expected_names = [
+              "TAIEX > MA20",
+              "MA20 上升",
+              "TAIEX RSI14 > 50",
+              "上漲家數 / 下跌家數 >= 1",
+              "站上 MA20 比例 >= 50%",
+              "市場成交量 / 20日均量 >= 1",
+              "外資買賣超 > 0",
+              "投信買賣超 > 0",
+              "20日新高 / 新低 >= 1",
+              "TAIEX ATR14% <= 3%",
+          ]
+
+          actual_names = [
+              item["name"]
+              for item in conditions
+          ]
+
+          assert (
+              actual_names
+              == expected_names
+          ), (
+              "市場核心條件名稱/順序錯誤："
+              f"{actual_names}"
+          )
+
+          for item in conditions:
+
+              assert isinstance(
+                  item,
+                  dict
+              )
+
+              assert item[
+                  "status"
+              ] in {
+                  "pass",
+                  "fail",
+                  "unavailable",
+              }
+
+              if item["pass"] is not None:
+
+                  assert isinstance(
+                      item["pass"],
+                      bool
+                  )
+
+          # --------------------------------------------------
+          # Sentiment
+          # --------------------------------------------------
+
+          sentiment = data[
+              "sentiment"
+          ]
+
+          assert isinstance(
+              sentiment,
+              dict
+          )
+
+          assert sentiment[
+              "level"
+          ] in {
               "偏多",
               "震盪",
               "偏弱",
               "資料不足",
-          }, f"Invalid sentiment level: {sentiment['level']}"
-
-          source = data["source"]
+          }
 
           assert isinstance(
-              source, dict
-          ), "source must be object"
+              sentiment[
+                  "score"
+              ],
+              int
+          )
 
-          assert "provider" in source
-          assert "endpoint" in source
+          assert isinstance(
+              sentiment[
+                  "valid_conditions"
+              ],
+              int
+          )
 
-          print("✓ market.json exists")
-          print("✓ JSON syntax valid")
-          print("✓ Root schema valid")
-          print("✓ Index schema valid")
-          print("✓ Sentiment schema valid")
-          print()
-          print("Market status:", data["market_status"])
-          print("Latest trading date:", data["latest_trading_date"])
-          print("Index:", index["value"])
-          print("Change:", index["change"])
-          print("Change %:", index["change_pct"])
-          print("Sentiment:", sentiment["level"])
-          print("Source:", source["provider"])
+          assert (
+              sentiment[
+                  "total_conditions"
+              ]
+              == 10
+          )
+
+          # --------------------------------------------------
+          # Source
+          # --------------------------------------------------
+
+          source = data[
+              "source"
+          ]
+
+          assert isinstance(
+              source,
+              dict
+          )
+
+          assert (
+              "TWSE"
+              in source[
+                  "provider"
+              ]
+          )
+
+          assert (
+              "TPEx"
+              in source[
+                  "provider"
+              ]
+          )
+
+          # --------------------------------------------------
+          # No NaN / Infinity
+          # --------------------------------------------------
+
+          def walk(value, path="root"):
+
+              if isinstance(
+                  value,
+                  float
+              ):
+
+                  assert math.isfinite(
+                      value
+                  ), (
+                      f"Non-finite number: "
+                      f"{path}"
+                  )
+
+              elif isinstance(
+                  value,
+                  dict
+              ):
+
+                  for k, v in value.items():
+                      walk(
+                          v,
+                          f"{path}.{k}"
+                      )
+
+              elif isinstance(
+                  value,
+                  list
+              ):
+
+                  for i, v in enumerate(value):
+                      walk(
+                          v,
+                          f"{path}[{i}]"
+                      )
+
+          walk(data)
+
+          print("")
+          print("========================================")
+          print("MARKET V2.1 VALIDATION")
+          print("========================================")
+
+          print(
+              "Schema:",
+              data["schema_version"]
+          )
+
+          print(
+              "Market status:",
+              data["market_status"]
+          )
+
+          print(
+              "Latest trading date:",
+              data["latest_trading_date"]
+          )
+
+          print(
+              "TAIEX:",
+              index["value"]
+          )
+
+          print(
+              "Change:",
+              index["change"]
+          )
+
+          print(
+              "Change %:",
+              index["change_pct"]
+          )
+
+          print(
+              "Sentiment:",
+              sentiment["level"]
+          )
+
+          print(
+              "Score:",
+              f"{sentiment['score']}/10"
+          )
+
+          print(
+              "Valid:",
+              f"{sentiment['valid_conditions']}/10"
+          )
+
+          print(
+              "Price coverage:",
+              data["breadth"]["coverage"]
+          )
+
+          print("")
+
+          for i, condition in enumerate(
+              conditions,
+              start=1
+          ):
+
+              print(
+                  f"{i:02d}. "
+                  f"{condition['name']} "
+                  f"→ "
+                  f"{condition['status']} "
+                  f"value="
+                  f"{condition['value']}"
+              )
+
+          print("")
+          print(
+              "✓ market.json V2.1 validation PASS"
+          )
           PY
+
+      # ======================================================
+      # 7. Show
+      # ======================================================
 
       - name: Show market.json
         run: |
@@ -153,8 +452,12 @@ jobs:
 
           cat Data/market.json
 
+      # ======================================================
+      # 8. Final
+      # ======================================================
+
       - name: Final Result
         run: |
           echo "========================================"
-          echo "FETCH MARKET TEST PASSED"
+          echo "FETCH MARKET V2.1 TEST PASSED"
           echo "========================================"
