@@ -1,0 +1,160 @@
+name: TEST - Fetch Market
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test-fetch-market:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install requests
+
+      - name: Syntax Check
+        run: |
+          set -e
+
+          echo "========================================"
+          echo "SYNTAX CHECK"
+          echo "========================================"
+
+          python -m py_compile Scripts/fetch_market.py
+
+          echo "✓ Scripts/fetch_market.py syntax OK"
+
+      - name: Test Fetch Market
+        run: |
+          set -e
+
+          echo "========================================"
+          echo "FETCH MARKET DATA TEST"
+          echo "========================================"
+
+          python Scripts/fetch_market.py
+
+      - name: Validate market.json
+        run: |
+          set -e
+
+          echo "========================================"
+          echo "VALIDATE MARKET.JSON"
+          echo "========================================"
+
+          test -f Data/market.json
+
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          path = Path("Data/market.json")
+
+          with path.open("r", encoding="utf-8") as f:
+              data = json.load(f)
+
+          assert isinstance(data, dict), "market.json must be an object"
+
+          required = [
+              "schema_version",
+              "generated_at",
+              "market_status",
+              "latest_trading_date",
+              "index",
+              "sentiment",
+              "source",
+          ]
+
+          for key in required:
+              assert key in data, f"Missing root field: {key}"
+
+          assert data["market_status"] in {
+              "open",
+              "closed",
+          }, f"Invalid market_status: {data['market_status']}"
+
+          assert isinstance(
+              data["latest_trading_date"], str
+          ), "latest_trading_date must be string"
+
+          index = data["index"]
+
+          assert isinstance(index, dict), "index must be object"
+
+          for key in [
+              "name",
+              "value",
+              "change",
+              "change_pct",
+          ]:
+              assert key in index, f"Missing index field: {key}"
+
+          assert isinstance(index["value"], (int, float))
+          assert isinstance(index["change"], (int, float))
+          assert isinstance(index["change_pct"], (int, float))
+
+          sentiment = data["sentiment"]
+
+          assert isinstance(
+              sentiment, dict
+          ), "sentiment must be object"
+
+          assert "level" in sentiment
+          assert "description" in sentiment
+
+          assert sentiment["level"] in {
+              "偏多",
+              "震盪",
+              "偏弱",
+              "資料不足",
+          }, f"Invalid sentiment level: {sentiment['level']}"
+
+          source = data["source"]
+
+          assert isinstance(
+              source, dict
+          ), "source must be object"
+
+          assert "provider" in source
+          assert "endpoint" in source
+
+          print("✓ market.json exists")
+          print("✓ JSON syntax valid")
+          print("✓ Root schema valid")
+          print("✓ Index schema valid")
+          print("✓ Sentiment schema valid")
+          print()
+          print("Market status:", data["market_status"])
+          print("Latest trading date:", data["latest_trading_date"])
+          print("Index:", index["value"])
+          print("Change:", index["change"])
+          print("Change %:", index["change_pct"])
+          print("Sentiment:", sentiment["level"])
+          print("Source:", source["provider"])
+          PY
+
+      - name: Show market.json
+        run: |
+          echo "========================================"
+          echo "MARKET.JSON"
+          echo "========================================"
+
+          cat Data/market.json
+
+      - name: Final Result
+        run: |
+          echo "========================================"
+          echo "FETCH MARKET TEST PASSED"
+          echo "========================================"
