@@ -34,6 +34,8 @@ FINAL VALIDATION
 13. shard / manifest / final validation 必須一致。
 14. atomic write。
 15. read-back validation。
+16. 每個 shard 寫入後必須實際 read-back。
+17. FINAL VALIDATION 必須實際列出所有 shard 檔案與股票數。
 """
 
 from __future__ import annotations
@@ -1269,11 +1271,6 @@ def collect_official_market_data(
 
     # --------------------------------------------------------
     # System-level official source health.
-    #
-    # 這裡不能取消。
-    #
-    # 整個市場在整個期間完全沒有成功：
-    # => 真正的 source failure
     # --------------------------------------------------------
 
     if (
@@ -1756,15 +1753,6 @@ def build_results(
 
         # --------------------------------------------------------
         # Yahoo fallback
-        #
-        # 啟動條件：
-        # 1. started
-        # 2. 有缺口
-        # 3. coverage < 90%
-        #    OR 完全沒有資料
-        #
-        # 不逐日期呼叫 Yahoo。
-        # 一個商品一次抓完整區間。
         # --------------------------------------------------------
 
         yahoo_rows: Dict[
@@ -1838,17 +1826,7 @@ def build_results(
         prices = filtered_prices
 
         # --------------------------------------------------------
-        # IMPORTANT:
-        #
-        # started + zero history
-        # 不再讓整個 workflow FAIL。
-        #
-        # 這代表：
-        # 官方資料對該商品沒有有效紀錄，
-        # Yahoo 也沒有補到有效紀錄。
-        #
-        # 這是 instrument-level state，
-        # 不是 source-level failure。
+        # Started + zero history
         # --------------------------------------------------------
 
         if not prices:
@@ -2282,6 +2260,11 @@ def validate_shard(
     no_history_symbols: Set[str],
 ) -> None:
 
+    if not path.is_file():
+        raise RuntimeError(
+            f"Shard file missing: {path}"
+        )
+
     try:
         payload = json.loads(
             path.read_text(
@@ -2420,6 +2403,89 @@ def validate_shard(
 
 
 # ============================================================================
+# SHARD READ-BACK
+# ============================================================================
+
+def verify_shard_file(
+    path: Path,
+    expected_symbols: Set[str],
+) -> int:
+    """
+    實際重新從磁碟讀取 shard。
+
+    目的：
+    atomic_write_json() 成功不代表後續檔案一定存在且內容正確。
+
+    這裡強制確認：
+    1. 檔案真的存在。
+    2. JSON 真的能重新讀取。
+    3. stocks 真的是 object。
+    4. symbol 集合完全一致。
+    5. 回傳實際股票數。
+    """
+
+    if not path.is_file():
+        raise RuntimeError(
+            f"Shard file missing after write: "
+            f"{path.name}"
+        )
+
+    try:
+        payload = json.loads(
+            path.read_text(
+                encoding="utf-8"
+            )
+        )
+    except Exception as exc:
+        raise RuntimeError(
+            f"Shard read-back JSON failed: "
+            f"{path.name}: {exc}"
+        ) from exc
+
+    if payload.get(
+        "schema_version"
+    ) != SCHEMA_VERSION:
+        raise RuntimeError(
+            f"Shard read-back schema mismatch: "
+            f"{path.name}"
+        )
+
+    stocks = payload.get("stocks")
+
+    if not isinstance(stocks, dict):
+        raise RuntimeError(
+            f"Shard read-back stocks invalid: "
+            f"{path.name}"
+        )
+
+    actual_symbols = {
+        normalize_symbol(symbol)
+        for symbol in stocks.keys()
+    }
+
+    if actual_symbols != expected_symbols:
+
+        missing = (
+            expected_symbols
+            - actual_symbols
+        )
+
+        extra = (
+            actual_symbols
+            - expected_symbols
+        )
+
+        raise RuntimeError(
+            f"Shard read-back symbol mismatch: "
+            f"{path.name}; "
+            f"missing={sorted(missing)}; "
+            f"extra={sorted(extra)}"
+        )
+
+    return len(stocks)
+
+
+# ============================================================================
 # ATOMIC JSON
 # ============================================================================
 
@@ -2524,6 +2590,18 @@ def write_price_directory(
 
         seen_symbols: Set[str] = set()
 
+        print(
+            f"Shard size：{SHARD_SIZE}"
+        )
+
+        print(
+            f"Expected shards：{len(shards)}"
+        )
+
+        print("")
+
+        print("WRITE SHARDS")
+
         for shard in shards:
 
             shard_number = shard["shard"]
@@ -2533,11 +2611,6 @@ def write_price_directory(
             )
 
             shard_files.append(file_name)
-
-            atomic_write_json(
-                temp_dir / file_name,
-                shard,
-            )
 
             shard_symbols = {
                 normalize_symbol(symbol)
@@ -2562,6 +2635,19 @@ def write_price_directory(
                 shard_symbols
             )
 
+            # ----------------------------------------------------
+            # Write.
+            # ----------------------------------------------------
+
+            atomic_write_json(
+                temp_dir / file_name,
+                shard,
+            )
+
+            # ----------------------------------------------------
+            # Immediate validation.
+            # ----------------------------------------------------
+
             validate_shard(
                 temp_dir / file_name,
                 shard_symbols,
@@ -2574,6 +2660,26 @@ def write_price_directory(
                     & shard_symbols
                 ),
             )
+
+            # ----------------------------------------------------
+            # Immediate physical read-back.
+            # ----------------------------------------------------
+
+            shard_stock_count = (
+                verify_shard_file(
+                    temp_dir / file_name,
+                    shard_symbols,
+                )
+            )
+
+            print(
+                f"✓ {file_name} → "
+                f"{shard_stock_count} stocks"
+            )
+
+        # --------------------------------------------------------
+        # Complete shard coverage.
+        # --------------------------------------------------------
 
         if seen_symbols != expected_symbols:
 
@@ -2592,6 +2698,25 @@ def write_price_directory(
                 f"missing={sorted(missing)}; "
                 f"extra={sorted(extra)}"
             )
+
+        print("")
+
+        print(
+            f"Total shards：{len(shard_files)}"
+        )
+
+        print(
+            f"Total stocks：{len(seen_symbols)}"
+        )
+
+        if len(seen_symbols) != len(expected_symbols):
+            raise RuntimeError(
+                "Shard total stock count mismatch"
+            )
+
+        # --------------------------------------------------------
+        # Manifest.
+        # --------------------------------------------------------
 
         manifest = build_manifest(
             results,
@@ -2654,6 +2779,41 @@ def write_price_directory(
             raise RuntimeError(
                 "Manifest files mismatch"
             )
+
+        # --------------------------------------------------------
+        # Manifest physical read-back.
+        # --------------------------------------------------------
+
+        manifest_path = (
+            temp_dir / "manifest.json"
+        )
+
+        if not manifest_path.is_file():
+            raise RuntimeError(
+                "Manifest file missing after write"
+            )
+
+        try:
+            manifest_readback = json.loads(
+                manifest_path.read_text(
+                    encoding="utf-8"
+                )
+            )
+        except Exception as exc:
+            raise RuntimeError(
+                f"Manifest read-back failed: {exc}"
+            ) from exc
+
+        if manifest_readback != manifest:
+            raise RuntimeError(
+                "Manifest read-back mismatch"
+            )
+
+        print("")
+        print(
+            "✓ manifest.json → "
+            f"{len(shard_files)} shard files"
+        )
 
         # --------------------------------------------------------
         # Directory-level atomic replacement.
@@ -2734,11 +2894,16 @@ def validate_complete_output(
             "Price output directory missing"
         )
 
+    if not OUTPUT_DIR.is_dir():
+        raise RuntimeError(
+            "Price output path is not directory"
+        )
+
     manifest_path = (
         OUTPUT_DIR / "manifest.json"
     )
 
-    if not manifest_path.exists():
+    if not manifest_path.is_file():
         raise RuntimeError(
             "Price manifest missing"
         )
@@ -2773,6 +2938,11 @@ def validate_complete_output(
             "Manifest files missing"
         )
 
+    if not shard_files:
+        raise RuntimeError(
+            "Manifest contains zero shard files"
+        )
+
     expected_symbols = {
         item["symbol"]
         for item in universe
@@ -2797,6 +2967,10 @@ def validate_complete_output(
 
     seen_symbols: Set[str] = set()
 
+    print("")
+    print("FINAL SHARD FILES")
+    print("-" * 72)
+
     for file_name in shard_files:
 
         path = (
@@ -2804,11 +2978,19 @@ def validate_complete_output(
             / str(file_name)
         )
 
-        if not path.exists():
+        # --------------------------------------------------------
+        # 實體檔案存在檢查。
+        # --------------------------------------------------------
+
+        if not path.is_file():
             raise RuntimeError(
                 f"Manifest shard missing: "
                 f"{file_name}"
             )
+
+        # --------------------------------------------------------
+        # 實際 read-back。
+        # --------------------------------------------------------
 
         try:
             payload = json.loads(
@@ -2822,6 +3004,14 @@ def validate_complete_output(
                 f"{file_name}: {exc}"
             ) from exc
 
+        if payload.get(
+            "schema_version"
+        ) != SCHEMA_VERSION:
+            raise RuntimeError(
+                f"Final shard schema mismatch: "
+                f"{file_name}"
+            )
+
         stocks = payload.get("stocks")
 
         if not isinstance(stocks, dict):
@@ -2834,6 +3024,12 @@ def validate_complete_output(
             normalize_symbol(symbol)
             for symbol in stocks
         }
+
+        if not shard_symbols:
+            raise RuntimeError(
+                f"Shard stocks empty: "
+                f"{file_name}"
+            )
 
         overlap = (
             seen_symbols
@@ -2849,6 +3045,10 @@ def validate_complete_output(
                 )
             )
 
+        # --------------------------------------------------------
+        # 完整 shard validation。
+        # --------------------------------------------------------
+
         validate_shard(
             path,
             shard_symbols,
@@ -2862,9 +3062,39 @@ def validate_complete_output(
             ),
         )
 
+        # --------------------------------------------------------
+        # 再次 read-back helper validation。
+        # --------------------------------------------------------
+
+        readback_count = (
+            verify_shard_file(
+                path,
+                shard_symbols,
+            )
+        )
+
+        if readback_count != len(
+            shard_symbols
+        ):
+            raise RuntimeError(
+                f"Shard read-back count mismatch: "
+                f"{file_name}"
+            )
+
         seen_symbols.update(
             shard_symbols
         )
+
+        print(
+            f"✓ {file_name} → "
+            f"{readback_count} stocks"
+        )
+
+    print("-" * 72)
+
+    # --------------------------------------------------------
+    # Final Universe coverage.
+    # --------------------------------------------------------
 
     if seen_symbols != expected_symbols:
 
@@ -2883,6 +3113,17 @@ def validate_complete_output(
             f"missing={sorted(missing)}; "
             f"extra={sorted(extra)}"
         )
+
+    if len(seen_symbols) != len(
+        expected_symbols
+    ):
+        raise RuntimeError(
+            "Final shard total stock count mismatch"
+        )
+
+    # --------------------------------------------------------
+    # Manifest count validation.
+    # --------------------------------------------------------
 
     expected_counts = {
         status: sum(
@@ -2923,6 +3164,76 @@ def validate_complete_output(
         raise RuntimeError(
             "Manifest files mismatch"
         )
+
+    # --------------------------------------------------------
+    # Manifest itself read-back.
+    # --------------------------------------------------------
+
+    try:
+        manifest_readback = json.loads(
+            manifest_path.read_text(
+                encoding="utf-8"
+            )
+        )
+    except Exception as exc:
+        raise RuntimeError(
+            f"Final manifest read-back failed: "
+            f"{exc}"
+        ) from exc
+
+    if not isinstance(
+        manifest_readback,
+        dict,
+    ):
+        raise RuntimeError(
+            "Final manifest read-back is not object"
+        )
+
+    if manifest_readback.get(
+        "schema_version"
+    ) != SCHEMA_VERSION:
+        raise RuntimeError(
+            "Final manifest schema mismatch"
+        )
+
+    if manifest_readback.get(
+        "files"
+    ) != shard_files:
+        raise RuntimeError(
+            "Final manifest shard list mismatch"
+        )
+
+    if manifest_readback.get(
+        "total_symbols"
+    ) != len(expected_symbols):
+        raise RuntimeError(
+            "Final manifest total_symbols mismatch"
+        )
+
+    # --------------------------------------------------------
+    # 明確輸出最終結果。
+    # --------------------------------------------------------
+
+    print("")
+    print(
+        f"Total shards：{len(shard_files)}"
+    )
+
+    print(
+        f"Total stocks：{len(seen_symbols)}"
+    )
+
+    print(
+        "✓ shard files existence PASS"
+    )
+
+    print(
+        "✓ shard read-back PASS"
+    )
+
+    print(
+        "✓ manifest read-back PASS"
+    )
 
 
 # ============================================================================
@@ -3243,6 +3554,7 @@ def main() -> int:
         end_date,
     )
 
+    print("")
     print(
         "Price output written atomically"
     )
@@ -3262,6 +3574,7 @@ def main() -> int:
         end_date,
     )
 
+    print("")
     print(
         "Manifest validation passed"
     )
