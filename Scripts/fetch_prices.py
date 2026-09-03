@@ -2,28 +2,38 @@
 # -*- coding: utf-8 -*-
 
 """
-台股 AI 選股系統 - fetch_prices.py
-============================================================
+台股 AI 選股系統
+Scripts/fetch_prices.py
 
-V13.0
+核心資料鏈：
 
-核心契約
-------------------------------------------------------------
-1. Data/universe.json 是唯一 Universe 來源
-2. 只接受 status == "active"
-3. 不自行建立 / 探測 / 刪除 Universe symbol
-4. 官方 TWSE / TPEx 優先
-5. TPEx 使用官方批次資料，不逐股票呼叫官方 API
-6. Yahoo 僅用於官方資料缺口補洞
-7. 已開始交易的商品必須至少有 1 筆有效 OHLCV
-8. listed_date > end_date 的商品視為 not_started
-9. not_started 商品允許 0 筆歷史價格
-10. not_started 商品不得呼叫 Yahoo fallback
-11. shard / manifest / final validation 必須接受同一 lifecycle 契約
-12. 不因價格抓取問題修改 Universe
-13. atomic write
-14. read-back validation
-15. 任一完整性驗證失敗，不污染既有輸出
+    Data/universe.json
+            ↓
+    官方 TWSE / TPEx 批次資料
+            ↓
+    Yahoo 僅補官方缺口
+            ↓
+    Data/prices/
+            ↓
+    manifest + shards
+            ↓
+    final validation
+
+重要契約：
+
+1. Universe 是唯一 symbol 來源。
+2. 不因價格資料建立 / 修改 Universe。
+3. TWSE 使用 MI_INDEX tables[].fields + tables[].data。
+4. TPEx 使用官方批次資料。
+5. TPEx 官方回傳的 EW 全市場資料只允許 Universe symbol 通過。
+6. listed_date > end_date => not_started。
+7. not_started 不呼叫 Yahoo。
+8. 新上市商品從 listed_date 開始計算歷史。
+9. 官方來源完全失效時直接 FAIL。
+10. Yahoo 只補官方缺口。
+11. shard / manifest / final validation 必須一致。
+12. atomic write。
+13. read-back validation。
 """
 
 from __future__ import annotations
@@ -44,23 +54,26 @@ import requests
 
 
 # ============================================================================
-# VERSION / SCHEMA
-# ============================================================================
-
-VERSION = "PRICE-FETCH-V13.0"
-SCHEMA_VERSION = "prices-v13.0"
-
-
-# ============================================================================
-# PATHS
+# PATH / CONTRACT
 # ============================================================================
 
 ROOT = Path(__file__).resolve().parents[1]
 
-UNIVERSE_FILE = ROOT / "Data" / "universe.json"
-OUTPUT_DIR = ROOT / "Data" / "prices"
+UNIVERSE_FILE = (
+    ROOT
+    / "Data"
+    / "universe.json"
+)
 
-TMP_PREFIX = ".prices_build_"
+OUTPUT_DIR = (
+    ROOT
+    / "Data"
+    / "prices"
+)
+
+
+SCHEMA_VERSION = "prices-v13.0"
+VERSION = "PRICE-FETCH-V13.0"
 
 
 # ============================================================================
@@ -81,32 +94,33 @@ TPEX_DAILY_URL = (
 # CONFIG
 # ============================================================================
 
+START_DATE = date(
+    2026,
+    1,
+    5,
+)
+
 MIN_UNIVERSE = 1
+MIN_HISTORY_ROWS = 1
+
+OFFICIAL_COMPLETENESS_THRESHOLD = 0.90
+
+SHARD_SIZE = 250
 
 REQUEST_TIMEOUT = 30
 REQUEST_RETRIES = 3
 REQUEST_BACKOFF = 1.5
-REQUEST_DELAY = 0.15
+REQUEST_DELAY = 0.10
 
 YAHOO_TIMEOUT = 20
 YAHOO_RETRIES = 2
 YAHOO_BACKOFF = 1.5
 
-# 官方資料至少保留一筆才算 started 商品有效
-MIN_HISTORY_ROWS = 1
+TAIWAN_TZ = timezone(
+    timedelta(hours=8)
+)
 
-# fallback 只在官方結果不足時使用
-OFFICIAL_COMPLETENESS_THRESHOLD = 0.90
-
-# 每個 shard 股票數
-SHARD_SIZE = 250
-
-
-# ============================================================================
-# TAIWAN TIMEZONE
-# ============================================================================
-
-TAIWAN_TZ = timezone(timedelta(hours=8))
+TMP_PREFIX = ".prices_build_"
 
 
 # ============================================================================
@@ -119,9 +133,11 @@ SESSION.headers.update(
     {
         "User-Agent": (
             "Mozilla/5.0 "
-            "(compatible; TW-Stock-AI-Scanner/13.0; +https://github.com/)"
+            "(compatible; TW-Stock-AI-Scanner/price-fetch)"
         ),
-        "Accept-Language": "zh-TW,zh;q=0.9,en;q=0.8",
+        "Accept-Language": (
+            "zh-TW,zh;q=0.9,en;q=0.8"
+        ),
         "Accept": "*/*",
         "Connection": "keep-alive",
     }
@@ -132,8 +148,10 @@ SESSION.headers.update(
 # GENERIC HELPERS
 # ============================================================================
 
+def normalize_text(
+    value: Any,
+) -> str:
 
-def normalize_text(value: Any) -> str:
     if value is None:
         return ""
 
@@ -146,8 +164,13 @@ def normalize_text(value: Any) -> str:
     )
 
 
-def normalize_header(value: Any) -> str:
-    text = normalize_text(value)
+def normalize_header(
+    value: Any,
+) -> str:
+
+    text = normalize_text(
+        value
+    )
 
     for token in (
         " ",
@@ -165,44 +188,78 @@ def normalize_header(value: Any) -> str:
         ":",
         "：",
     ):
-        text = text.replace(token, "")
+
+        text = text.replace(
+            token,
+            "",
+        )
 
     return text
 
 
-def normalize_symbol(value: Any) -> str:
-    return normalize_text(value).upper()
+def normalize_symbol(
+    value: Any,
+) -> str:
+
+    return normalize_text(
+        value
+    ).upper()
 
 
-def parse_float(value: Any) -> Optional[float]:
+def parse_float(
+    value: Any,
+) -> Optional[float]:
+
     if value is None:
         return None
 
-    text = normalize_text(value)
+    text = (
+        normalize_text(value)
+        .replace(",", "")
+        .replace(" ", "")
+    )
 
     if not text:
         return None
 
-    text = text.replace(",", "")
-    text = text.replace(" ", "")
+    if text in {
+        "-",
+        "--",
+        "---",
+        "N/A",
+        "NA",
+        "NULL",
+        "X",
+    }:
 
-    if text in {"-", "--", "---", "N/A", "NA", "null"}:
         return None
 
     try:
+
         result = float(text)
 
-        if not math.isfinite(result):
+        if not math.isfinite(
+            result
+        ):
             return None
 
         return result
 
-    except (TypeError, ValueError):
+    except (
+        TypeError,
+        ValueError,
+    ):
+
         return None
 
 
-def parse_int(value: Any) -> Optional[int]:
-    number = parse_float(value)
+def parse_int(
+    value: Any,
+) -> Optional[int]:
+
+    number = parse_float(
+        value
+    )
 
     if number is None:
         return None
@@ -210,39 +267,61 @@ def parse_int(value: Any) -> Optional[int]:
     return int(number)
 
 
-def parse_date(value: Any) -> Optional[date]:
+def parse_date(
+    value: Any,
+) -> Optional[date]:
+
     if value is None:
         return None
 
-    text = normalize_text(value)
+    text = normalize_text(
+        value
+    )
 
     if not text:
         return None
 
-    formats = (
+    for fmt in (
         "%Y-%m-%d",
         "%Y/%m/%d",
         "%Y.%m.%d",
         "%Y%m%d",
-    )
+    ):
 
-    for fmt in formats:
         try:
-            return datetime.strptime(text, fmt).date()
+
+            return datetime.strptime(
+                text,
+                fmt,
+            ).date()
+
         except ValueError:
             pass
 
-    # 民國日期，例如 115/09/03
-    parts = text.replace(".", "/").replace("-", "/").split("/")
+    parts = (
+        text
+        .replace(".", "/")
+        .replace("-", "/")
+        .split("/")
+    )
 
     if len(parts) == 3:
+
         try:
-            y, m, d = [int(x) for x in parts]
+
+            y, m, d = (
+                int(x)
+                for x in parts
+            )
 
             if y < 1911:
                 y += 1911
 
-            return date(y, m, d)
+            return date(
+                y,
+                m,
+                d,
+            )
 
         except ValueError:
             pass
@@ -251,26 +330,54 @@ def parse_date(value: Any) -> Optional[date]:
 
 
 def today_taiwan() -> date:
-    return datetime.now(TAIWAN_TZ).date()
+
+    return datetime.now(
+        TAIWAN_TZ
+    ).date()
 
 
-def roc_date(d: date) -> str:
-    return f"{d.year - 1911:03d}/{d.month:02d}/{d.day:02d}"
+def roc_date(
+    d: date,
+) -> str:
+
+    return (
+        f"{d.year - 1911:03d}/"
+        f"{d.month:02d}/"
+        f"{d.day:02d}"
+    )
 
 
-def date_range(start_date: date, end_date: date) -> Iterable[date]:
+def date_range(
+    start_date: date,
+    end_date: date,
+) -> Iterable[date]:
+
     current = start_date
 
     while current <= end_date:
+
         yield current
-        current += timedelta(days=1)
+
+        current += timedelta(
+            days=1
+        )
 
 
-def is_weekday(d: date) -> bool:
+def is_weekday(
+    d: date,
+) -> bool:
+
     return d.weekday() < 5
 
 
-def valid_ohlcv_row(row: Dict[str, Any]) -> bool:
+# ============================================================================
+# OHLCV
+# ============================================================================
+
+def valid_ohlcv_row(
+    row: Dict[str, Any],
+) -> bool:
+
     required = (
         "date",
         "open",
@@ -281,33 +388,36 @@ def valid_ohlcv_row(row: Dict[str, Any]) -> bool:
     )
 
     for key in required:
+
         if key not in row:
             return False
 
     if not row["date"]:
         return False
 
-    values = (
-        row["open"],
-        row["high"],
-        row["low"],
-        row["close"],
-        row["volume"],
+    numeric = (
+        "open",
+        "high",
+        "low",
+        "close",
+        "volume",
     )
 
-    if any(value is None for value in values):
+    if any(
+        row[key] is None
+        for key in numeric
+    ):
         return False
 
-    if row["open"] <= 0:
-        return False
-
-    if row["high"] <= 0:
-        return False
-
-    if row["low"] <= 0:
-        return False
-
-    if row["close"] <= 0:
+    if any(
+        row[key] <= 0
+        for key in (
+            "open",
+            "high",
+            "low",
+            "close",
+        )
+    ):
         return False
 
     if row["volume"] < 0:
@@ -316,23 +426,77 @@ def valid_ohlcv_row(row: Dict[str, Any]) -> bool:
     return True
 
 
+def normalize_price_row(
+    target_date: date,
+    symbol: Any,
+    open_value: Any,
+    high_value: Any,
+    low_value: Any,
+    close_value: Any,
+    volume_value: Any,
+) -> Optional[
+    Dict[str, Any]
+]:
+
+    normalized_symbol = (
+        normalize_symbol(symbol)
+    )
+
+    if not normalized_symbol:
+        return None
+
+    row = {
+        "date": target_date.isoformat(),
+        "open": parse_float(
+            open_value
+        ),
+        "high": parse_float(
+            high_value
+        ),
+        "low": parse_float(
+            low_value
+        ),
+        "close": parse_float(
+            close_value
+        ),
+        "volume": parse_int(
+            volume_value
+        ),
+    }
+
+    if not valid_ohlcv_row(
+        row
+    ):
+        return None
+
+    return row
+
+
 # ============================================================================
 # HTTP
 # ============================================================================
 
-
 def http_get(
     url: str,
     *,
-    params: Optional[Dict[str, Any]] = None,
+    params: Optional[
+        Dict[str, Any]
+    ] = None,
     timeout: int = REQUEST_TIMEOUT,
     retries: int = REQUEST_RETRIES,
 ) -> requests.Response:
 
-    last_error: Optional[Exception] = None
+    last_error: Optional[
+        Exception
+    ] = None
 
-    for attempt in range(1, retries + 1):
+    for attempt in range(
+        1,
+        retries + 1,
+    ):
+
         try:
+
             response = SESSION.get(
                 url,
                 params=params,
@@ -344,53 +508,53 @@ def http_get(
             return response
 
         except Exception as exc:
+
             last_error = exc
 
             if attempt < retries:
-                time.sleep(REQUEST_BACKOFF * attempt)
+
+                time.sleep(
+                    REQUEST_BACKOFF
+                    * attempt
+                )
 
     raise RuntimeError(
-        f"HTTP GET failed: {url}: {last_error}"
+        f"HTTP GET failed: "
+        f"{url}: "
+        f"{last_error}"
     )
 
 
 def http_get_json(
     url: str,
-    *,
-    params: Optional[Dict[str, Any]] = None,
-    timeout: int = REQUEST_TIMEOUT,
-    retries: int = REQUEST_RETRIES,
+    params: Dict[str, Any],
 ) -> Any:
 
     response = http_get(
         url,
         params=params,
-        timeout=timeout,
-        retries=retries,
     )
 
     try:
+
         return response.json()
 
     except Exception as exc:
+
         raise RuntimeError(
-            f"JSON decode failed: {exc}"
+            f"JSON decode failed: "
+            f"{exc}"
         ) from exc
 
 
 def http_get_text(
     url: str,
-    *,
-    params: Optional[Dict[str, Any]] = None,
-    timeout: int = REQUEST_TIMEOUT,
-    retries: int = REQUEST_RETRIES,
+    params: Dict[str, Any],
 ) -> str:
 
     response = http_get(
         url,
         params=params,
-        timeout=timeout,
-        retries=retries,
     )
 
     encoding = (
@@ -400,11 +564,14 @@ def http_get_text(
     )
 
     try:
+
         return response.content.decode(
             encoding,
             errors="replace",
         )
+
     except Exception:
+
         return response.text
 
 
@@ -412,91 +579,154 @@ def http_get_text(
 # UNIVERSE
 # ============================================================================
 
-
-def load_universe() -> List[Dict[str, Any]]:
+def load_universe() -> List[
+    Dict[str, Any]
+]:
 
     if not UNIVERSE_FILE.exists():
+
         raise RuntimeError(
-            f"Universe file not found: {UNIVERSE_FILE}"
+            f"Universe file not found: "
+            f"{UNIVERSE_FILE}"
         )
 
     try:
+
         payload = json.loads(
             UNIVERSE_FILE.read_text(
                 encoding="utf-8"
             )
         )
+
     except Exception as exc:
+
         raise RuntimeError(
-            f"Unable to read universe.json: {exc}"
+            f"Unable to read universe: "
+            f"{exc}"
         ) from exc
 
-    if not isinstance(payload, dict):
+    if not isinstance(
+        payload,
+        dict,
+    ):
+
         raise RuntimeError(
-            "universe.json root must be object"
+            "universe.json root "
+            "must be dict"
         )
 
-    stocks = payload.get("stocks")
+    stocks = payload.get(
+        "stocks"
+    )
 
-    if not isinstance(stocks, dict):
+    if not isinstance(
+        stocks,
+        dict,
+    ):
+
         raise RuntimeError(
-            "universe.json stocks must be dict"
+            "universe.json stocks "
+            "must be dict"
         )
 
-    result: List[Dict[str, Any]] = []
+    result: List[
+        Dict[str, Any]
+    ] = []
 
-    for symbol, raw in stocks.items():
+    seen: Set[str] = set()
 
-        if not isinstance(raw, dict):
+    for key, raw in stocks.items():
+
+        if not isinstance(
+            raw,
+            dict,
+        ):
             continue
 
-        if raw.get("status") != "active":
+        if raw.get(
+            "status"
+        ) != "active":
             continue
 
-        normalized_symbol = normalize_symbol(
-            raw.get("symbol") or symbol
+        symbol = normalize_symbol(
+            raw.get(
+                "symbol"
+            )
+            or key
         )
-
-        if not normalized_symbol:
-            continue
 
         market = normalize_text(
-            raw.get("market")
+            raw.get(
+                "market"
+            )
         ).upper()
 
-        if market not in {"TWSE", "TPEX"}:
+        instrument_type = (
+            normalize_text(
+                raw.get(
+                    "type"
+                )
+                or raw.get(
+                    "instrument_type"
+                )
+            ).upper()
+        )
+
+        if not symbol:
             continue
 
-        instrument_type = normalize_text(
-            raw.get("type")
-            or raw.get("instrument_type")
-        ).upper()
+        if symbol in seen:
+            raise RuntimeError(
+                f"Duplicate Universe "
+                f"symbol: {symbol}"
+            )
 
-        if instrument_type not in {"STOCK", "ETF"}:
+        if market not in {
+            "TWSE",
+            "TPEX",
+        }:
             continue
 
-        listed_date = parse_date(
-            raw.get("listed_date")
+        if instrument_type not in {
+            "STOCK",
+            "ETF",
+        }:
+            continue
+
+        listed = parse_date(
+            raw.get(
+                "listed_date"
+            )
         )
 
         result.append(
             {
-                "symbol": normalized_symbol,
-                "code": normalized_symbol,
+                "symbol": symbol,
+                "code": symbol,
                 "name": normalize_text(
-                    raw.get("name")
+                    raw.get(
+                        "name"
+                    )
                 ),
                 "market": market,
                 "type": instrument_type,
-                "listed_date": listed_date.isoformat()
-                if listed_date
-                else None,
+                "listed_date": (
+                    listed.isoformat()
+                    if listed
+                    else None
+                ),
             }
         )
 
+        seen.add(
+            symbol
+        )
+
     if len(result) < MIN_UNIVERSE:
+
         raise RuntimeError(
-            "Universe contains no usable active instruments."
+            "Universe contains no "
+            "usable active instruments"
         )
 
     result.sort(
@@ -513,198 +743,383 @@ def load_universe() -> List[Dict[str, Any]]:
 # LIFECYCLE
 # ============================================================================
 
-
 def is_not_started(
     item: Dict[str, Any],
     end_date: date,
 ) -> bool:
 
-    listed_date = parse_date(
-        item.get("listed_date")
+    listed = parse_date(
+        item.get(
+            "listed_date"
+        )
     )
 
-    if listed_date is None:
+    if listed is None:
         return False
 
-    return listed_date > end_date
-
-
-def get_not_started_symbols(
-    universe: List[Dict[str, Any]],
-    end_date: date,
-) -> Set[str]:
-
-    return {
-        item["symbol"]
-        for item in universe
-        if is_not_started(item, end_date)
-    }
-
-
-# ============================================================================
-# PRICE NORMALIZATION
-# ============================================================================
-
-
-def normalize_price_row(
-    *,
-    target_date: date,
-    symbol: Any,
-    open_value: Any,
-    high_value: Any,
-    low_value: Any,
-    close_value: Any,
-    volume_value: Any,
-) -> Optional[Dict[str, Any]]:
-
-    normalized_symbol = normalize_symbol(symbol)
-
-    if not normalized_symbol:
-        return None
-
-    open_price = parse_float(open_value)
-    high_price = parse_float(high_value)
-    low_price = parse_float(low_value)
-    close_price = parse_float(close_value)
-    volume = parse_int(volume_value)
-
-    row = {
-        "date": target_date.isoformat(),
-        "open": open_price,
-        "high": high_price,
-        "low": low_price,
-        "close": close_price,
-        "volume": volume,
-    }
-
-    if not valid_ohlcv_row(row):
-        return None
-
-    return row
+    return listed > end_date
 
 
 # ============================================================================
 # TWSE
 # ============================================================================
 
+def find_field_index(
+    fields: List[Any],
+    aliases: Iterable[str],
+) -> Optional[int]:
+
+    normalized_fields = [
+        normalize_header(field)
+        for field in fields
+    ]
+
+    normalized_aliases = [
+        normalize_header(alias)
+        for alias in aliases
+    ]
+
+    # Exact match first.
+    for alias in normalized_aliases:
+
+        for index, field in enumerate(
+            normalized_fields
+        ):
+
+            if field == alias:
+                return index
+
+    # Substring fallback.
+    for alias in normalized_aliases:
+
+        for index, field in enumerate(
+            normalized_fields
+        ):
+
+            if alias and alias in field:
+                return index
+
+    return None
+
+
+def parse_twse_json(
+    data: Any,
+    target_date: date,
+    allowed_symbols: Set[str],
+) -> Dict[
+    str,
+    Dict[str, Any]
+]:
+
+    if not isinstance(
+        data,
+        dict,
+    ):
+
+        raise RuntimeError(
+            "invalid_json_root"
+        )
+
+    # --------------------------------------------------------
+    # 重要修正：
+    #
+    # TWSE MI_INDEX 不是：
+    #
+    #     data["data"]
+    #
+    # 而是：
+    #
+    #     data["tables"][...]
+    #         ["fields"]
+    #         ["data"]
+    #
+    # 必須動態找包含證券代號/收盤價的 table。
+    # --------------------------------------------------------
+
+    tables = data.get(
+        "tables"
+    )
+
+    if not isinstance(
+        tables,
+        list,
+    ):
+
+        raise RuntimeError(
+            "missing_tables"
+        )
+
+    result: Dict[
+        str,
+        Dict[str, Any]
+    ] = {}
+
+    for table in tables:
+
+        if not isinstance(
+            table,
+            dict,
+        ):
+            continue
+
+        fields = table.get(
+            "fields"
+        )
+
+        rows = table.get(
+            "data"
+        )
+
+        if not isinstance(
+            fields,
+            list,
+        ):
+            continue
+
+        if not isinstance(
+            rows,
+            list,
+        ):
+            continue
+
+        symbol_index = find_field_index(
+            fields,
+            (
+                "證券代號",
+                "股票代號",
+                "代號",
+            ),
+        )
+
+        open_index = find_field_index(
+            fields,
+            (
+                "開盤價",
+                "開盤",
+            ),
+        )
+
+        high_index = find_field_index(
+            fields,
+            (
+                "最高價",
+                "最高",
+            ),
+        )
+
+        low_index = find_field_index(
+            fields,
+            (
+                "最低價",
+                "最低",
+            ),
+        )
+
+        close_index = find_field_index(
+            fields,
+            (
+                "收盤價",
+                "收盤",
+            ),
+        )
+
+        volume_index = find_field_index(
+            fields,
+            (
+                "成交股數",
+                "成交量",
+                "成交量(股)",
+            ),
+        )
+
+        indices = (
+            symbol_index,
+            open_index,
+            high_index,
+            low_index,
+            close_index,
+            volume_index,
+        )
+
+        if any(
+            index is None
+            for index in indices
+        ):
+            continue
+
+        max_index = max(
+            int(index)
+            for index in indices
+            if index is not None
+        )
+
+        for raw_row in rows:
+
+            if not isinstance(
+                raw_row,
+                list,
+            ):
+                continue
+
+            if len(raw_row) <= max_index:
+                continue
+
+            symbol = normalize_symbol(
+                raw_row[
+                    symbol_index
+                ]
+            )
+
+            # ------------------------------------------------
+            # Universe boundary
+            # ------------------------------------------------
+
+            if symbol not in allowed_symbols:
+                continue
+
+            row = normalize_price_row(
+                target_date,
+                symbol,
+                raw_row[
+                    open_index
+                ],
+                raw_row[
+                    high_index
+                ],
+                raw_row[
+                    low_index
+                ],
+                raw_row[
+                    close_index
+                ],
+                raw_row[
+                    volume_index
+                ],
+            )
+
+            if row is not None:
+
+                result[
+                    symbol
+                ] = row
+
+    return result
+
 
 def fetch_twse_daily_batch(
     target_date: date,
-) -> Tuple[Dict[str, Dict[str, Any]], Optional[str]]:
+    allowed_symbols: Set[str],
+) -> Tuple[
+    Dict[str, Dict[str, Any]],
+    bool,
+    Optional[str],
+]:
 
     params = {
         "response": "json",
-        "date": target_date.strftime("%Y%m%d"),
+        "date": target_date.strftime(
+            "%Y%m%d"
+        ),
         "type": "ALLBUT0999",
     }
 
     try:
+
         data = http_get_json(
             TWSE_DAILY_URL,
-            params=params,
+            params,
         )
+
+        rows = parse_twse_json(
+            data,
+            target_date,
+            allowed_symbols,
+        )
+
+        return (
+            rows,
+            True,
+            None,
+        )
+
     except Exception as exc:
-        return {}, f"twse_official_failed:{exc}"
 
-    if not isinstance(data, dict):
-        return {}, "twse_official_failed:invalid_json_root"
-
-    tables = data.get("data")
-
-    if not isinstance(tables, list):
-        return {}, "twse_official_failed:no_data"
-
-    result: Dict[str, Dict[str, Any]] = {}
-
-    for raw_row in tables:
-
-        if not isinstance(raw_row, list):
-            continue
-
-        if len(raw_row) < 9:
-            continue
-
-        symbol = normalize_symbol(raw_row[0])
-
-        if not symbol:
-            continue
-
-        # TWSE MI_INDEX 常見欄位：
-        # 0 代號
-        # 1 名稱
-        # 2 成交股數
-        # 3 成交筆數
-        # 4 成交金額
-        # 5 開盤
-        # 6 最高
-        # 7 最低
-        # 8 收盤
-
-        row = normalize_price_row(
-            target_date=target_date,
-            symbol=symbol,
-            open_value=raw_row[5],
-            high_value=raw_row[6],
-            low_value=raw_row[7],
-            close_value=raw_row[8],
-            volume_value=raw_row[2],
+        return (
+            {},
+            False,
+            f"twse_official_failed:{exc}",
         )
 
-        if row is not None:
-            result[symbol] = row
-
-    if not result:
-        return {}, "twse_official_failed:empty_valid_rows"
-
-    return result, None
-
 
 # ============================================================================
-# TPEX HTML TABLE PARSER
+# TPEX HTML
 # ============================================================================
 
-
-class TpexTableParser(HTMLParser):
+class TpexTableParser(
+    HTMLParser
+):
 
     def __init__(self) -> None:
+
         super().__init__(
             convert_charrefs=True
         )
 
-        self.rows: List[List[str]] = []
+        self.rows: List[
+            List[str]
+        ] = []
 
-        self._inside_tr = False
-        self._inside_cell = False
-        self._cell_tag: Optional[str] = None
+        self.in_tr = False
+        self.in_cell = False
 
-        self._current_row: List[str] = []
-        self._current_cell: List[str] = []
+        self.row: List[str] = []
+        self.cell: List[str] = []
 
     def handle_starttag(
         self,
         tag: str,
-        attrs: List[Tuple[str, Optional[str]]],
+        attrs: List[
+            Tuple[
+                str,
+                Optional[str],
+            ]
+        ],
     ) -> None:
 
         tag = tag.lower()
 
         if tag == "tr":
-            self._inside_tr = True
-            self._current_row = []
+
+            self.in_tr = True
+            self.row = []
 
         elif (
             tag in {"td", "th"}
-            and self._inside_tr
+            and self.in_tr
         ):
-            self._inside_cell = True
-            self._cell_tag = tag
-            self._current_cell = []
+
+            self.in_cell = True
+            self.cell = []
 
         elif (
             tag == "br"
-            and self._inside_cell
+            and self.in_cell
         ):
-            self._current_cell.append(" ")
+
+            self.cell.append(
+                " "
+            )
+
+    def handle_data(
+        self,
+        data: str,
+    ) -> None:
+
+        if self.in_cell:
+
+            self.cell.append(
+                data
+            )
 
     def handle_endtag(
         self,
@@ -715,268 +1130,181 @@ class TpexTableParser(HTMLParser):
 
         if (
             tag in {"td", "th"}
-            and self._inside_cell
+            and self.in_cell
         ):
-            text = normalize_text(
-                "".join(self._current_cell)
+
+            self.row.append(
+                normalize_text(
+                    "".join(
+                        self.cell
+                    )
+                )
             )
 
-            self._current_row.append(text)
-
-            self._current_cell = []
-            self._inside_cell = False
-            self._cell_tag = None
+            self.cell = []
+            self.in_cell = False
 
         elif tag == "tr":
-            if self._inside_tr:
 
-                if self._current_row:
-                    self.rows.append(
-                        self._current_row
-                    )
+            if self.row:
 
-            self._inside_tr = False
-            self._current_row = []
-            self._inside_cell = False
-            self._cell_tag = None
+                self.rows.append(
+                    self.row
+                )
 
-    def handle_data(
-        self,
-        data: str,
-    ) -> None:
-
-        if self._inside_cell:
-            self._current_cell.append(data)
+            self.row = []
+            self.in_tr = False
+            self.in_cell = False
 
 
-# ============================================================================
-# TPEX HEADER DETECTION
-# ============================================================================
-
-
-def find_column_index(
-    headers: List[str],
-    aliases: Iterable[str],
-) -> Optional[int]:
-
-    normalized_headers = [
-        normalize_header(header)
-        for header in headers
-    ]
-
-    normalized_aliases = [
-        normalize_header(alias)
-        for alias in aliases
-    ]
-
-    # exact first
-    for alias in normalized_aliases:
-        for index, header in enumerate(
-            normalized_headers
-        ):
-            if header == alias:
-                return index
-
-    # substring second
-    for alias in normalized_aliases:
-        for index, header in enumerate(
-            normalized_headers
-        ):
-            if alias and alias in header:
-                return index
-
-    return None
-
-
-def find_tpex_columns(
-    headers: List[str],
-) -> Optional[Dict[str, int]]:
-
-    symbol_index = find_column_index(
-        headers,
-        (
-            "證券代號",
-            "股票代號",
-            "代號",
-            "代碼",
-        ),
-    )
-
-    close_index = find_column_index(
-        headers,
-        (
-            "收盤價",
-            "收盤",
-        ),
-    )
-
-    open_index = find_column_index(
-        headers,
-        (
-            "開盤價",
-            "開盤",
-        ),
-    )
-
-    high_index = find_column_index(
-        headers,
-        (
-            "最高價",
-            "最高",
-        ),
-    )
-
-    low_index = find_column_index(
-        headers,
-        (
-            "最低價",
-            "最低",
-        ),
-    )
-
-    volume_index = find_column_index(
-        headers,
-        (
-            "成交股數",
-            "成交量",
-            "成交量(股)",
-            "成交股數(股)",
-        ),
-    )
-
-    indices = {
-        "symbol": symbol_index,
-        "open": open_index,
-        "high": high_index,
-        "low": low_index,
-        "close": close_index,
-        "volume": volume_index,
-    }
-
-    if any(
-        value is None
-        for value in indices.values()
-    ):
-        return None
-
-    return {
-        key: int(value)
-        for key, value in indices.items()
-        if value is not None
-    }
-
-
-# ============================================================================
-# TPEX HTML
-# ============================================================================
-
-
-def fetch_tpex_html_batch(
+def parse_tpex_html(
+    html: str,
     target_date: date,
-    roc: str,
-) -> Tuple[Dict[str, Dict[str, Any]], Optional[str]]:
-
-    params = {
-        "l": "zh-tw",
-        "o": "htm",
-        "d": roc,
-        "se": "EW",
-    }
-
-    try:
-        html = http_get_text(
-            TPEX_DAILY_URL,
-            params=params,
-        )
-    except Exception as exc:
-        return {}, f"html_http:{exc}"
-
-    if not html or len(html) < 100:
-        return {}, "html_empty_response"
+    allowed_symbols: Set[str],
+) -> Dict[
+    str,
+    Dict[str, Any]
+]:
 
     parser = TpexTableParser()
 
-    try:
-        parser.feed(html)
-        parser.close()
-    except Exception as exc:
-        return {}, f"html_parse:{exc}"
+    parser.feed(
+        html
+    )
 
-    rows = parser.rows
+    result: Dict[
+        str,
+        Dict[str, Any]
+    ] = {}
 
-    if not rows:
-        return {}, "html_no_rows"
-
-    result: Dict[str, Dict[str, Any]] = {}
-
-    # ------------------------------------------------------------------------
+    # --------------------------------------------------------
     # Header-based parser
-    # ------------------------------------------------------------------------
+    # --------------------------------------------------------
 
-    for header_index, raw_header in enumerate(rows):
+    for header_index, header in enumerate(
+        parser.rows
+    ):
 
-        if not raw_header:
-            continue
-
-        columns = find_tpex_columns(
-            raw_header
+        symbol_index = find_field_index(
+            header,
+            (
+                "證券代號",
+                "股票代號",
+                "代號",
+                "代碼",
+            ),
         )
 
-        if columns is None:
+        open_index = find_field_index(
+            header,
+            (
+                "開盤價",
+                "開盤",
+            ),
+        )
+
+        high_index = find_field_index(
+            header,
+            (
+                "最高價",
+                "最高",
+            ),
+        )
+
+        low_index = find_field_index(
+            header,
+            (
+                "最低價",
+                "最低",
+            ),
+        )
+
+        close_index = find_field_index(
+            header,
+            (
+                "收盤價",
+                "收盤",
+            ),
+        )
+
+        volume_index = find_field_index(
+            header,
+            (
+                "成交股數",
+                "成交量",
+                "成交量(股)",
+            ),
+        )
+
+        indices = (
+            symbol_index,
+            open_index,
+            high_index,
+            low_index,
+            close_index,
+            volume_index,
+        )
+
+        if any(
+            index is None
+            for index in indices
+        ):
             continue
 
-        for raw_row in rows[
+        max_index = max(
+            int(index)
+            for index in indices
+            if index is not None
+        )
+
+        for raw_row in parser.rows[
             header_index + 1 :
         ]:
-
-            if not raw_row:
-                continue
-
-            max_index = max(
-                columns.values()
-            )
 
             if len(raw_row) <= max_index:
                 continue
 
+            symbol = normalize_symbol(
+                raw_row[
+                    symbol_index
+                ]
+            )
+
+            if symbol not in allowed_symbols:
+                continue
+
             row = normalize_price_row(
-                target_date=target_date,
-                symbol=raw_row[
-                    columns["symbol"]
+                target_date,
+                symbol,
+                raw_row[
+                    open_index
                 ],
-                open_value=raw_row[
-                    columns["open"]
+                raw_row[
+                    high_index
                 ],
-                high_value=raw_row[
-                    columns["high"]
+                raw_row[
+                    low_index
                 ],
-                low_value=raw_row[
-                    columns["low"]
+                raw_row[
+                    close_index
                 ],
-                close_value=raw_row[
-                    columns["close"]
-                ],
-                volume_value=raw_row[
-                    columns["volume"]
+                raw_row[
+                    volume_index
                 ],
             )
 
             if row is not None:
+
                 result[
-                    normalize_symbol(
-                        raw_row[
-                            columns["symbol"]
-                        ]
-                    )
+                    symbol
                 ] = row
 
         if result:
-            return result, None
+            return result
 
-    # ------------------------------------------------------------------------
-    # Official fixed-position fallback
+    # --------------------------------------------------------
+    # Historical TPEx fixed layout fallback
     #
-    # TPEx official table historically uses:
     # 0 代號
     # 1 名稱
     # 2 收盤
@@ -985,9 +1313,9 @@ def fetch_tpex_html_batch(
     # 5 最高
     # 6 最低
     # 7 成交股數
-    # ------------------------------------------------------------------------
+    # --------------------------------------------------------
 
-    for raw_row in rows:
+    for raw_row in parser.rows:
 
         if len(raw_row) < 8:
             continue
@@ -996,221 +1324,400 @@ def fetch_tpex_html_batch(
             raw_row[0]
         )
 
-        if not symbol:
-            continue
-
-        # 避免將 header 當資料
-        if symbol in {
-            "證券代號",
-            "股票代號",
-            "代號",
-            "代碼",
-        }:
+        if symbol not in allowed_symbols:
             continue
 
         row = normalize_price_row(
-            target_date=target_date,
-            symbol=symbol,
-            open_value=raw_row[4],
-            high_value=raw_row[5],
-            low_value=raw_row[6],
-            close_value=raw_row[2],
-            volume_value=raw_row[7],
+            target_date,
+            symbol,
+            raw_row[4],
+            raw_row[5],
+            raw_row[6],
+            raw_row[2],
+            raw_row[7],
         )
 
         if row is not None:
-            result[symbol] = row
 
-    if not result:
-        return {}, "html_no_valid_ohlcv_rows"
-
-    return result, None
-
-
-# ============================================================================
-# TPEX JSON
-# ============================================================================
-
-
-def parse_tpex_json_rows(
-    data: Any,
-    target_date: date,
-) -> Dict[str, Dict[str, Any]]:
-
-    if not isinstance(data, dict):
-        return {}
-
-    aa_data = data.get("aaData")
-
-    if not isinstance(aa_data, list):
-        return {}
-
-    result: Dict[str, Dict[str, Any]] = {}
-
-    for raw_row in aa_data:
-
-        if not isinstance(raw_row, list):
-            continue
-
-        if len(raw_row) < 8:
-            continue
-
-        row = normalize_price_row(
-            target_date=target_date,
-            symbol=raw_row[0],
-            open_value=raw_row[4],
-            high_value=raw_row[5],
-            low_value=raw_row[6],
-            close_value=raw_row[2],
-            volume_value=raw_row[7],
-        )
-
-        if row is not None:
             result[
-                normalize_symbol(raw_row[0])
+                symbol
             ] = row
 
     return result
 
 
 # ============================================================================
-# TPEX OFFICIAL BATCH
+# TPEX JSON
 # ============================================================================
 
+def parse_tpex_json(
+    data: Any,
+    target_date: date,
+    allowed_symbols: Set[str],
+) -> Dict[
+    str,
+    Dict[str, Any]
+]:
+
+    if not isinstance(
+        data,
+        dict,
+    ):
+
+        raise RuntimeError(
+            "invalid_json_root"
+        )
+
+    rows = data.get(
+        "aaData"
+    )
+
+    if not isinstance(
+        rows,
+        list,
+    ):
+
+        candidate = data.get(
+            "data"
+        )
+
+        if isinstance(
+            candidate,
+            list,
+        ):
+
+            rows = candidate
+
+        else:
+
+            raise RuntimeError(
+                "missing_aaData"
+            )
+
+    result: Dict[
+        str,
+        Dict[str, Any]
+    ] = {}
+
+    for raw_row in rows:
+
+        if not isinstance(
+            raw_row,
+            list,
+        ):
+            continue
+
+        if len(raw_row) < 8:
+            continue
+
+        symbol = normalize_symbol(
+            raw_row[0]
+        )
+
+        # --------------------------------------------------------
+        # Universe boundary
+        # --------------------------------------------------------
+
+        if symbol not in allowed_symbols:
+            continue
+
+        row = normalize_price_row(
+            target_date,
+            symbol,
+            raw_row[4],
+            raw_row[5],
+            raw_row[6],
+            raw_row[2],
+            raw_row[7],
+        )
+
+        if row is not None:
+
+            result[
+                symbol
+            ] = row
+
+    return result
+
+
+# ============================================================================
+# TPEX OFFICIAL
+# ============================================================================
 
 def fetch_tpex_daily_batch(
     target_date: date,
-) -> Tuple[Dict[str, Dict[str, Any]], Optional[str]]:
+    allowed_symbols: Set[str],
+) -> Tuple[
+    Dict[str, Dict[str, Any]],
+    bool,
+    Optional[str],
+]:
 
-    roc = roc_date(target_date)
+    roc = roc_date(
+        target_date
+    )
 
     json_error: Optional[str] = None
-    html_error: Optional[str] = None
 
-    # ------------------------------------------------------------------------
+    # --------------------------------------------------------
     # 1. Official JSON
-    # ------------------------------------------------------------------------
-
-    json_params = {
-        "l": "zh-tw",
-        "o": "json",
-        "d": roc,
-        "se": "EW",
-    }
+    # --------------------------------------------------------
 
     try:
+
         data = http_get_json(
             TPEX_DAILY_URL,
-            params=json_params,
+            {
+                "l": "zh-tw",
+                "o": "json",
+                "d": roc,
+                "se": "EW",
+            },
         )
 
-        result = parse_tpex_json_rows(
+        rows = parse_tpex_json(
             data,
             target_date,
+            allowed_symbols,
         )
 
-        if result:
-            return result, None
+        if rows:
 
-        json_error = "json_empty_valid_rows"
+            return (
+                rows,
+                True,
+                None,
+            )
+
+        json_error = (
+            "json_empty_valid_rows"
+        )
 
     except Exception as exc:
-        json_error = str(exc)
 
-    # ------------------------------------------------------------------------
+        json_error = str(
+            exc
+        )
+
+    # --------------------------------------------------------
     # 2. Official HTML fallback
-    # ------------------------------------------------------------------------
+    # --------------------------------------------------------
 
-    result, html_error = fetch_tpex_html_batch(
-        target_date,
-        roc,
-    )
+    try:
 
-    if result:
-        return result, None
+        html = http_get_text(
+            TPEX_DAILY_URL,
+            {
+                "l": "zh-tw",
+                "o": "htm",
+                "d": roc,
+                "se": "EW",
+            },
+        )
 
-    return {}, (
-        "tpex_official_failed:"
-        f"json={json_error};"
-        f"html={html_error}"
-    )
+        rows = parse_tpex_html(
+            html,
+            target_date,
+            allowed_symbols,
+        )
+
+        if rows:
+
+            return (
+                rows,
+                True,
+                None,
+            )
+
+        return (
+            {},
+            True,
+            (
+                "tpex_official_no_"
+                "universe_rows:"
+                f"json={json_error};"
+                "html=empty_valid_rows"
+            ),
+        )
+
+    except Exception as exc:
+
+        return (
+            {},
+            False,
+            (
+                "tpex_official_failed:"
+                f"json={json_error};"
+                f"html={exc}"
+            ),
+        )
 
 
 # ============================================================================
-# OFFICIAL MARKET COLLECTION
+# OFFICIAL COLLECTION
 # ============================================================================
-
 
 def collect_official_market_data(
     market: str,
     start_date: date,
     end_date: date,
+    allowed_symbols: Set[str],
 ) -> Tuple[
-    Dict[str, Dict[str, Dict[str, Any]]],
+    Dict[
+        str,
+        Dict[
+            str,
+            Dict[str, Any]
+        ]
+    ],
     Dict[str, int],
     List[str],
 ]:
 
     all_data: Dict[
         str,
-        Dict[str, Dict[str, Any]]
+        Dict[
+            str,
+            Dict[str, Any]
+        ]
     ] = {}
 
     stats = {
         "attempted": 0,
-        "success": 0,
+        "source_ok": 0,
+        "rows": 0,
         "failed": 0,
     }
 
-    diagnostics: List[str] = []
+    diagnostics: List[
+        str
+    ] = []
 
     current = start_date
 
     while current <= end_date:
 
-        if not is_weekday(current):
-            current += timedelta(days=1)
+        if not is_weekday(
+            current
+        ):
+
+            current += timedelta(
+                days=1
+            )
+
             continue
 
-        stats["attempted"] += 1
+        stats[
+            "attempted"
+        ] += 1
 
         if market == "TWSE":
-            rows, error = fetch_twse_daily_batch(
-                current
+
+            rows, source_ok, error = (
+                fetch_twse_daily_batch(
+                    current,
+                    allowed_symbols,
+                )
             )
+
         elif market == "TPEX":
-            rows, error = fetch_tpex_daily_batch(
-                current
+
+            rows, source_ok, error = (
+                fetch_tpex_daily_batch(
+                    current,
+                    allowed_symbols,
+                )
             )
+
         else:
+
             raise RuntimeError(
-                f"Unsupported market: {market}"
+                f"Unsupported market: "
+                f"{market}"
             )
+
+        if source_ok:
+
+            stats[
+                "source_ok"
+            ] += 1
+
+        else:
+
+            stats[
+                "failed"
+            ] += 1
 
         if rows:
 
-            stats["success"] += 1
+            stats[
+                "rows"
+            ] += len(rows)
 
-            for symbol, row in rows.items():
+            for symbol, row in (
+                rows.items()
+            ):
 
                 all_data.setdefault(
                     symbol,
                     {}
-                )[row["date"]] = row
+                )[
+                    row["date"]
+                ] = row
 
-        else:
+        if error and (
+            not rows
+            or not source_ok
+        ):
 
-            stats["failed"] += 1
-
-            if error:
-                diagnostics.append(
-                    f"{current.isoformat()}:{error}"
-                )
+            diagnostics.append(
+                f"{current.isoformat()}:"
+                f"{error}"
+            )
 
         if REQUEST_DELAY > 0:
-            time.sleep(REQUEST_DELAY)
 
-        current += timedelta(days=1)
+            time.sleep(
+                REQUEST_DELAY
+            )
+
+        current += timedelta(
+            days=1
+        )
+
+    # --------------------------------------------------------
+    # Source health gate
+    #
+    # 如果整個期間一筆有效 Universe row 都沒有，
+    # 不能繼續讓 Yahoo 對數千檔逐檔補洞。
+    # --------------------------------------------------------
+
+    if (
+        allowed_symbols
+        and stats["attempted"] > 0
+        and stats["source_ok"] == 0
+    ):
+
+        raise RuntimeError(
+            f"{market} official source "
+            "failed on every attempted "
+            "weekday: "
+            + "; ".join(
+                diagnostics[:5]
+            )
+        )
+
+    if (
+        allowed_symbols
+        and not all_data
+    ):
+
+        raise RuntimeError(
+            f"{market} official source "
+            "returned zero valid "
+            "Universe rows across "
+            "the requested period"
+        )
 
     return (
         all_data,
@@ -1220,109 +1727,136 @@ def collect_official_market_data(
 
 
 # ============================================================================
-# EXISTING DATA
+# EXISTING PRICE DATA
 # ============================================================================
-
 
 def load_existing_prices(
     symbol: str,
-) -> Dict[str, Dict[str, Any]]:
-
-    if not OUTPUT_DIR.exists():
-        return {}
+) -> Dict[
+    str,
+    Dict[str, Any]
+]:
 
     manifest_path = (
-        OUTPUT_DIR / "manifest.json"
+        OUTPUT_DIR
+        / "manifest.json"
     )
 
     if not manifest_path.exists():
         return {}
 
     try:
+
         manifest = json.loads(
             manifest_path.read_text(
                 encoding="utf-8"
             )
         )
+
     except Exception:
+
         return {}
 
-    files = manifest.get("files", [])
+    files = manifest.get(
+        "files",
+        []
+    )
 
-    if not isinstance(files, list):
+    if not isinstance(
+        files,
+        list,
+    ):
         return {}
 
     for file_name in files:
 
-        path = OUTPUT_DIR / str(file_name)
+        path = (
+            OUTPUT_DIR
+            / str(file_name)
+        )
 
         if not path.exists():
             continue
 
         try:
+
             payload = json.loads(
                 path.read_text(
                     encoding="utf-8"
                 )
             )
-        except Exception:
-            continue
 
-        stocks = payload.get("stocks")
-
-        if not isinstance(stocks, dict):
-            continue
-
-        prices = stocks.get(symbol)
-
-        if not isinstance(prices, list):
-            continue
-
-        result: Dict[
-            str,
-            Dict[str, Any]
-        ] = {}
-
-        for row in prices:
-
-            if not isinstance(row, dict):
-                continue
-
-            row_date = normalize_text(
-                row.get("date")
+            stocks = payload.get(
+                "stocks",
+                {}
             )
 
-            if not row_date:
+            prices = stocks.get(
+                symbol
+            )
+
+            if not isinstance(
+                prices,
+                list,
+            ):
                 continue
 
-            if valid_ohlcv_row(row):
-                result[row_date] = row
+            result: Dict[
+                str,
+                Dict[str, Any]
+            ] = {}
 
-        if result:
-            return result
+            for row in prices:
+
+                if not isinstance(
+                    row,
+                    dict,
+                ):
+                    continue
+
+                row_date = normalize_text(
+                    row.get(
+                        "date"
+                    )
+                )
+
+                if not row_date:
+                    continue
+
+                if valid_ohlcv_row(
+                    row
+                ):
+
+                    result[
+                        row_date
+                    ] = row
+
+            if result:
+                return result
+
+        except Exception:
+            continue
 
     return {}
 
 
 # ============================================================================
-# YAHOO FALLBACK
+# YAHOO
 # ============================================================================
-
 
 def yahoo_symbol(
     item: Dict[str, Any],
 ) -> str:
 
-    market = item["market"]
+    suffix = (
+        ".TW"
+        if item["market"] == "TWSE"
+        else ".TWO"
+    )
 
-    if market == "TWSE":
-        suffix = ".TW"
-    elif market == "TPEX":
-        suffix = ".TWO"
-    else:
-        suffix = ".TW"
-
-    return f"{item['symbol']}{suffix}"
+    return (
+        f"{item['symbol']}{suffix}"
+    )
 
 
 def fetch_yahoo_history(
@@ -1330,13 +1864,21 @@ def fetch_yahoo_history(
     start_date: date,
     end_date: date,
 ) -> Tuple[
-    Dict[str, Dict[str, Any]],
+    Dict[
+        str,
+        Dict[str, Any]
+    ],
     Optional[str],
 ]:
 
-    symbol = yahoo_symbol(item)
+    if start_date > end_date:
+        return {}, None
 
-    start_timestamp = int(
+    symbol = yahoo_symbol(
+        item
+    )
+
+    period1 = int(
         datetime.combine(
             start_date,
             datetime.min.time(),
@@ -1344,28 +1886,32 @@ def fetch_yahoo_history(
         ).timestamp()
     )
 
-    end_timestamp = int(
+    period2 = int(
         datetime.combine(
-            end_date + timedelta(days=1),
+            end_date
+            + timedelta(days=1),
             datetime.min.time(),
             tzinfo=timezone.utc,
         ).timestamp()
     )
 
     url = (
-        "https://query1.finance.yahoo.com/v8/finance/chart/"
+        "https://query1.finance.yahoo.com/"
+        "v8/finance/chart/"
         f"{symbol}"
     )
 
     params = {
-        "period1": start_timestamp,
-        "period2": end_timestamp,
+        "period1": period1,
+        "period2": period2,
         "interval": "1d",
         "events": "history",
         "includeAdjustedClose": "true",
     }
 
-    last_error: Optional[str] = None
+    last_error: Optional[
+        str
+    ] = None
 
     for attempt in range(
         1,
@@ -1384,65 +1930,67 @@ def fetch_yahoo_history(
 
             payload = response.json()
 
-            chart = payload.get("chart", {})
-
-            result = chart.get("result")
-
-            if not isinstance(result, list):
-                raise RuntimeError(
-                    "Yahoo result is not list"
-                )
-
-            if not result:
-                raise RuntimeError(
-                    "Yahoo result is empty"
-                )
-
-            data = result[0]
-
-            timestamps = data.get(
-                "timestamp"
+            results = (
+                payload
+                .get("chart", {})
+                .get("result")
+                or []
             )
 
-            indicators = data.get(
-                "indicators",
-                {},
-            )
-
-            quote = indicators.get(
-                "quote",
-                []
-            )
-
-            if not timestamps:
+            if not results:
                 raise RuntimeError(
-                    "Yahoo timestamps empty"
+                    "Yahoo result empty"
                 )
 
-            if not quote:
+            data = results[0]
+
+            timestamps = (
+                data.get(
+                    "timestamp"
+                )
+                or []
+            )
+
+            quote_list = (
+                data
+                .get(
+                    "indicators",
+                    {}
+                )
+                .get(
+                    "quote",
+                    []
+                )
+            )
+
+            if not quote_list:
                 raise RuntimeError(
                     "Yahoo quote empty"
                 )
 
-            quote_data = quote[0]
+            quote = quote_list[0]
 
-            opens = quote_data.get(
+            opens = quote.get(
                 "open",
                 []
             )
-            highs = quote_data.get(
+
+            highs = quote.get(
                 "high",
                 []
             )
-            lows = quote_data.get(
+
+            lows = quote.get(
                 "low",
                 []
             )
-            closes = quote_data.get(
+
+            closes = quote.get(
                 "close",
                 []
             )
-            volumes = quote_data.get(
+
+            volumes = quote.get(
                 "volume",
                 []
             )
@@ -1452,72 +2000,89 @@ def fetch_yahoo_history(
                 Dict[str, Any]
             ] = {}
 
-            for index, timestamp in enumerate(
-                timestamps
+            for index, timestamp in (
+                enumerate(timestamps)
             ):
 
-                if index >= len(opens):
-                    continue
-
                 try:
-                    row_date = datetime.fromtimestamp(
-                        timestamp,
-                        timezone.utc,
-                    ).date()
+
+                    row_date = (
+                        datetime.fromtimestamp(
+                            timestamp,
+                            timezone.utc,
+                        ).date()
+                    )
+
                 except Exception:
+
                     continue
 
                 if (
                     row_date < start_date
                     or row_date > end_date
                 ):
+
                     continue
 
-                if index >= len(highs):
-                    continue
+                arrays = (
+                    opens,
+                    highs,
+                    lows,
+                    closes,
+                    volumes,
+                )
 
-                if index >= len(lows):
-                    continue
+                if any(
+                    index >= len(array)
+                    for array in arrays
+                ):
 
-                if index >= len(closes):
-                    continue
-
-                if index >= len(volumes):
                     continue
 
                 row = normalize_price_row(
-                    target_date=row_date,
-                    symbol=item["symbol"],
-                    open_value=opens[index],
-                    high_value=highs[index],
-                    low_value=lows[index],
-                    close_value=closes[index],
-                    volume_value=volumes[index],
+                    row_date,
+                    item["symbol"],
+                    opens[index],
+                    highs[index],
+                    lows[index],
+                    closes[index],
+                    volumes[index],
                 )
 
                 if row is not None:
+
                     output[
                         row["date"]
                     ] = row
 
             if not output:
+
                 raise RuntimeError(
-                    "Yahoo returned no valid OHLCV rows"
+                    "Yahoo returned no "
+                    "valid OHLCV rows"
                 )
 
-            return output, None
+            return (
+                output,
+                None,
+            )
 
         except Exception as exc:
 
-            last_error = str(exc)
+            last_error = str(
+                exc
+            )
 
             if attempt < YAHOO_RETRIES:
+
                 time.sleep(
-                    YAHOO_BACKOFF * attempt
+                    YAHOO_BACKOFF
+                    * attempt
                 )
 
-    return {}, (
-        f"yahoo_failed:{last_error}"
+    return (
+        {},
+        f"yahoo_failed:{last_error}",
     )
 
 
@@ -1525,48 +2090,73 @@ def fetch_yahoo_history(
 # MERGE
 # ============================================================================
 
-
-def merge_price_rows(
-    official_rows: Dict[
+def merge_rows(
+    existing: Dict[
         str,
         Dict[str, Any]
     ],
-    existing_rows: Dict[
+    official: Dict[
         str,
         Dict[str, Any]
     ],
-    yahoo_rows: Dict[
+    yahoo: Dict[
         str,
         Dict[str, Any]
     ],
-) -> List[Dict[str, Any]]:
+) -> List[
+    Dict[str, Any]
+]:
 
     merged: Dict[
         str,
         Dict[str, Any]
     ] = {}
 
-    # 1. Existing historical data
-    for row_date, row in existing_rows.items():
-        if valid_ohlcv_row(row):
-            merged[row_date] = row
+    # Existing first.
+    for row_date, row in (
+        existing.items()
+    ):
 
-    # 2. Official data always overrides same-date fallback data
-    for row_date, row in official_rows.items():
-        if valid_ohlcv_row(row):
-            merged[row_date] = row
+        if valid_ohlcv_row(
+            row
+        ):
 
-    # 3. Yahoo only fills unresolved dates
-    for row_date, row in yahoo_rows.items():
+            merged[
+                row_date
+            ] = row
+
+    # Official always wins.
+    for row_date, row in (
+        official.items()
+    ):
+
+        if valid_ohlcv_row(
+            row
+        ):
+
+            merged[
+                row_date
+            ] = row
+
+    # Yahoo only fills gaps.
+    for row_date, row in (
+        yahoo.items()
+    ):
+
         if (
             row_date not in merged
             and valid_ohlcv_row(row)
         ):
-            merged[row_date] = row
+
+            merged[
+                row_date
+            ] = row
 
     return [
         merged[key]
-        for key in sorted(merged.keys())
+        for key in sorted(
+            merged.keys()
+        )
     ]
 
 
@@ -1574,14 +2164,18 @@ def merge_price_rows(
 # BUILD RESULTS
 # ============================================================================
 
-
 def build_results(
-    universe: List[Dict[str, Any]],
+    universe: List[
+        Dict[str, Any]
+    ],
     start_date: date,
     end_date: date,
     official_data: Dict[
         str,
-        Dict[str, Dict[str, Any]]
+        Dict[
+            str,
+            Dict[str, Any]
+        ]
     ],
 ) -> Tuple[
     List[Dict[str, Any]],
@@ -1589,7 +2183,9 @@ def build_results(
     List[str],
 ]:
 
-    results: List[Dict[str, Any]] = []
+    results: List[
+        Dict[str, Any]
+    ] = []
 
     stats = {
         "yahoo_attempted": 0,
@@ -1598,42 +2194,56 @@ def build_results(
         "not_started": 0,
     }
 
-    diagnostics: List[str] = []
+    diagnostics: List[
+        str
+    ] = []
 
     for item in universe:
 
-        symbol = item["symbol"]
+        symbol = item[
+            "symbol"
+        ]
 
-        # --------------------------------------------------------------------
-        # Lifecycle gate
-        # --------------------------------------------------------------------
+        listed = parse_date(
+            item.get(
+                "listed_date"
+            )
+        )
+
+        # --------------------------------------------------------
+        # not_started
+        # --------------------------------------------------------
 
         if is_not_started(
             item,
             end_date,
         ):
 
-            stats["not_started"] += 1
-
-            listed_date = item.get(
-                "listed_date"
-            )
-
-            diagnostics.append(
-                f"{symbol}:not_started:{listed_date}"
-            )
+            stats[
+                "not_started"
+            ] += 1
 
             results.append(
                 {
                     "symbol": symbol,
-                    "code": item["code"],
-                    "market": item["market"],
-                    "type": item["type"],
-                    "name": item["name"],
-                    "listed_date": listed_date,
+                    "code": symbol,
+                    "market": item[
+                        "market"
+                    ],
+                    "type": item[
+                        "type"
+                    ],
+                    "name": item[
+                        "name"
+                    ],
+                    "listed_date": item.get(
+                        "listed_date"
+                    ),
                     "source": "not_started",
                     "history_rows": 0,
-                    "history_status": "not_started",
+                    "history_status": (
+                        "not_started"
+                    ),
                     "latest_date": None,
                     "prices": [],
                 }
@@ -1641,31 +2251,61 @@ def build_results(
 
             continue
 
-        # --------------------------------------------------------------------
-        # Existing data
-        # --------------------------------------------------------------------
+        # --------------------------------------------------------
+        # Started history starts at listed_date.
+        # --------------------------------------------------------
 
-        existing_rows = load_existing_prices(
-            symbol
+        if listed is not None:
+
+            history_start = max(
+                start_date,
+                listed,
+            )
+
+        else:
+
+            history_start = start_date
+
+        expected_dates = {
+            d.isoformat()
+            for d in date_range(
+                history_start,
+                end_date,
+            )
+            if is_weekday(d)
+        }
+
+        # --------------------------------------------------------
+        # Existing
+        # --------------------------------------------------------
+
+        existing_rows = (
+            load_existing_prices(
+                symbol
+            )
         )
 
-        # --------------------------------------------------------------------
-        # Official data
-        # --------------------------------------------------------------------
+        # --------------------------------------------------------
+        # Official
+        # --------------------------------------------------------
 
-        official_rows = official_data.get(
-            symbol,
-            {}
+        official_rows = (
+            official_data.get(
+                symbol,
+                {}
+            )
         )
 
-        # --------------------------------------------------------------------
-        # Determine missing official history
-        # --------------------------------------------------------------------
+        # --------------------------------------------------------
+        # Coverage before Yahoo
+        # --------------------------------------------------------
 
-        merged_before_yahoo = merge_price_rows(
-            official_rows=official_rows,
-            existing_rows=existing_rows,
-            yahoo_rows={},
+        merged_before_yahoo = (
+            merge_rows(
+                existing_rows,
+                official_rows,
+                {},
+            )
         )
 
         merged_dates = {
@@ -1673,46 +2313,36 @@ def build_results(
             for row in merged_before_yahoo
         }
 
-        expected_weekdays = {
-            d.isoformat()
-            for d in date_range(
-                start_date,
-                end_date,
-            )
-            if is_weekday(d)
-        }
-
-        missing_count = len(
-            expected_weekdays - merged_dates
-        )
-
-        expected_count = len(
-            expected_weekdays
+        covered = (
+            merged_dates
+            & expected_dates
         )
 
         coverage = (
-            len(
-                merged_dates
-                & expected_weekdays
-            )
-            / expected_count
-            if expected_count
+            len(covered)
+            / len(expected_dates)
+            if expected_dates
             else 1.0
         )
+
+        # --------------------------------------------------------
+        # Yahoo fallback
+        #
+        # 只對 started + 有缺口商品。
+        # --------------------------------------------------------
 
         yahoo_rows: Dict[
             str,
             Dict[str, Any]
         ] = {}
 
-        # --------------------------------------------------------------------
-        # Yahoo fallback
-        #
-        # 官方 coverage < threshold 或完全沒有資料才補
-        # --------------------------------------------------------------------
+        missing_dates = (
+            expected_dates
+            - covered
+        )
 
         if (
-            missing_count > 0
+            missing_dates
             and (
                 coverage
                 < OFFICIAL_COMPLETENESS_THRESHOLD
@@ -1720,40 +2350,46 @@ def build_results(
             )
         ):
 
-            stats["yahoo_attempted"] += 1
+            stats[
+                "yahoo_attempted"
+            ] += 1
 
             yahoo_rows, yahoo_error = (
                 fetch_yahoo_history(
                     item,
-                    start_date,
+                    history_start,
                     end_date,
                 )
             )
 
             if yahoo_rows:
-                stats["yahoo_success"] += 1
+
+                stats[
+                    "yahoo_success"
+                ] += 1
 
             else:
-                stats["yahoo_failed"] += 1
+
+                stats[
+                    "yahoo_failed"
+                ] += 1
 
                 if yahoo_error:
+
                     diagnostics.append(
-                        f"{symbol}:{yahoo_error}"
+                        f"{symbol}:"
+                        f"{yahoo_error}"
                     )
 
-        # --------------------------------------------------------------------
+        # --------------------------------------------------------
         # Final merge
-        # --------------------------------------------------------------------
+        # --------------------------------------------------------
 
-        prices = merge_price_rows(
-            official_rows=official_rows,
-            existing_rows=existing_rows,
-            yahoo_rows=yahoo_rows,
+        prices = merge_rows(
+            existing_rows,
+            official_rows,
+            yahoo_rows,
         )
-
-        # --------------------------------------------------------------------
-        # Trim strictly to requested range
-        # --------------------------------------------------------------------
 
         filtered_prices: List[
             Dict[str, Any]
@@ -1762,37 +2398,63 @@ def build_results(
         for row in prices:
 
             row_date = parse_date(
-                row.get("date")
+                row.get(
+                    "date"
+                )
             )
 
             if row_date is None:
                 continue
 
             if (
-                row_date < start_date
+                row_date < history_start
                 or row_date > end_date
             ):
                 continue
 
-            if valid_ohlcv_row(row):
-                filtered_prices.append(row)
+            if valid_ohlcv_row(
+                row
+            ):
+
+                filtered_prices.append(
+                    row
+                )
 
         prices = filtered_prices
 
-        # --------------------------------------------------------------------
-        # History status
-        # --------------------------------------------------------------------
+        # --------------------------------------------------------
+        # Started product must have >= 1 row.
+        # --------------------------------------------------------
 
-        history_rows = len(prices)
+        if not prices:
 
-        if history_rows <= 0:
-            history_status = "short"
-        elif history_rows < 20:
-            history_status = "short"
-        elif history_rows < 60:
-            history_status = "partial"
+            raise RuntimeError(
+                f"{symbol}: started "
+                "instrument has no "
+                "valid price history"
+            )
+
+        history_rows = len(
+            prices
+        )
+
+        if history_rows >= 60:
+
+            history_status = (
+                "complete"
+            )
+
+        elif history_rows >= 20:
+
+            history_status = (
+                "partial"
+            )
+
         else:
-            history_status = "complete"
+
+            history_status = (
+                "short"
+            )
 
         latest_date = (
             prices[-1]["date"]
@@ -1800,7 +2462,9 @@ def build_results(
             else None
         )
 
-        source_parts: List[str] = []
+        source_parts: List[
+            str
+        ] = []
 
         if official_rows:
             source_parts.append(
@@ -1812,8 +2476,19 @@ def build_results(
                 "yahoo"
             )
 
+        if (
+            not source_parts
+            and existing_rows
+        ):
+
+            source_parts.append(
+                "existing"
+            )
+
         source = (
-            "+".join(source_parts)
+            "+".join(
+                source_parts
+            )
             if source_parts
             else "none"
         )
@@ -1821,16 +2496,26 @@ def build_results(
         results.append(
             {
                 "symbol": symbol,
-                "code": item["code"],
-                "market": item["market"],
-                "type": item["type"],
-                "name": item["name"],
+                "code": symbol,
+                "market": item[
+                    "market"
+                ],
+                "type": item[
+                    "type"
+                ],
+                "name": item[
+                    "name"
+                ],
                 "listed_date": item.get(
                     "listed_date"
                 ),
                 "source": source,
-                "history_rows": history_rows,
-                "history_status": history_status,
+                "history_rows": (
+                    history_rows
+                ),
+                "history_status": (
+                    history_status
+                ),
                 "latest_date": latest_date,
                 "prices": prices,
             }
@@ -1844,47 +2529,68 @@ def build_results(
 
 
 # ============================================================================
-# VALIDATE RESULT
+# RESULT VALIDATION
 # ============================================================================
-
 
 def validate_result_record(
     result: Dict[str, Any],
-    *,
     end_date: date,
 ) -> None:
 
     symbol = normalize_symbol(
-        result.get("symbol")
+        result.get(
+            "symbol"
+        )
     )
 
     if not symbol:
+
         raise RuntimeError(
             "Result contains empty symbol"
         )
 
-    prices = result.get("prices")
+    prices = result.get(
+        "prices"
+    )
 
-    if not isinstance(prices, list):
+    if not isinstance(
+        prices,
+        list,
+    ):
+
         raise RuntimeError(
             f"{symbol}: prices must be list"
         )
 
-    listed_date = parse_date(
-        result.get("listed_date")
+    listed = parse_date(
+        result.get(
+            "listed_date"
+        )
     )
 
     not_started = (
-        listed_date is not None
-        and listed_date > end_date
+        listed is not None
+        and listed > end_date
     )
 
     if not_started:
 
         if prices:
+
             raise RuntimeError(
-                f"{symbol}: not_started "
-                "must not contain price rows"
+                f"{symbol}: "
+                "not_started must "
+                "have zero prices"
+            )
+
+        if result.get(
+            "history_rows"
+        ) != 0:
+
+            raise RuntimeError(
+                f"{symbol}: "
+                "not_started "
+                "history_rows != 0"
             )
 
         if result.get(
@@ -1893,96 +2599,102 @@ def validate_result_record(
 
             raise RuntimeError(
                 f"{symbol}: invalid "
-                "not_started history_status"
+                "not_started status"
             )
 
-        if result.get("source") != "not_started":
+        if result.get(
+            "source"
+        ) != "not_started":
+
             raise RuntimeError(
                 f"{symbol}: invalid "
                 "not_started source"
             )
 
-        if result.get(
-            "history_rows"
-        ) != 0:
-
-            raise RuntimeError(
-                f"{symbol}: not_started "
-                "history_rows must be 0"
-            )
-
         return
 
-    # ------------------------------------------------------------------------
-    # Started instrument
-    # ------------------------------------------------------------------------
-
     if len(prices) < MIN_HISTORY_ROWS:
+
         raise RuntimeError(
-            f"{symbol}: started instrument "
-            "has no valid price history"
+            f"{symbol}: started "
+            "instrument has no "
+            "valid price history"
         )
 
-    dates: Set[str] = set()
+    previous_date: Optional[
+        str
+    ] = None
 
-    previous_date: Optional[str] = None
+    seen_dates: Set[
+        str
+    ] = set()
 
     for row in prices:
 
-        if not isinstance(row, dict):
+        if not isinstance(
+            row,
+            dict,
+        ):
+
             raise RuntimeError(
-                f"{symbol}: malformed price row"
+                f"{symbol}: malformed "
+                "price row"
             )
 
-        if not valid_ohlcv_row(row):
+        if not valid_ohlcv_row(
+            row
+        ):
+
             raise RuntimeError(
-                f"{symbol}: invalid OHLCV row"
+                f"{symbol}: invalid "
+                "OHLCV row"
             )
 
         row_date = normalize_text(
-            row.get("date")
+            row.get(
+                "date"
+            )
         )
 
-        if row_date in dates:
+        if row_date in seen_dates:
+
             raise RuntimeError(
-                f"{symbol}: duplicate date "
-                f"{row_date}"
+                f"{symbol}: duplicate "
+                f"date {row_date}"
             )
 
-        dates.add(row_date)
+        seen_dates.add(
+            row_date
+        )
 
         if (
             previous_date is not None
             and row_date <= previous_date
         ):
+
             raise RuntimeError(
                 f"{symbol}: price dates "
-                "are not strictly ascending"
+                "not strictly ascending"
             )
 
         previous_date = row_date
 
-    history_rows = result.get(
+    if result.get(
         "history_rows"
-    )
+    ) != len(prices):
 
-    if history_rows != len(prices):
         raise RuntimeError(
-            f"{symbol}: history_rows mismatch"
+            f"{symbol}: history_rows "
+            "mismatch"
         )
-
-    latest_date = (
-        prices[-1]["date"]
-        if prices
-        else None
-    )
 
     if result.get(
         "latest_date"
-    ) != latest_date:
+    ) != prices[-1]["date"]:
 
         raise RuntimeError(
-            f"{symbol}: latest_date mismatch"
+            f"{symbol}: latest_date "
+            "mismatch"
         )
 
     if result.get(
@@ -1994,18 +2706,18 @@ def validate_result_record(
     }:
 
         raise RuntimeError(
-            f"{symbol}: invalid history_status"
+            f"{symbol}: invalid "
+            "history_status"
         )
 
 
-# ============================================================================
-# VALIDATE ALL RESULTS
-# ============================================================================
-
-
 def validate_results(
-    universe: List[Dict[str, Any]],
-    results: List[Dict[str, Any]],
+    universe: List[
+        Dict[str, Any]
+    ],
+    results: List[
+        Dict[str, Any]
+    ],
     end_date: date,
 ) -> None:
 
@@ -2016,36 +2728,59 @@ def validate_results(
 
     actual = {
         normalize_symbol(
-            result.get("symbol")
+            result.get(
+                "symbol"
+            )
         )
         for result in results
     }
 
-    missing = expected - actual
-    extra = actual - expected
+    missing = (
+        expected
+        - actual
+    )
+
+    extra = (
+        actual
+        - expected
+    )
 
     if missing:
+
         raise RuntimeError(
-            "Universe → Result missing symbols: "
-            + ", ".join(sorted(missing))
+            "Universe -> Result "
+            "missing symbols: "
+            + ", ".join(
+                sorted(missing)
+            )
         )
 
     if extra:
+
         raise RuntimeError(
-            "Result contains extra symbols: "
-            + ", ".join(sorted(extra))
+            "Result contains extra "
+            "symbols: "
+            + ", ".join(
+                sorted(extra)
+            )
         )
 
-    if len(results) != len(universe):
+    if len(results) != len(
+        universe
+    ):
+
         raise RuntimeError(
-            "Universe → Result count mismatch: "
-            f"{len(universe)} != {len(results)}"
+            "Universe -> Result count "
+            "mismatch: "
+            f"{len(universe)} != "
+            f"{len(results)}"
         )
 
     for result in results:
+
         validate_result_record(
             result,
-            end_date=end_date,
+            end_date,
         )
 
 
@@ -2053,45 +2788,52 @@ def validate_results(
 # SHARDS
 # ============================================================================
 
-
 def build_shards(
-    results: List[Dict[str, Any]],
-) -> List[Dict[str, Any]]:
+    results: List[
+        Dict[str, Any]
+    ],
+) -> List[
+    Dict[str, Any]
+]:
 
     ordered = sorted(
         results,
-        key=lambda item: item["symbol"],
+        key=lambda item: item[
+            "symbol"
+        ],
     )
 
-    shards: List[Dict[str, Any]] = []
+    shards: List[
+        Dict[str, Any]
+    ] = []
 
-    for index in range(
+    for start in range(
         0,
         len(ordered),
         SHARD_SIZE,
     ):
 
         chunk = ordered[
-            index : index + SHARD_SIZE
+            start:
+            start + SHARD_SIZE
         ]
 
-        stocks: Dict[
-            str,
-            List[Dict[str, Any]]
-        ] = {}
-
-        for result in chunk:
-            stocks[
-                result["symbol"]
-            ] = result["prices"]
-
         shard_number = (
-            index // SHARD_SIZE
+            start // SHARD_SIZE
         ) + 1
+
+        stocks = {
+            item["symbol"]: item[
+                "prices"
+            ]
+            for item in chunk
+        }
 
         shards.append(
             {
-                "schema_version": SCHEMA_VERSION,
+                "schema_version": (
+                    SCHEMA_VERSION
+                ),
                 "version": VERSION,
                 "shard": shard_number,
                 "stocks": stocks,
@@ -2102,35 +2844,119 @@ def build_shards(
 
 
 # ============================================================================
-# VALIDATE SHARD
+# MANIFEST
 # ============================================================================
 
+def build_manifest(
+    results: List[
+        Dict[str, Any]
+    ],
+    files: List[str],
+) -> Dict[str, Any]:
+
+    complete_count = sum(
+        result.get(
+            "history_status"
+        ) == "complete"
+        for result in results
+    )
+
+    partial_count = sum(
+        result.get(
+            "history_status"
+        ) == "partial"
+        for result in results
+    )
+
+    short_count = sum(
+        result.get(
+            "history_status"
+        ) == "short"
+        for result in results
+    )
+
+    not_started_count = sum(
+        result.get(
+            "history_status"
+        ) == "not_started"
+        for result in results
+    )
+
+    return {
+        "schema_version": (
+            SCHEMA_VERSION
+        ),
+        "version": VERSION,
+        "generated_at": (
+            datetime.now(
+                TAIWAN_TZ
+            ).isoformat()
+        ),
+        "total_symbols": len(
+            results
+        ),
+        "complete_count": (
+            complete_count
+        ),
+        "partial_count": (
+            partial_count
+        ),
+        "short_count": (
+            short_count
+        ),
+        "not_started_count": (
+            not_started_count
+        ),
+        "files": files,
+    }
+
+
+# ============================================================================
+# SHARD VALIDATION
+# ============================================================================
 
 def validate_shard(
     path: Path,
     expected_symbols: Set[str],
-    not_started_symbols: Optional[Set[str]] = None,
+    not_started_symbols: Set[str],
 ) -> None:
 
-    if not_started_symbols is None:
-        not_started_symbols = set()
-
     try:
+
         payload = json.loads(
             path.read_text(
                 encoding="utf-8"
             )
         )
+
     except Exception as exc:
+
         raise RuntimeError(
-            f"Shard invalid JSON: {path}: {exc}"
+            f"Invalid shard JSON: "
+            f"{path}: {exc}"
         ) from exc
 
-    stocks = payload.get("stocks")
+    if payload.get(
+        "schema_version"
+    ) != SCHEMA_VERSION:
 
-    if not isinstance(stocks, dict):
         raise RuntimeError(
-            f"Shard stocks must be dict: {path}"
+            f"Shard schema mismatch: "
+            f"{path}"
+        )
+
+    stocks = payload.get(
+        "stocks"
+    )
+
+    if not isinstance(
+        stocks,
+        dict,
+    ):
+
+        raise RuntimeError(
+            f"Shard stocks invalid: "
+            f"{path}"
         )
 
     actual_symbols = {
@@ -2139,231 +2965,125 @@ def validate_shard(
     }
 
     if actual_symbols != expected_symbols:
-        missing = expected_symbols - actual_symbols
-        extra = actual_symbols - expected_symbols
+
+        missing = (
+            expected_symbols
+            - actual_symbols
+        )
+
+        extra = (
+            actual_symbols
+            - expected_symbols
+        )
 
         raise RuntimeError(
-            f"Shard symbol mismatch: {path}; "
+            f"Shard symbol mismatch: "
+            f"{path}; "
             f"missing={sorted(missing)}; "
             f"extra={sorted(extra)}"
         )
 
-    for symbol in expected_symbols:
+    for symbol, prices in (
+        stocks.items()
+    ):
 
-        prices = stocks.get(symbol)
+        if symbol in (
+            not_started_symbols
+        ):
 
-        if not isinstance(prices, list):
-            raise RuntimeError(
-                f"Shard {path}: "
-                f"{symbol} prices must be list"
-            )
+            if prices != []:
 
-        # ------------------------------------------------------------
-        # Lifecycle exception
-        # ------------------------------------------------------------
-
-        if symbol in not_started_symbols:
-
-            if len(prices) != 0:
                 raise RuntimeError(
-                    f"Shard {path}: "
-                    f"{symbol} not_started "
-                    "must have zero rows"
+                    f"{symbol}: "
+                    "not_started shard "
+                    "must be empty"
                 )
 
             continue
 
-        # ------------------------------------------------------------
-        # Started instruments
-        # ------------------------------------------------------------
+        if not isinstance(
+            prices,
+            list,
+        ):
 
-        if len(prices) < MIN_HISTORY_ROWS:
             raise RuntimeError(
-                f"Shard {path}: "
-                f"{symbol} has no valid history"
+                f"{symbol}: shard "
+                "prices must be list"
             )
 
-        dates: Set[str] = set()
+        if len(prices) < (
+            MIN_HISTORY_ROWS
+        ):
 
-        previous_date: Optional[str] = None
+            raise RuntimeError(
+                f"{symbol}: shard "
+                "has no history"
+            )
+
+        previous_date: Optional[
+            str
+        ] = None
+
+        seen_dates: Set[
+            str
+        ] = set()
 
         for row in prices:
 
-            if not valid_ohlcv_row(row):
+            if not isinstance(
+                row,
+                dict,
+            ):
+
                 raise RuntimeError(
-                    f"Shard {path}: "
-                    f"{symbol} malformed OHLCV"
+                    f"{symbol}: "
+                    "malformed shard row"
+                )
+
+            if not valid_ohlcv_row(
+                row
+            ):
+
+                raise RuntimeError(
+                    f"{symbol}: "
+                    "invalid shard OHLCV"
                 )
 
             row_date = normalize_text(
-                row.get("date")
+                row.get(
+                    "date"
+                )
             )
 
-            if row_date in dates:
+            if row_date in seen_dates:
+
                 raise RuntimeError(
-                    f"Shard {path}: "
-                    f"{symbol} duplicate date "
-                    f"{row_date}"
+                    f"{symbol}: "
+                    "duplicate shard date"
                 )
 
-            dates.add(row_date)
+            seen_dates.add(
+                row_date
+            )
 
             if (
                 previous_date is not None
-                and row_date <= previous_date
+                and row_date
+                <= previous_date
             ):
+
                 raise RuntimeError(
-                    f"Shard {path}: "
-                    f"{symbol} dates not ascending"
+                    f"{symbol}: "
+                    "shard dates not "
+                    "ascending"
                 )
 
             previous_date = row_date
 
 
 # ============================================================================
-# MANIFEST
+# ATOMIC JSON
 # ============================================================================
-
-
-def build_manifest(
-    results: List[Dict[str, Any]],
-    shard_files: List[str],
-) -> Dict[str, Any]:
-
-    total = len(results)
-
-    complete_count = sum(
-        1
-        for result in results
-        if result.get("history_status")
-        == "complete"
-    )
-
-    partial_count = sum(
-        1
-        for result in results
-        if result.get("history_status")
-        == "partial"
-    )
-
-    short_count = sum(
-        1
-        for result in results
-        if result.get("history_status")
-        == "short"
-    )
-
-    not_started_count = sum(
-        1
-        for result in results
-        if result.get("history_status")
-        == "not_started"
-    )
-
-    return {
-        "schema_version": SCHEMA_VERSION,
-        "version": VERSION,
-        "generated_at": datetime.now(
-            TAIWAN_TZ
-        ).isoformat(),
-        "total_symbols": total,
-        "complete_count": complete_count,
-        "partial_count": partial_count,
-        "short_count": short_count,
-        "not_started_count": not_started_count,
-        "files": shard_files,
-    }
-
-
-# ============================================================================
-# MANIFEST VALIDATION
-# ============================================================================
-
-
-def validate_manifest(
-    manifest: Dict[str, Any],
-    *,
-    expected_total: int,
-    expected_complete: int,
-    expected_partial: int,
-    expected_short: int,
-    expected_not_started: int,
-    expected_files: List[str],
-) -> None:
-
-    if manifest.get(
-        "schema_version"
-    ) != SCHEMA_VERSION:
-
-        raise RuntimeError(
-            "Manifest schema_version mismatch"
-        )
-
-    if manifest.get(
-        "version"
-    ) != VERSION:
-
-        raise RuntimeError(
-            "Manifest version mismatch"
-        )
-
-    if manifest.get(
-        "total_symbols"
-    ) != expected_total:
-
-        raise RuntimeError(
-            "Manifest total_symbols mismatch"
-        )
-
-    if manifest.get(
-        "complete_count"
-    ) != expected_complete:
-
-        raise RuntimeError(
-            "Manifest complete_count mismatch"
-        )
-
-    if manifest.get(
-        "partial_count"
-    ) != expected_partial:
-
-        raise RuntimeError(
-            "Manifest partial_count mismatch"
-        )
-
-    if manifest.get(
-        "short_count"
-    ) != expected_short:
-
-        raise RuntimeError(
-            "Manifest short_count mismatch"
-        )
-
-    if manifest.get(
-        "not_started_count"
-    ) != expected_not_started:
-
-        raise RuntimeError(
-            "Manifest not_started_count mismatch"
-        )
-
-    files = manifest.get("files")
-
-    if not isinstance(files, list):
-        raise RuntimeError(
-            "Manifest files must be list"
-        )
-
-    if files != expected_files:
-        raise RuntimeError(
-            "Manifest files mismatch"
-        )
-
-
-# ============================================================================
-# ATOMIC WRITE
-# ============================================================================
-
 
 def atomic_write_json(
     path: Path,
@@ -2379,9 +3099,8 @@ def atomic_write_json(
         prefix=".tmp_",
         suffix=".json",
         dir=str(path.parent),
+        text=True,
     )
-
-    temp_path = Path(temp_name)
 
     try:
 
@@ -2398,21 +3117,29 @@ def atomic_write_json(
                 indent=2,
             )
 
-            handle.write("\n")
+            handle.write(
+                "\n"
+            )
 
             handle.flush()
-            os.fsync(handle.fileno())
+
+            os.fsync(
+                handle.fileno()
+            )
 
         os.replace(
-            temp_path,
+            temp_name,
             path,
         )
 
     finally:
 
-        if temp_path.exists():
-            temp_path.unlink(
-                missing_ok=True
+        if os.path.exists(
+            temp_name
+        ):
+
+            os.unlink(
+                temp_name
             )
 
 
@@ -2420,14 +3147,19 @@ def atomic_write_json(
 # WRITE PRICE DIRECTORY
 # ============================================================================
 
-
 def write_price_directory(
-    results: List[Dict[str, Any]],
-    universe: List[Dict[str, Any]],
+    results: List[
+        Dict[str, Any]
+    ],
+    universe: List[
+        Dict[str, Any]
+    ],
     end_date: date,
-) -> Path:
+) -> None:
 
-    OUTPUT_DIR.parent.mkdir(
+    parent = OUTPUT_DIR.parent
+
+    parent.mkdir(
         parents=True,
         exist_ok=True,
     )
@@ -2435,9 +3167,7 @@ def write_price_directory(
     temp_dir = Path(
         tempfile.mkdtemp(
             prefix=TMP_PREFIX,
-            dir=str(
-                OUTPUT_DIR.parent
-            ),
+            dir=str(parent),
         )
     )
 
@@ -2447,7 +3177,27 @@ def write_price_directory(
             results
         )
 
-        shard_files: List[str] = []
+        shard_files: List[
+            str
+        ] = []
+
+        expected_symbols = {
+            item["symbol"]
+            for item in universe
+        }
+
+        not_started_symbols = {
+            item["symbol"]
+            for item in universe
+            if is_not_started(
+                item,
+                end_date,
+            )
+        }
+
+        seen_symbols: Set[
+            str
+        ] = set()
 
         for shard in shards:
 
@@ -2456,7 +3206,8 @@ def write_price_directory(
             ]
 
             file_name = (
-                f"prices_{shard_number:03d}.json"
+                f"prices_"
+                f"{shard_number:03d}.json"
             )
 
             shard_files.append(
@@ -2466,6 +3217,64 @@ def write_price_directory(
             atomic_write_json(
                 temp_dir / file_name,
                 shard,
+            )
+
+            shard_symbols = {
+                normalize_symbol(
+                    symbol
+                )
+                for symbol in shard[
+                    "stocks"
+                ].keys()
+            }
+
+            overlap = (
+                seen_symbols
+                & shard_symbols
+            )
+
+            if overlap:
+
+                raise RuntimeError(
+                    "Duplicate symbols "
+                    "across shards: "
+                    + ", ".join(
+                        sorted(overlap)
+                    )
+                )
+
+            seen_symbols.update(
+                shard_symbols
+            )
+
+            validate_shard(
+                temp_dir / file_name,
+                shard_symbols,
+                (
+                    not_started_symbols
+                    & shard_symbols
+                ),
+            )
+
+        if (
+            seen_symbols
+            != expected_symbols
+        ):
+
+            missing = (
+                expected_symbols
+                - seen_symbols
+            )
+
+            extra = (
+                seen_symbols
+                - expected_symbols
+            )
+
+            raise RuntimeError(
+                "Shard Universe mismatch: "
+                f"missing={sorted(missing)}; "
+                f"extra={sorted(extra)}"
             )
 
         manifest = build_manifest(
@@ -2478,101 +3287,85 @@ def write_price_directory(
             manifest,
         )
 
-        # ------------------------------------------------------------
-        # Validate temp output before replace
-        # ------------------------------------------------------------
+        # --------------------------------------------------------
+        # Validate manifest before replacement.
+        # --------------------------------------------------------
 
-        universe_symbols = {
-            item["symbol"]
-            for item in universe
+        expected_counts = {
+            status: sum(
+                result.get(
+                    "history_status"
+                ) == status
+                for result in results
+            )
+            for status in (
+                "complete",
+                "partial",
+                "short",
+                "not_started",
+            )
         }
 
-        not_started_symbols = (
-            get_not_started_symbols(
-                universe,
-                end_date,
-            )
-        )
+        if manifest.get(
+            "schema_version"
+        ) != SCHEMA_VERSION:
 
-        for shard, file_name in zip(
-            shards,
-            shard_files,
+            raise RuntimeError(
+                "Manifest schema mismatch"
+            )
+
+        if manifest.get(
+            "total_symbols"
+        ) != len(
+            expected_symbols
         ):
 
-            shard_symbols = {
-                normalize_symbol(symbol)
-                for symbol in shard[
-                    "stocks"
-                ].keys()
-            }
-
-            validate_shard(
-                temp_dir / file_name,
-                shard_symbols,
-                not_started_symbols
-                & shard_symbols,
+            raise RuntimeError(
+                "Manifest total_symbols "
+                "mismatch"
             )
 
-        complete_count = sum(
-            1
-            for result in results
-            if result.get(
-                "history_status"
-            ) == "complete"
-        )
+        for status, count in (
+            expected_counts.items()
+        ):
 
-        partial_count = sum(
-            1
-            for result in results
-            if result.get(
-                "history_status"
-            ) == "partial"
-        )
+            if manifest.get(
+                f"{status}_count"
+            ) != count:
 
-        short_count = sum(
-            1
-            for result in results
-            if result.get(
-                "history_status"
-            ) == "short"
-        )
+                raise RuntimeError(
+                    f"Manifest "
+                    f"{status}_count "
+                    "mismatch"
+                )
 
-        not_started_count = sum(
-            1
-            for result in results
-            if result.get(
-                "history_status"
-            ) == "not_started"
-        )
+        if manifest.get(
+            "files"
+        ) != shard_files:
 
-        validate_manifest(
-            manifest,
-            expected_total=len(
-                universe_symbols
-            ),
-            expected_complete=complete_count,
-            expected_partial=partial_count,
-            expected_short=short_count,
-            expected_not_started=(
-                not_started_count
-            ),
-            expected_files=shard_files,
-        )
+            raise RuntimeError(
+                "Manifest files mismatch"
+            )
 
-        # ------------------------------------------------------------
-        # Replace output atomically at directory level
-        # ------------------------------------------------------------
+        # --------------------------------------------------------
+        # Directory-level atomic replacement.
+        # --------------------------------------------------------
 
-        backup_dir: Optional[Path] = None
+        backup_dir: Optional[
+            Path
+        ] = None
 
         if OUTPUT_DIR.exists():
 
-            backup_dir = OUTPUT_DIR.with_name(
-                OUTPUT_DIR.name
-                + ".backup"
+            backup_dir = (
+                OUTPUT_DIR.with_name(
+                    OUTPUT_DIR.name
+                    + ".backup"
+                )
             )
 
             if backup_dir.exists():
+
                 shutil.rmtree(
                     backup_dir
                 )
@@ -2596,6 +3389,7 @@ def write_price_directory(
                 and backup_dir.exists()
                 and not OUTPUT_DIR.exists()
             ):
+
                 os.replace(
                     backup_dir,
                     OUTPUT_DIR,
@@ -2607,15 +3401,15 @@ def write_price_directory(
             backup_dir is not None
             and backup_dir.exists()
         ):
+
             shutil.rmtree(
                 backup_dir
             )
 
-        return OUTPUT_DIR
-
     except Exception:
 
         if temp_dir.exists():
+
             shutil.rmtree(
                 temp_dir,
                 ignore_errors=True,
@@ -2628,10 +3422,13 @@ def write_price_directory(
 # FINAL OUTPUT VALIDATION
 # ============================================================================
 
-
 def validate_complete_output(
-    universe: List[Dict[str, Any]],
-    results: List[Dict[str, Any]],
+    universe: List[
+        Dict[str, Any]
+    ],
+    results: List[
+        Dict[str, Any]
+    ],
     end_date: date,
 ) -> None:
 
@@ -2642,29 +3439,35 @@ def validate_complete_output(
     )
 
     if not OUTPUT_DIR.exists():
+
         raise RuntimeError(
             "Price output directory missing"
         )
 
     manifest_path = (
-        OUTPUT_DIR / "manifest.json"
+        OUTPUT_DIR
+        / "manifest.json"
     )
 
     if not manifest_path.exists():
+
         raise RuntimeError(
             "Price manifest missing"
         )
 
-    try:
-        manifest = json.loads(
-            manifest_path.read_text(
-                encoding="utf-8"
-            )
+    manifest = json.loads(
+        manifest_path.read_text(
+            encoding="utf-8"
         )
-    except Exception as exc:
+    )
+
+    if manifest.get(
+        "schema_version"
+    ) != SCHEMA_VERSION:
+
         raise RuntimeError(
-            f"Unable to read manifest: {exc}"
-        ) from exc
+            "Manifest schema mismatch"
+        )
 
     shard_files = manifest.get(
         "files"
@@ -2674,6 +3477,7 @@ def validate_complete_output(
         shard_files,
         list,
     ):
+
         raise RuntimeError(
             "Manifest files missing"
         )
@@ -2683,14 +3487,18 @@ def validate_complete_output(
         for item in universe
     }
 
-    not_started_symbols = (
-        get_not_started_symbols(
-            universe,
+    not_started_symbols = {
+        item["symbol"]
+        for item in universe
+        if is_not_started(
+            item,
             end_date,
         )
-    )
+    }
 
-    seen_symbols: Set[str] = set()
+    seen_symbols: Set[
+        str
+    ] = set()
 
     for file_name in shard_files:
 
@@ -2700,6 +3508,7 @@ def validate_complete_output(
         )
 
         if not path.exists():
+
             raise RuntimeError(
                 f"Manifest shard missing: "
                 f"{file_name}"
@@ -2719,22 +3528,18 @@ def validate_complete_output(
             stocks,
             dict,
         ):
+
             raise RuntimeError(
                 f"Shard stocks invalid: "
                 f"{file_name}"
             )
 
         shard_symbols = {
-            normalize_symbol(symbol)
+            normalize_symbol(
+                symbol
+            )
             for symbol in stocks.keys()
         }
-
-        validate_shard(
-            path,
-            shard_symbols,
-            not_started_symbols
-            & shard_symbols,
-        )
 
         overlap = (
             seen_symbols
@@ -2742,18 +3547,32 @@ def validate_complete_output(
         )
 
         if overlap:
+
             raise RuntimeError(
-                "Duplicate symbols across shards: "
+                "Duplicate symbols "
+                "across final shards: "
                 + ", ".join(
                     sorted(overlap)
                 )
             )
 
+        validate_shard(
+            path,
+            shard_symbols,
+            (
+                not_started_symbols
+                & shard_symbols
+            ),
+        )
+
         seen_symbols.update(
             shard_symbols
         )
 
-    if seen_symbols != expected_symbols:
+    if (
+        seen_symbols
+        != expected_symbols
+    ):
 
         missing = (
             expected_symbols
@@ -2766,235 +3585,172 @@ def validate_complete_output(
         )
 
         raise RuntimeError(
-            "Final shard Universe mismatch: "
+            "Final shard Universe "
+            "mismatch: "
             f"missing={sorted(missing)}; "
             f"extra={sorted(extra)}"
         )
 
-    complete_count = sum(
-        1
-        for result in results
-        if result.get(
-            "history_status"
-        ) == "complete"
-    )
+    expected_counts = {
+        status: sum(
+            result.get(
+                "history_status"
+            ) == status
+            for result in results
+        )
+        for status in (
+            "complete",
+            "partial",
+            "short",
+            "not_started",
+        )
+    }
 
-    partial_count = sum(
-        1
-        for result in results
-        if result.get(
-            "history_status"
-        ) == "partial"
-    )
+    for status, count in (
+        expected_counts.items()
+    ):
 
-    short_count = sum(
-        1
-        for result in results
-        if result.get(
-            "history_status"
-        ) == "short"
-    )
+        if manifest.get(
+            f"{status}_count"
+        ) != count:
 
-    not_started_count = sum(
-        1
-        for result in results
-        if result.get(
-            "history_status"
-        ) == "not_started"
-    )
+            raise RuntimeError(
+                f"Manifest "
+                f"{status}_count mismatch"
+            )
 
-    validate_manifest(
-        manifest,
-        expected_total=len(
-            expected_symbols
-        ),
-        expected_complete=complete_count,
-        expected_partial=partial_count,
-        expected_short=short_count,
-        expected_not_started=(
-            not_started_count
-        ),
-        expected_files=[
-            str(file_name)
-            for file_name in shard_files
-        ],
-    )
+    if manifest.get(
+        "total_symbols"
+    ) != len(
+        expected_symbols
+    ):
+
+        raise RuntimeError(
+            "Manifest total_symbols "
+            "mismatch"
+        )
+
+    if manifest.get(
+        "files"
+    ) != shard_files:
+
+        raise RuntimeError(
+            "Manifest files mismatch"
+        )
 
 
 # ============================================================================
 # REPORT
 # ============================================================================
 
-
 def print_report(
-    universe: List[Dict[str, Any]],
-    results: List[Dict[str, Any]],
-    twse_stats: Dict[str, int],
-    tpex_stats: Dict[str, int],
-    yahoo_stats: Dict[str, int],
+    universe: List[
+        Dict[str, Any]
+    ],
+    results: List[
+        Dict[str, Any]
+    ],
+    twse: Dict[str, int],
+    tpex: Dict[str, int],
+    yahoo: Dict[str, int],
     diagnostics: List[str],
 ) -> None:
 
-    total = len(universe)
-
-    complete = sum(
-        1
-        for result in results
-        if result.get(
-            "history_status"
-        ) == "complete"
-    )
-
-    partial = sum(
-        1
-        for result in results
-        if result.get(
-            "history_status"
-        ) == "partial"
-    )
-
-    short = sum(
-        1
-        for result in results
-        if result.get(
-            "history_status"
-        ) == "short"
-    )
-
-    not_started = sum(
-        1
-        for result in results
-        if result.get(
-            "history_status"
-        ) == "not_started"
-    )
-
-    valid_started = (
-        complete
-        + partial
-        + short
-    )
-
-    success_rate = (
-        (
-            valid_started
-            + not_started
+    counts = {
+        status: sum(
+            result.get(
+                "history_status"
+            ) == status
+            for result in results
         )
-        / total
-        * 100
-        if total
-        else 0.0
-    )
+        for status in (
+            "complete",
+            "partial",
+            "short",
+            "not_started",
+        )
+    }
 
-    print()
+    print("")
     print("=" * 72)
     print("PRICE DATA VALIDATION")
     print("=" * 72)
 
     print(
-        f"Universe：{total}"
+        f"Universe："
+        f"{len(universe)}"
     )
 
     print(
-        f"Price：{len(results)}"
+        f"Price："
+        f"{len(results)}"
     )
 
     print(
-        f"Complete：{complete}"
+        f"Complete："
+        f"{counts['complete']}"
     )
 
     print(
-        f"Partial：{partial}"
+        f"Partial："
+        f"{counts['partial']}"
     )
 
     print(
-        f"Short：{short}"
+        f"Short："
+        f"{counts['short']}"
     )
 
     print(
-        f"Not started：{not_started}"
+        f"Not started："
+        f"{counts['not_started']}"
+    )
+
+    print("")
+
+    print(
+        "TWSE："
+        f"attempted={twse['attempted']} "
+        f"source_ok={twse['source_ok']} "
+        f"rows={twse['rows']} "
+        f"failed={twse['failed']}"
     )
 
     print(
-        f"成功率：{success_rate:.2f}%"
-    )
-
-    print()
-
-    print(
-        "TWSE 官方交易日嘗試："
-        f"{twse_stats['attempted']}"
+        "TPEx："
+        f"attempted={tpex['attempted']} "
+        f"source_ok={tpex['source_ok']} "
+        f"rows={tpex['rows']} "
+        f"failed={tpex['failed']}"
     )
 
     print(
-        "TWSE 成功："
-        f"{twse_stats['success']}"
-    )
-
-    print(
-        "TWSE 失敗："
-        f"{twse_stats['failed']}"
-    )
-
-    print()
-
-    print(
-        "TPEx 官方交易日嘗試："
-        f"{tpex_stats['attempted']}"
-    )
-
-    print(
-        "TPEx 成功："
-        f"{tpex_stats['success']}"
-    )
-
-    print(
-        "TPEx 失敗："
-        f"{tpex_stats['failed']}"
-    )
-
-    print()
-
-    print(
-        "Yahoo fallback 嘗試："
-        f"{yahoo_stats['yahoo_attempted']}"
-    )
-
-    print(
-        "Yahoo fallback 成功："
-        f"{yahoo_stats['yahoo_success']}"
-    )
-
-    print(
-        "Yahoo fallback 失敗："
-        f"{yahoo_stats['yahoo_failed']}"
+        "Yahoo fallback："
+        f"attempted={yahoo['yahoo_attempted']} "
+        f"success={yahoo['yahoo_success']} "
+        f"failed={yahoo['yahoo_failed']}"
     )
 
     if diagnostics:
 
-        print()
+        print("")
         print(
-            f"Diagnostics：{len(diagnostics)}"
+            f"Diagnostics："
+            f"{len(diagnostics)}"
         )
 
-        for diagnostic in diagnostics[:50]:
+        for diagnostic in (
+            diagnostics[:50]
+        ):
+
             print(
                 f"  {diagnostic}"
             )
-
-        if len(diagnostics) > 50:
-            print(
-                f"  ... "
-                f"{len(diagnostics) - 50} more"
-            )
-
-    print("=" * 72)
 
 
 # ============================================================================
 # MAIN
 # ============================================================================
-
 
 def main() -> int:
 
@@ -3007,83 +3763,81 @@ def main() -> int:
     )
 
     print(
-        f"Schema：{SCHEMA_VERSION}"
+        f"Schema："
+        f"{SCHEMA_VERSION}"
     )
 
-    print(
-        f"Universe：{UNIVERSE_FILE}"
+    end_date = (
+        today_taiwan()
     )
 
-    print(
-        f"Output：{OUTPUT_DIR}"
-    )
+    if START_DATE > end_date:
 
-    print()
-
-    # ------------------------------------------------------------------------
-    # Date range
-    # ------------------------------------------------------------------------
-
-    start_date = date(
-        2026,
-        1,
-        5,
-    )
-
-    end_date = today_taiwan()
-
-    if start_date > end_date:
         raise RuntimeError(
             "Invalid date range"
         )
 
     print(
         f"資料日期："
-        f"{start_date.isoformat()} "
+        f"{START_DATE.isoformat()} "
         f"~ "
         f"{end_date.isoformat()}"
     )
 
-    print()
+    print("")
 
     # ------------------------------------------------------------------------
-    # Load Universe
+    # Universe
     # ------------------------------------------------------------------------
 
     universe = load_universe()
 
+    not_started_symbols = {
+        item["symbol"]
+        for item in universe
+        if is_not_started(
+            item,
+            end_date,
+        )
+    }
+
+    twse_symbols = {
+        item["symbol"]
+        for item in universe
+        if (
+            item["market"] == "TWSE"
+            and not is_not_started(
+                item,
+                end_date,
+            )
+        )
+    }
+
+    tpex_symbols = {
+        item["symbol"]
+        for item in universe
+        if (
+            item["market"] == "TPEX"
+            and not is_not_started(
+                item,
+                end_date,
+            )
+        )
+    }
+
     print(
-        f"Universe total："
+        f"Universe："
         f"{len(universe)}"
     )
 
-    twse_universe = [
-        item
-        for item in universe
-        if item["market"] == "TWSE"
-    ]
-
-    tpex_universe = [
-        item
-        for item in universe
-        if item["market"] == "TPEX"
-    ]
-
     print(
-        f"TWSE："
-        f"{len(twse_universe)}"
+        f"TWSE started："
+        f"{len(twse_symbols)}"
     )
 
     print(
-        f"TPEx："
-        f"{len(tpex_universe)}"
-    )
-
-    not_started_symbols = (
-        get_not_started_symbols(
-            universe,
-            end_date,
-        )
+        f"TPEx started："
+        f"{len(tpex_symbols)}"
     )
 
     print(
@@ -3092,6 +3846,7 @@ def main() -> int:
     )
 
     if not_started_symbols:
+
         print(
             "Lifecycle："
             + ", ".join(
@@ -3101,12 +3856,11 @@ def main() -> int:
             )
         )
 
-    print()
-
     # ------------------------------------------------------------------------
     # Official TWSE
     # ------------------------------------------------------------------------
 
+    print("")
     print("=" * 72)
     print("FETCH OFFICIAL TWSE")
     print("=" * 72)
@@ -3114,13 +3868,15 @@ def main() -> int:
     twse_data, twse_stats, twse_diag = (
         collect_official_market_data(
             "TWSE",
-            start_date,
+            START_DATE,
             end_date,
+            twse_symbols,
         )
     )
 
     print(
-        f"TWSE symbols with data："
+        f"TWSE Universe symbols "
+        f"with data："
         f"{len(twse_data)}"
     )
 
@@ -3128,7 +3884,7 @@ def main() -> int:
     # Official TPEx
     # ------------------------------------------------------------------------
 
-    print()
+    print("")
     print("=" * 72)
     print("FETCH OFFICIAL TPEX")
     print("=" * 72)
@@ -3136,13 +3892,15 @@ def main() -> int:
     tpex_data, tpex_stats, tpex_diag = (
         collect_official_market_data(
             "TPEX",
-            start_date,
+            START_DATE,
             end_date,
+            tpex_symbols,
         )
     )
 
     print(
-        f"TPEx symbols with data："
+        f"TPEx Universe symbols "
+        f"with data："
         f"{len(tpex_data)}"
     )
 
@@ -3152,43 +3910,46 @@ def main() -> int:
 
     official_data: Dict[
         str,
-        Dict[str, Dict[str, Any]]
+        Dict[
+            str,
+            Dict[str, Any]
+        ]
     ] = {}
 
-    for symbol, rows in twse_data.items():
-        official_data[
-            symbol
-        ] = rows
+    for source_data in (
+        twse_data,
+        tpex_data,
+    ):
 
-    for symbol, rows in tpex_data.items():
+        for symbol, rows in (
+            source_data.items()
+        ):
 
-        if symbol not in official_data:
-            official_data[
-                symbol
-            ] = rows
-
-        else:
-
-            official_data[
-                symbol
-            ].update(rows)
+            official_data.setdefault(
+                symbol,
+                {}
+            ).update(
+                rows
+            )
 
     # ------------------------------------------------------------------------
     # Build results
     # ------------------------------------------------------------------------
 
-    print()
+    print("")
     print("=" * 72)
     print("BUILD PRICE RESULTS")
     print("=" * 72)
 
-    results, yahoo_stats, build_diag = (
-        build_results(
-            universe,
-            start_date,
-            end_date,
-            official_data,
-        )
+    (
+        results,
+        yahoo_stats,
+        build_diag,
+    ) = build_results(
+        universe,
+        START_DATE,
+        end_date,
+        official_data,
     )
 
     diagnostics = (
@@ -3198,10 +3959,10 @@ def main() -> int:
     )
 
     # ------------------------------------------------------------------------
-    # Validate before writing
+    # Validate
     # ------------------------------------------------------------------------
 
-    print()
+    print("")
     print("=" * 72)
     print("VALIDATE RESULTS BEFORE WRITE")
     print("=" * 72)
@@ -3213,33 +3974,35 @@ def main() -> int:
     )
 
     print(
-        "✓ Universe → Result validation passed"
+        "Universe -> Result "
+        "validation passed"
     )
 
     # ------------------------------------------------------------------------
     # Write
     # ------------------------------------------------------------------------
 
-    print()
+    print("")
     print("=" * 72)
     print("WRITE PRICE OUTPUT")
     print("=" * 72)
 
-    output_path = write_price_directory(
+    write_price_directory(
         results,
         universe,
         end_date,
     )
 
     print(
-        f"✓ Output：{output_path}"
+        "Price output written "
+        "atomically"
     )
 
     # ------------------------------------------------------------------------
-    # Final validation
+    # Final
     # ------------------------------------------------------------------------
 
-    print()
+    print("")
     print("=" * 72)
     print("FINAL VALIDATION")
     print("=" * 72)
@@ -3251,19 +4014,20 @@ def main() -> int:
     )
 
     print(
-        "✓ Manifest validation passed"
+        "Manifest validation passed"
     )
 
     print(
-        "✓ Shard validation passed"
+        "Shard validation passed"
     )
 
     print(
-        "✓ Universe → Price validation passed"
+        "Universe -> Price "
+        "validation passed"
     )
 
     print(
-        "✓ Read-back validation passed"
+        "Read-back validation passed"
     )
 
     # ------------------------------------------------------------------------
@@ -3279,7 +4043,7 @@ def main() -> int:
         diagnostics,
     )
 
-    print()
+    print("")
     print("=" * 72)
     print("PRICE FETCH COMPLETED")
     print("=" * 72)
