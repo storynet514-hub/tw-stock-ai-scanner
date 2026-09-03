@@ -396,8 +396,7 @@ def fetch_for_date(
 # Latest Market Data
 # ============================================================
 
-def fetch_latest_market()
-    -> tuple[date, Dict[str, Any]]:
+def fetch_latest_market() -> tuple[date, Dict[str, Any]]:
 
     today = datetime.now(
         timezone(
