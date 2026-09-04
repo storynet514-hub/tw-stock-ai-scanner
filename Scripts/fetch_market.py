@@ -5,24 +5,29 @@
 台股 AI 選股系統 - fetch_market.py
 ============================================================
 
-Market V2.1
+MARKET ENVIRONMENT V2.1
 
 責任：
 1. 讀取 Data/universe.json
-2. 讀取 Data/prices/ 下所有 manifest-listed price shards
+2. 讀取 Data/prices/ 下 manifest-listed price shards
 3. 建立市場 breadth / volume / new-high-new-low 統計
-4. 抓取 TWSE TAIEX
+4. 抓取 TWSE TAIEX 現值
 5. 抓取足夠 TAIEX 歷史資料計算 MA20 / RSI14 / ATR14
 6. 抓取 TWSE T86 法人資料
 7. 抓取 TPEx 三大法人資料
 8. 建立 Data/market.json
 9. 寫入後重新讀取並驗證
 
-重要契約：
+核心契約：
+------------------------------------------------------------
 - schema_version = market-v2.1
 - market_status = open / closed
-- conditions 必須固定 10 項且順序不可改
-- 資料不足 = unavailable，不得偽造 fail
+- conditions 固定 10 項且順序不可改
+- 資料不足 = unavailable
+- 不得以 0、False 或錯誤 fallback 掩蓋缺資料
+- TAIEX 歷史少於 20 個交易日 -> FAIL
+- TWSE T86 官方有資料但解析為 0 -> FAIL
+- TAIEX change / change_pct 數學不一致 -> FAIL
 - 不修改 Data/prices/
 - 不修改 Data/universe.json
 """
@@ -32,10 +37,10 @@ from __future__ import annotations
 import calendar
 import json
 import math
-import os
 import re
 import sys
 import time
+
 from collections import defaultdict
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -89,6 +94,10 @@ TWSE_MI_5MINS_HIST_URL = (
     "https://openapi.twse.com.tw/v1/indicesReport/MI_5MINS_HIST"
 )
 
+TWSE_MI_5MINS_HIST_RWD_URL = (
+    "https://www.twse.com.tw/indicesReport/MI_5MINS_HIST"
+)
+
 TWSE_T86_URL = (
     "https://www.twse.com.tw/rwd/zh/fund/T86"
 )
@@ -110,7 +119,11 @@ SESSION.headers.update(
             "Mozilla/5.0 "
             "(compatible; tw-stock-ai-scanner/market-v2.1)"
         ),
-        "Accept": "application/json,text/plain,*/*",
+        "Accept": (
+            "application/json,"
+            "text/plain,"
+            "*/*"
+        ),
     }
 )
 
@@ -122,10 +135,9 @@ def request_json(
     retries: int = 3,
 ) -> Any:
     """
-    官方 API JSON request。
+    官方 JSON API。
 
-    不在這裡偽造資料。
-    API 失敗經 retries 後直接拋出例外。
+    不做假資料 fallback。
     """
 
     last_error: Optional[Exception] = None
@@ -146,12 +158,11 @@ def request_json(
             last_error = exc
 
             if attempt < retries:
-                sleep_seconds = attempt * 1.5
                 print(
                     f"⚠️ API request failed "
                     f"{attempt}/{retries}: {url}"
                 )
-                time.sleep(sleep_seconds)
+                time.sleep(attempt * 1.5)
 
     raise RuntimeError(
         f"Official API request failed: {url}"
@@ -180,10 +191,10 @@ def normalize_text(value: Any) -> str:
         ")": "",
         "（": "",
         "）": "",
-        "［": "",
-        "］": "",
         "[": "",
         "]": "",
+        "［": "",
+        "］": "",
         "_": "",
         "-": "",
         "/": "",
@@ -218,7 +229,7 @@ def parse_number(value: Any) -> Optional[float]:
     if not text:
         return None
 
-    if text in {
+    if text.lower() in {
         "-",
         "--",
         "---",
@@ -230,6 +241,7 @@ def parse_number(value: Any) -> Optional[float]:
         "none",
         "nan",
         "n/a",
+        "na",
     }:
         return None
 
@@ -240,16 +252,19 @@ def parse_number(value: Any) -> Optional[float]:
         text = text[1:-1]
 
     text = (
-        text.replace(",", "")
+        text
+        .replace(",", "")
         .replace("，", "")
         .replace("%", "")
         .replace("％", "")
         .strip()
     )
 
+    if not text:
+        return None
+
     try:
         number = float(text)
-
     except ValueError:
         return None
 
@@ -282,7 +297,11 @@ def parse_date(value: Any) -> Optional[str]:
     if not text:
         return None
 
-    text = text.replace(".", "/").replace("-", "/")
+    text = (
+        text
+        .replace(".", "/")
+        .replace("-", "/")
+    )
 
     match = re.fullmatch(
         r"(\d{3,4})/(\d{1,2})/(\d{1,2})",
@@ -298,15 +317,25 @@ def parse_date(value: Any) -> Optional[str]:
             year += 1911
 
         try:
-            return (
-                f"{year:04d}-"
-                f"{month:02d}-"
-                f"{day:02d}"
+            datetime(
+                year,
+                month,
+                day,
             )
-        except Exception:
+        except ValueError:
             return None
 
-    digits = re.sub(r"\D", "", text)
+        return (
+            f"{year:04d}-"
+            f"{month:02d}-"
+            f"{day:02d}"
+        )
+
+    digits = re.sub(
+        r"\D",
+        "",
+        text,
+    )
 
     if len(digits) == 8:
         year = int(digits[:4])
@@ -322,15 +351,14 @@ def parse_date(value: Any) -> Optional[str]:
                 month,
                 day,
             )
-
-            return (
-                f"{year:04d}-"
-                f"{month:02d}-"
-                f"{day:02d}"
-            )
-
         except ValueError:
             return None
+
+        return (
+            f"{year:04d}-"
+            f"{month:02d}-"
+            f"{day:02d}"
+        )
 
     if len(digits) == 7:
         year = int(digits[:3]) + 1911
@@ -343,15 +371,14 @@ def parse_date(value: Any) -> Optional[str]:
                 month,
                 day,
             )
-
-            return (
-                f"{year:04d}-"
-                f"{month:02d}-"
-                f"{day:02d}"
-            )
-
         except ValueError:
             return None
+
+        return (
+            f"{year:04d}-"
+            f"{month:02d}-"
+            f"{day:02d}"
+        )
 
     return None
 
@@ -365,10 +392,6 @@ def is_finite_number(value: Any) -> bool:
 
 
 def clean_json(value: Any) -> Any:
-    """
-    JSON 輸出前清理 NaN / Infinity。
-    """
-
     if isinstance(value, float):
         if not math.isfinite(value):
             return None
@@ -390,18 +413,59 @@ def clean_json(value: Any) -> Any:
     return value
 
 
+def first_value(
+    row: dict[str, Any],
+    keys: Iterable[str],
+) -> Any:
+    normalized = {
+        normalize_text(key): value
+        for key, value in row.items()
+    }
+
+    for key in keys:
+        value = normalized.get(
+            normalize_text(key)
+        )
+
+        if value is not None:
+            return value
+
+    return None
+
+
 # ============================================================
 # Universe
 # ============================================================
 
-def is_excluded_instrument(item: dict[str, Any]) -> bool:
-    """
-    排除 ETF / 基金 / 債券 / ETN / 權證 / REIT 等。
+def normalize_symbol(value: Any) -> Optional[str]:
+    if value is None:
+        return None
 
-    Universe 本身已經負責主要分類，
-    這裡再做 defensive filtering。
-    """
+    text = str(value).strip().upper()
 
+    if not text:
+        return None
+
+    for suffix in (
+        ".TW",
+        ".TWO",
+        ".TPEX",
+    ):
+        if text.endswith(suffix):
+            text = text[:-len(suffix)]
+
+    if not re.fullmatch(
+        r"[0-9A-Z]{4,6}",
+        text,
+    ):
+        return None
+
+    return text
+
+
+def is_excluded_instrument(
+    item: dict[str, Any],
+) -> bool:
     text_parts = []
 
     for key in (
@@ -417,9 +481,11 @@ def is_excluded_instrument(item: dict[str, Any]) -> bool:
         if value is not None:
             text_parts.append(str(value))
 
-    text = normalize_text(" ".join(text_parts))
+    text = normalize_text(
+        " ".join(text_parts)
+    )
 
-    excluded_keywords = [
+    excluded = [
         "etf",
         "基金",
         "債券",
@@ -433,58 +499,10 @@ def is_excluded_instrument(item: dict[str, Any]) -> bool:
         "存託憑證",
     ]
 
-    for keyword in excluded_keywords:
-        if normalize_text(keyword) in text:
-            return True
-
-    return False
-
-
-def is_stock(item: dict[str, Any]) -> bool:
-    if not isinstance(item, dict):
-        return False
-
-    status = str(
-        item.get("status", "")
-    ).strip().lower()
-
-    if status != "active":
-        return False
-
-    if is_excluded_instrument(item):
-        return False
-
-    return True
-
-
-def normalize_symbol(value: Any) -> Optional[str]:
-    if value is None:
-        return None
-
-    text = str(value).strip()
-
-    if not text:
-        return None
-
-    text = text.upper()
-
-    # 去除常見市場後綴
-    for suffix in (
-        ".TW",
-        ".TWO",
-        ".TPEX",
-    ):
-        if text.endswith(suffix):
-            text = text[: -len(suffix)]
-
-    # 台股代號主要為 4~6 碼英數
-    if not re.fullmatch(
-        r"[0-9A-Z]{4,6}",
-        text,
-    ):
-        return None
-
-    return text
+    return any(
+        normalize_text(keyword) in text
+        for keyword in excluded
+    )
 
 
 def load_universe() -> set[str]:
@@ -513,17 +531,22 @@ def load_universe() -> set[str]:
 
     universe: set[str] = set()
 
-    for key, raw_item in stocks.items():
-        if not isinstance(raw_item, dict):
+    for key, item in stocks.items():
+        if not isinstance(item, dict):
             continue
 
-        if not is_stock(raw_item):
+        if str(
+            item.get("status", "")
+        ).strip().lower() != "active":
+            continue
+
+        if is_excluded_instrument(item):
             continue
 
         symbol = normalize_symbol(
-            raw_item.get("symbol")
-            or raw_item.get("code")
-            or raw_item.get("stock_id")
+            item.get("symbol")
+            or item.get("code")
+            or item.get("stock_id")
             or key
         )
 
@@ -532,11 +555,11 @@ def load_universe() -> set[str]:
 
     if not universe:
         raise RuntimeError(
-            "No active common stocks found in universe.json"
+            "No active common stocks found"
         )
 
     print(
-        f"✓ Active common-stock universe: "
+        "Active common-stock universe: "
         f"{len(universe)}"
     )
 
@@ -544,7 +567,7 @@ def load_universe() -> set[str]:
 
 
 # ============================================================
-# Price shard parsing
+# Price shards
 # ============================================================
 
 DATE_KEYS = [
@@ -596,26 +619,6 @@ SYMBOL_KEYS = [
 ]
 
 
-def first_value(
-    row: dict[str, Any],
-    keys: Iterable[str],
-) -> Any:
-    normalized = {
-        normalize_text(key): value
-        for key, value in row.items()
-    }
-
-    for key in keys:
-        value = normalized.get(
-            normalize_text(key)
-        )
-
-        if value is not None:
-            return value
-
-    return None
-
-
 def looks_like_price_row(
     value: Any,
 ) -> bool:
@@ -641,40 +644,33 @@ def looks_like_price_row(
 def extract_price_rows(
     payload: Any,
     inherited_symbol: Optional[str] = None,
-) -> list[tuple[Optional[str], dict[str, Any]]]:
+) -> list[
+    tuple[
+        Optional[str],
+        dict[str, Any],
+    ]
+]:
     """
-    遞迴解析 price shard。
+    價格 shard 專用 parser。
 
-    支援：
-    - {"stocks": {...}}
-    - {"2330": [...]}
-    - {"data": {"rows": [...]}}
-    - {"result": {"prices": [...]}}
-    - 單一股票 object
-    - symbol/code/stock_id/ticker
+    保留目前已驗證正常的 shard parsing。
     """
 
-    results: list[
-        tuple[Optional[str], dict[str, Any]]
-    ] = []
+    result = []
 
     if isinstance(payload, list):
         for item in payload:
-            results.extend(
+            result.extend(
                 extract_price_rows(
                     item,
                     inherited_symbol,
                 )
             )
 
-        return results
+        return result
 
     if not isinstance(payload, dict):
-        return results
-
-    # --------------------------------------------------------
-    # 直接 row
-    # --------------------------------------------------------
+        return result
 
     if looks_like_price_row(payload):
         symbol = normalize_symbol(
@@ -682,22 +678,18 @@ def extract_price_rows(
                 payload,
                 SYMBOL_KEYS,
             )
-        ) or inherited_symbol
+        )
 
-        results.append(
+        result.append(
             (
-                symbol,
+                symbol or inherited_symbol,
                 payload,
             )
         )
 
-        return results
+        return result
 
-    # --------------------------------------------------------
-    # 優先處理 wrapper keys
-    # --------------------------------------------------------
-
-    wrapper_keys = [
+    wrappers = {
         "stocks",
         "data",
         "rows",
@@ -711,41 +703,29 @@ def extract_price_rows(
         "historical",
         "price_history",
         "dataRows",
-    ]
-
-    for key in wrapper_keys:
-        if key not in payload:
-            continue
-
-        child = payload[key]
-
-        results.extend(
-            extract_price_rows(
-                child,
-                inherited_symbol,
-            )
-        )
-
-    # --------------------------------------------------------
-    # symbol map / nested objects
-    # --------------------------------------------------------
+    }
 
     for key, value in payload.items():
-        if key in wrapper_keys:
-            continue
-
-        symbol_from_key = normalize_symbol(key)
-
-        if symbol_from_key:
-            results.extend(
+        if key in wrappers:
+            result.extend(
                 extract_price_rows(
                     value,
-                    symbol_from_key,
+                    inherited_symbol,
                 )
             )
             continue
 
-        # object 本身可能含 symbol
+        key_symbol = normalize_symbol(key)
+
+        if key_symbol:
+            result.extend(
+                extract_price_rows(
+                    value,
+                    key_symbol,
+                )
+            )
+            continue
+
         nested_symbol = None
 
         if isinstance(value, dict):
@@ -756,60 +736,15 @@ def extract_price_rows(
                 )
             )
 
-        results.extend(
+        result.extend(
             extract_price_rows(
                 value,
-                nested_symbol or inherited_symbol,
+                nested_symbol
+                or inherited_symbol,
             )
         )
 
-    return results
-
-
-def normalize_price_row(
-    symbol: Optional[str],
-    row: dict[str, Any],
-) -> Optional[dict[str, Any]]:
-    if not symbol:
-        return None
-
-    date_value = first_value(
-        row,
-        DATE_KEYS,
-    )
-
-    close_value = first_value(
-        row,
-        CLOSE_KEYS,
-    )
-
-    volume_value = first_value(
-        row,
-        VOLUME_KEYS,
-    )
-
-    date = parse_date(date_value)
-    close = parse_number(close_value)
-    volume = parse_number(volume_value)
-
-    if date is None:
-        return None
-
-    if close is None:
-        return None
-
-    if close <= 0:
-        return None
-
-    normalized: dict[str, Any] = {
-        "date": date,
-        "close": close,
-    }
-
-    if volume is not None and volume >= 0:
-        normalized["volume"] = volume
-
-    return normalized
+    return result
 
 
 def read_manifest() -> list[Path]:
@@ -825,123 +760,86 @@ def read_manifest() -> list[Path]:
         )
     )
 
-    entries: Any
-
     if isinstance(manifest, dict):
         entries = (
             manifest.get("files")
             or manifest.get("shards")
             or manifest.get("data")
         )
-
-        if entries is None:
-            entries = []
-
-    elif isinstance(manifest, list):
+    else:
         entries = manifest
 
-    else:
+    if not isinstance(entries, list):
         raise ValueError(
-            "prices manifest must be object or list"
+            "prices manifest must contain "
+            "a file list"
         )
 
-    paths: list[Path] = []
+    paths = []
+    seen = set()
 
     for entry in entries:
-        raw_name: Optional[str] = None
+        name = None
 
         if isinstance(entry, str):
-            raw_name = entry
+            name = entry
 
         elif isinstance(entry, dict):
-            raw_name = (
+            name = (
                 entry.get("file")
                 or entry.get("path")
                 or entry.get("filename")
                 or entry.get("name")
             )
 
-        if not raw_name:
+        if not name:
             continue
 
-        path = Path(raw_name)
+        path = Path(name)
 
         if not path.is_absolute():
             path = PRICES_DIR / path
 
-        if path.exists() and path.is_file():
-            paths.append(path)
-
-    # 防止 manifest 中重複
-    unique_paths: list[Path] = []
-    seen: set[str] = set()
-
-    for path in paths:
-        key = str(path.resolve())
-
-        if key in seen:
+        if not path.is_file():
             continue
 
-        seen.add(key)
-        unique_paths.append(path)
+        resolved = str(path.resolve())
 
-    if not unique_paths:
-        # Defensive fallback。
-        # 不是用來掩蓋 manifest 問題，
-        # 只是防止 manifest 結構異常時整個 market 流程無資料。
-        fallback = sorted(
-            PRICES_DIR.glob("prices_*.json")
-        )
+        if resolved in seen:
+            continue
 
-        if fallback:
-            print(
-                "⚠️ Manifest contains no usable files; "
-                "using prices_*.json fallback"
-            )
+        seen.add(resolved)
+        paths.append(path)
 
-            unique_paths = fallback
-
-    if not unique_paths:
+    if not paths:
         raise RuntimeError(
-            "No usable price shard files found"
+            "No usable price shard files "
+            "found from manifest"
         )
 
-    return unique_paths
+    return paths
 
 
 def load_price_histories(
     universe: set[str],
 ) -> dict[str, list[dict[str, Any]]]:
-    """
-    讀取所有 manifest-listed shards。
-
-    關鍵：
-    - 不覆蓋同股票歷史
-    - 多 shard 合併
-    - 日期去重
-    - 只保留 universe 內股票
-    """
-
-    shard_paths = read_manifest()
-
-    print(
-        f"PRICE SHARDS: {len(shard_paths)} files"
-    )
+    paths = read_manifest()
 
     merged: dict[
         str,
-        dict[str, dict[str, Any]],
+        dict[str, dict[str, Any]]
     ] = defaultdict(dict)
 
-    valid_shards = 0
-    malformed_shards = 0
     raw_rows = 0
     valid_rows = 0
+    valid_shards = 0
+    malformed_shards = 0
 
-    for index, path in enumerate(
-        shard_paths,
-        start=1,
-    ):
+    print(
+        f"Price shards: {len(paths)} files"
+    )
+
+    for path in paths:
         try:
             payload = json.loads(
                 path.read_text(
@@ -957,235 +855,359 @@ def load_price_histories(
                 f"{path}"
             ) from exc
 
-        # ----------------------------------------------------
-        # schema version
-        # ----------------------------------------------------
-
-        if isinstance(payload, dict):
-            shard_schema = payload.get(
-                "schema_version"
-            )
-
-            if (
-                shard_schema is not None
-                and shard_schema != PRICE_SCHEMA_VERSION
-            ):
-                print(
-                    f"⚠️ Skip incompatible shard: "
-                    f"{path.name} "
-                    f"schema={shard_schema}"
-                )
-                continue
-
-        rows = extract_price_rows(payload)
+        rows = extract_price_rows(
+            payload
+        )
 
         if rows:
             valid_shards += 1
 
-        for raw_symbol, raw_row in rows:
+        for raw_symbol, row in rows:
             raw_rows += 1
 
             symbol = normalize_symbol(
                 raw_symbol
             )
 
-            if not symbol:
-                continue
-
             if symbol not in universe:
                 continue
 
-            normalized = normalize_price_row(
-                symbol,
-                raw_row,
+            trade_date = parse_date(
+                first_value(
+                    row,
+                    DATE_KEYS,
+                )
             )
 
-            if normalized is None:
+            close = parse_number(
+                first_value(
+                    row,
+                    CLOSE_KEYS,
+                )
+            )
+
+            volume = parse_number(
+                first_value(
+                    row,
+                    VOLUME_KEYS,
+                )
+            )
+
+            if (
+                trade_date is None
+                or close is None
+                or close <= 0
+            ):
                 continue
+
+            normalized = {
+                "date": trade_date,
+                "close": close,
+            }
+
+            if (
+                volume is not None
+                and volume >= 0
+            ):
+                normalized["volume"] = volume
+
+            existing = merged[
+                symbol
+            ].get(trade_date)
+
+            if existing is None:
+                merged[
+                    symbol
+                ][trade_date] = normalized
+
+            elif (
+                "volume" not in existing
+                and "volume" in normalized
+            ):
+                merged[
+                    symbol
+                ][trade_date] = normalized
 
             valid_rows += 1
 
-            date = normalized["date"]
-
-            existing = merged[symbol].get(
-                date
-            )
-
-            # 同日期多來源時：
-            # 保留有 volume 的版本；
-            # 否則保留後者。
-            if existing is None:
-                merged[symbol][date] = normalized
-
-            else:
-                existing_has_volume = (
-                    "volume" in existing
-                    and existing["volume"] is not None
-                )
-
-                new_has_volume = (
-                    "volume" in normalized
-                    and normalized["volume"] is not None
-                )
-
-                if new_has_volume and not existing_has_volume:
-                    merged[symbol][date] = normalized
-
-                elif new_has_volume == existing_has_volume:
-                    merged[symbol][date] = normalized
-
-        if index % 25 == 0:
-            print(
-                f"  parsed {index}/"
-                f"{len(shard_paths)} shards..."
-            )
-
-    output: dict[
-        str,
-        list[dict[str, Any]],
-    ] = {}
-
-    for symbol, date_map in merged.items():
-        history = sorted(
-            date_map.values(),
+    histories = {
+        symbol: sorted(
+            values.values(),
             key=lambda row: row["date"],
         )
-
-        if history:
-            output[symbol] = history
-
-    coverage = len(output)
+        for symbol, values in merged.items()
+    }
 
     print(
-        "PRICE SHARD RESULT:"
-    )
-    print(
-        f"  manifest shards : {len(shard_paths)}"
-    )
-    print(
-        f"  valid shards    : {valid_shards}"
-    )
-    print(
-        f"  malformed shards: {malformed_shards}"
-    )
-    print(
-        f"  raw price rows  : {raw_rows}"
-    )
-    print(
-        f"  valid rows      : {valid_rows}"
-    )
-    print(
-        f"  stock coverage  : {coverage}/"
-        f"{len(universe)}"
+        f"manifest shards: {len(paths)}"
     )
 
-    if coverage < 1000:
-        raise RuntimeError(
-            "Price coverage critically low: "
-            f"{coverage}/{len(universe)}"
+    print(
+        f"valid shards: {valid_shards}"
+    )
+
+    print(
+        f"malformed shards: {malformed_shards}"
+    )
+
+    print(
+        f"raw price rows: {raw_rows}"
+    )
+
+    print(
+        f"valid rows: {valid_rows}"
+    )
+
+    print(
+        "stock coverage: "
+        f"{len(histories)}/{len(universe)}"
+    )
+
+    if set(histories) != universe:
+        missing = sorted(
+            universe - set(histories)
         )
 
-    return output
+        raise RuntimeError(
+            "Price history coverage mismatch: "
+            f"{len(histories)}/{len(universe)}; "
+            f"missing={missing[:20]}"
+        )
+
+    return histories
 
 
 # ============================================================
-# TAIEX
+# Generic table parser
 # ============================================================
 
-def find_first_dict_with_key(
+def extract_table_rows(
     payload: Any,
-    candidate_keys: set[str],
-) -> Optional[dict[str, Any]]:
-    if isinstance(payload, dict):
-        normalized_keys = {
-            normalize_text(key)
-            for key in payload.keys()
-        }
+) -> list[dict[str, Any]]:
+    """
+    通用官方表格 parser。
 
-        normalized_candidates = {
-            normalize_text(key)
-            for key in candidate_keys
-        }
+    支援：
+    1. fields + data
+    2. fields + rows
+    3. tables[].fields + tables[].data
+    4. list[dict]
+    """
 
-        if normalized_keys & normalized_candidates:
-            return payload
+    output: list[dict[str, Any]] = []
 
-        for value in payload.values():
-            result = find_first_dict_with_key(
-                value,
-                candidate_keys,
-            )
+    def add_table(
+        fields: Any,
+        rows: Any,
+    ) -> None:
+        if not isinstance(
+            fields,
+            list,
+        ):
+            return
 
-            if result is not None:
-                return result
+        if not isinstance(
+            rows,
+            list,
+        ):
+            return
 
-    elif isinstance(payload, list):
-        for item in payload:
-            result = find_first_dict_with_key(
-                item,
-                candidate_keys,
-            )
-
-            if result is not None:
-                return result
-
-    return None
-
-
-def extract_index_row(
-    payload: Any,
-) -> Optional[dict[str, Any]]:
-    if isinstance(payload, list):
-        for row in payload:
-            if not isinstance(row, dict):
+        for raw_row in rows:
+            if isinstance(
+                raw_row,
+                dict,
+            ):
+                output.append(
+                    raw_row
+                )
                 continue
 
-            if (
-                first_value(
-                    row,
-                    [
-                        "指數",
-                        "收盤指數",
-                        "ClosingIndex",
-                    ],
-                )
-                is not None
+            if not isinstance(
+                raw_row,
+                list,
             ):
-                return row
+                continue
 
-        return None
+            row = {}
 
-    if isinstance(payload, dict):
-        candidate = find_first_dict_with_key(
-            payload,
-            {
-                "指數",
-                "收盤指數",
-                "ClosingIndex",
-            },
+            for index, field in enumerate(
+                fields
+            ):
+                if index >= len(raw_row):
+                    break
+
+                row[str(field)] = (
+                    raw_row[index]
+                )
+
+            if row:
+                output.append(row)
+
+    def walk(
+        value: Any,
+    ) -> None:
+        if isinstance(value, list):
+            if value and all(
+                isinstance(
+                    item,
+                    dict,
+                )
+                for item in value
+            ):
+                output.extend(value)
+                return
+
+            for item in value:
+                walk(item)
+
+            return
+
+        if not isinstance(
+            value,
+            dict,
+        ):
+            return
+
+        fields = (
+            value.get("fields")
+            or value.get("columns")
         )
 
-        if candidate:
-            return candidate
+        rows = (
+            value.get("data")
+            or value.get("rows")
+            or value.get("records")
+        )
 
-    return None
+        if fields is not None and rows is not None:
+            add_table(
+                fields,
+                rows,
+            )
+
+        tables = value.get("tables")
+
+        if isinstance(
+            tables,
+            list,
+        ):
+            for table in tables:
+                if not isinstance(
+                    table,
+                    dict,
+                ):
+                    continue
+
+                table_fields = (
+                    table.get("fields")
+                    or table.get("columns")
+                )
+
+                table_rows = (
+                    table.get("data")
+                    or table.get("rows")
+                    or table.get("records")
+                )
+
+                add_table(
+                    table_fields,
+                    table_rows,
+                )
+
+        for key in (
+            "result",
+            "results",
+            "data",
+            "rows",
+            "records",
+        ):
+            nested = value.get(key)
+
+            if isinstance(
+                nested,
+                (dict, list),
+            ):
+                walk(nested)
+
+    walk(payload)
+
+    # 去除完全重複 row
+    unique = []
+    seen = set()
+
+    for row in output:
+        try:
+            marker = json.dumps(
+                row,
+                ensure_ascii=False,
+                sort_keys=True,
+            )
+        except Exception:
+            marker = repr(row)
+
+        if marker in seen:
+            continue
+
+        seen.add(marker)
+        unique.append(row)
+
+    return unique
 
 
-def fetch_taiex_current() -> dict[str, Any]:
+# ============================================================
+# TAIEX current index
+# ============================================================
+
+def fetch_current_index() -> dict[str, Any]:
     payload = request_json(
-        TWSE_MI_INDEX_URL
+        TWSE_MI_INDEX_URL,
+        timeout=30,
+        retries=3,
     )
 
-    row = extract_index_row(payload)
-
-    if row is None:
+    if not isinstance(
+        payload,
+        list,
+    ):
         raise RuntimeError(
-            "TWSE MI_INDEX returned no TAIEX row"
+            "TWSE MI_INDEX unexpected response"
         )
 
-    date = parse_date(
-        first_value(
+    target = None
+
+    for row in payload:
+        if not isinstance(
             row,
+            dict,
+        ):
+            continue
+
+        index_name = str(
+            row.get("指數", "")
+        ).strip()
+
+        normalized = normalize_text(
+            index_name
+        )
+
+        if (
+            "發行量加權股價指數"
+            in index_name
+            or "發行量加權"
+            in index_name
+            or normalized == "taiex"
+        ):
+            target = row
+            break
+
+    if target is None:
+        raise RuntimeError(
+            "TWSE MI_INDEX TAIEX row not found"
+        )
+
+    trade_date = parse_date(
+        first_value(
+            target,
             [
                 "日期",
                 "Date",
@@ -1195,70 +1217,117 @@ def fetch_taiex_current() -> dict[str, Any]:
 
     value = parse_number(
         first_value(
-            row,
+            target,
             [
                 "收盤指數",
-                "指數",
                 "ClosingIndex",
-                "close",
             ],
         )
     )
 
-    change = parse_number(
+    change_points = parse_number(
         first_value(
-            row,
+            target,
             [
                 "漲跌點數",
-                "漲跌",
-                "Change",
-                "change",
+                "ChangePoints",
             ],
         )
     )
 
     change_pct = parse_number(
         first_value(
-            row,
+            target,
             [
                 "漲跌百分比",
-                "漲跌%",
                 "ChangePercent",
-                "change_pct",
             ],
         )
     )
 
+    change_sign = str(
+        first_value(
+            target,
+            [
+                "漲跌",
+                "Change",
+            ]
+        )
+        or ""
+    ).strip()
+
+    if change_points is not None:
+        if change_sign == "-":
+            change_points = -abs(
+                change_points
+            )
+
+        elif change_sign == "+":
+            change_points = abs(
+                change_points
+            )
+
     if value is None:
         raise RuntimeError(
-            "TWSE MI_INDEX has no valid TAIEX value"
+            "TAIEX closing index invalid"
         )
 
-    if date is None:
-        raise RuntimeError(
-            "TWSE MI_INDEX has no valid date"
+    if (
+        change_points is not None
+        and change_pct is not None
+    ):
+        implied_pct = (
+            change_points
+            / (value - change_points)
+            * 100
+            if value != change_points
+            else None
         )
+
+        if implied_pct is not None:
+            if abs(
+                implied_pct - change_pct
+            ) > 0.05:
+                raise RuntimeError(
+                    "MI_INDEX change consistency "
+                    "failure: "
+                    f"value={value}, "
+                    f"change={change_points}, "
+                    f"reported_pct={change_pct}, "
+                    f"implied_pct="
+                    f"{implied_pct:.4f}"
+                )
 
     return {
-        "date": date,
+        "name": "TAIEX",
         "value": value,
-        "change": change,
+        "change": change_points,
         "change_pct": change_pct,
+        "date": trade_date,
     }
 
 
-def month_starts(
-    end_date: datetime,
-    count: int = 4,
-) -> list[str]:
-    months: list[str] = []
+# ============================================================
+# TAIEX historical data
+# ============================================================
 
-    year = end_date.year
-    month = end_date.month
+def month_sequence(
+    latest_date: str,
+    months: int = 6,
+) -> list[tuple[int, int]]:
+    dt = datetime.strptime(
+        latest_date,
+        "%Y-%m-%d",
+    )
 
-    for _ in range(count):
-        months.append(
-            f"{year:04d}{month:02d}01"
+    year = dt.year
+    month = dt.month
+
+    result = []
+
+    for _ in range(months):
+        result.append(
+            (year, month)
         )
 
         month -= 1
@@ -1267,160 +1336,332 @@ def month_starts(
             month = 12
             year -= 1
 
-    return months
+    return result
+
+
+def parse_index_row(
+    row: dict[str, Any],
+) -> Optional[dict[str, Any]]:
+    trade_date = parse_date(
+        first_value(
+            row,
+            [
+                "Date",
+                "date",
+                "日期",
+                "交易日期",
+            ],
+        )
+    )
+
+    close = parse_number(
+        first_value(
+            row,
+            [
+                "ClosingIndex",
+                "closing_index",
+                "收盤指數",
+                "收盤",
+            ],
+        )
+    )
+
+    if (
+        trade_date is None
+        or close is None
+        or close <= 0
+    ):
+        return None
+
+    return {
+        "date": trade_date,
+        "open": parse_number(
+            first_value(
+                row,
+                [
+                    "OpeningIndex",
+                    "opening_index",
+                    "開盤指數",
+                    "開盤",
+                ],
+            )
+        ),
+        "high": parse_number(
+            first_value(
+                row,
+                [
+                    "HighestIndex",
+                    "highest_index",
+                    "最高指數",
+                    "最高",
+                ],
+            )
+        ),
+        "low": parse_number(
+            first_value(
+                row,
+                [
+                    "LowestIndex",
+                    "lowest_index",
+                    "最低指數",
+                    "最低",
+                ],
+            )
+        ),
+        "close": close,
+    }
 
 
 def extract_index_history_rows(
     payload: Any,
 ) -> list[dict[str, Any]]:
-    rows: list[dict[str, Any]] = []
+    rows = []
 
-    if isinstance(payload, list):
-        for item in payload:
-            if not isinstance(item, dict):
-                continue
+    def process(
+        row: dict[str, Any],
+    ) -> None:
+        parsed = parse_index_row(
+            row
+        )
 
-            date = parse_date(
-                first_value(
+        if parsed:
+            rows.append(parsed)
+
+    def walk(
+        value: Any,
+    ) -> None:
+        if isinstance(
+            value,
+            list,
+        ):
+            for item in value:
+                if isinstance(
                     item,
-                    [
-                        "Date",
-                        "日期",
-                        "date",
-                    ],
+                    dict,
+                ):
+                    process(item)
+                else:
+                    walk(item)
+
+            return
+
+        if not isinstance(
+            value,
+            dict,
+        ):
+            return
+
+        fields = (
+            value.get("fields")
+            or value.get("columns")
+        )
+
+        data = (
+            value.get("data")
+            or value.get("rows")
+        )
+
+        if (
+            isinstance(fields, list)
+            and isinstance(data, list)
+        ):
+            for raw_row in data:
+                if isinstance(
+                    raw_row,
+                    list,
+                ):
+                    process(
+                        dict(
+                            zip(
+                                fields,
+                                raw_row,
+                            )
+                        )
+                    )
+
+                elif isinstance(
+                    raw_row,
+                    dict,
+                ):
+                    process(raw_row)
+
+        tables = value.get(
+            "tables"
+        )
+
+        if isinstance(
+            tables,
+            list,
+        ):
+            for table in tables:
+                if not isinstance(
+                    table,
+                    dict,
+                ):
+                    continue
+
+                table_fields = (
+                    table.get("fields")
+                    or table.get("columns")
                 )
-            )
 
-            close = parse_number(
-                first_value(
-                    item,
-                    [
-                        "ClosingIndex",
-                        "收盤指數",
-                        "close",
-                    ],
+                table_data = (
+                    table.get("data")
+                    or table.get("rows")
                 )
-            )
 
-            high = parse_number(
-                first_value(
-                    item,
-                    [
-                        "HighestIndex",
-                        "最高指數",
-                        "high",
-                    ],
-                )
-            )
+                if (
+                    isinstance(
+                        table_fields,
+                        list,
+                    )
+                    and isinstance(
+                        table_data,
+                        list,
+                    )
+                ):
+                    for raw_row in table_data:
+                        if isinstance(
+                            raw_row,
+                            list,
+                        ):
+                            process(
+                                dict(
+                                    zip(
+                                        table_fields,
+                                        raw_row,
+                                    )
+                                )
+                            )
 
-            low = parse_number(
-                first_value(
-                    item,
-                    [
-                        "LowestIndex",
-                        "最低指數",
-                        "low",
-                    ],
-                )
-            )
+                        elif isinstance(
+                            raw_row,
+                            dict,
+                        ):
+                            process(raw_row)
 
-            if date is None or close is None:
-                continue
-
-            rows.append(
-                {
-                    "date": date,
-                    "close": close,
-                    "high": (
-                        high
-                        if high is not None
-                        else close
-                    ),
-                    "low": (
-                        low
-                        if low is not None
-                        else close
-                    ),
-                }
-            )
-
-        return rows
-
-    if isinstance(payload, dict):
-        wrapper_keys = [
+        for key in (
+            "result",
+            "results",
             "data",
             "rows",
             "records",
-            "result",
-            "results",
             "items",
-        ]
+        ):
+            nested = value.get(key)
 
-        for key in wrapper_keys:
-            if key in payload:
-                rows.extend(
-                    extract_index_history_rows(
-                        payload[key]
-                    )
-                )
+            if isinstance(
+                nested,
+                (dict, list),
+            ):
+                walk(nested)
 
-    return rows
+    walk(payload)
+
+    unique = {}
+
+    for row in rows:
+        unique[
+            row["date"]
+        ] = row
+
+    return sorted(
+        unique.values(),
+        key=lambda row: row["date"],
+    )
 
 
 def fetch_taiex_history(
     latest_date: str,
 ) -> list[dict[str, Any]]:
-    latest_dt = datetime.strptime(
+    """
+    官方 TAIEX 歷史。
+
+    策略：
+    1. 先抓官方 RWD 月資料
+    2. 再抓 OpenAPI
+    3. 去重
+    4. 只保留 <= latest trading date
+    5. 至少 20 個交易日才允許進入計算
+    """
+
+    collected = {}
+
+    # --------------------------------------------------------
+    # 1. RWD monthly historical
+    # --------------------------------------------------------
+
+    for year, month in month_sequence(
         latest_date,
-        "%Y-%m-%d",
-    )
+        months=6,
+    ):
+        date_arg = (
+            f"{year:04d}"
+            f"{month:02d}"
+            "01"
+        )
 
-    all_rows: dict[
-        str,
-        dict[str, Any],
-    ] = {}
-
-    requested_months = month_starts(
-        latest_dt,
-        count=4,
-    )
-
-    for month_start in requested_months:
         try:
             payload = request_json(
-                TWSE_MI_5MINS_HIST_URL,
+                TWSE_MI_5MINS_HIST_RWD_URL,
                 params={
-                    "date": month_start,
+                    "response": "json",
+                    "date": date_arg,
                 },
+                timeout=30,
+                retries=2,
             )
+
+            rows = extract_index_history_rows(
+                payload
+            )
+
+            for row in rows:
+                if row["date"] <= latest_date:
+                    collected[
+                        row["date"]
+                    ] = row
 
         except Exception as exc:
             print(
-                f"⚠️ TAIEX history month failed "
-                f"{month_start}: {exc}"
+                "⚠️ TAIEX RWD history "
+                f"{date_arg} failed: {exc}"
             )
-            continue
+
+    # --------------------------------------------------------
+    # 2. OpenAPI
+    # --------------------------------------------------------
+
+    try:
+        payload = request_json(
+            TWSE_MI_5MINS_HIST_URL,
+            timeout=30,
+            retries=3,
+        )
 
         rows = extract_index_history_rows(
             payload
         )
 
         for row in rows:
-            all_rows[row["date"]] = row
+            if row["date"] <= latest_date:
+                collected[
+                    row["date"]
+                ] = row
+
+    except Exception as exc:
+        print(
+            "⚠️ TAIEX OpenAPI history failed: "
+            f"{exc}"
+        )
 
     history = sorted(
-        all_rows.values(),
+        collected.values(),
         key=lambda row: row["date"],
     )
 
-    history = [
-        row
-        for row in history
-        if row["date"] <= latest_date
-    ]
-
     print(
-        f"TAIEX history: "
+        "TAIEX history: "
         f"{len(history)} trading days"
     )
 
@@ -1428,199 +1669,180 @@ def fetch_taiex_history(
 
 
 # ============================================================
-# Technical calculations
+# TAIEX indicators
 # ============================================================
 
-def calculate_rsi(
-    closes: list[float],
-    period: int = 14,
+def moving_average(
+    values: list[float],
+    period: int,
 ) -> Optional[float]:
-    if len(closes) < period + 1:
+    if len(values) < period:
         return None
 
-    changes = [
-        closes[i] - closes[i - 1]
-        for i in range(1, len(closes))
+    return (
+        sum(values[-period:])
+        / period
+    )
+
+
+def rsi_wilder(
+    values: list[float],
+    period: int = 14,
+) -> Optional[float]:
+    if len(values) < period + 1:
+        return None
+
+    deltas = [
+        current - previous
+        for previous, current
+        in zip(
+            values[:-1],
+            values[1:],
+        )
     ]
 
     gains = [
-        max(change, 0.0)
-        for change in changes
+        max(delta, 0.0)
+        for delta in deltas
     ]
 
     losses = [
-        max(-change, 0.0)
-        for change in changes
+        max(-delta, 0.0)
+        for delta in deltas
     ]
 
-    if len(gains) < period:
-        return None
+    avg_gain = (
+        sum(gains[:period])
+        / period
+    )
 
-    avg_gain = sum(
-        gains[:period]
-    ) / period
+    avg_loss = (
+        sum(losses[:period])
+        / period
+    )
 
-    avg_loss = sum(
-        losses[:period]
-    ) / period
-
-    for i in range(
+    for index in range(
         period,
-        len(gains),
+        len(deltas),
     ):
         avg_gain = (
-            (avg_gain * (period - 1))
-            + gains[i]
+            (
+                avg_gain
+                * (period - 1)
+            )
+            + gains[index]
         ) / period
 
         avg_loss = (
-            (avg_loss * (period - 1))
-            + losses[i]
+            (
+                avg_loss
+                * (period - 1)
+            )
+            + losses[index]
         ) / period
 
     if avg_loss == 0:
-        if avg_gain == 0:
-            return 50.0
-
         return 100.0
 
     rs = avg_gain / avg_loss
 
-    return 100.0 - (
-        100.0 / (1.0 + rs)
+    return (
+        100.0
+        - (
+            100.0
+            / (1.0 + rs)
+        )
     )
 
 
-def calculate_atr_pct(
+def atr_percent(
     history: list[dict[str, Any]],
     period: int = 14,
 ) -> Optional[float]:
+    """
+    ATR14%。
+
+    不使用 fake high / low。
+    缺 OHLC 就 unavailable。
+    """
+
     if len(history) < period + 1:
         return None
 
-    true_ranges: list[float] = []
+    true_ranges = []
 
-    for i in range(
-        1,
-        len(history),
+    for previous, current in zip(
+        history[:-1],
+        history[1:],
     ):
-        current = history[i]
-        previous = history[i - 1]
+        high = current.get("high")
+        low = current.get("low")
+        previous_close = previous.get(
+            "close"
+        )
 
-        high = current["high"]
-        low = current["low"]
-        previous_close = previous["close"]
+        if (
+            high is None
+            or low is None
+            or previous_close is None
+        ):
+            return None
 
         true_range = max(
             high - low,
-            abs(high - previous_close),
-            abs(low - previous_close),
+            abs(
+                high
+                - previous_close
+            ),
+            abs(
+                low
+                - previous_close
+            ),
         )
 
-        true_ranges.append(true_range)
+        true_ranges.append(
+            true_range
+        )
 
     if len(true_ranges) < period:
         return None
 
-    atr = sum(
-        true_ranges[-period:]
-    ) / period
+    atr = (
+        sum(true_ranges[-period:])
+        / period
+    )
 
-    latest_close = history[-1]["close"]
-
-    if latest_close <= 0:
-        return None
-
-    return atr / latest_close * 100.0
-
-
-def calculate_index_metrics(
-    history: list[dict[str, Any]],
-) -> dict[str, Any]:
-    if not history:
-        return {
-            "ma20": None,
-            "ma20_previous": None,
-            "ma20_slope": None,
-            "rsi14": None,
-            "atr14_pct": None,
-        }
-
-    closes = [
-        row["close"]
-        for row in history
+    current_close = history[-1][
+        "close"
     ]
 
-    ma20: Optional[float] = None
-    ma20_previous: Optional[float] = None
-    ma20_slope: Optional[float] = None
+    if current_close <= 0:
+        return None
 
-    if len(closes) >= 20:
-        ma20 = sum(
-            closes[-20:]
-        ) / 20
-
-    if len(closes) >= 21:
-        ma20_previous = sum(
-            closes[-21:-1]
-        ) / 20
-
-        if (
-            ma20 is not None
-            and ma20_previous is not None
-        ):
-            ma20_slope = (
-                ma20
-                - ma20_previous
-            )
-
-    rsi14 = calculate_rsi(
-        closes,
-        period=14,
+    return (
+        atr
+        / current_close
+        * 100
     )
-
-    atr14_pct = calculate_atr_pct(
-        history,
-        period=14,
-    )
-
-    return {
-        "ma20": ma20,
-        "ma20_previous": ma20_previous,
-        "ma20_slope": ma20_slope,
-        "rsi14": rsi14,
-        "atr14_pct": atr14_pct,
-    }
 
 
 # ============================================================
-# Market breadth
+# Breadth / volume
 # ============================================================
 
-def latest_row_on_or_before(
-    history: list[dict[str, Any]],
-    target_date: str,
-) -> Optional[dict[str, Any]]:
-    candidate = None
+def market_stock_stats(
+    histories: dict[
+        str,
+        list[dict[str, Any]]
+    ],
+    latest: str,
+) -> tuple[
+    dict[str, Any],
+    dict[str, Any],
+]:
+    coverage = 0
+    stale = 0
 
-    for row in history:
-        row_date = row.get("date")
-
-        if not row_date:
-            continue
-
-        if row_date > target_date:
-            break
-
-        candidate = row
-
-    return candidate
-
-
-def calculate_market_breadth(
-    histories: dict[str, list[dict[str, Any]]],
-    latest_date: str,
-) -> dict[str, Any]:
     advance = 0
     decline = 0
     unchanged = 0
@@ -1628,813 +1850,525 @@ def calculate_market_breadth(
     above_ma20 = 0
     ma20_total = 0
 
-    new_high_20d = 0
-    new_low_20d = 0
+    new_high = 0
+    new_low = 0
     new_hilo_total = 0
 
-    exact_coverage = 0
-    stale_coverage = 0
+    daily_volume = defaultdict(
+        float
+    )
 
-    current_volume = 0.0
-    current_volume_count = 0
-
-    daily_volume: dict[
-        str,
-        float,
-    ] = defaultdict(float)
-
-    daily_volume_count: dict[
-        str,
-        int,
-    ] = defaultdict(int)
-
-    for symbol, history in histories.items():
+    for history in histories.values():
         if not history:
             continue
 
-        current = latest_row_on_or_before(
-            history,
-            latest_date,
-        )
+        for row in history:
+            volume = row.get(
+                "volume"
+            )
 
-        if current is None:
+            if volume is not None:
+                daily_volume[
+                    row["date"]
+                ] += volume
+
+        if (
+            history[-1]["date"]
+            != latest
+        ):
+            stale += 1
             continue
 
-        current_date = current["date"]
+        coverage += 1
 
-        if current_date == latest_date:
-            exact_coverage += 1
-        else:
-            stale_coverage += 1
+        current = history[-1][
+            "close"
+        ]
 
-        # ----------------------------------------------------
-        # Breadth only uses exact latest date.
-        # ----------------------------------------------------
+        if len(history) >= 2:
+            previous = history[-2][
+                "close"
+            ]
 
-        if current_date != latest_date:
-            continue
-
-        current_close = current["close"]
-
-        # ----------------------------------------------------
-        # Up / down
-        # ----------------------------------------------------
-
-        previous = None
-
-        for row in reversed(history):
-            if row["date"] < latest_date:
-                previous = row
-                break
-
-        if previous is not None:
-            previous_close = previous["close"]
-
-            if current_close > previous_close:
+            if current > previous:
                 advance += 1
 
-            elif current_close < previous_close:
+            elif current < previous:
                 decline += 1
 
             else:
                 unchanged += 1
 
-        # ----------------------------------------------------
-        # MA20
-        # ----------------------------------------------------
-
-        prior_rows = [
-            row
+        closes = [
+            row["close"]
             for row in history
-            if row["date"] <= latest_date
         ]
 
-        if len(prior_rows) >= 20:
-            last20 = prior_rows[-20:]
-
-            ma20 = sum(
-                row["close"]
-                for row in last20
-            ) / 20
+        if len(closes) >= 20:
+            ma20 = (
+                sum(closes[-20:])
+                / 20
+            )
 
             ma20_total += 1
 
-            if current_close >= ma20:
+            if current > ma20:
                 above_ma20 += 1
 
-        # ----------------------------------------------------
-        # 20-day new high / new low
-        #
-        # IMPORTANT:
-        # current price compares against PREVIOUS 20
-        # trading days, not a window containing itself.
-        # ----------------------------------------------------
-
-        if len(prior_rows) >= 21:
-            previous20 = prior_rows[-21:-1]
-
-            previous_closes = [
-                row["close"]
-                for row in previous20
+        if len(closes) >= 21:
+            previous_20 = closes[
+                -21:-1
             ]
 
-            if previous_closes:
-                previous_max = max(
-                    previous_closes
-                )
-
-                previous_min = min(
-                    previous_closes
-                )
-
-                new_hilo_total += 1
-
-                if current_close >= previous_max:
-                    new_high_20d += 1
-
-                if current_close <= previous_min:
-                    new_low_20d += 1
-
-        # ----------------------------------------------------
-        # Current volume
-        # ----------------------------------------------------
-
-        volume = current.get("volume")
-
-        if (
-            volume is not None
-            and volume >= 0
-        ):
-            current_volume += volume
-            current_volume_count += 1
-
-        # ----------------------------------------------------
-        # Historical daily market volume
-        #
-        # Aggregate ALL available stocks by date.
-        # ----------------------------------------------------
-
-        for row in history:
-            row_date = row["date"]
-
-            if row_date >= latest_date:
-                continue
-
-            volume_value = row.get(
-                "volume"
-            )
-
-            if (
-                volume_value is None
-                or volume_value < 0
+            if current > max(
+                previous_20
             ):
-                continue
+                new_high += 1
 
-            daily_volume[row_date] += volume_value
-            daily_volume_count[row_date] += 1
+            if current < min(
+                previous_20
+            ):
+                new_low += 1
 
-    # --------------------------------------------------------
-    # New high / new low ratio
-    # --------------------------------------------------------
+            new_hilo_total += 1
 
-    if new_hilo_total == 0:
-        high_low_ratio = None
-
-    elif new_low_20d == 0:
-        if new_high_20d > 0:
-            # No mathematical finite ratio.
-            # Condition evaluator handles this case directly.
-            high_low_ratio = None
-        else:
-            high_low_ratio = None
-
-    else:
-        high_low_ratio = (
-            new_high_20d
-            / new_low_20d
-        )
-
-    # --------------------------------------------------------
-    # Volume ratio
-    # --------------------------------------------------------
-
-    previous_dates = sorted(
-        [
-            date
-            for date in daily_volume.keys()
-            if date < latest_date
-        ]
-    )[-20:]
-
-    volume_20d_average: Optional[float] = None
-    volume_ratio: Optional[float] = None
-
-    if (
-        len(previous_dates) >= 20
-        and current_volume_count > 0
-    ):
-        totals = [
-            daily_volume[date]
-            for date in previous_dates
-            if daily_volume_count.get(
-                date,
-                0,
-            ) > 0
-        ]
-
-        if len(totals) >= 20:
-            volume_20d_average = (
-                sum(totals[-20:]) / 20
-            )
-
-            if volume_20d_average > 0:
-                volume_ratio = (
-                    current_volume
-                    / volume_20d_average
-                )
-
-    coverage = exact_coverage
+    advance_decline_ratio = None
 
     if decline > 0:
         advance_decline_ratio = (
-            advance / decline
+            advance
+            / decline
         )
-    elif advance > 0:
-        advance_decline_ratio = None
-    else:
-        advance_decline_ratio = None
+
+    above_ma20_pct = None
 
     if ma20_total > 0:
         above_ma20_pct = (
             above_ma20
             / ma20_total
-            * 100.0
+            * 100
         )
-    else:
-        above_ma20_pct = None
 
-    return {
+    new_high_low_ratio = None
+
+    if new_low > 0:
+        new_high_low_ratio = (
+            new_high
+            / new_low
+        )
+
+    trading_dates = sorted(
+        daily_volume.keys()
+    )
+
+    current_volume = daily_volume.get(
+        latest,
+        0.0,
+    )
+
+    previous_dates = [
+        date
+        for date in trading_dates
+        if date < latest
+    ][-20:]
+
+    average_20d = None
+
+    if previous_dates:
+        average_20d = (
+            sum(
+                daily_volume[date]
+                for date in previous_dates
+            )
+            / len(previous_dates)
+        )
+
+    volume_ratio = None
+
+    if (
+        average_20d is not None
+        and average_20d > 0
+    ):
+        volume_ratio = (
+            current_volume
+            / average_20d
+        )
+
+    breadth = {
         "coverage": coverage,
-        "stale_coverage": stale_coverage,
+        "stale_coverage": stale,
         "advance": advance,
         "decline": decline,
         "unchanged": unchanged,
-        "advance_decline_ratio": (
-            advance_decline_ratio
-        ),
+        "advance_decline_ratio":
+            advance_decline_ratio,
         "above_ma20": above_ma20,
         "ma20_total": ma20_total,
-        "above_ma20_pct": above_ma20_pct,
-        "new_high_20d": new_high_20d,
-        "new_low_20d": new_low_20d,
-        "new_high_low_ratio": (
-            high_low_ratio
-        ),
-        "new_hilo_total": new_hilo_total,
-        "current_volume": current_volume,
-        "current_volume_count": (
-            current_volume_count
-        ),
-        "volume_20d_average": (
-            volume_20d_average
-        ),
-        "volume_ratio": volume_ratio,
+        "above_ma20_pct":
+            above_ma20_pct,
+        "new_high_20d": new_high,
+        "new_low_20d": new_low,
+        "new_high_low_ratio":
+            new_high_low_ratio,
+        "new_hilo_total":
+            new_hilo_total,
     }
 
+    volume = {
+        "current": current_volume,
+        "current_stock_count":
+            coverage,
+        "average_20d":
+            average_20d,
+        "ratio":
+            volume_ratio,
+    }
 
-# ============================================================
-# Institutional - TWSE T86
-# ============================================================
-
-def table_rows_from_t86(
-    payload: Any,
-) -> list[dict[str, Any]]:
-    """
-    TWSE T86：
-        tables[].fields
-        tables[].data
-    """
-
-    rows: list[dict[str, Any]] = []
-
-    if not isinstance(payload, dict):
-        return rows
-
-    tables = payload.get("tables")
-
-    if not isinstance(tables, list):
-        return rows
-
-    for table in tables:
-        if not isinstance(table, dict):
-            continue
-
-        fields = table.get("fields")
-        data = table.get("data")
-
-        if not isinstance(
-            fields,
-            list,
-        ):
-            continue
-
-        if not isinstance(
-            data,
-            list,
-        ):
-            continue
-
-        normalized_fields = [
-            str(field).strip()
-            for field in fields
-        ]
-
-        for raw_row in data:
-            if not isinstance(
-                raw_row,
-                list,
-            ):
-                continue
-
-            row: dict[str, Any] = {}
-
-            for index, field in enumerate(
-                normalized_fields
-            ):
-                if index >= len(raw_row):
-                    break
-
-                row[field] = raw_row[index]
-
-            if row:
-                rows.append(row)
-
-    return rows
-
-
-def field_value_by_contains(
-    row: dict[str, Any],
-    required_tokens: list[str],
-    forbidden_tokens: Optional[
-        list[str]
-    ] = None,
-) -> Optional[float]:
-    forbidden_tokens = (
-        forbidden_tokens or []
+    return (
+        breadth,
+        volume,
     )
 
-    for key, value in row.items():
-        normalized_key = normalize_text(key)
 
-        if not all(
-            normalize_text(token)
-            in normalized_key
-            for token in required_tokens
+# ============================================================
+# TWSE T86
+# ============================================================
+
+def find_field(
+    fields: list[Any],
+    aliases: list[str],
+) -> Optional[int]:
+    normalized_fields = [
+        normalize_text(field)
+        for field in fields
+    ]
+
+    normalized_aliases = [
+        normalize_text(alias)
+        for alias in aliases
+    ]
+
+    for alias in normalized_aliases:
+        for index, field in enumerate(
+            normalized_fields
         ):
-            continue
+            if field == alias:
+                return index
 
-        if any(
-            normalize_text(token)
-            in normalized_key
-            for token in forbidden_tokens
+    for alias in normalized_aliases:
+        for index, field in enumerate(
+            normalized_fields
         ):
-            continue
-
-        number = parse_number(value)
-
-        if number is not None:
-            return number
+            if alias in field:
+                return index
 
     return None
 
 
-def fetch_twse_institutional(
-    latest_date: str,
+def fetch_twse_t86(
+    trading_date: str,
 ) -> dict[str, Any]:
-    date_text = latest_date.replace(
-        "-",
-        "",
-    )
+    """
+    TWSE T86。
+
+    重要：
+    不使用 price row parser。
+    直接解析官方 fields + data。
+    """
+
+    date_arg = datetime.strptime(
+        trading_date,
+        "%Y-%m-%d",
+    ).strftime("%Y%m%d")
 
     payload = request_json(
         TWSE_T86_URL,
         params={
-            "date": date_text,
+            "date": date_arg,
             "selectType": "ALLBUT0999",
             "response": "json",
         },
+        timeout=30,
+        retries=3,
     )
 
-    rows = table_rows_from_t86(
-        payload
+    if not isinstance(
+        payload,
+        dict,
+    ):
+        raise RuntimeError(
+            "TWSE T86 unexpected response"
+        )
+
+    status = str(
+        payload.get("stat", "")
+    ).strip()
+
+    if status != "OK":
+        raise RuntimeError(
+            "TWSE T86 unavailable: "
+            f"{status or 'unknown status'}"
+        )
+
+    fields = payload.get(
+        "fields"
     )
 
-    if not rows:
+    data = payload.get(
+        "data"
+    )
+
+    if not isinstance(
+        fields,
+        list,
+    ):
+        raise RuntimeError(
+            "TWSE T86 fields missing"
+        )
+
+    if not isinstance(
+        data,
+        list,
+    ):
+        raise RuntimeError(
+            "TWSE T86 data missing"
+        )
+
+    if not data:
         raise RuntimeError(
             "TWSE T86 returned no table rows"
         )
 
-    foreign_main = 0.0
-    foreign_main_count = 0
+    code_index = find_field(
+        fields,
+        [
+            "證券代號",
+            "股票代號",
+            "代號",
+        ],
+    )
 
-    foreign_dealer = 0.0
-    foreign_dealer_count = 0
+    foreign_index = find_field(
+        fields,
+        [
+            "外陸資買賣超股數(不含外資自營商)",
+            "外陸資買賣超股數（不含外資自營商）",
+        ],
+    )
 
+    trust_index = find_field(
+        fields,
+        [
+            "投信買賣超股數",
+            "投信買賣超",
+        ],
+    )
+
+    if foreign_index is None:
+        raise RuntimeError(
+            "TWSE T86 missing foreign "
+            "net field"
+        )
+
+    if trust_index is None:
+        raise RuntimeError(
+            "TWSE T86 missing investment "
+            "trust field"
+        )
+
+    foreign = 0.0
     trust = 0.0
-    trust_count = 0
+    valid_rows = 0
 
-    for row in rows:
-        foreign_main_value = (
-            field_value_by_contains(
-                row,
-                [
-                    "外陸資買賣超股數",
-                ],
-            )
+    for raw_row in data:
+        if not isinstance(
+            raw_row,
+            list,
+        ):
+            continue
+
+        max_index = max(
+            foreign_index,
+            trust_index,
         )
 
-        # T86 field explicitly says excluding
-        # foreign proprietary dealer.
-        if foreign_main_value is not None:
-            foreign_main += foreign_main_value
-            foreign_main_count += 1
+        if len(raw_row) <= max_index:
+            continue
 
-        dealer_value = (
-            field_value_by_contains(
-                row,
-                [
-                    "外資自營商買賣超股數",
-                ],
+        code = None
+
+        if code_index is not None:
+            if code_index < len(
+                raw_row
+            ):
+                code = str(
+                    raw_row[code_index]
+                ).strip()
+
+        # 排除官方總計 / 非證券資料列
+        if code:
+            normalized_code = normalize_text(
+                code
             )
+
+            if normalized_code in {
+                "合計",
+                "總計",
+                "total",
+            }:
+                continue
+
+            if not re.fullmatch(
+                r"[0-9A-Z]{4,6}",
+                code.upper(),
+            ):
+                continue
+
+        foreign_value = parse_number(
+            raw_row[foreign_index]
         )
 
-        if dealer_value is not None:
-            foreign_dealer += dealer_value
-            foreign_dealer_count += 1
-
-        trust_value = (
-            field_value_by_contains(
-                row,
-                [
-                    "投信買賣超股數",
-                ],
-            )
+        trust_value = parse_number(
+            raw_row[trust_index]
         )
+
+        if foreign_value is None and trust_value is None:
+            continue
+
+        if foreign_value is not None:
+            foreign += foreign_value
 
         if trust_value is not None:
             trust += trust_value
-            trust_count += 1
 
-    if foreign_main_count == 0:
-        foreign_main_value = None
-    else:
-        foreign_main_value = foreign_main
+        valid_rows += 1
 
-    if foreign_dealer_count == 0:
-        foreign_dealer_value = None
-    else:
-        foreign_dealer_value = foreign_dealer
-
-    if trust_count == 0:
-        trust_value = None
-    else:
-        trust_value = trust
-
-    print(
-        "TWSE T86:"
-    )
-    print(
-        f"  foreign(ex-dealer): "
-        f"{foreign_main_value}"
-    )
-    print(
-        f"  foreign dealer: "
-        f"{foreign_dealer_value}"
-    )
-    print(
-        f"  investment trust: "
-        f"{trust_value}"
-    )
+    if valid_rows == 0:
+        raise RuntimeError(
+            "TWSE T86 parsed zero "
+            "valid rows"
+        )
 
     return {
-        "foreign_net": foreign_main_value,
-        "foreign_dealer_net": (
-            foreign_dealer_value
-        ),
-        "trust_net": trust_value,
-        "rows": len(rows),
-        "status": "complete",
+        "rows": valid_rows,
+        "foreign": foreign,
+        "trust": trust,
     }
 
 
 # ============================================================
-# Institutional - TPEx
+# TPEx institutional
 # ============================================================
 
-def recursive_dict_rows(
-    payload: Any,
-) -> list[dict[str, Any]]:
-    rows: list[dict[str, Any]] = []
-
-    if isinstance(payload, list):
-        for item in payload:
-            if isinstance(item, dict):
-                rows.append(item)
-            else:
-                rows.extend(
-                    recursive_dict_rows(item)
-                )
-
-        return rows
-
-    if isinstance(payload, dict):
-        # If this object itself looks like a row,
-        # retain it.
-        if any(
-            isinstance(value, (str, int, float))
-            or value is None
-            for value in payload.values()
-        ):
-            rows.append(payload)
-
-        for value in payload.values():
-            if isinstance(
-                value,
-                (dict, list),
-            ):
-                rows.extend(
-                    recursive_dict_rows(value)
-                )
-
-    return rows
-
-
-def find_tpex_field_value(
-    row: dict[str, Any],
-    kind: str,
-) -> Optional[float]:
-    for key, value in row.items():
-        normalized_key = normalize_text(key)
-
-        if kind == "foreign":
-            # Preserve the existing TPEx semantic:
-            # foreign investors excluding foreign dealers.
-            if (
-                (
-                    "foreigninvestorsinclude"
-                    in normalized_key
-                    or "外資" in normalized_key
-                )
-                and (
-                    "difference"
-                    in normalized_key
-                    or "買賣超"
-                    in normalized_key
-                )
-                and (
-                    "dealer"
-                    not in normalized_key
-                    and "自營商"
-                    not in normalized_key
-                )
-            ):
-                number = parse_number(value)
-
-                if number is not None:
-                    return number
-
-        elif kind == "trust":
-            if (
-                (
-                    "securitiesinvestmenttrust"
-                    in normalized_key
-                    or "投信"
-                    in normalized_key
-                )
-                and (
-                    "difference"
-                    in normalized_key
-                    or "買賣超"
-                    in normalized_key
-                )
-            ):
-                number = parse_number(value)
-
-                if number is not None:
-                    return number
-
-    return None
-
-
 def fetch_tpex_institutional(
-    latest_date: str,
+    trading_date: str,
 ) -> dict[str, Any]:
-    date_text = latest_date.replace(
-        "-",
-        "/",
-    )
-
     payload = request_json(
-        TPEX_3INSTI_URL
+        TPEX_3INSTI_URL,
+        timeout=30,
+        retries=3,
     )
 
-    rows = recursive_dict_rows(
-        payload
-    )
+    if not isinstance(
+        payload,
+        list,
+    ):
+        raise RuntimeError(
+            "TPEx institutional "
+            "unexpected response"
+        )
 
-    # TPEx endpoint may return current date data.
-    # Filter only when a recognizable date field exists.
-    filtered_rows: list[
-        dict[str, Any]
-    ] = []
+    target_rows = []
 
-    for row in rows:
+    for row in payload:
+        if not isinstance(
+            row,
+            dict,
+        ):
+            continue
+
+        raw_date = first_value(
+            row,
+            [
+                "date",
+                "Date",
+                "日期",
+                "交易日期",
+            ],
+        )
+
         row_date = parse_date(
+            raw_date
+        )
+
+        if row_date == trading_date:
+            target_rows.append(
+                row
+            )
+
+    if not target_rows:
+        # API 可能本身只回傳最新交易日
+        target_rows = [
+            row
+            for row in payload
+            if isinstance(
+                row,
+                dict,
+            )
+        ]
+
+    foreign = 0.0
+    trust = 0.0
+    valid_rows = 0
+
+    for row in target_rows:
+        foreign_value = parse_number(
             first_value(
                 row,
                 [
-                    "Date",
-                    "date",
-                    "資料日期",
-                    "日期",
+                    "Foreign_Investor_Net",
+                    "ForeignInvestorNet",
+                    "外資及陸資買賣超股數",
+                    "外資買賣超",
+                    "外資(不含自營商)買賣超",
+                    "外資（不含自營商）買賣超",
                 ],
             )
         )
 
-        if row_date is None:
-            filtered_rows.append(row)
+        trust_value = parse_number(
+            first_value(
+                row,
+                [
+                    "Investment_Trust_Net",
+                    "InvestmentTrustNet",
+                    "投信買賣超股數",
+                    "投信買賣超",
+                ],
+            )
+        )
+
+        if foreign_value is None and trust_value is None:
             continue
 
-        if row_date == latest_date:
-            filtered_rows.append(row)
-
-    if filtered_rows:
-        rows = filtered_rows
-
-    foreign_total = 0.0
-    foreign_count = 0
-
-    trust_total = 0.0
-    trust_count = 0
-
-    for row in rows:
-        foreign_value = (
-            find_tpex_field_value(
-                row,
-                "foreign",
-            )
-        )
-
         if foreign_value is not None:
-            foreign_total += foreign_value
-            foreign_count += 1
-
-        trust_value = (
-            find_tpex_field_value(
-                row,
-                "trust",
-            )
-        )
+            foreign += foreign_value
 
         if trust_value is not None:
-            trust_total += trust_value
-            trust_count += 1
+            trust += trust_value
 
-    foreign_net = (
-        foreign_total
-        if foreign_count > 0
-        else None
-    )
+        valid_rows += 1
 
-    trust_net = (
-        trust_total
-        if trust_count > 0
-        else None
-    )
-
-    print(
-        "TPEx institutional:"
-    )
-    print(
-        f"  rows: {len(rows)}"
-    )
-    print(
-        f"  foreign(ex-dealer): "
-        f"{foreign_net}"
-    )
-    print(
-        f"  investment trust: "
-        f"{trust_net}"
-    )
+    if valid_rows == 0:
+        raise RuntimeError(
+            "TPEx institutional parsed "
+            "zero valid rows"
+        )
 
     return {
-        "foreign_net": foreign_net,
-        "trust_net": trust_net,
-        "rows": len(rows),
-        "status": (
-            "complete"
-            if rows
-            else "unavailable"
-        ),
-    }
-
-
-def combine_institutional(
-    twse: Optional[dict[str, Any]],
-    tpex: Optional[dict[str, Any]],
-) -> dict[str, Any]:
-    twse_foreign = (
-        twse.get("foreign_net")
-        if twse
-        else None
-    )
-
-    tpex_foreign = (
-        tpex.get("foreign_net")
-        if tpex
-        else None
-    )
-
-    twse_trust = (
-        twse.get("trust_net")
-        if twse
-        else None
-    )
-
-    tpex_trust = (
-        tpex.get("trust_net")
-        if tpex
-        else None
-    )
-
-    foreign_parts = [
-        value
-        for value in (
-            twse_foreign,
-            tpex_foreign,
-        )
-        if value is not None
-    ]
-
-    trust_parts = [
-        value
-        for value in (
-            twse_trust,
-            tpex_trust,
-        )
-        if value is not None
-    ]
-
-    foreign_net = (
-        sum(foreign_parts)
-        if foreign_parts
-        else None
-    )
-
-    trust_net = (
-        sum(trust_parts)
-        if trust_parts
-        else None
-    )
-
-    if len(foreign_parts) == 2:
-        foreign_status = "complete"
-    elif len(foreign_parts) == 1:
-        foreign_status = "partial"
-    else:
-        foreign_status = "unavailable"
-
-    if len(trust_parts) == 2:
-        trust_status = "complete"
-    elif len(trust_parts) == 1:
-        trust_status = "partial"
-    else:
-        trust_status = "unavailable"
-
-    overall_status = "complete"
-
-    if (
-        foreign_status == "unavailable"
-        or trust_status == "unavailable"
-    ):
-        overall_status = "partial"
-
-    if (
-        foreign_status == "unavailable"
-        and trust_status == "unavailable"
-    ):
-        overall_status = "unavailable"
-
-    return {
-        "foreign_net": foreign_net,
-        "trust_net": trust_net,
-        "twse_foreign_net": twse_foreign,
-        "tpex_foreign_net": tpex_foreign,
-        "twse_trust_net": twse_trust,
-        "tpex_trust_net": tpex_trust,
-        "foreign_status": foreign_status,
-        "trust_status": trust_status,
-        "status": overall_status,
+        "rows": valid_rows,
+        "foreign": foreign,
+        "trust": trust,
     }
 
 
@@ -2442,421 +2376,36 @@ def combine_institutional(
 # Conditions
 # ============================================================
 
-def condition(
+def make_condition(
     name: str,
-    value: Any,
+    value: Optional[float],
     passed: Optional[bool],
 ) -> dict[str, Any]:
+    if value is None:
+        return {
+            "name": name,
+            "value": None,
+            "pass": None,
+            "status": "unavailable",
+        }
+
     if passed is None:
-        status = "unavailable"
-
-    elif passed:
-        status = "pass"
-
-    else:
-        status = "fail"
+        return {
+            "name": name,
+            "value": value,
+            "pass": None,
+            "status": "unavailable",
+        }
 
     return {
         "name": name,
         "value": value,
-        "pass": passed,
-        "status": status,
-    }
-
-
-def build_conditions(
-    index: dict[str, Any],
-    trend: dict[str, Any],
-    breadth: dict[str, Any],
-    volume: dict[str, Any],
-    institutional: dict[str, Any],
-) -> list[dict[str, Any]]:
-    values: list[
-        dict[str, Any]
-    ] = []
-
-    # --------------------------------------------------------
-    # 1. TAIEX > MA20
-    # --------------------------------------------------------
-
-    taiex_value = index.get("value")
-    ma20 = trend.get("ma20")
-
-    if (
-        taiex_value is None
-        or ma20 is None
-    ):
-        values.append(
-            condition(
-                CONDITION_NAMES[0],
-                None,
-                None,
-            )
-        )
-    else:
-        values.append(
-            condition(
-                CONDITION_NAMES[0],
-                taiex_value - ma20,
-                taiex_value > ma20,
-            )
-        )
-
-    # --------------------------------------------------------
-    # 2. MA20 上升
-    # --------------------------------------------------------
-
-    ma20_slope = trend.get(
-        "ma20_slope"
-    )
-
-    if ma20_slope is None:
-        values.append(
-            condition(
-                CONDITION_NAMES[1],
-                None,
-                None,
-            )
-        )
-    else:
-        values.append(
-            condition(
-                CONDITION_NAMES[1],
-                ma20_slope,
-                ma20_slope > 0,
-            )
-        )
-
-    # --------------------------------------------------------
-    # 3. RSI14 > 50
-    # --------------------------------------------------------
-
-    rsi14 = trend.get("rsi14")
-
-    if rsi14 is None:
-        values.append(
-            condition(
-                CONDITION_NAMES[2],
-                None,
-                None,
-            )
-        )
-    else:
-        values.append(
-            condition(
-                CONDITION_NAMES[2],
-                rsi14,
-                rsi14 > 50,
-            )
-        )
-
-    # --------------------------------------------------------
-    # 4. Advance / decline >= 1
-    # --------------------------------------------------------
-
-    ad_ratio = breadth.get(
-        "advance_decline_ratio"
-    )
-
-    advance = breadth.get(
-        "advance"
-    )
-
-    decline = breadth.get(
-        "decline"
-    )
-
-    if (
-        ad_ratio is None
-        and not (
-            isinstance(advance, int)
-            and isinstance(decline, int)
-            and advance > 0
-            and decline == 0
-        )
-    ):
-        values.append(
-            condition(
-                CONDITION_NAMES[3],
-                None,
-                None,
-            )
-        )
-
-    elif decline == 0 and advance > 0:
-        values.append(
-            condition(
-                CONDITION_NAMES[3],
-                None,
-                True,
-            )
-        )
-
-    else:
-        values.append(
-            condition(
-                CONDITION_NAMES[3],
-                ad_ratio,
-                ad_ratio >= 1,
-            )
-        )
-
-    # --------------------------------------------------------
-    # 5. Above MA20 >= 50%
-    # --------------------------------------------------------
-
-    above_ma20_pct = breadth.get(
-        "above_ma20_pct"
-    )
-
-    if above_ma20_pct is None:
-        values.append(
-            condition(
-                CONDITION_NAMES[4],
-                None,
-                None,
-            )
-        )
-    else:
-        values.append(
-            condition(
-                CONDITION_NAMES[4],
-                above_ma20_pct,
-                above_ma20_pct >= 50,
-            )
-        )
-
-    # --------------------------------------------------------
-    # 6. Market volume / 20D avg >= 1
-    # --------------------------------------------------------
-
-    volume_ratio = volume.get(
-        "ratio"
-    )
-
-    if volume_ratio is None:
-        values.append(
-            condition(
-                CONDITION_NAMES[5],
-                None,
-                None,
-            )
-        )
-    else:
-        values.append(
-            condition(
-                CONDITION_NAMES[5],
-                volume_ratio,
-                volume_ratio >= 1,
-            )
-        )
-
-    # --------------------------------------------------------
-    # 7. Foreign net > 0
-    # --------------------------------------------------------
-
-    foreign_net = institutional.get(
-        "foreign_net"
-    )
-
-    if foreign_net is None:
-        values.append(
-            condition(
-                CONDITION_NAMES[6],
-                None,
-                None,
-            )
-        )
-    else:
-        values.append(
-            condition(
-                CONDITION_NAMES[6],
-                foreign_net,
-                foreign_net > 0,
-            )
-        )
-
-    # --------------------------------------------------------
-    # 8. Trust net > 0
-    # --------------------------------------------------------
-
-    trust_net = institutional.get(
-        "trust_net"
-    )
-
-    if trust_net is None:
-        values.append(
-            condition(
-                CONDITION_NAMES[7],
-                None,
-                None,
-            )
-        )
-    else:
-        values.append(
-            condition(
-                CONDITION_NAMES[7],
-                trust_net,
-                trust_net > 0,
-            )
-        )
-
-    # --------------------------------------------------------
-    # 9. 20D new high / new low >= 1
-    # --------------------------------------------------------
-
-    new_high = breadth.get(
-        "new_high_20d"
-    )
-
-    new_low = breadth.get(
-        "new_low_20d"
-    )
-
-    new_hilo_total = breadth.get(
-        "new_hilo_total"
-    )
-
-    new_high_low_ratio = breadth.get(
-        "new_high_low_ratio"
-    )
-
-    if (
-        not isinstance(
-            new_hilo_total,
-            int,
-        )
-        or new_hilo_total <= 0
-    ):
-        values.append(
-            condition(
-                CONDITION_NAMES[8],
-                None,
-                None,
-            )
-        )
-
-    elif new_low == 0 and new_high > 0:
-        values.append(
-            condition(
-                CONDITION_NAMES[8],
-                None,
-                True,
-            )
-        )
-
-    elif new_low == 0:
-        values.append(
-            condition(
-                CONDITION_NAMES[8],
-                None,
-                None,
-            )
-        )
-
-    elif new_high_low_ratio is None:
-        values.append(
-            condition(
-                CONDITION_NAMES[8],
-                None,
-                None,
-            )
-        )
-
-    else:
-        values.append(
-            condition(
-                CONDITION_NAMES[8],
-                new_high_low_ratio,
-                new_high_low_ratio >= 1,
-            )
-        )
-
-    # --------------------------------------------------------
-    # 10. ATR14% <= 3%
-    # --------------------------------------------------------
-
-    atr14_pct = trend.get(
-        "atr14_pct"
-    )
-
-    if atr14_pct is None:
-        values.append(
-            condition(
-                CONDITION_NAMES[9],
-                None,
-                None,
-            )
-        )
-    else:
-        values.append(
-            condition(
-                CONDITION_NAMES[9],
-                atr14_pct,
-                atr14_pct <= 3,
-            )
-        )
-
-    if len(values) != 10:
-        raise RuntimeError(
-            "Condition count is not 10"
-        )
-
-    actual_names = [
-        item["name"]
-        for item in values
-    ]
-
-    if actual_names != CONDITION_NAMES:
-        raise RuntimeError(
-            "Condition name/order contract violated"
-        )
-
-    return values
-
-
-# ============================================================
-# Sentiment
-# ============================================================
-
-def calculate_sentiment(
-    conditions: list[dict[str, Any]],
-) -> dict[str, Any]:
-    valid = [
-        item
-        for item in conditions
-        if item.get("status")
-        in {
-            "pass",
-            "fail",
-        }
-    ]
-
-    valid_conditions = len(valid)
-
-    score = sum(
-        1
-        for item in valid
-        if item.get("status") == "pass"
-    )
-
-    if valid_conditions < 6:
-        level = "資料不足"
-
-    elif score >= 8:
-        level = "偏多"
-
-    elif score >= 5:
-        level = "震盪"
-
-    else:
-        level = "偏弱"
-
-    return {
-        "level": level,
-        "score": score,
-        "valid_conditions": valid_conditions,
-        "total_conditions": 10,
+        "pass": bool(passed),
+        "status": (
+            "pass"
+            if passed
+            else "fail"
+        ),
     }
 
 
@@ -2864,10 +2413,12 @@ def calculate_sentiment(
 # Market status
 # ============================================================
 
-def market_status_now() -> str:
+def get_market_status() -> str:
     """
-    台灣現貨市場：
-    週一至週五 09:00–13:30。
+    台股正常交易時段：
+    09:00 ~ 13:30。
+
+    fetch_market 在盤後執行時為 closed。
     """
 
     now = datetime.now()
@@ -2875,14 +2426,14 @@ def market_status_now() -> str:
     if now.weekday() >= 5:
         return "closed"
 
-    minutes = (
+    current_minutes = (
         now.hour * 60
         + now.minute
     )
 
     if (
         9 * 60
-        <= minutes
+        <= current_minutes
         <= 13 * 60 + 30
     ):
         return "open"
@@ -2894,7 +2445,47 @@ def market_status_now() -> str:
 # Validation
 # ============================================================
 
-def validate_market_payload(
+def validate_no_nan(
+    value: Any,
+    path: str = "$",
+) -> None:
+    if isinstance(
+        value,
+        float,
+    ):
+        if not math.isfinite(value):
+            raise RuntimeError(
+                f"Invalid numeric value at {path}"
+            )
+
+        return
+
+    if isinstance(
+        value,
+        dict,
+    ):
+        for key, child in value.items():
+            validate_no_nan(
+                child,
+                f"{path}.{key}",
+            )
+
+        return
+
+    if isinstance(
+        value,
+        list,
+    ):
+        for index, child in enumerate(
+            value
+        ):
+            validate_no_nan(
+                child,
+                f"{path}[{index}]",
+            )
+
+
+def validate_market(
     data: dict[str, Any],
 ) -> None:
     required = {
@@ -2913,20 +2504,21 @@ def validate_market_payload(
         "config",
     }
 
-    missing = (
-        required
-        - set(data.keys())
+    missing = required - set(
+        data.keys()
     )
 
     if missing:
         raise RuntimeError(
-            "Missing market root fields: "
+            "Missing root fields: "
             f"{sorted(missing)}"
         )
 
-    if data["schema_version"] != SCHEMA_VERSION:
+    if data["schema_version"] != (
+        SCHEMA_VERSION
+    ):
         raise RuntimeError(
-            "Invalid market schema_version"
+            "schema_version mismatch"
         )
 
     if data["market_status"] not in {
@@ -2934,35 +2526,29 @@ def validate_market_payload(
         "closed",
     }:
         raise RuntimeError(
-            "Invalid market_status"
+            "market_status invalid"
         )
 
     index = data["index"]
 
-    if not isinstance(index, dict):
+    if not isinstance(
+        index,
+        dict,
+    ):
         raise RuntimeError(
             "index must be object"
         )
 
-    for key in (
-        "name",
-        "value",
-        "change",
-        "change_pct",
-    ):
-        if key not in index:
-            raise RuntimeError(
-                f"Missing index field: {key}"
-            )
-
     if not is_finite_number(
-        index["value"]
+        index.get("value")
     ):
         raise RuntimeError(
-            "index.value must be finite number"
+            "TAIEX value invalid"
         )
 
-    conditions = data["conditions"]
+    conditions = data[
+        "conditions"
+    ]
 
     if not isinstance(
         conditions,
@@ -2974,7 +2560,7 @@ def validate_market_payload(
 
     if len(conditions) != 10:
         raise RuntimeError(
-            "conditions must contain exactly 10 items"
+            "condition count mismatch"
         )
 
     actual_names = [
@@ -2984,153 +2570,83 @@ def validate_market_payload(
 
     if actual_names != CONDITION_NAMES:
         raise RuntimeError(
-            "Condition names/order mismatch"
+            "condition names/order mismatch"
         )
 
-    for item in conditions:
-        if item.get("status") not in {
+    for index_number, condition in enumerate(
+        conditions,
+        start=1,
+    ):
+        status = condition.get(
+            "status"
+        )
+
+        if status not in {
             "pass",
             "fail",
             "unavailable",
         }:
             raise RuntimeError(
-                "Invalid condition status"
+                f"Condition {index_number} "
+                "invalid status"
             )
 
-        passed = item.get("pass")
+        if status == "unavailable":
+            if condition.get("pass") is not None:
+                raise RuntimeError(
+                    f"Condition {index_number} "
+                    "unavailable but pass "
+                    "is not None"
+                )
 
-        if passed is not None and not isinstance(
-            passed,
-            bool,
-        ):
-            raise RuntimeError(
-                "condition.pass must be bool or null"
-            )
+        else:
+            if not isinstance(
+                condition.get("pass"),
+                bool,
+            ):
+                raise RuntimeError(
+                    f"Condition {index_number} "
+                    "pass must be bool"
+                )
 
-    sentiment = data["sentiment"]
+            if not is_finite_number(
+                condition.get("value")
+            ):
+                raise RuntimeError(
+                    f"Condition {index_number} "
+                    "value invalid"
+                )
 
-    if sentiment.get("level") not in {
+    sentiment = data[
+        "sentiment"
+    ]
+
+    if sentiment.get(
+        "total_conditions"
+    ) != 10:
+        raise RuntimeError(
+            "sentiment total_conditions "
+            "must be 10"
+        )
+
+    if sentiment.get(
+        "level"
+    ) not in {
         "偏多",
         "震盪",
         "偏弱",
         "資料不足",
     }:
         raise RuntimeError(
-            "Invalid sentiment level"
+            "sentiment level invalid"
         )
 
-    if not isinstance(
-        sentiment.get("score"),
-        int,
-    ):
-        raise RuntimeError(
-            "sentiment.score must be int"
-        )
+    validate_no_nan(data)
 
-    if not isinstance(
-        sentiment.get("valid_conditions"),
-        int,
-    ):
-        raise RuntimeError(
-            "sentiment.valid_conditions must be int"
-        )
-
-    if sentiment.get(
-        "total_conditions"
-    ) != 10:
-        raise RuntimeError(
-            "sentiment.total_conditions must be 10"
-        )
-
-    source = data["source"]
-
-    if not isinstance(
-        source,
-        dict,
-    ):
-        raise RuntimeError(
-            "source must be object"
-        )
-
-    provider = source.get(
-        "provider"
-    )
-
-    if not isinstance(
-        provider,
-        list,
-    ):
-        raise RuntimeError(
-            "source.provider must be list"
-        )
-
-    if "TWSE" not in provider:
-        raise RuntimeError(
-            "TWSE missing from source.provider"
-        )
-
-    if "TPEx" not in provider:
-        raise RuntimeError(
-            "TPEx missing from source.provider"
-        )
-
-
-def validate_no_nonfinite(
-    value: Any,
-    path: str = "root",
-) -> None:
-    if isinstance(value, float):
-        if not math.isfinite(value):
-            raise RuntimeError(
-                f"Non-finite number at {path}"
-            )
-
-    elif isinstance(value, dict):
-        for key, child in value.items():
-            validate_no_nonfinite(
-                child,
-                f"{path}.{key}",
-            )
-
-    elif isinstance(value, list):
-        for index, child in enumerate(value):
-            validate_no_nonfinite(
-                child,
-                f"{path}[{index}]",
-            )
-
-
-# ============================================================
-# Atomic write
-# ============================================================
-
-def atomic_write_json(
-    path: Path,
-    data: dict[str, Any],
-) -> None:
-    cleaned = clean_json(data)
-
-    validate_no_nonfinite(
-        cleaned
-    )
-
-    temporary = path.with_suffix(
-        path.suffix + ".tmp"
-    )
-
-    temporary.write_text(
-        json.dumps(
-            cleaned,
-            ensure_ascii=False,
-            indent=2,
-            allow_nan=False,
-        ),
-        encoding="utf-8",
-    )
-
-    os.replace(
-        temporary,
-        path,
+    json.dumps(
+        data,
+        ensure_ascii=False,
+        allow_nan=False,
     )
 
 
@@ -3138,11 +2654,16 @@ def atomic_write_json(
 # Main
 # ============================================================
 
-def main() -> int:
-    print("")
-    print("=" * 72)
-    print("FETCH MARKET V2.1")
-    print("=" * 72)
+def main() -> None:
+    print(
+        "=" * 72
+    )
+    print(
+        "FETCH MARKET V2.1"
+    )
+    print(
+        "=" * 72
+    )
 
     # --------------------------------------------------------
     # Universe
@@ -3158,316 +2679,653 @@ def main() -> int:
         universe
     )
 
+    latest_trading_date = max(
+        history[-1]["date"]
+        for history in histories.values()
+        if history
+    )
+
+    print(
+        "latest trading date: "
+        f"{latest_trading_date}"
+    )
+
     # --------------------------------------------------------
     # Current TAIEX
     # --------------------------------------------------------
 
-    current_index = fetch_taiex_current()
+    index = fetch_current_index()
 
-    latest_date = current_index[
-        "date"
-    ]
-
-    print(
-        f"✓ Latest trading date: "
-        f"{latest_date}"
-    )
+    if (
+        index.get("date")
+        and index["date"]
+        != latest_trading_date
+    ):
+        print(
+            "⚠️ TAIEX date differs from "
+            "price latest date: "
+            f"{index['date']} vs "
+            f"{latest_trading_date}"
+        )
 
     # --------------------------------------------------------
     # TAIEX history
     # --------------------------------------------------------
 
     taiex_history = fetch_taiex_history(
-        latest_date
+        latest_trading_date
     )
 
-    index_metrics = (
-        calculate_index_metrics(
-            taiex_history
+    # 絕對禁止 3 天資料繼續往下跑
+    if len(taiex_history) < 20:
+        raise RuntimeError(
+            "TAIEX history insufficient: "
+            f"{len(taiex_history)} trading days; "
+            "need >=20"
+        )
+
+    closes = [
+        row["close"]
+        for row in taiex_history
+    ]
+
+    ma20 = moving_average(
+        closes,
+        20,
+    )
+
+    ma20_previous = None
+
+    if len(closes) >= 21:
+        ma20_previous = (
+            sum(closes[-21:-1])
+            / 20
+        )
+
+    rsi14 = rsi_wilder(
+        closes,
+        14,
+    )
+
+    atr14_pct = atr_percent(
+        taiex_history,
+        14,
+    )
+
+    # --------------------------------------------------------
+    # Market breadth / volume
+    # --------------------------------------------------------
+
+    breadth, volume = (
+        market_stock_stats(
+            histories,
+            latest_trading_date,
         )
     )
 
     # --------------------------------------------------------
-    # Market breadth
+    # TWSE T86
     # --------------------------------------------------------
 
-    breadth = calculate_market_breadth(
-        histories,
-        latest_date,
-    )
-
-    # --------------------------------------------------------
-    # Volume
-    # --------------------------------------------------------
-
-    volume = {
-        "current": breadth[
-            "current_volume"
-        ],
-        "current_stock_count": breadth[
-            "current_volume_count"
-        ],
-        "average_20d": breadth[
-            "volume_20d_average"
-        ],
-        "ratio": breadth[
-            "volume_ratio"
-        ],
-    }
-
-    # --------------------------------------------------------
-    # Institutional
-    # --------------------------------------------------------
-
-    twse_institutional: Optional[
-        dict[str, Any]
-    ] = None
-
-    tpex_institutional: Optional[
-        dict[str, Any]
-    ] = None
+    twse = None
 
     try:
-        twse_institutional = (
-            fetch_twse_institutional(
-                latest_date
-            )
+        twse = fetch_twse_t86(
+            latest_trading_date
+        )
+
+        print(
+            "TWSE T86:"
+        )
+
+        print(
+            f"  rows={twse['rows']}"
+        )
+
+        print(
+            "  foreign="
+            f"{twse['foreign']}"
+        )
+
+        print(
+            "  trust="
+            f"{twse['trust']}"
         )
 
     except Exception as exc:
         print(
-            f"⚠️ TWSE T86 unavailable: "
+            "TWSE T86 unavailable: "
             f"{exc}"
         )
 
+    # --------------------------------------------------------
+    # TPEx institutional
+    # --------------------------------------------------------
+
+    tpex = None
+
     try:
-        tpex_institutional = (
+        tpex = (
             fetch_tpex_institutional(
-                latest_date
+                latest_trading_date
             )
+        )
+
+        print(
+            "TPEx institutional:"
+        )
+
+        print(
+            f"  rows={tpex['rows']}"
+        )
+
+        print(
+            "  foreign="
+            f"{tpex['foreign']}"
+        )
+
+        print(
+            "  trust="
+            f"{tpex['trust']}"
         )
 
     except Exception as exc:
         print(
-            f"⚠️ TPEx institutional "
+            "TPEx institutional "
             f"unavailable: {exc}"
         )
 
-    institutional = combine_institutional(
-        twse_institutional,
-        tpex_institutional,
-    )
-
     # --------------------------------------------------------
-    # Index object
-    #
-    # IMPORTANT:
-    # V2.1 requires:
-    # name / value / change / change_pct
+    # Institutional aggregation
     # --------------------------------------------------------
 
-    index = {
-        "name": "TAIEX",
-        "value": current_index[
-            "value"
-        ],
-        "change": current_index[
-            "change"
-        ],
-        "change_pct": current_index[
-            "change_pct"
-        ],
-    }
+    foreign = None
+    trust = None
 
-    # --------------------------------------------------------
-    # Trend
-    # --------------------------------------------------------
+    if twse is not None or tpex is not None:
+        foreign = 0.0
+        trust = 0.0
 
-    trend = {
-        "ma20": index_metrics[
-            "ma20"
-        ],
-        "ma20_previous": index_metrics[
-            "ma20_previous"
-        ],
-        "ma20_slope": index_metrics[
-            "ma20_slope"
-        ],
-        "rsi14": index_metrics[
-            "rsi14"
-        ],
-        "atr14_pct": index_metrics[
-            "atr14_pct"
-        ],
-        "history_days": len(
-            taiex_history
-        ),
-    }
+        if twse is not None:
+            foreign += twse[
+                "foreign"
+            ]
+
+            trust += twse[
+                "trust"
+            ]
+
+        if tpex is not None:
+            foreign += tpex[
+                "foreign"
+            ]
+
+            trust += tpex[
+                "trust"
+            ]
+
+    if twse is not None and tpex is not None:
+        institutional_status = (
+            "complete"
+        )
+
+    elif (
+        twse is not None
+        or tpex is not None
+    ):
+        institutional_status = (
+            "partial"
+        )
+
+    else:
+        institutional_status = (
+            "unavailable"
+        )
 
     # --------------------------------------------------------
     # Conditions
     # --------------------------------------------------------
 
-    conditions = build_conditions(
-        index=index,
-        trend=trend,
-        breadth=breadth,
-        volume=volume,
-        institutional=institutional,
+    condition_1_value = None
+    condition_1_pass = None
+
+    if ma20 is not None:
+        condition_1_value = (
+            index["value"]
+            / ma20
+        )
+
+        condition_1_pass = (
+            index["value"]
+            > ma20
+        )
+
+    condition_2_value = None
+    condition_2_pass = None
+
+    if (
+        ma20 is not None
+        and ma20_previous is not None
+    ):
+        condition_2_value = (
+            ma20
+            - ma20_previous
+        )
+
+        condition_2_pass = (
+            ma20
+            > ma20_previous
+        )
+
+    condition_3_value = rsi14
+    condition_3_pass = (
+        rsi14 > 50
+        if rsi14 is not None
+        else None
     )
+
+    condition_4_value = (
+        breadth[
+            "advance_decline_ratio"
+        ]
+    )
+
+    condition_4_pass = (
+        condition_4_value >= 1
+        if condition_4_value
+        is not None
+        else None
+    )
+
+    condition_5_value = (
+        breadth[
+            "above_ma20_pct"
+        ]
+    )
+
+    condition_5_pass = (
+        condition_5_value >= 50
+        if condition_5_value
+        is not None
+        else None
+    )
+
+    condition_6_value = (
+        volume["ratio"]
+    )
+
+    condition_6_pass = (
+        condition_6_value >= 1
+        if condition_6_value
+        is not None
+        else None
+    )
+
+    condition_7_value = foreign
+
+    condition_7_pass = (
+        foreign > 0
+        if foreign is not None
+        else None
+    )
+
+    condition_8_value = trust
+
+    condition_8_pass = (
+        trust > 0
+        if trust is not None
+        else None
+    )
+
+    condition_9_value = (
+        breadth[
+            "new_high_low_ratio"
+        ]
+    )
+
+    condition_9_pass = (
+        condition_9_value >= 1
+        if condition_9_value
+        is not None
+        else None
+    )
+
+    condition_10_value = (
+        atr14_pct
+    )
+
+    condition_10_pass = (
+        atr14_pct <= 3
+        if atr14_pct is not None
+        else None
+    )
+
+    conditions = [
+        make_condition(
+            CONDITION_NAMES[0],
+            condition_1_value,
+            condition_1_pass,
+        ),
+        make_condition(
+            CONDITION_NAMES[1],
+            condition_2_value,
+            condition_2_pass,
+        ),
+        make_condition(
+            CONDITION_NAMES[2],
+            condition_3_value,
+            condition_3_pass,
+        ),
+        make_condition(
+            CONDITION_NAMES[3],
+            condition_4_value,
+            condition_4_pass,
+        ),
+        make_condition(
+            CONDITION_NAMES[4],
+            condition_5_value,
+            condition_5_pass,
+        ),
+        make_condition(
+            CONDITION_NAMES[5],
+            condition_6_value,
+            condition_6_pass,
+        ),
+        make_condition(
+            CONDITION_NAMES[6],
+            condition_7_value,
+            condition_7_pass,
+        ),
+        make_condition(
+            CONDITION_NAMES[7],
+            condition_8_value,
+            condition_8_pass,
+        ),
+        make_condition(
+            CONDITION_NAMES[8],
+            condition_9_value,
+            condition_9_pass,
+        ),
+        make_condition(
+            CONDITION_NAMES[9],
+            condition_10_value,
+            condition_10_pass,
+        ),
+    ]
 
     # --------------------------------------------------------
     # Sentiment
     # --------------------------------------------------------
 
-    sentiment = calculate_sentiment(
-        conditions
+    valid_conditions = sum(
+        condition["status"]
+        != "unavailable"
+        for condition in conditions
+    )
+
+    score = sum(
+        condition["status"]
+        == "pass"
+        for condition in conditions
+    )
+
+    if valid_conditions < 6:
+        sentiment_level = (
+            "資料不足"
+        )
+
+    elif score >= 8:
+        sentiment_level = (
+            "偏多"
+        )
+
+    elif score >= 5:
+        sentiment_level = (
+            "震盪"
+        )
+
+    else:
+        sentiment_level = (
+            "偏弱"
+        )
+
+    # --------------------------------------------------------
+    # Market status
+    # --------------------------------------------------------
+
+    market_status = (
+        get_market_status()
     )
 
     # --------------------------------------------------------
-    # Source
-    # --------------------------------------------------------
-
-    source = {
-        "provider": [
-            "TWSE",
-            "TPEx",
-        ],
-        "twse": {
-            "index": TWSE_MI_INDEX_URL,
-            "index_history": (
-                TWSE_MI_5MINS_HIST_URL
-            ),
-            "institutional": TWSE_T86_URL,
-        },
-        "tpex": {
-            "institutional": TPEX_3INSTI_URL,
-        },
-        "price": {
-            "local": str(
-                PRICES_DIR.relative_to(ROOT)
-            ),
-            "manifest": str(
-                PRICE_MANIFEST_PATH.relative_to(
-                    ROOT
-                )
-            ),
-            "schema": PRICE_SCHEMA_VERSION,
-        },
-    }
-
-    # --------------------------------------------------------
-    # Config
-    # --------------------------------------------------------
-
-    config = {
-        "condition_count": 10,
-        "rsi_period": 14,
-        "ma_period": 20,
-        "atr_period": 14,
-        "new_high_low_period": 20,
-        "volume_average_period": 20,
-        "sentiment": {
-            "bullish_min_score": 8,
-            "neutral_min_score": 5,
-            "weak_max_score": 4,
-            "minimum_valid_conditions": 6,
-        },
-        "price_coverage": {
-            "universe_count": len(
-                universe
-            ),
-            "history_count": len(
-                histories
-            ),
-            "latest_date_exact": breadth[
-                "coverage"
-            ],
-            "stale": breadth[
-                "stale_coverage"
-            ],
-        },
-    }
-
-    # --------------------------------------------------------
-    # Final payload
+    # Output
     # --------------------------------------------------------
 
     market = {
-        "schema_version": SCHEMA_VERSION,
-        "generated_at": datetime.now().isoformat(
-            timespec="seconds"
-        ),
-        "market_status": market_status_now(),
-        "latest_trading_date": latest_date,
-        "index": index,
-        "trend": trend,
-        "breadth": {
-            "coverage": breadth[
-                "coverage"
-            ],
-            "stale_coverage": breadth[
-                "stale_coverage"
-            ],
-            "advance": breadth[
-                "advance"
-            ],
-            "decline": breadth[
-                "decline"
-            ],
-            "unchanged": breadth[
-                "unchanged"
-            ],
-            "advance_decline_ratio": (
-                breadth[
-                    "advance_decline_ratio"
-                ]
-            ),
-            "above_ma20": breadth[
-                "above_ma20"
-            ],
-            "ma20_total": breadth[
-                "ma20_total"
-            ],
-            "above_ma20_pct": breadth[
-                "above_ma20_pct"
-            ],
-            "new_high_20d": breadth[
-                "new_high_20d"
-            ],
-            "new_low_20d": breadth[
-                "new_low_20d"
-            ],
-            "new_high_low_ratio": (
-                breadth[
-                    "new_high_low_ratio"
-                ]
-            ),
-            "new_hilo_total": breadth[
-                "new_hilo_total"
-            ],
-        },
-        "volume": volume,
-        "institutional": institutional,
-        "sentiment": sentiment,
-        "conditions": conditions,
-        "source": source,
-        "config": config,
-    }
+        "schema_version":
+            SCHEMA_VERSION,
 
-    # --------------------------------------------------------
-    # Validate BEFORE write
-    # --------------------------------------------------------
+        "generated_at":
+            datetime.now().strftime(
+                "%Y-%m-%dT%H:%M:%S"
+            ),
+
+        "market_status":
+            market_status,
+
+        "latest_trading_date":
+            latest_trading_date,
+
+        "index": {
+            "name":
+                "TAIEX",
+
+            "value":
+                index["value"],
+
+            "change":
+                index["change"],
+
+            "change_pct":
+                index["change_pct"],
+        },
+
+        "trend": {
+            "ma20":
+                ma20,
+
+            "ma20_previous":
+                ma20_previous,
+
+            "ma20_slope":
+                (
+                    ma20
+                    - ma20_previous
+                    if (
+                        ma20 is not None
+                        and ma20_previous
+                        is not None
+                    )
+                    else None
+                ),
+
+            "rsi14":
+                rsi14,
+
+            "atr14_pct":
+                atr14_pct,
+
+            "history_days":
+                len(taiex_history),
+        },
+
+        "breadth":
+            breadth,
+
+        "volume":
+            volume,
+
+        "institutional": {
+            "foreign_net":
+                foreign,
+
+            "trust_net":
+                trust,
+
+            "twse_foreign_net":
+                (
+                    twse["foreign"]
+                    if twse is not None
+                    else None
+                ),
+
+            "tpex_foreign_net":
+                (
+                    tpex["foreign"]
+                    if tpex is not None
+                    else None
+                ),
+
+            "twse_trust_net":
+                (
+                    twse["trust"]
+                    if twse is not None
+                    else None
+                ),
+
+            "tpex_trust_net":
+                (
+                    tpex["trust"]
+                    if tpex is not None
+                    else None
+                ),
+
+            "foreign_status":
+                institutional_status,
+
+            "trust_status":
+                institutional_status,
+
+            "status":
+                institutional_status,
+        },
+
+        "sentiment": {
+            "level":
+                sentiment_level,
+
+            "score":
+                score,
+
+            "valid_conditions":
+                valid_conditions,
+
+            "total_conditions":
+                10,
+        },
+
+        "conditions":
+            conditions,
+
+        "source": {
+            "provider": [
+                "TWSE",
+                "TPEx",
+            ],
+
+            "twse": {
+                "index":
+                    TWSE_MI_INDEX_URL,
+
+                "index_history":
+                    TWSE_MI_5MINS_HIST_URL,
+
+                "index_history_rwd":
+                    TWSE_MI_5MINS_HIST_RWD_URL,
+
+                "institutional":
+                    TWSE_T86_URL,
+            },
+
+            "tpex": {
+                "institutional":
+                    TPEX_3INSTI_URL,
+            },
+
+            "price": {
+                "local":
+                    "Data/prices",
+
+                "manifest":
+                    "Data/prices/manifest.json",
+
+                "schema":
+                    PRICE_SCHEMA_VERSION,
+            },
+        },
+
+        "config": {
+            "condition_count":
+                10,
+
+            "rsi_period":
+                14,
+
+            "ma_period":
+                20,
+
+            "atr_period":
+                14,
+
+            "new_high_low_period":
+                20,
+
+            "volume_average_period":
+                20,
+
+            "sentiment": {
+                "bullish_min_score":
+                    8,
+
+                "neutral_min_score":
+                    5,
+
+                "weak_max_score":
+                    4,
+
+                "minimum_valid_conditions":
+                    6,
+            },
+
+            "price_coverage": {
+                "universe_count":
+                    len(universe),
+
+                "history_count":
+                    len(histories),
+
+                "latest_date_exact":
+                    breadth[
+                        "coverage"
+                    ],
+
+                "stale":
+                    breadth[
+                        "stale_coverage"
+                    ],
+            },
+        },
+    }
 
     market = clean_json(
         market
     )
 
-    validate_market_payload(
-        market
-    )
+    # --------------------------------------------------------
+    # Final validation
+    # --------------------------------------------------------
 
-    validate_no_nonfinite(
+    validate_market(
         market
     )
 
@@ -3475,19 +3333,32 @@ def main() -> int:
     # Atomic write
     # --------------------------------------------------------
 
-    atomic_write_json(
-        MARKET_PATH,
-        market,
+    MARKET_PATH.parent.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
+
+    temp_path = MARKET_PATH.with_suffix(
+        ".tmp"
+    )
+
+    temp_path.write_text(
+        json.dumps(
+            market,
+            ensure_ascii=False,
+            indent=2,
+            allow_nan=False,
+        ),
+        encoding="utf-8",
+    )
+
+    temp_path.replace(
+        MARKET_PATH
     )
 
     # --------------------------------------------------------
     # Read-back validation
     # --------------------------------------------------------
-
-    if not MARKET_PATH.exists():
-        raise RuntimeError(
-            "market.json was not written"
-        )
 
     written = json.loads(
         MARKET_PATH.read_text(
@@ -3495,126 +3366,122 @@ def main() -> int:
         )
     )
 
-    validate_market_payload(
-        written
-    )
-
-    validate_no_nonfinite(
+    validate_market(
         written
     )
 
     # --------------------------------------------------------
-    # Summary
+    # Final log
     # --------------------------------------------------------
 
-    print("")
-    print("=" * 72)
-    print("MARKET V2.1 RESULT")
-    print("=" * 72)
-
     print(
-        f"Schema           : "
-        f"{written['schema_version']}"
+        "=" * 72
     )
 
     print(
-        f"Market status    : "
-        f"{written['market_status']}"
+        "VALIDATE MARKET.JSON V2.1 PASS"
     )
 
     print(
-        f"Trading date     : "
-        f"{written['latest_trading_date']}"
-    )
-
-    print(
-        f"TAIEX            : "
-        f"{written['index']['value']}"
-    )
-
-    print(
-        f"Price coverage   : "
-        f"{written['breadth']['coverage']}/"
+        f"Active common-stock universe: "
         f"{len(universe)}"
     )
 
     print(
-        f"Stale coverage   : "
-        f"{written['breadth']['stale_coverage']}"
+        f"Price coverage: "
+        f"{breadth['coverage']}/"
+        f"{len(universe)}"
     )
 
     print(
-        f"Sentiment        : "
-        f"{written['sentiment']['level']}"
+        f"Stale coverage: "
+        f"{breadth['stale_coverage']}"
     )
 
     print(
-        f"Score            : "
-        f"{written['sentiment']['score']}/10"
+        f"TAIEX history: "
+        f"{len(taiex_history)} "
+        f"trading days"
     )
 
     print(
-        f"Valid conditions : "
-        f"{written['sentiment']['valid_conditions']}/10"
-    )
-
-    print("")
-
-    for index, item in enumerate(
-        written["conditions"],
-        start=1,
-    ):
-        print(
-            f"{index:02d}. "
-            f"{item['name']} "
-            f"→ {item['status']} "
-            f"value={item['value']}"
-        )
-
-    print("")
-    print(
-        f"✓ Wrote: {MARKET_PATH}"
+        f"TAIEX: "
+        f"{index['value']}"
     )
 
     print(
-        "✓ market-v2.1 validation PASS"
+        f"Change: "
+        f"{index['change']}"
     )
 
-    return 0
+    print(
+        f"Change %: "
+        f"{index['change_pct']}"
+    )
 
+    print(
+        f"Market status: "
+        f"{market_status}"
+    )
+
+    print(
+        f"MA20: "
+        f"{ma20}"
+    )
+
+    print(
+        f"RSI14: "
+        f"{rsi14}"
+    )
+
+    print(
+        f"ATR14%: "
+        f"{atr14_pct}"
+    )
+
+    print(
+        f"Sentiment: "
+        f"{sentiment_level}"
+    )
+
+    print(
+        f"Score: "
+        f"{score}/10"
+    )
+
+    print(
+        f"Valid conditions: "
+        f"{valid_conditions}/10"
+    )
+
+    print(
+        f"market-v2.1 validation PASS"
+    )
+
+    print(
+        f"Wrote: {MARKET_PATH}"
+    )
+
+
+# ============================================================
+# Entry
+# ============================================================
 
 if __name__ == "__main__":
     try:
-        raise SystemExit(
-            main()
-        )
+        main()
 
     except KeyboardInterrupt:
         print(
-            "\n❌ Interrupted",
+            "Interrupted",
             file=sys.stderr,
         )
-        raise SystemExit(130)
+        sys.exit(130)
 
     except Exception as exc:
         print(
-            "",
+            "FETCH MARKET V2.1 FAIL: "
+            f"{exc}",
             file=sys.stderr,
         )
-        print(
-            "=" * 72,
-            file=sys.stderr,
-        )
-        print(
-            "FETCH MARKET V2.1 FAILED",
-            file=sys.stderr,
-        )
-        print(
-            "=" * 72,
-            file=sys.stderr,
-        )
-        print(
-            f"❌ {exc}",
-            file=sys.stderr,
-        )
-        raise SystemExit(1)
+        sys.exit(1)
