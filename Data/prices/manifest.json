@@ -1,10 +1,10 @@
 {
   "schema_version": "prices-v14.0",
   "version": "PRICE-FETCH-V14.0",
-  "generated_at": "2026-09-04T02:23:49.904306+08:00",
+  "generated_at": "2026-09-05T01:43:04.224864+08:00",
   "total_symbols": 2304,
-  "complete_count": 2276,
-  "partial_count": 18,
+  "complete_count": 2277,
+  "partial_count": 17,
   "short_count": 9,
   "not_started_count": 0,
   "no_history_count": 1,
