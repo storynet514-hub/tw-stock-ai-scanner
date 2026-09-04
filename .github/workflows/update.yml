@@ -78,6 +78,7 @@ jobs:
           test -f Scripts/build_universe.py
           test -f Scripts/fetch_chip.py
           test -f Scripts/fetch_prices.py
+          test -f Scripts/fetch_market.py
           test -f Scripts/analyze_stocks.py
           test -f Scripts/build_ui_data.py
 
@@ -86,6 +87,7 @@ jobs:
           echo "✓ Scripts/build_universe.py"
           echo "✓ Scripts/fetch_chip.py"
           echo "✓ Scripts/fetch_prices.py"
+          echo "✓ Scripts/fetch_market.py"
           echo "✓ Scripts/analyze_stocks.py"
           echo "✓ Scripts/build_ui_data.py"
           echo "✓ Data/"
@@ -102,6 +104,7 @@ jobs:
             Scripts/build_universe.py \
             Scripts/fetch_chip.py \
             Scripts/fetch_prices.py \
+            Scripts/fetch_market.py \
             Scripts/analyze_stocks.py \
             Scripts/build_ui_data.py
 
@@ -121,9 +124,9 @@ jobs:
 
           python Scripts/build_universe.py
 
-          echo "========================================"
-          echo "UNIVERSE BUILD COMPLETED"
-          echo "========================================"
+          test -f Data/universe.json
+
+          echo "✓ Data/universe.json"
 
       # ======================================================
       # 7. Validate Universe
@@ -341,26 +344,6 @@ jobs:
 
       # ======================================================
       # 10. Validate Price Data
-      #
-      # IMPORTANT:
-      #
-      # fetch_prices.py 合法狀態：
-      #
-      # complete
-      # partial
-      # short
-      # not_started
-      # no_history
-      #
-      # no_history 的合法資料：
-      #
-      # history_status = no_history
-      # source         = none
-      # history_rows   = 0
-      # latest_date    = null
-      # prices         = []
-      #
-      # 空 prices 只有在明確被辨識為 no_history 時才合法。
       # ======================================================
 
       - name: Validate Price Data
@@ -883,11 +866,6 @@ jobs:
 
           for symbol in missing:
 
-              # no_history 已存在 shard，
-              # 所以正常情況不會進入 missing。
-              #
-              # 此處保留新掛牌 grace contract。
-
               listing_date = (
                   universe_listing_dates.get(
                       symbol
@@ -919,10 +897,6 @@ jobs:
                   f"{sorted(hard_missing)[:50]}"
               )
 
-          # --------------------------------------------------
-          # Effective coverage
-          # --------------------------------------------------
-
           effective_coverage = (
               len(price_symbols)
               + len(
@@ -938,10 +912,6 @@ jobs:
                   f"{effective_coverage} != "
                   f"{universe_count}"
               )
-
-          # --------------------------------------------------
-          # Output
-          # --------------------------------------------------
 
           print("")
           print("========================================")
@@ -990,7 +960,305 @@ jobs:
           PY
 
       # ======================================================
-      # 11. Analyze Stocks
+      # 11. Fetch Market
+      #
+      # FIX:
+      # 原正式 update workflow 缺少此階段。
+      # build_ui_data.py 明確需要 Data/market.json。
+      # ======================================================
+
+      - name: Fetch Market Data
+        run: |
+          set -e
+
+          echo "========================================"
+          echo "FETCH MARKET DATA"
+          echo "========================================"
+
+          python Scripts/fetch_market.py
+
+          test -f Data/market.json
+          test -s Data/market.json
+
+          echo "✓ Data/market.json"
+
+      # ======================================================
+      # 12. Validate Market
+      # ======================================================
+
+      - name: Validate Market Data
+        run: |
+          set -e
+
+          python - <<'PY'
+          import json
+          import math
+          from pathlib import Path
+
+          path = Path(
+              "Data/market.json"
+          )
+
+          if not path.exists():
+              raise SystemExit(
+                  "❌ Data/market.json 不存在"
+              )
+
+          if path.stat().st_size <= 0:
+              raise SystemExit(
+                  "❌ Data/market.json 為空"
+              )
+
+          try:
+              data = json.loads(
+                  path.read_text(
+                      encoding="utf-8-sig"
+                  )
+              )
+
+          except Exception as exc:
+              raise SystemExit(
+                  f"❌ market.json JSON "
+                  f"解析失敗：{exc}"
+              )
+
+          if not isinstance(
+              data,
+              dict
+          ):
+              raise SystemExit(
+                  "❌ market.json 根節點不是 object"
+              )
+
+          # --------------------------------------------------
+          # Schema
+          # --------------------------------------------------
+
+          if data.get(
+              "schema_version"
+          ) != "market-v2.1":
+
+              raise SystemExit(
+                  "❌ market.json "
+                  "schema_version 錯誤："
+                  f"{data.get('schema_version')}"
+              )
+
+          # --------------------------------------------------
+          # Required root fields
+          # --------------------------------------------------
+
+          required_fields = {
+              "market_status",
+              "latest_trading_date",
+              "index",
+              "sentiment",
+              "conditions",
+          }
+
+          missing = (
+              required_fields
+              - set(data.keys())
+          )
+
+          if missing:
+              raise SystemExit(
+                  "❌ market.json "
+                  "缺少欄位："
+                  f"{sorted(missing)}"
+              )
+
+          # --------------------------------------------------
+          # Market status
+          # --------------------------------------------------
+
+          market_status = data.get(
+              "market_status"
+          )
+
+          if market_status not in {
+              "open",
+              "closed",
+          }:
+
+              raise SystemExit(
+                  "❌ market_status 無效："
+                  f"{market_status}"
+              )
+
+          # --------------------------------------------------
+          # Latest trading date
+          # --------------------------------------------------
+
+          latest_date = data.get(
+              "latest_trading_date"
+          )
+
+          if not isinstance(
+              latest_date,
+              str
+          ) or not latest_date.strip():
+
+              raise SystemExit(
+                  "❌ latest_trading_date 無效"
+              )
+
+          # --------------------------------------------------
+          # Index
+          # --------------------------------------------------
+
+          index = data.get(
+              "index"
+          )
+
+          if not isinstance(
+              index,
+              dict
+          ):
+
+              raise SystemExit(
+                  "❌ market.index "
+                  "不是 object"
+              )
+
+          index_required = {
+              "name",
+              "value",
+              "change",
+              "change_pct",
+          }
+
+          index_missing = (
+              index_required
+              - set(index.keys())
+          )
+
+          if index_missing:
+              raise SystemExit(
+                  "❌ market.index "
+                  "缺少欄位："
+                  f"{sorted(index_missing)}"
+              )
+
+          for field in (
+              "value",
+              "change",
+              "change_pct",
+          ):
+
+              value = index.get(
+                  field
+              )
+
+              if (
+                  not isinstance(
+                      value,
+                      (int, float)
+                  )
+                  or isinstance(
+                      value,
+                      bool
+                  )
+                  or not math.isfinite(
+                      float(value)
+                  )
+              ):
+
+                  raise SystemExit(
+                      f"❌ market.index."
+                      f"{field} 無效："
+                      f"{value}"
+                  )
+
+          # --------------------------------------------------
+          # Sentiment
+          # --------------------------------------------------
+
+          sentiment = data.get(
+              "sentiment"
+          )
+
+          if not isinstance(
+              sentiment,
+              dict
+          ):
+
+              raise SystemExit(
+                  "❌ market.sentiment "
+                  "不是 object"
+              )
+
+          # --------------------------------------------------
+          # Conditions
+          # --------------------------------------------------
+
+          conditions = data.get(
+              "conditions"
+          )
+
+          if not isinstance(
+              conditions,
+              list
+          ):
+
+              raise SystemExit(
+                  "❌ market.conditions "
+                  "不是 list"
+              )
+
+          if len(
+              conditions
+          ) != 10:
+
+              raise SystemExit(
+                  "❌ market.json 必須有 "
+                  "10 項市場條件，"
+                  f"目前：{len(conditions)}"
+              )
+
+          # --------------------------------------------------
+          # PASS
+          # --------------------------------------------------
+
+          print("")
+          print("========================================")
+          print("MARKET DATA VALIDATION")
+          print("========================================")
+          print(
+              "✓ schema_version："
+              f"{data['schema_version']}"
+          )
+          print(
+              "✓ market_status："
+              f"{market_status}"
+          )
+          print(
+              "✓ latest_trading_date："
+              f"{latest_date}"
+          )
+          print(
+              "✓ index："
+              f"{index.get('name')}"
+          )
+          print(
+              "✓ index.value："
+              f"{index.get('value')}"
+          )
+          print(
+              "✓ sentiment：object"
+          )
+          print(
+              "✓ conditions："
+              f"{len(conditions)}"
+          )
+          print(
+              "✓ Market Data validation PASS"
+          )
+          print("========================================")
+          PY
+
+      # ======================================================
+      # 13. Analyze Stocks
       # ======================================================
 
       - name: Analyze Stocks
@@ -1008,7 +1276,7 @@ jobs:
           echo "✓ Data/analysis.json"
 
       # ======================================================
-      # 12. Build UI Data
+      # 14. Build UI Data
       # ======================================================
 
       - name: Build UI Data
@@ -1026,7 +1294,7 @@ jobs:
           echo "✓ Data/ui_data.json"
 
       # ======================================================
-      # 13. Final Data Contract
+      # 15. Final Data Contract
       # ======================================================
 
       - name: Final Data Contract
@@ -1035,15 +1303,13 @@ jobs:
 
           python - <<'PY'
           import json
-          from datetime import date, datetime
           from pathlib import Path
 
           DATA_DIR = Path("Data")
+
           NO_HISTORY_FILE = Path(
               ".no_history_symbols.json"
           )
-
-          NEW_LISTING_GRACE_DAYS = 30
 
           def fail(message):
               raise SystemExit(
@@ -1089,35 +1355,12 @@ jobs:
                   if value.endswith(
                       suffix
                   ):
+
                       value = value[
                           :-len(suffix)
                       ]
 
               return value or None
-
-          def parse_date(value):
-
-              if value is None:
-                  return None
-
-              text = str(value).strip()
-
-              for fmt in (
-                  "%Y/%m/%d",
-                  "%Y-%m-%d",
-                  "%Y%m%d",
-              ):
-
-                  try:
-                      return datetime.strptime(
-                          text,
-                          fmt
-                      ).date()
-
-                  except ValueError:
-                      pass
-
-              return None
 
           def extract_symbols(
               data,
@@ -1184,6 +1427,10 @@ jobs:
               DATA_DIR / "analysis.json"
           )
 
+          market = load_json(
+              DATA_DIR / "market.json"
+          )
+
           ui = load_json(
               DATA_DIR / "ui_data.json"
           )
@@ -1206,12 +1453,12 @@ jobs:
               universe_stocks,
               dict
           ):
+
               fail(
                   "universe.stocks 無效"
               )
 
           universe_symbols = set()
-          listing_dates = {}
 
           for key, item in (
               universe_stocks.items()
@@ -1221,6 +1468,7 @@ jobs:
                   item,
                   dict
               ):
+
                   fail(
                       f"Universe {key} "
                       "不是 object"
@@ -1239,14 +1487,6 @@ jobs:
 
               universe_symbols.add(
                   symbol
-              )
-
-              listing_dates[
-                  symbol
-              ] = parse_date(
-                  item.get(
-                      "listed_date"
-                  )
               )
 
           # --------------------------------------------------
@@ -1272,49 +1512,13 @@ jobs:
           )
 
           # --------------------------------------------------
-          # Allowed excluded
-          #
-          # 1. no_history
-          # 2. new listing grace
-          # --------------------------------------------------
-
-          allowed_excluded = set(
-              no_history
-          )
-
-          today = date.today()
-
-          for symbol in (
-              universe_symbols
-          ):
-
-              listing_date = (
-                  listing_dates.get(
-                      symbol
-                  )
-              )
-
-              if (
-                  listing_date is not None
-                  and 0 <= (
-                      today
-                      - listing_date
-                  ).days
-                  <= NEW_LISTING_GRACE_DAYS
-              ):
-
-                  allowed_excluded.add(
-                      symbol
-                  )
-
-          # --------------------------------------------------
           # Analysis contract
           # --------------------------------------------------
 
           analysis_missing = (
               universe_symbols
               - analysis_symbols
-              - allowed_excluded
+              - no_history
           )
 
           analysis_extra = (
@@ -1323,12 +1527,14 @@ jobs:
           )
 
           if analysis_missing:
+
               fail(
                   "Analysis 缺少股票："
                   f"{sorted(analysis_missing)[:50]}"
               )
 
           if analysis_extra:
+
               fail(
                   "Analysis 出現 Universe "
                   "以外股票："
@@ -1337,8 +1543,6 @@ jobs:
 
           # --------------------------------------------------
           # UI contract
-          #
-          # UI 必須與 Analysis 完全一致。
           # --------------------------------------------------
 
           ui_missing = (
@@ -1352,12 +1556,14 @@ jobs:
           )
 
           if ui_missing:
+
               fail(
                   "UI Data 缺少 Analysis 股票："
                   f"{sorted(ui_missing)[:50]}"
               )
 
           if ui_extra:
+
               fail(
                   "UI Data 出現 Analysis "
                   "以外股票："
@@ -1365,7 +1571,7 @@ jobs:
               )
 
           # --------------------------------------------------
-          # Chip extra validation
+          # Chip contract
           # --------------------------------------------------
 
           chip_stocks = chip.get(
@@ -1420,11 +1626,46 @@ jobs:
               )
 
               if chip_extra:
+
                   fail(
                       "Chip 出現 Universe "
                       "以外股票："
                       f"{sorted(chip_extra)[:50]}"
                   )
+
+          # --------------------------------------------------
+          # Market contract
+          # --------------------------------------------------
+
+          if market.get(
+              "schema_version"
+          ) != "market-v2.1":
+
+              fail(
+                  "Market schema_version "
+                  "錯誤"
+              )
+
+          if not isinstance(
+              market.get(
+                  "conditions"
+              ),
+              list
+          ):
+
+              fail(
+                  "Market conditions "
+                  "不是 list"
+              )
+
+          if len(
+              market["conditions"]
+          ) != 10:
+
+              fail(
+                  "Market conditions "
+                  "不是 10 項"
+              )
 
           # --------------------------------------------------
           # Final report
@@ -1460,6 +1701,14 @@ jobs:
           )
 
           print(
+              "✓ Universe → Chip：validated"
+          )
+
+          print(
+              "✓ Market：validated"
+          )
+
+          print(
               "✓ Price → Analysis：validated"
           )
 
@@ -1477,7 +1726,7 @@ jobs:
           PY
 
       # ======================================================
-      # 14. Commit Data
+      # 16. Commit Data
       # ======================================================
 
       - name: Commit updated data
