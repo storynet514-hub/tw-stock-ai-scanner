@@ -5,7 +5,7 @@
 台股 AI 選股系統 - fetch_market.py
 ============================================================
 
-MARKET ENVIRONMENT V3.2
+MARKET ENVIRONMENT V2.1
 
 核心契約
 ------------------------------------------------------------
@@ -30,7 +30,8 @@ MARKET ENVIRONMENT V3.2
 12. 官方資料不足時標記 unavailable
 13. 不偽造、不推算法人資料
 14. Data/market.json 採 atomic write
-15. 最終 validation 必須通過
+15. market.json 必須符合 market-v2.1
+16. 最終 validation 必須通過
 """
 
 from __future__ import annotations
@@ -41,9 +42,11 @@ import os
 import re
 import sys
 import time
+
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Iterator
+from zoneinfo import ZoneInfo
 
 
 # ============================================================
@@ -54,10 +57,21 @@ ROOT = Path(__file__).resolve().parents[1]
 
 DATA_DIR = ROOT / "Data"
 
-UNIVERSE_FILE = DATA_DIR / "universe.json"
-PRICES_DIR = DATA_DIR / "prices"
-MANIFEST_FILE = PRICES_DIR / "manifest.json"
-MARKET_FILE = DATA_DIR / "market.json"
+UNIVERSE_FILE = (
+    DATA_DIR / "universe.json"
+)
+
+PRICES_DIR = (
+    DATA_DIR / "prices"
+)
+
+MANIFEST_FILE = (
+    PRICES_DIR / "manifest.json"
+)
+
+MARKET_FILE = (
+    DATA_DIR / "market.json"
+)
 
 
 # ============================================================
@@ -65,28 +79,36 @@ MARKET_FILE = DATA_DIR / "market.json"
 # ============================================================
 
 TWSE_MI_INDEX_URL = (
-    "https://openapi.twse.com.tw/v1/exchangeReport/MI_INDEX"
+    "https://openapi.twse.com.tw/"
+    "v1/exchangeReport/MI_INDEX"
 )
 
 TWSE_T86_URL = (
-    "https://www.twse.com.tw/rwd/zh/fund/T86"
+    "https://www.twse.com.tw/"
+    "rwd/zh/fund/T86"
 )
 
 TPEX_3INSTI_URL = (
-    "https://www.tpex.org.tw/openapi/v1/tpex_3insti_daily_trading"
+    "https://www.tpex.org.tw/"
+    "openapi/v1/"
+    "tpex_3insti_daily_trading"
 )
 
 
 # ============================================================
-# HTTP
+# CONFIG
 # ============================================================
 
 HTTP_TIMEOUT = 30
 HTTP_RETRIES = 3
 
+TAIPEI_TZ = ZoneInfo(
+    "Asia/Taipei"
+)
+
 
 # ============================================================
-# KEY ALIASES
+# FIELD ALIASES
 # ============================================================
 
 CODE_KEYS = (
@@ -95,11 +117,9 @@ CODE_KEYS = (
     "CODE",
     "stock_code",
     "stockCode",
-    "stockCode",
     "symbol",
     "Symbol",
     "證券代號",
-    "證券碼",
     "股票代號",
 )
 
@@ -122,7 +142,6 @@ CLOSE_KEYS = (
     "closePrice",
     "收盤價",
     "收盤",
-    "收盤價",
     "c",
 )
 
@@ -169,10 +188,6 @@ VOLUME_KEYS = (
 
 # ============================================================
 # CONTAINER KEYS
-#
-# 非股票代號的容器 key。
-# 非常重要：
-# rows / data / symbols / stocks 不得被誤判成股票代號。
 # ============================================================
 
 CONTAINER_KEYS = {
@@ -208,58 +223,82 @@ CONTAINER_KEYS = {
 # LOG
 # ============================================================
 
-def log(message: str = "") -> None:
-    print(message, flush=True)
+def log(
+    message: str = "",
+) -> None:
+    print(
+        message,
+        flush=True,
+    )
 
 
 # ============================================================
-# NUMBER
+# NORMALIZATION
 # ============================================================
 
-def to_number(value: Any) -> float | None:
+def normalize_key(
+    value: Any,
+) -> str:
+
+    if value is None:
+        return ""
+
+    return (
+        str(value)
+        .replace("\ufeff", "")
+        .replace("\r", "")
+        .replace("\n", "")
+        .replace("\t", "")
+        .replace("\u3000", " ")
+        .strip()
+    )
+
+
+def to_number(
+    value: Any,
+) -> float | None:
+
     if value is None:
         return None
 
     if isinstance(value, bool):
         return None
 
-    if isinstance(value, (int, float)):
-        try:
-            number = float(value)
-        except (TypeError, ValueError):
+    if isinstance(
+        value,
+        (int, float),
+    ):
+        number = float(value)
+
+    else:
+
+        text = (
+            str(value)
+            .strip()
+            .replace(",", "")
+            .replace(" ", "")
+            .replace("\u3000", "")
+        )
+
+        if text in {
+            "",
+            "-",
+            "--",
+            "---",
+            "N/A",
+            "NA",
+            "null",
+            "None",
+            "nan",
+            "NaN",
+        }:
             return None
 
-        if math.isfinite(number):
-            return number
+        try:
+            number = float(text)
 
-        return None
-
-    text = str(value).strip()
-
-    if not text:
-        return None
-
-    text = text.replace(",", "")
-    text = text.replace(" ", "")
-    text = text.replace("\u3000", "")
-
-    if text in {
-        "-",
-        "--",
-        "---",
-        "N/A",
-        "NA",
-        "null",
-        "None",
-        "nan",
-        "NaN",
-    }:
-        return None
-
-    try:
-        number = float(text)
-    except (TypeError, ValueError):
-        return None
+        except ValueError:
+            return None
 
     if not math.isfinite(number):
         return None
@@ -267,66 +306,45 @@ def to_number(value: Any) -> float | None:
     return number
 
 
-# ============================================================
-# KEY NORMALIZATION
-# ============================================================
+def normalize_code(
+    value: Any,
+) -> str | None:
 
-def normalize_key(value: Any) -> str:
-    if value is None:
-        return ""
-
-    text = str(value)
-
-    text = text.replace("\ufeff", "")
-    text = text.replace("\r", "")
-    text = text.replace("\n", "")
-    text = text.replace("\t", "")
-    text = text.replace("\u3000", " ")
-
-    return text.strip()
-
-
-# ============================================================
-# CODE
-# ============================================================
-
-def normalize_code(value: Any) -> str | None:
     if value is None:
         return None
 
-    text = normalize_key(value).upper()
+    text = normalize_key(
+        value
+    ).upper()
 
-    if not text:
-        return None
-
-    if text.endswith(".TWO"):
-        text = text[:-4]
-
-    elif text.endswith(".TW"):
+    if text.endswith(".TW"):
         text = text[:-3]
 
-    text = text.strip()
+    elif text.endswith(".TWO"):
+        text = text[:-4]
 
-    # 台股股票 / ETF / 特殊 6 碼商品
-    if not re.fullmatch(r"[A-Z0-9]{4,6}", text):
+    if not re.fullmatch(
+        r"[A-Z0-9]{4,6}",
+        text,
+    ):
         return None
 
-    # 防止容器名稱被解析成股票
-    if text.lower() in CONTAINER_KEYS:
+    if (
+        text.lower()
+        in CONTAINER_KEYS
+    ):
         return None
 
     return text
 
 
-# ============================================================
-# DATE
-# ============================================================
+def normalize_date(
+    value: Any,
+) -> str | None:
 
-def normalize_date(value: Any) -> str | None:
-    if value is None:
-        return None
-
-    text = normalize_key(value)
+    text = normalize_key(
+        value
+    )
 
     if not text:
         return None
@@ -340,102 +358,125 @@ def normalize_date(value: Any) -> str | None:
     )
 
     for fmt in formats:
+
         try:
-            dt = datetime.strptime(text, fmt)
-            return dt.strftime("%Y-%m-%d")
+
+            return datetime.strptime(
+                text,
+                fmt,
+            ).strftime(
+                "%Y-%m-%d"
+            )
+
         except ValueError:
             pass
 
-    # ISO datetime
-    if "T" in text:
-        candidate = text.split("T", 1)[0]
-
-        parsed = normalize_date(candidate)
-
-        if parsed:
-            return parsed
-
-    # ROC YYYYMMDD
+    # 民國日期：
+    # 1150903
     match = re.fullmatch(
         r"(\d{3})(\d{2})(\d{2})",
         text,
     )
 
     if match:
+
         try:
-            year = int(match.group(1)) + 1911
-            month = int(match.group(2))
-            day = int(match.group(3))
 
-            dt = datetime(year, month, day)
+            year = (
+                int(match.group(1))
+                + 1911
+            )
 
-            return dt.strftime("%Y-%m-%d")
+            month = int(
+                match.group(2)
+            )
+
+            day = int(
+                match.group(3)
+            )
+
+            return datetime(
+                year,
+                month,
+                day,
+            ).strftime(
+                "%Y-%m-%d"
+            )
+
         except ValueError:
             return None
 
-    # embedded ISO date
+    # embedded YYYY/MM/DD
     match = re.search(
-        r"(20\d{2})[-/](\d{1,2})[-/](\d{1,2})",
+        r"(20\d{2})[-/]"
+        r"(\d{1,2})[-/]"
+        r"(\d{1,2})",
         text,
     )
 
     if match:
+
         try:
-            dt = datetime(
+
+            return datetime(
                 int(match.group(1)),
                 int(match.group(2)),
                 int(match.group(3)),
+            ).strftime(
+                "%Y-%m-%d"
             )
 
-            return dt.strftime("%Y-%m-%d")
         except ValueError:
             return None
 
     return None
 
-
-# ============================================================
-# DICT LOOKUP
-# ============================================================
 
 def first_value(
     obj: dict[str, Any],
     keys: tuple[str, ...],
 ) -> Any:
-    if not isinstance(obj, dict):
-        return None
 
-    # Exact
+    # exact
     for key in keys:
+
         if key in obj:
             return obj[key]
 
-    # Case-insensitive / normalized
-    normalized_map: dict[str, Any] = {}
-
-    for actual_key, value in obj.items():
-        normalized_map[
-            normalize_key(actual_key).lower()
-        ] = value
+    # normalized exact
+    normalized = {
+        normalize_key(key).lower(): value
+        for key, value in obj.items()
+    }
 
     for key in keys:
-        normalized = normalize_key(key).lower()
 
-        if normalized in normalized_map:
-            return normalized_map[normalized]
+        normalized_key = (
+            normalize_key(key)
+            .lower()
+        )
+
+        if normalized_key in normalized:
+            return normalized[
+                normalized_key
+            ]
 
     return None
 
 
 # ============================================================
-# JSON LOAD
+# JSON
 # ============================================================
 
-def load_json(path: Path) -> Any:
+def load_json(
+    path: Path,
+) -> Any:
+
     with path.open(
         "r",
         encoding="utf-8",
     ) as fh:
+
         return json.load(fh)
 
 
@@ -444,47 +485,76 @@ def load_json(path: Path) -> Any:
 # ============================================================
 
 def load_universe() -> set[str]:
+
     if not UNIVERSE_FILE.exists():
+
         raise RuntimeError(
-            f"Missing universe file: {UNIVERSE_FILE}"
+            "Missing universe file: "
+            f"{UNIVERSE_FILE}"
         )
 
-    payload = load_json(UNIVERSE_FILE)
+    payload = load_json(
+        UNIVERSE_FILE
+    )
 
-    if not isinstance(payload, dict):
+    if not isinstance(
+        payload,
+        dict,
+    ):
+
         raise RuntimeError(
-            "universe.json must be a JSON object"
+            "universe.json must be "
+            "a JSON object"
         )
 
-    stocks = payload.get("stocks")
+    stocks = payload.get(
+        "stocks"
+    )
 
-    if not isinstance(stocks, dict):
+    if not isinstance(
+        stocks,
+        dict,
+    ):
+
         raise RuntimeError(
-            "universe.json: stocks must be a dict"
+            "universe.json: stocks "
+            "must be dict"
         )
 
     universe: set[str] = set()
 
     for raw_code, info in stocks.items():
 
-        if not isinstance(info, dict):
+        if not isinstance(
+            info,
+            dict,
+        ):
             continue
 
         status = str(
-            info.get("status", "")
+            info.get(
+                "status",
+                "",
+            )
         ).strip().lower()
 
         if status != "active":
             continue
 
-        normalized = normalize_code(raw_code)
+        stock_code = normalize_code(
+            raw_code
+        )
 
-        if normalized:
-            universe.add(normalized)
+        if stock_code:
+            universe.add(
+                stock_code
+            )
 
     if not universe:
+
         raise RuntimeError(
-            "universe.json contains no active instruments"
+            "universe.json contains "
+            "no active instruments"
         )
 
     return universe
@@ -495,19 +565,31 @@ def load_universe() -> set[str]:
 # ============================================================
 
 def load_manifest_files() -> list[Path]:
+
     if not MANIFEST_FILE.exists():
+
         raise RuntimeError(
-            f"Missing price manifest: {MANIFEST_FILE}"
+            "Missing price manifest: "
+            f"{MANIFEST_FILE}"
         )
 
-    payload = load_json(MANIFEST_FILE)
+    payload = load_json(
+        MANIFEST_FILE
+    )
 
     candidates: Any = None
 
-    if isinstance(payload, list):
+    if isinstance(
+        payload,
+        list,
+    ):
+
         candidates = payload
 
-    elif isinstance(payload, dict):
+    elif isinstance(
+        payload,
+        dict,
+    ):
 
         for key in (
             "files",
@@ -515,25 +597,45 @@ def load_manifest_files() -> list[Path]:
             "parts",
             "prices",
         ):
-            value = payload.get(key)
 
-            if isinstance(value, list):
+            value = payload.get(
+                key
+            )
+
+            if isinstance(
+                value,
+                list,
+            ):
+
                 candidates = value
                 break
 
     names: list[str] = []
 
-    if isinstance(candidates, list):
+    if isinstance(
+        candidates,
+        list,
+    ):
 
         for item in candidates:
 
-            if isinstance(item, str):
+            if isinstance(
+                item,
+                str,
+            ):
+
                 name = item.strip()
 
-            elif isinstance(item, dict):
+            elif isinstance(
+                item,
+                dict,
+            ):
+
                 name = str(
                     item.get("file")
-                    or item.get("filename")
+                    or item.get(
+                        "filename"
+                    )
                     or item.get("path")
                     or item.get("name")
                     or item.get("shard")
@@ -557,23 +659,32 @@ def load_manifest_files() -> list[Path]:
             if ".." in path.parts:
                 continue
 
-            names.append(path.name)
+            names.append(
+                path.name
+            )
 
-    # manifest 正常情況應該已有 files。
-    # 若沒有，才做同目錄明確 JSON shard discovery。
+    # manifest 沒有 files 時才 discovery
     if not names:
 
         names = [
-            p.name
-            for p in sorted(
-                PRICES_DIR.glob("*.json")
+            path.name
+            for path in sorted(
+                PRICES_DIR.glob(
+                    "*.json"
+                )
             )
-            if p.name != "manifest.json"
+            if path.name
+            != "manifest.json"
         ]
 
-    names = list(dict.fromkeys(names))
+    names = list(
+        dict.fromkeys(
+            names
+        )
+    )
 
     if not names:
+
         raise RuntimeError(
             "No price shard files found"
         )
@@ -594,17 +705,29 @@ def make_price_record(
 ) -> dict[str, Any] | None:
 
     own_code = normalize_code(
-        first_value(obj, CODE_KEYS)
+        first_value(
+            obj,
+            CODE_KEYS,
+        )
     )
 
-    stock_code = own_code or inherited_code
+    stock_code = (
+        own_code
+        or inherited_code
+    )
 
     trading_date = normalize_date(
-        first_value(obj, DATE_KEYS)
+        first_value(
+            obj,
+            DATE_KEYS,
+        )
     )
 
     close = to_number(
-        first_value(obj, CLOSE_KEYS)
+        first_value(
+            obj,
+            CLOSE_KEYS,
+        )
     )
 
     if stock_code is None:
@@ -627,16 +750,28 @@ def make_price_record(
         "date": trading_date,
         "close": close,
         "open": to_number(
-            first_value(obj, OPEN_KEYS)
+            first_value(
+                obj,
+                OPEN_KEYS,
+            )
         ),
         "high": to_number(
-            first_value(obj, HIGH_KEYS)
+            first_value(
+                obj,
+                HIGH_KEYS,
+            )
         ),
         "low": to_number(
-            first_value(obj, LOW_KEYS)
+            first_value(
+                obj,
+                LOW_KEYS,
+            )
         ),
         "volume": to_number(
-            first_value(obj, VOLUME_KEYS)
+            first_value(
+                obj,
+                VOLUME_KEYS,
+            )
         ),
     }
 
@@ -656,7 +791,9 @@ def make_list_record(
     if inherited_code is None:
         return None
 
-    trading_date = normalize_date(row[0])
+    trading_date = normalize_date(
+        row[0]
+    )
 
     if trading_date is None:
         return None
@@ -664,15 +801,19 @@ def make_list_record(
     values: list[float] = []
 
     for value in row[1:]:
-        number = to_number(value)
+
+        number = to_number(
+            value
+        )
 
         if number is not None:
-            values.append(number)
+            values.append(
+                number
+            )
 
     if not values:
         return None
 
-    # 常見 OHLCV：
     # [date, open, high, low, close, volume]
     if len(values) >= 5:
 
@@ -698,6 +839,7 @@ def make_list_record(
         open_price = None
         high_price = None
         low_price = None
+
         close = values[-1]
         volume = None
 
@@ -732,17 +874,28 @@ def walk_price_records(
     # dict
     # --------------------------------------------------------
 
-    if isinstance(value, dict):
+    if isinstance(
+        value,
+        dict,
+    ):
 
         own_code = normalize_code(
-            first_value(value, CODE_KEYS)
+            first_value(
+                value,
+                CODE_KEYS,
+            )
         )
 
-        current_code = own_code or inherited_code
+        current_code = (
+            own_code
+            or inherited_code
+        )
 
-        direct_record = make_price_record(
-            value,
-            current_code,
+        direct_record = (
+            make_price_record(
+                value,
+                current_code,
+            )
         )
 
         if direct_record:
@@ -750,17 +903,28 @@ def walk_price_records(
 
         for key, child in value.items():
 
-            key_text = normalize_key(key)
+            key_text = normalize_key(
+                key
+            )
 
-            key_lower = key_text.lower()
+            key_lower = (
+                key_text.lower()
+            )
 
             child_code = current_code
 
-            # 僅當 key 明確像股票代號時才繼承。
-            # rows / data / symbols 等容器不得成為 code。
-            if key_lower not in CONTAINER_KEYS:
+            # 只有真正像股票代號的 key
+            # 才允許作為 inherited code
+            if (
+                key_lower
+                not in CONTAINER_KEYS
+            ):
 
-                candidate = normalize_code(key_text)
+                candidate = (
+                    normalize_code(
+                        key_text
+                    )
+                )
 
                 if candidate:
                     child_code = candidate
@@ -777,15 +941,23 @@ def walk_price_records(
     # list
     # --------------------------------------------------------
 
-    if isinstance(value, list):
+    if isinstance(
+        value,
+        list,
+    ):
 
         for item in value:
 
-            if isinstance(item, list):
+            if isinstance(
+                item,
+                list,
+            ):
 
-                record = make_list_record(
-                    item,
-                    inherited_code,
+                record = (
+                    make_list_record(
+                        item,
+                        inherited_code,
+                    )
                 )
 
                 if record:
@@ -798,8 +970,6 @@ def walk_price_records(
                     inherited_code,
                     depth + 1,
                 )
-
-        return
 
 
 # ============================================================
@@ -823,7 +993,9 @@ def parse_price_shards(
         dict[str, int],
     ] = {}
 
-    shard_files = load_manifest_files()
+    shard_files = (
+        load_manifest_files()
+    )
 
     log("")
     log("PRICE SHARDS")
@@ -851,13 +1023,17 @@ def parse_price_shards(
             continue
 
         try:
-            payload = load_json(shard_path)
+
+            payload = load_json(
+                shard_path
+            )
 
         except Exception as exc:
 
             log(
                 f"WARNING: invalid JSON "
-                f"{shard_path.name}: {exc}"
+                f"{shard_path.name}: "
+                f"{exc}"
             )
 
             shard_stats[
@@ -876,9 +1052,13 @@ def parse_price_shards(
             payload
         ):
 
-            stats["records_seen"] += 1
+            stats[
+                "records_seen"
+            ] += 1
 
-            stock_code = record["code"]
+            stock_code = record[
+                "code"
+            ]
 
             if stock_code not in universe:
                 continue
@@ -896,13 +1076,21 @@ def parse_price_shards(
             by_code.setdefault(
                 stock_code,
                 [],
-            ).append(record)
+            ).append(
+                record
+            )
 
-            shard_codes.add(stock_code)
+            shard_codes.add(
+                stock_code
+            )
 
-            stats["valid_records"] += 1
+            stats[
+                "valid_records"
+            ] += 1
 
-        stats["covered_symbols"] = len(
+        stats[
+            "covered_symbols"
+        ] = len(
             shard_codes
         )
 
@@ -912,15 +1100,19 @@ def parse_price_shards(
 
         log(
             f"{shard_path.name:<24}"
-            f" records={stats['valid_records']:<8}"
-            f" symbols={stats['covered_symbols']}"
+            f" records="
+            f"{stats['valid_records']:<8}"
+            f" symbols="
+            f"{stats['covered_symbols']}"
         )
 
     # --------------------------------------------------------
-    # sort + deduplicate across shards
+    # sort + deduplicate
     # --------------------------------------------------------
 
-    for stock_code, rows in by_code.items():
+    for stock_code, rows in (
+        by_code.items()
+    ):
 
         unique: dict[
             str,
@@ -928,14 +1120,23 @@ def parse_price_shards(
         ] = {}
 
         for row in rows:
-            unique[row["date"]] = row
 
-        by_code[stock_code] = sorted(
+            unique[
+                row["date"]
+            ] = row
+
+        by_code[
+            stock_code
+        ] = sorted(
             unique.values(),
-            key=lambda x: x["date"],
+            key=lambda item:
+                item["date"],
         )
 
-    return by_code, shard_stats
+    return (
+        by_code,
+        shard_stats,
+    )
 
 
 # ============================================================
@@ -950,9 +1151,10 @@ def moving_average(
     if len(values) < period:
         return None
 
-    subset = values[-period:]
-
-    return sum(subset) / period
+    return (
+        sum(values[-period:])
+        / period
+    )
 
 
 def rsi(
@@ -966,7 +1168,11 @@ def rsi(
     gains = 0.0
     losses = 0.0
 
-    start = len(values) - period - 1
+    start = (
+        len(values)
+        - period
+        - 1
+    )
 
     for index in range(
         start,
@@ -985,18 +1191,34 @@ def rsi(
             losses -= delta
 
     if losses == 0:
+
+        if gains == 0:
+            return 50.0
+
         return 100.0
 
-    average_gain = gains / period
-    average_loss = losses / period
+    average_gain = (
+        gains / period
+    )
+
+    average_loss = (
+        losses / period
+    )
 
     if average_loss == 0:
         return 100.0
 
-    rs = average_gain / average_loss
+    rs = (
+        average_gain
+        / average_loss
+    )
 
-    return 100.0 - (
-        100.0 / (1.0 + rs)
+    return (
+        100.0
+        - (
+            100.0
+            / (1.0 + rs)
+        )
     )
 
 
@@ -1008,15 +1230,18 @@ def volume_average(
     volumes = [
         row["volume"]
         for row in rows
-        if row.get("volume") is not None
+        if row.get(
+            "volume"
+        ) is not None
     ]
 
     if len(volumes) < period:
         return None
 
-    return sum(
-        volumes[-period:]
-    ) / period
+    return (
+        sum(volumes[-period:])
+        / period
+    )
 
 
 # ============================================================
@@ -1033,7 +1258,9 @@ def request_json(
     headers = {
         "User-Agent": (
             "Mozilla/5.0 "
-            "(compatible; TW-Stock-AI-Scanner/3.2)"
+            "(compatible; "
+            "TW-Stock-AI-Scanner/"
+            "market-v2.1)"
         ),
         "Accept": (
             "application/json,"
@@ -1066,11 +1293,16 @@ def request_json(
 
             last_error = exc
 
-            if attempt < HTTP_RETRIES:
-                time.sleep(attempt)
+            if (
+                attempt
+                < HTTP_RETRIES
+            ):
+                time.sleep(
+                    attempt
+                )
 
     raise RuntimeError(
-        f"Official API request failed: "
+        "Official API request failed: "
         f"{url}: {last_error}"
     )
 
@@ -1087,10 +1319,18 @@ def fetch_taiex() -> dict[str, Any]:
             TWSE_MI_INDEX_URL
         )
 
-        if isinstance(payload, list):
+        if isinstance(
+            payload,
+            list,
+        ):
+
             rows = payload
 
-        elif isinstance(payload, dict):
+        elif isinstance(
+            payload,
+            dict,
+        ):
+
             rows = payload.get(
                 "data",
                 [],
@@ -1101,12 +1341,17 @@ def fetch_taiex() -> dict[str, Any]:
 
         for row in rows:
 
-            if not isinstance(row, dict):
+            if not isinstance(
+                row,
+                dict,
+            ):
                 continue
 
             name = str(
                 row.get("指數")
-                or row.get("指數名稱")
+                or row.get(
+                    "指數名稱"
+                )
                 or row.get("name")
                 or ""
             )
@@ -1114,20 +1359,58 @@ def fetch_taiex() -> dict[str, Any]:
             if (
                 "發行量加權股價指數"
                 not in name
-                and "TAIEX"
+                and
+                "TAIEX"
                 not in name.upper()
             ):
                 continue
 
             close = (
                 to_number(
-                    row.get("收盤指數")
+                    row.get(
+                        "收盤指數"
+                    )
                 )
                 or to_number(
-                    row.get("收盤")
+                    row.get(
+                        "收盤"
+                    )
                 )
                 or to_number(
-                    row.get("close")
+                    row.get(
+                        "close"
+                    )
+                )
+            )
+
+            change = (
+                to_number(
+                    row.get(
+                        "漲跌"
+                    )
+                )
+                or to_number(
+                    row.get(
+                        "漲跌點數"
+                    )
+                )
+                or to_number(
+                    row.get(
+                        "change"
+                    )
+                )
+            )
+
+            change_pct = (
+                to_number(
+                    row.get(
+                        "漲跌幅"
+                    )
+                )
+                or to_number(
+                    row.get(
+                        "change_pct"
+                    )
                 )
             )
 
@@ -1136,19 +1419,40 @@ def fetch_taiex() -> dict[str, Any]:
 
             return {
                 "status": "ok",
-                "name": name,
-                "close": close,
+                "name": (
+                    name
+                    or "TAIEX"
+                ),
+                "value": close,
+                "change": (
+                    change
+                    if change is not None
+                    else 0.0
+                ),
+                "change_pct": (
+                    change_pct
+                    if change_pct
+                    is not None
+                    else 0.0
+                ),
             }
 
         return {
             "status": "unavailable",
-            "reason": "TAIEX row not found",
+            "name": "TAIEX",
+            "value": None,
+            "change": None,
+            "change_pct": None,
         }
 
     except Exception as exc:
 
         return {
             "status": "unavailable",
+            "name": "TAIEX",
+            "value": None,
+            "change": None,
+            "change_pct": None,
             "error": str(exc),
         }
 
@@ -1160,7 +1464,11 @@ def fetch_taiex() -> dict[str, Any]:
 def fetch_twse_t86() -> dict[str, Any]:
 
     trading_date = (
-        datetime.now().strftime("%Y%m%d")
+        datetime.now(
+            TAIPEI_TZ
+        ).strftime(
+            "%Y%m%d"
+        )
     )
 
     try:
@@ -1182,10 +1490,14 @@ def fetch_twse_t86() -> dict[str, Any]:
             return {
                 "status": "unavailable",
                 "date": trading_date,
-                "reason": "invalid response",
+                "reason": (
+                    "invalid response"
+                ),
             }
 
-        if payload.get("stat") != "OK":
+        if payload.get(
+            "stat"
+        ) != "OK":
 
             return {
                 "status": "unavailable",
@@ -1206,10 +1518,16 @@ def fetch_twse_t86() -> dict[str, Any]:
             [],
         )
 
-        if not isinstance(fields, list):
+        if not isinstance(
+            fields,
+            list,
+        ):
             fields = []
 
-        if not isinstance(data, list):
+        if not isinstance(
+            data,
+            list,
+        ):
             data = []
 
         return {
@@ -1241,10 +1559,18 @@ def fetch_tpex_3insti() -> dict[str, Any]:
             TPEX_3INSTI_URL
         )
 
-        if isinstance(payload, list):
+        if isinstance(
+            payload,
+            list,
+        ):
+
             rows = payload
 
-        elif isinstance(payload, dict):
+        elif isinstance(
+            payload,
+            dict,
+        ):
+
             rows = payload.get(
                 "data",
                 [],
@@ -1253,7 +1579,10 @@ def fetch_tpex_3insti() -> dict[str, Any]:
         else:
             rows = []
 
-        if not isinstance(rows, list):
+        if not isinstance(
+            rows,
+            list,
+        ):
             rows = []
 
         return {
@@ -1266,22 +1595,30 @@ def fetch_tpex_3insti() -> dict[str, Any]:
 
         return {
             "status": "unavailable",
+            "count": 0,
+            "data": [],
             "error": str(exc),
         }
 
 
 # ============================================================
-# STOCK MARKET RECORDS
+# STOCK RECORDS
 # ============================================================
 
 def build_stock_records(
     universe: set[str],
-    prices: dict[str, list[dict[str, Any]]],
-) -> dict[str, dict[str, Any]]:
+    prices: dict[
+        str,
+        list[dict[str, Any]]
+    ],
+) -> dict[
+    str,
+    dict[str, Any]
+]:
 
     result: dict[
         str,
-        dict[str, Any],
+        dict[str, Any]
     ] = {}
 
     for stock_code in sorted(
@@ -1298,7 +1635,9 @@ def build_stock_records(
         closes = [
             float(row["close"])
             for row in rows
-            if row.get("close") is not None
+            if row.get(
+                "close"
+            ) is not None
         ]
 
         if not closes:
@@ -1306,14 +1645,47 @@ def build_stock_records(
 
         latest = rows[-1]
 
+        previous_close = None
+
+        if len(closes) >= 2:
+            previous_close = (
+                closes[-2]
+            )
+
+        change_pct = None
+
+        if (
+            previous_close
+            is not None
+            and previous_close != 0
+        ):
+
+            change_pct = (
+                (
+                    closes[-1]
+                    / previous_close
+                )
+                - 1.0
+            ) * 100.0
+
         result[stock_code] = {
             "date": latest["date"],
             "close": latest["close"],
-            "open": latest.get("open"),
-            "high": latest.get("high"),
-            "low": latest.get("low"),
-            "volume": latest.get("volume"),
-            "history_rows": len(rows),
+            "open": latest.get(
+                "open"
+            ),
+            "high": latest.get(
+                "high"
+            ),
+            "low": latest.get(
+                "low"
+            ),
+            "volume": latest.get(
+                "volume"
+            ),
+            "history_rows": len(
+                rows
+            ),
             "ma5": moving_average(
                 closes,
                 5,
@@ -1326,13 +1698,162 @@ def build_stock_records(
                 closes,
                 14,
             ),
-            "avg_volume5": volume_average(
-                rows,
-                5,
-            ),
+            "avg_volume5":
+                volume_average(
+                    rows,
+                    5,
+                ),
+            "change_pct":
+                change_pct,
         }
 
     return result
+
+
+# ============================================================
+# LATEST DATE
+# ============================================================
+
+def get_latest_trading_date(
+    prices: dict[
+        str,
+        list[dict[str, Any]]
+    ],
+) -> str | None:
+
+    dates = [
+        rows[-1]["date"]
+        for rows in prices.values()
+        if rows
+    ]
+
+    if not dates:
+        return None
+
+    return max(dates)
+
+
+# ============================================================
+# BREADTH
+# ============================================================
+
+def build_breadth(
+    stocks: dict[
+        str,
+        dict[str, Any]
+    ],
+    covered: int,
+    active: int,
+) -> dict[str, Any]:
+
+    up = 0
+    down = 0
+    flat = 0
+    above_ma20 = 0
+
+    total_volume = 0.0
+
+    for record in stocks.values():
+
+        change_pct = record.get(
+            "change_pct"
+        )
+
+        if change_pct is not None:
+
+            if change_pct > 0:
+                up += 1
+
+            elif change_pct < 0:
+                down += 1
+
+            else:
+                flat += 1
+
+        ma20 = record.get(
+            "ma20"
+        )
+
+        close = record.get(
+            "close"
+        )
+
+        if (
+            ma20 is not None
+            and close is not None
+            and close > ma20
+        ):
+            above_ma20 += 1
+
+        volume = record.get(
+            "volume"
+        )
+
+        if volume is not None:
+            total_volume += float(
+                volume
+            )
+
+    coverage_pct = 0.0
+
+    if active:
+        coverage_pct = (
+            covered
+            / active
+            * 100.0
+        )
+
+    return {
+        "up": up,
+        "down": down,
+        "flat": flat,
+        "above_ma20":
+            above_ma20,
+        "covered":
+            covered,
+        "active":
+            active,
+        "coverage":
+            f"{covered}/{active}",
+        "coverage_pct":
+            round(
+                coverage_pct,
+                2,
+            ),
+        "total_volume":
+            total_volume,
+    }
+
+
+# ============================================================
+# CONDITIONS
+# ============================================================
+
+CORE_CONDITION_NAMES = [
+    "TAIEX > MA20",
+    "MA20 上升",
+    "TAIEX RSI14 > 50",
+    "上漲家數 / 下跌家數 >= 1",
+    "站上 MA20 比例 >= 50%",
+    "市場成交量 / 20日均量 >= 1",
+    "外資買賣超 > 0",
+    "投信買賣超 > 0",
+    "20日新高 / 新低 >= 1",
+    "TAIEX ATR14% <= 3%",
+]
+
+
+def unavailable_condition(
+    name: str,
+    value: Any = None,
+) -> dict[str, Any]:
+
+    return {
+        "name": name,
+        "status": "unavailable",
+        "pass": None,
+        "value": value,
+    }
 
 
 # ============================================================
@@ -1341,70 +1862,528 @@ def build_stock_records(
 
 def build_market(
     universe: set[str],
-    prices: dict[str, list[dict[str, Any]]],
-    shard_stats: dict[str, dict[str, int]],
+    prices: dict[
+        str,
+        list[dict[str, Any]]
+    ],
+    shard_stats: dict[
+        str,
+        dict[str, int]
+    ],
 ) -> dict[str, Any]:
 
-    stock_records = build_stock_records(
+    stocks = build_stock_records(
         universe,
         prices,
     )
 
-    covered = set(
-        stock_records.keys()
+    covered = len(
+        stocks
     )
 
     missing = sorted(
-        universe - covered
+        universe
+        - set(stocks.keys())
     )
 
     coverage_pct = (
-        len(covered)
+        covered
         / len(universe)
         * 100.0
     )
 
-    return {
-        "schema_version": "market-v3.2",
+    latest_date = (
+        get_latest_trading_date(
+            prices
+        )
+    )
 
-        "generated_at": (
-            datetime.now()
-            .astimezone()
-            .isoformat()
+    breadth = build_breadth(
+        stocks,
+        covered,
+        len(universe),
+    )
+
+    taiex = fetch_taiex()
+
+    twse_t86 = (
+        fetch_twse_t86()
+    )
+
+    tpex_3insti = (
+        fetch_tpex_3insti()
+    )
+
+    # --------------------------------------------------------
+    # TAIEX
+    #
+    # 僅使用官方 MI_INDEX。
+    # 不以股票價格代替 TAIEX 歷史資料。
+    # --------------------------------------------------------
+
+    taiex_value = taiex.get(
+        "value"
+    )
+
+    taiex_change = taiex.get(
+        "change"
+    )
+
+    taiex_change_pct = taiex.get(
+        "change_pct"
+    )
+
+    # 目前價格 shard 是個股歷史資料，
+    # 不能拿個股資料推導 TAIEX MA20 / RSI / ATR。
+    taiex_ma20 = None
+    taiex_rsi14 = None
+    taiex_atr14_pct = None
+
+    if taiex_value is not None:
+
+        trend_status = (
+            "bullish"
+            if (
+                taiex_change_pct
+                is not None
+                and taiex_change_pct > 0
+            )
+            else
+            "bearish"
+            if (
+                taiex_change_pct
+                is not None
+                and taiex_change_pct < 0
+            )
+            else
+            "flat"
+        )
+
+    else:
+
+        trend_status = (
+            "unavailable"
+        )
+
+    # --------------------------------------------------------
+    # Breadth conditions
+    # --------------------------------------------------------
+
+    if breadth["down"] > 0:
+
+        up_down_ratio = (
+            breadth["up"]
+            / breadth["down"]
+        )
+
+        up_down_condition = (
+            up_down_ratio >= 1.0
+        )
+
+        up_down_status = (
+            "pass"
+            if up_down_condition
+            else "fail"
+        )
+
+    elif breadth["up"] > 0:
+
+        up_down_ratio = (
+            999.0
+        )
+
+        up_down_condition = True
+
+        up_down_status = "pass"
+
+    else:
+
+        up_down_ratio = None
+        up_down_condition = None
+        up_down_status = (
+            "unavailable"
+        )
+
+    if covered > 0:
+
+        above_ma20_ratio = (
+            breadth["above_ma20"]
+            / covered
+        )
+
+        above_ma20_condition = (
+            above_ma20_ratio
+            >= 0.50
+        )
+
+        above_ma20_status = (
+            "pass"
+            if above_ma20_condition
+            else "fail"
+        )
+
+    else:
+
+        above_ma20_ratio = None
+        above_ma20_condition = None
+        above_ma20_status = (
+            "unavailable"
+        )
+
+    # --------------------------------------------------------
+    # Conditions
+    # --------------------------------------------------------
+
+    conditions = [
+        unavailable_condition(
+            "TAIEX > MA20",
+            taiex_ma20,
         ),
 
+        unavailable_condition(
+            "MA20 上升",
+        ),
+
+        unavailable_condition(
+            "TAIEX RSI14 > 50",
+            taiex_rsi14,
+        ),
+
+        {
+            "name":
+                "上漲家數 / 下跌家數 >= 1",
+            "status":
+                up_down_status,
+            "pass":
+                up_down_condition,
+            "value":
+                (
+                    round(
+                        up_down_ratio,
+                        4,
+                    )
+                    if
+                    up_down_ratio
+                    is not None
+                    else None
+                ),
+        },
+
+        {
+            "name":
+                "站上 MA20 比例 >= 50%",
+            "status":
+                above_ma20_status,
+            "pass":
+                above_ma20_condition,
+            "value":
+                (
+                    round(
+                        above_ma20_ratio
+                        * 100.0,
+                        2,
+                    )
+                    if
+                    above_ma20_ratio
+                    is not None
+                    else None
+                ),
+        },
+
+        unavailable_condition(
+            "市場成交量 / 20日均量 >= 1",
+        ),
+
+        unavailable_condition(
+            "外資買賣超 > 0",
+        ),
+
+        unavailable_condition(
+            "投信買賣超 > 0",
+        ),
+
+        unavailable_condition(
+            "20日新高 / 新低 >= 1",
+        ),
+
+        unavailable_condition(
+            "TAIEX ATR14% <= 3%",
+            taiex_atr14_pct,
+        ),
+    ]
+
+    # --------------------------------------------------------
+    # Sentiment
+    # --------------------------------------------------------
+
+    valid_conditions = [
+        item
+        for item in conditions
+        if item.get("pass")
+        is not None
+    ]
+
+    passed_conditions = [
+        item
+        for item in valid_conditions
+        if item.get("pass")
+        is True
+    ]
+
+    valid_count = len(
+        valid_conditions
+    )
+
+    score = len(
+        passed_conditions
+    )
+
+    if valid_count == 0:
+
+        sentiment_level = (
+            "資料不足"
+        )
+
+    elif (
+        score
+        / valid_count
+        >= 0.70
+    ):
+
+        sentiment_level = "偏多"
+
+    elif (
+        score
+        / valid_count
+        < 0.40
+    ):
+
+        sentiment_level = "偏弱"
+
+    else:
+
+        sentiment_level = "震盪"
+
+    # --------------------------------------------------------
+    # Trend
+    # --------------------------------------------------------
+
+    trend = {
+        "status":
+            trend_status,
+        "direction":
+            (
+                "up"
+                if (
+                    taiex_change_pct
+                    is not None
+                    and taiex_change_pct
+                    > 0
+                )
+                else
+                "down"
+                if (
+                    taiex_change_pct
+                    is not None
+                    and taiex_change_pct
+                    < 0
+                )
+                else
+                "flat"
+                if (
+                    taiex_change_pct
+                    is not None
+                )
+                else
+                "unavailable"
+            ),
+        "ma20":
+            taiex_ma20,
+        "rsi14":
+            taiex_rsi14,
+        "atr14_pct":
+            taiex_atr14_pct,
+    }
+
+    # --------------------------------------------------------
+    # Volume
+    #
+    # 個股 shard 有成交量，
+    # 但目前沒有獨立市場 20 日總量序列。
+    # 不拿單日個股資料偽造市場 20 日均量。
+    # --------------------------------------------------------
+
+    volume = {
+        "total":
+            breadth[
+                "total_volume"
+            ],
+        "avg20":
+            None,
+        "ratio20":
+            None,
+        "status":
+            "unavailable",
+    }
+
+    # --------------------------------------------------------
+    # Index
+    # --------------------------------------------------------
+
+    index = {
+        "name":
+            taiex.get(
+                "name",
+                "TAIEX",
+            ),
+        "value":
+            (
+                taiex_value
+                if taiex_value
+                is not None
+                else 0.0
+            ),
+        "change":
+            (
+                taiex_change
+                if taiex_change
+                is not None
+                else 0.0
+            ),
+        "change_pct":
+            (
+                taiex_change_pct
+                if taiex_change_pct
+                is not None
+                else 0.0
+            ),
+    }
+
+    # --------------------------------------------------------
+    # Source
+    # --------------------------------------------------------
+
+    source = {
+        "provider": [
+            "TWSE",
+            "TPEx",
+        ],
+        "prices":
+            "Data/prices shards",
+        "index":
+            "TWSE MI_INDEX",
+        "twse_institutional":
+            "TWSE T86",
+        "tpex_institutional":
+            "TPEx OpenAPI",
+    }
+
+    # --------------------------------------------------------
+    # Config
+    # --------------------------------------------------------
+
+    config = {
+        "schema":
+            "market-v2.1",
+        "universe":
+            "Data/universe.json",
+        "price_manifest":
+            "Data/prices/manifest.json",
+        "official_only":
+            True,
+    }
+
+    # --------------------------------------------------------
+    # FINAL market-v2.1
+    # --------------------------------------------------------
+
+    return {
+        "schema_version":
+            "market-v2.1",
+
+        "generated_at":
+            datetime.now(
+                TAIPEI_TZ
+            ).isoformat(),
+
+        "market_status":
+            "closed",
+
+        "latest_trading_date":
+            latest_date,
+
+        "index":
+            index,
+
+        "trend":
+            trend,
+
+        "breadth": {
+            **breadth,
+            "missing":
+                missing,
+        },
+
+        "volume":
+            volume,
+
+        "institutional": {
+            "twse":
+                twse_t86,
+            "tpex":
+                tpex_3insti,
+        },
+
+        "sentiment": {
+            "level":
+                sentiment_level,
+            "score":
+                int(score),
+            "valid_conditions":
+                int(valid_count),
+            "total_conditions":
+                10,
+        },
+
+        "conditions":
+            conditions,
+
+        "source":
+            source,
+
+        "config":
+            config,
+
+        # ----------------------------------------------------
+        # 保留既有資料區塊
+        # 供其他 repo 程式使用
+        # ----------------------------------------------------
+
         "universe": {
-            "active_count": len(
-                universe
-            ),
-            "price_coverage": len(
-                covered
-            ),
-            "price_coverage_pct": round(
-                coverage_pct,
-                2,
-            ),
-            "missing_count": len(
-                missing
-            ),
-            "missing": missing,
+            "active_count":
+                len(universe),
+            "price_coverage":
+                covered,
+            "price_coverage_pct":
+                round(
+                    coverage_pct,
+                    2,
+                ),
+            "missing_count":
+                len(missing),
+            "missing":
+                missing,
         },
 
         "price_shards": {
-            "count": len(
-                shard_stats
-            ),
-            "files": shard_stats,
+            "count":
+                len(shard_stats),
+            "files":
+                shard_stats,
         },
 
-        "taiex": fetch_taiex(),
-
-        "institutions": {
-            "twse_t86": fetch_twse_t86(),
-            "tpex_3insti": fetch_tpex_3insti(),
-        },
-
-        "stocks": stock_records,
+        "stocks":
+            stocks,
     }
 
 
@@ -1421,10 +2400,173 @@ def validate_market(
         market,
         dict,
     ):
+
         raise RuntimeError(
             "market validation failed: "
             "market must be dict"
         )
+
+    # --------------------------------------------------------
+    # Root schema
+    # --------------------------------------------------------
+
+    required_root_fields = {
+        "schema_version",
+        "generated_at",
+        "market_status",
+        "latest_trading_date",
+        "index",
+        "trend",
+        "breadth",
+        "volume",
+        "institutional",
+        "sentiment",
+        "conditions",
+        "source",
+        "config",
+    }
+
+    missing = (
+        required_root_fields
+        - set(market.keys())
+    )
+
+    if missing:
+
+        raise RuntimeError(
+            "Missing market-v2.1 "
+            "root fields: "
+            f"{sorted(missing)}"
+        )
+
+    if (
+        market.get(
+            "schema_version"
+        )
+        != "market-v2.1"
+    ):
+
+        raise RuntimeError(
+            "schema_version must be "
+            "market-v2.1"
+        )
+
+    if market.get(
+        "market_status"
+    ) not in {
+        "open",
+        "closed",
+    }:
+
+        raise RuntimeError(
+            "invalid market_status"
+        )
+
+    # --------------------------------------------------------
+    # Index
+    # --------------------------------------------------------
+
+    index = market.get(
+        "index"
+    )
+
+    if not isinstance(
+        index,
+        dict,
+    ):
+
+        raise RuntimeError(
+            "index must be dict"
+        )
+
+    for key in (
+        "name",
+        "value",
+        "change",
+        "change_pct",
+    ):
+
+        if key not in index:
+
+            raise RuntimeError(
+                "Missing index field: "
+                f"{key}"
+            )
+
+    value = to_number(
+        index.get("value")
+    )
+
+    if (
+        value is None
+        or not math.isfinite(
+            float(value)
+        )
+    ):
+
+        raise RuntimeError(
+            "index.value must be "
+            "finite number"
+        )
+
+    # --------------------------------------------------------
+    # Trend
+    # --------------------------------------------------------
+
+    trend = market.get(
+        "trend"
+    )
+
+    if not isinstance(
+        trend,
+        dict,
+    ):
+
+        raise RuntimeError(
+            "trend must be dict"
+        )
+
+    if trend.get(
+        "status"
+    ) not in {
+        "bullish",
+        "bearish",
+        "flat",
+        "unavailable",
+    }:
+
+        raise RuntimeError(
+            "invalid trend.status"
+        )
+
+    # --------------------------------------------------------
+    # Breadth
+    # --------------------------------------------------------
+
+    breadth = market.get(
+        "breadth"
+    )
+
+    if not isinstance(
+        breadth,
+        dict,
+    ):
+
+        raise RuntimeError(
+            "breadth must be dict"
+        )
+
+    if breadth.get(
+        "active"
+    ) != len(universe):
+
+        raise RuntimeError(
+            "breadth.active mismatch"
+        )
+
+    # --------------------------------------------------------
+    # Universe
+    # --------------------------------------------------------
 
     universe_info = market.get(
         "universe"
@@ -1434,36 +2576,317 @@ def validate_market(
         universe_info,
         dict,
     ):
+
         raise RuntimeError(
-            "market validation failed: "
             "universe missing"
         )
 
-    active_count = universe_info.get(
+    if universe_info.get(
         "active_count"
-    )
+    ) != len(universe):
 
-    if active_count != len(
-        universe
-    ):
         raise RuntimeError(
-            "market validation failed: "
-            f"active_count={active_count}, "
-            f"expected={len(universe)}"
+            "universe active_count "
+            "mismatch"
         )
 
-    coverage = universe_info.get(
-        "price_coverage"
+    coverage = (
+        universe_info.get(
+            "price_coverage"
+        )
     )
 
     if not isinstance(
         coverage,
         int,
     ):
+
         raise RuntimeError(
-            "market validation failed: "
             "invalid price coverage"
         )
+
+    # --------------------------------------------------------
+    # Volume
+    # --------------------------------------------------------
+
+    volume = market.get(
+        "volume"
+    )
+
+    if not isinstance(
+        volume,
+        dict,
+    ):
+
+        raise RuntimeError(
+            "volume must be dict"
+        )
+
+    # --------------------------------------------------------
+    # Institutional
+    # --------------------------------------------------------
+
+    institutional = (
+        market.get(
+            "institutional"
+        )
+    )
+
+    if not isinstance(
+        institutional,
+        dict,
+    ):
+
+        raise RuntimeError(
+            "institutional must be "
+            "dict"
+        )
+
+    if "twse" not in institutional:
+        raise RuntimeError(
+            "institutional.twse "
+            "missing"
+        )
+
+    if "tpex" not in institutional:
+        raise RuntimeError(
+            "institutional.tpex "
+            "missing"
+        )
+
+    # --------------------------------------------------------
+    # Sentiment
+    # --------------------------------------------------------
+
+    sentiment = market.get(
+        "sentiment"
+    )
+
+    if not isinstance(
+        sentiment,
+        dict,
+    ):
+
+        raise RuntimeError(
+            "sentiment must be dict"
+        )
+
+    if sentiment.get(
+        "level"
+    ) not in {
+        "偏多",
+        "震盪",
+        "偏弱",
+        "資料不足",
+    }:
+
+        raise RuntimeError(
+            "invalid sentiment level"
+        )
+
+    if not isinstance(
+        sentiment.get(
+            "score"
+        ),
+        int,
+    ):
+
+        raise RuntimeError(
+            "sentiment.score must "
+            "be int"
+        )
+
+    if not isinstance(
+        sentiment.get(
+            "valid_conditions"
+        ),
+        int,
+    ):
+
+        raise RuntimeError(
+            "sentiment.valid_conditions "
+            "must be int"
+        )
+
+    if (
+        sentiment.get(
+            "total_conditions"
+        )
+        != 10
+    ):
+
+        raise RuntimeError(
+            "sentiment.total_conditions "
+            "must equal 10"
+        )
+
+    # --------------------------------------------------------
+    # Conditions
+    # --------------------------------------------------------
+
+    conditions = market.get(
+        "conditions"
+    )
+
+    if not isinstance(
+        conditions,
+        list,
+    ):
+
+        raise RuntimeError(
+            "conditions must be list"
+        )
+
+    if len(conditions) != 10:
+
+        raise RuntimeError(
+            "conditions must contain "
+            "exactly 10 items"
+        )
+
+    names = [
+        item.get("name")
+        for item in conditions
+        if isinstance(
+            item,
+            dict,
+        )
+    ]
+
+    if (
+        names
+        != CORE_CONDITION_NAMES
+    ):
+
+        raise RuntimeError(
+            "market core condition "
+            "names/order mismatch"
+        )
+
+    for condition in conditions:
+
+        if not isinstance(
+            condition,
+            dict,
+        ):
+
+            raise RuntimeError(
+                "invalid condition item"
+            )
+
+        if condition.get(
+            "status"
+        ) not in {
+            "pass",
+            "fail",
+            "unavailable",
+        }:
+
+            raise RuntimeError(
+                "invalid condition status"
+            )
+
+        condition_pass = (
+            condition.get("pass")
+        )
+
+        if (
+            condition_pass
+            is not None
+            and not isinstance(
+                condition_pass,
+                bool,
+            )
+        ):
+
+            raise RuntimeError(
+                "condition.pass must "
+                "be bool or null"
+            )
+
+    # --------------------------------------------------------
+    # Source
+    # --------------------------------------------------------
+
+    source = market.get(
+        "source"
+    )
+
+    if not isinstance(
+        source,
+        dict,
+    ):
+
+        raise RuntimeError(
+            "source must be dict"
+        )
+
+    providers = source.get(
+        "provider"
+    )
+
+    if not isinstance(
+        providers,
+        list,
+    ):
+
+        raise RuntimeError(
+            "source.provider must "
+            "be list"
+        )
+
+    if "TWSE" not in providers:
+        raise RuntimeError(
+            "source.provider missing "
+            "TWSE"
+        )
+
+    if "TPEx" not in providers:
+        raise RuntimeError(
+            "source.provider missing "
+            "TPEx"
+        )
+
+    # --------------------------------------------------------
+    # Config
+    # --------------------------------------------------------
+
+    config = market.get(
+        "config"
+    )
+
+    if not isinstance(
+        config,
+        dict,
+    ):
+
+        raise RuntimeError(
+            "config must be dict"
+        )
+
+    if config.get(
+        "schema"
+    ) != "market-v2.1":
+
+        raise RuntimeError(
+            "config.schema mismatch"
+        )
+
+    if (
+        config.get(
+            "official_only"
+        )
+        is not True
+    ):
+
+        raise RuntimeError(
+            "config.official_only "
+            "must be true"
+        )
+
+    # --------------------------------------------------------
+    # Stocks
+    # --------------------------------------------------------
 
     stocks = market.get(
         "stocks"
@@ -1473,47 +2896,113 @@ def validate_market(
         stocks,
         dict,
     ):
+
         raise RuntimeError(
-            "market validation failed: "
             "stocks must be dict"
         )
 
-    for stock_code, record in stocks.items():
+    for stock_code, record in (
+        stocks.items()
+    ):
 
         if stock_code not in universe:
+
             raise RuntimeError(
                 "market validation failed: "
-                f"non-universe code={stock_code}"
+                f"non-universe code="
+                f"{stock_code}"
             )
 
         if not isinstance(
             record,
             dict,
         ):
+
             raise RuntimeError(
-                "market validation failed: "
-                f"invalid record={stock_code}"
+                "invalid stock record="
+                f"{stock_code}"
             )
 
         close = to_number(
-            record.get("close")
+            record.get(
+                "close"
+            )
         )
 
-        if close is None or close <= 0:
+        if (
+            close is None
+            or close <= 0
+        ):
+
             raise RuntimeError(
-                "market validation failed: "
-                f"invalid close={stock_code}"
+                "invalid close="
+                f"{stock_code}"
             )
 
-        trading_date = normalize_date(
-            record.get("date")
+        trading_date = (
+            normalize_date(
+                record.get(
+                    "date"
+                )
+            )
         )
 
         if trading_date is None:
+
             raise RuntimeError(
-                "market validation failed: "
-                f"invalid date={stock_code}"
+                "invalid date="
+                f"{stock_code}"
             )
+
+    # --------------------------------------------------------
+    # Entire JSON finite-number check
+    # --------------------------------------------------------
+
+    def validate_finite(
+        value: Any,
+    ) -> None:
+
+        if isinstance(
+            value,
+            float,
+        ):
+
+            if not math.isfinite(
+                value
+            ):
+
+                raise RuntimeError(
+                    "non-finite number "
+                    "in market.json"
+                )
+
+        elif isinstance(
+            value,
+            dict,
+        ):
+
+            for child in (
+                value.values()
+            ):
+
+                validate_finite(
+                    child
+                )
+
+        elif isinstance(
+            value,
+            list,
+        ):
+
+            for child in value:
+
+                validate_finite(
+                    child
+                )
+
+    validate_finite(
+        market
+    )
 
 
 # ============================================================
@@ -1565,7 +3054,10 @@ def atomic_write_json(
 def main() -> int:
 
     log("=" * 72)
-    log("TW STOCK AI SCANNER - FETCH MARKET V3.2")
+    log(
+        "TW STOCK AI SCANNER - "
+        "FETCH MARKET V2.1"
+    )
     log("=" * 72)
 
     # --------------------------------------------------------
@@ -1576,7 +3068,7 @@ def main() -> int:
 
     log("")
     log(
-        f"ACTIVE UNIVERSE : "
+        "ACTIVE UNIVERSE : "
         f"{len(universe)}"
     )
 
@@ -1594,15 +3086,15 @@ def main() -> int:
         prices
     )
 
+    missing = sorted(
+        universe
+        - set(prices.keys())
+    )
+
     coverage_pct = (
         covered
         / len(universe)
         * 100.0
-    )
-
-    missing = sorted(
-        universe
-        - set(prices.keys())
     )
 
     log("")
@@ -1611,22 +3103,22 @@ def main() -> int:
     log("=" * 72)
 
     log(
-        f"ACTIVE           : "
+        "ACTIVE           : "
         f"{len(universe)}"
     )
 
     log(
-        f"COVERED          : "
+        "COVERED          : "
         f"{covered}"
     )
 
     log(
-        f"MISSING          : "
+        "MISSING          : "
         f"{len(missing)}"
     )
 
     log(
-        f"COVERAGE         : "
+        "COVERAGE         : "
         f"{coverage_pct:.2f}%"
     )
 
@@ -1642,7 +3134,7 @@ def main() -> int:
         )
 
     # --------------------------------------------------------
-    # 3. Build market
+    # 3. Build market-v2.1
     # --------------------------------------------------------
 
     market = build_market(
@@ -1652,7 +3144,7 @@ def main() -> int:
     )
 
     # --------------------------------------------------------
-    # 4. Validation
+    # 4. Validate before write
     # --------------------------------------------------------
 
     validate_market(
@@ -1661,7 +3153,7 @@ def main() -> int:
     )
 
     # --------------------------------------------------------
-    # 5. Write
+    # 5. Atomic write
     # --------------------------------------------------------
 
     atomic_write_json(
@@ -1670,7 +3162,7 @@ def main() -> int:
     )
 
     # --------------------------------------------------------
-    # 6. Final validation after write
+    # 6. Read-back
     # --------------------------------------------------------
 
     written = load_json(
@@ -1681,10 +3173,15 @@ def main() -> int:
         written,
         dict,
     ):
+
         raise RuntimeError(
             "Final validation failed: "
             "market.json is not object"
         )
+
+    # --------------------------------------------------------
+    # 7. Final validation
+    # --------------------------------------------------------
 
     validate_market(
         written,
@@ -1696,17 +3193,58 @@ def main() -> int:
     log("FINAL VALIDATION")
     log("=" * 72)
 
-    log("Universe         PASS")
-    log("Price shards     PASS")
-    log("Price parser     PASS")
-    log("Market build     PASS")
-    log("JSON write       PASS")
-    log("Read-back        PASS")
-    log("Final validation PASS")
+    log(
+        "Universe         PASS"
+    )
+
+    log(
+        "Price shards     PASS"
+    )
+
+    log(
+        "Price parser     PASS"
+    )
+
+    log(
+        "Market build     PASS"
+    )
+
+    log(
+        "JSON write       PASS"
+    )
+
+    log(
+        "Read-back        PASS"
+    )
+
+    log(
+        "Market V2.1      PASS"
+    )
 
     log("")
     log(
-        f"OUTPUT           : "
+        "ACTIVE           : "
+        f"{len(universe)}"
+    )
+
+    log(
+        "COVERED          : "
+        f"{covered}"
+    )
+
+    log(
+        "MISSING          : "
+        f"{len(missing)}"
+    )
+
+    log(
+        "COVERAGE         : "
+        f"{coverage_pct:.2f}%"
+    )
+
+    log("")
+    log(
+        "OUTPUT           : "
         f"{MARKET_FILE}"
     )
 
@@ -1722,6 +3260,7 @@ def main() -> int:
 if __name__ == "__main__":
 
     try:
+
         raise SystemExit(
             main()
         )
@@ -1732,7 +3271,9 @@ if __name__ == "__main__":
             "Interrupted."
         )
 
-        raise SystemExit(130)
+        raise SystemExit(
+            130
+        )
 
     except Exception as exc:
 
@@ -1742,4 +3283,6 @@ if __name__ == "__main__":
             flush=True,
         )
 
-        raise SystemExit(1)
+        raise SystemExit(
+            1
+        )
