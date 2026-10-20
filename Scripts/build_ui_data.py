@@ -5,38 +5,31 @@
 台股 AI 選股系統
 Scripts/build_ui_data.py
 
-UI-DATA-2.3
+UI-DATA-2.4
 
 資料責任：
-    Universe
-        +
-    Analysis
-        +
-    Market
-        ↓
-    Data/ui_data.json
-        ↓
-    index.html
+    Universe + Analysis + Market
+                ↓
+         Data/ui_data.json
+                ↓
+            index.html
 
-重要契約
-------------------------------------------------------------
-1. Universe 是商品身份唯一權威來源。
-2. Universe.type / official_type 決定 STOCK / ETF。
-3. Universe.instrument_type 不是 STOCK / ETF 主分類。
-   例如：
-       00400A -> type=ETF, instrument_type=ACTIVE
-       0050   -> type=ETF, instrument_type=EQUITY
-4. Universe.category 用於 ETF 子分類，例如 BOND。
-5. Universe 名稱優先於 Analysis 名稱。
-6. analysis.json 只提供行情與 AI 分析結果。
-7. 今日精選只能是普通個股。
-8. Top10 只能是今日精選的子集合。
-9. ETF / 債券各自獨立分頁。
-10. Frontend 唯一 backend 資料入口為 Data/ui_data.json。
-11. 不在此處計算 RSI / MACD / KD / MA / Volume。
-12. 不將 backend technical fields 暴露給 UI。
-13. atomic write。
-14. write 後 read-back validation。
+名稱處理：
+    1. 官方上市公司基本資料
+    2. 官方上櫃公司基本資料
+    3. Universe 已存在的中文名稱
+    4. 不允許純英文名稱冒充中文名稱
+
+保留契約：
+    - Universe 是商品身份唯一權威來源
+    - Universe.type / official_type 決定 STOCK / ETF
+    - instrument_type 是子類型，不是 STOCK / ETF 主分類
+    - 今日精選只能包含普通個股
+    - Top10 只能是今日精選的子集合
+    - ETF / 債券分頁獨立
+    - 不在此處計算技術指標
+    - atomic write
+    - write 後 read-back validation
 """
 
 from __future__ import annotations
@@ -44,7 +37,10 @@ from __future__ import annotations
 import json
 import math
 import os
+import re
 import tempfile
+import urllib.request
+import urllib.error
 
 from datetime import datetime, timezone
 from pathlib import Path
@@ -59,15 +55,23 @@ ANALYSIS_FILE = DATA_DIR / "analysis.json"
 MARKET_FILE = DATA_DIR / "market.json"
 OUTPUT_FILE = DATA_DIR / "ui_data.json"
 
-VERSION = "UI-DATA-2.3"
+VERSION = "UI-DATA-2.4"
 
+# 官方公司基本資料
+TWSE_COMPANY_URL = (
+    "https://openapi.twse.com.tw/v1/opendata/t187ap03_L"
+)
+TPEX_COMPANY_URL = (
+    "https://www.tpex.org.tw/openapi/v1/mopsfin_t187ap03_O"
+)
+
+HTTP_TIMEOUT = 20
 
 BUYABLE_RECOMMENDATIONS = {
     "偏多，可分批",
     "積極關注",
     "續抱觀察",
 }
-
 
 STRENGTH_RANK = {
     "強勢": 3,
@@ -85,43 +89,26 @@ def load_json(path: Path) -> Any:
         raise RuntimeError(f"找不到檔案：{path}")
 
     try:
-        with path.open(
-            "r",
-            encoding="utf-8-sig",
-        ) as f:
+        with path.open("r", encoding="utf-8-sig") as f:
             return json.load(f)
-
     except Exception as exc:
         raise RuntimeError(
             f"JSON 讀取失敗：{path}: {exc}"
         ) from exc
 
 
-def atomic_write_json(
-    path: Path,
-    data: Any,
-) -> None:
-
-    path.parent.mkdir(
-        parents=True,
-        exist_ok=True,
-    )
+def atomic_write_json(path: Path, data: Any) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
 
     fd, tmp_name = tempfile.mkstemp(
         prefix=f".{path.name}.",
         suffix=".tmp",
         dir=str(path.parent),
     )
-
     tmp_path = Path(tmp_name)
 
     try:
-        with os.fdopen(
-            fd,
-            "w",
-            encoding="utf-8",
-        ) as f:
-
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
             json.dump(
                 data,
                 f,
@@ -129,20 +116,14 @@ def atomic_write_json(
                 indent=2,
                 allow_nan=False,
             )
-
             f.write("\n")
             f.flush()
             os.fsync(f.fileno())
 
-        os.replace(
-            tmp_path,
-            path,
-        )
+        os.replace(tmp_path, path)
 
     finally:
-        tmp_path.unlink(
-            missing_ok=True
-        )
+        tmp_path.unlink(missing_ok=True)
 
 
 def text(value: Any) -> str:
@@ -172,30 +153,20 @@ def normalize_symbol(value: Any) -> str:
         ".TWSE",
         ".TPEX",
     ):
-
         if symbol.endswith(suffix):
-            symbol = symbol[
-                :-len(suffix)
-            ]
+            symbol = symbol[:-len(suffix)]
             break
 
     return symbol
 
 
 def number(value: Any) -> Optional[float]:
-    if value is None:
-        return None
-
-    if isinstance(value, bool):
+    if value is None or isinstance(value, bool):
         return None
 
     try:
-
         value = str(value)
-        value = value.replace(",", "")
-        value = value.replace("%", "")
-        value = value.strip()
-
+        value = value.replace(",", "").replace("%", "").strip()
         result = float(value)
 
         if not math.isfinite(result):
@@ -203,8 +174,163 @@ def number(value: Any) -> Optional[float]:
 
         return result
 
-    except Exception:
+    except (TypeError, ValueError):
         return None
+
+
+def contains_chinese(value: Any) -> bool:
+    return bool(
+        re.search(
+            r"[\u3400-\u4DBF\u4E00-\u9FFF]",
+            text(value),
+        )
+    )
+
+
+def fetch_json_url(url: str) -> Any:
+    """
+    從官方 API 取得 JSON。
+    不使用第三方行情網站作為公司名稱來源。
+    """
+    request = urllib.request.Request(
+        url,
+        headers={
+            "User-Agent": "TaiwanStockAI/1.0",
+            "Accept": "application/json",
+        },
+    )
+
+    try:
+        with urllib.request.urlopen(
+            request,
+            timeout=HTTP_TIMEOUT,
+        ) as response:
+            raw = response.read().decode("utf-8-sig")
+
+        return json.loads(raw)
+
+    except Exception as exc:
+        raise RuntimeError(
+            f"官方名稱 API 讀取失敗：{url}；原因：{exc}"
+        ) from exc
+
+
+# ============================================================
+# OFFICIAL CHINESE NAME MAP
+# ============================================================
+
+def first_nonempty(
+    row: Dict[str, Any],
+    keys: tuple[str, ...],
+) -> str:
+    for key in keys:
+        value = text(row.get(key))
+        if value:
+            return value
+    return ""
+
+
+def parse_official_name_rows(
+    rows: Any,
+    source: str,
+) -> Dict[str, str]:
+    """
+    將官方公司基本資料正規化為：
+        股票代號 -> 中文簡稱
+
+    TWSE 使用中文欄位；
+    TPEx API 使用英文欄位。
+    """
+    if not isinstance(rows, list):
+        raise RuntimeError(
+            f"{source} 回傳格式錯誤：預期 JSON array"
+        )
+
+    result: Dict[str, str] = {}
+
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+
+        symbol = normalize_symbol(
+            first_nonempty(
+                row,
+                (
+                    "公司代號",
+                    "證券代號",
+                    "股票代號",
+                    "SecuritiesCompanyCode",
+                    "CompanyCode",
+                    "Code",
+                ),
+            )
+        )
+
+        name = first_nonempty(
+            row,
+            (
+                "公司簡稱",
+                "公司名稱",
+                "股票名稱",
+                "名稱",
+                "CompanyAbbreviation",
+                "CompanyName",
+                "SecurityName",
+                "Name",
+            ),
+        )
+
+        if not symbol or not name:
+            continue
+
+        if not contains_chinese(name):
+            continue
+
+        result[symbol] = name
+
+    if not result:
+        raise RuntimeError(
+            f"{source} 沒有取得有效中文名稱資料"
+        )
+
+    print(f"{source} 中文名稱筆數：{len(result)}")
+    return result
+
+
+def load_official_chinese_names() -> Dict[str, str]:
+    """
+    同時讀取上市、上櫃官方公司基本資料。
+
+    兩個來源都失敗時，不會靜默當成成功。
+    若只有一個來源成功，保留成功來源並輸出警告。
+    """
+    combined: Dict[str, str] = {}
+    errors = []
+
+    sources = (
+        ("TWSE", TWSE_COMPANY_URL),
+        ("TPEX", TPEX_COMPANY_URL),
+    )
+
+    for source, url in sources:
+        try:
+            rows = fetch_json_url(url)
+            names = parse_official_name_rows(rows, source)
+            combined.update(names)
+
+        except Exception as exc:
+            errors.append(f"{source}: {exc}")
+            print(f"WARNING：{source} 名稱資料取得失敗：{exc}")
+
+    if not combined:
+        raise RuntimeError(
+            "上市、上櫃官方中文名稱資料均無法取得。"
+            "停止建立 UI 資料，避免英文名稱混入輸出。"
+            + "；".join(errors)
+        )
+
+    print(f"官方中文名稱合併筆數：{len(combined)}")
+    return combined
 
 
 # ============================================================
@@ -212,25 +338,16 @@ def number(value: Any) -> Optional[float]:
 # ============================================================
 
 def load_universe() -> Dict[str, Dict[str, Any]]:
+    data = load_json(UNIVERSE_FILE)
 
-    data = load_json(
-        UNIVERSE_FILE
-    )
-
-    if not isinstance(
-        data,
-        dict,
-    ):
+    if not isinstance(data, dict):
         raise RuntimeError(
             "universe.json 根節點必須是 object"
         )
 
     stocks = data.get("stocks")
 
-    if not isinstance(
-        stocks,
-        dict,
-    ):
+    if not isinstance(stocks, dict):
         raise RuntimeError(
             "universe.json stocks 必須是 object"
         )
@@ -238,17 +355,10 @@ def load_universe() -> Dict[str, Dict[str, Any]]:
     output = {}
 
     for raw_symbol, raw_item in stocks.items():
-
-        if not isinstance(
-            raw_item,
-            dict,
-        ):
+        if not isinstance(raw_item, dict):
             continue
 
-        symbol = normalize_symbol(
-            raw_symbol
-        )
-
+        symbol = normalize_symbol(raw_symbol)
         if not symbol:
             continue
 
@@ -259,13 +369,10 @@ def load_universe() -> Dict[str, Dict[str, Any]]:
 
         item = dict(raw_item)
         item["symbol"] = symbol
-
         output[symbol] = item
 
     if not output:
-        raise RuntimeError(
-            "Universe 沒有有效商品"
-        )
+        raise RuntimeError("Universe 沒有有效商品")
 
     return output
 
@@ -278,87 +385,37 @@ def get_universe_type(
     symbol: str,
     universe: Dict[str, Any],
 ) -> str:
-    """
-    正確分類：
+    value = text(universe.get("type")).upper()
 
-        type=STOCK / STOCKS -> STOCK
-        type=ETF            -> ETF
-
-    instrument_type 不作主分類。
-
-    例如：
-
-        00400A
-            type=ETF
-            instrument_type=ACTIVE
-
-        0050
-            type=ETF
-            instrument_type=EQUITY
-    """
-
-    value = universe.get(
-        "type"
-    )
-
-    normalized = text(
-        value
-    ).upper()
-
-    if normalized in {
-        "STOCK",
-        "STOCKS",
-    }:
+    if value in {"STOCK", "STOCKS"}:
         return "STOCK"
 
-    if normalized == "ETF":
+    if value == "ETF":
         return "ETF"
 
-    # compatibility fallback
-    fallback = universe.get(
-        "official_type"
-    )
+    fallback = text(universe.get("official_type")).upper()
 
-    normalized = text(
-        fallback
-    ).upper()
-
-    if normalized in {
-        "STOCK",
-        "STOCKS",
-    }:
+    if fallback in {"STOCK", "STOCKS"}:
         return "STOCK"
 
-    if normalized == "ETF":
+    if fallback == "ETF":
         return "ETF"
 
-    fallback = universe.get(
-        "security_type"
-    )
+    fallback = text(universe.get("security_type")).upper()
 
-    normalized = text(
-        fallback
-    ).upper()
-
-    if normalized in {
-        "STOCK",
-        "STOCKS",
-    }:
+    if fallback in {"STOCK", "STOCKS"}:
         return "STOCK"
 
-    if normalized == "ETF":
+    if fallback == "ETF":
         return "ETF"
 
     raise RuntimeError(
         f"{symbol} Universe type 無效："
-        f"{value!r}"
+        f"{universe.get('type')!r}"
     )
 
 
-def get_category(
-    universe: Dict[str, Any],
-) -> str:
-
+def get_category(universe: Dict[str, Any]) -> str:
     value = (
         universe.get("category")
         or universe.get("asset_category")
@@ -366,14 +423,9 @@ def get_category(
         or ""
     )
 
-    normalized = text(
-        value
-    ).upper()
+    normalized = text(value).upper()
 
-    if (
-        "BOND" in normalized
-        or "債" in normalized
-    ):
+    if "BOND" in normalized or "債" in normalized:
         return "BOND"
 
     return "EQUITY"
@@ -382,7 +434,6 @@ def get_category(
 def get_public_instrument_type(
     universe: Dict[str, Any],
 ) -> str:
-
     base_type = get_universe_type(
         universe["symbol"],
         universe,
@@ -391,10 +442,7 @@ def get_public_instrument_type(
     if base_type == "STOCK":
         return "stock"
 
-    if (
-        base_type == "ETF"
-        and get_category(universe) == "BOND"
-    ):
+    if base_type == "ETF" and get_category(universe) == "BOND":
         return "bond"
 
     return "etf"
@@ -407,9 +455,24 @@ def get_public_instrument_type(
 def get_official_name(
     symbol: str,
     universe: Dict[str, Any],
+    official_names: Dict[str, str],
 ) -> str:
+    """
+    名稱優先順序：
 
-    candidates = (
+    1. 證交所／櫃買中心官方中文簡稱
+    2. Universe 明確中文名稱欄位
+    3. Universe 其他欄位中確實含中文的名稱
+
+    不允許純英文名稱直接進入 UI。
+    """
+
+    mapped_name = text(official_names.get(symbol))
+
+    if mapped_name and contains_chinese(mapped_name):
+        return mapped_name
+
+    chinese_candidates = (
         "display_name_zh",
         "name_zh",
         "chinese_name",
@@ -417,21 +480,31 @@ def get_official_name(
         "stock_name",
         "名稱",
         "股票名稱",
-        "display_name",
-        "name",
+        "公司簡稱",
+        "公司名稱",
     )
 
-    for key in candidates:
+    for key in chinese_candidates:
+        value = text(universe.get(key))
 
-        value = text(
-            universe.get(key)
-        )
+        if value and contains_chinese(value):
+            return value
 
-        if value:
+    fallback_candidates = (
+        "display_name",
+        "name",
+        "security_name",
+    )
+
+    for key in fallback_candidates:
+        value = text(universe.get(key))
+
+        if value and contains_chinese(value):
             return value
 
     raise RuntimeError(
-        f"{symbol} Universe 缺少名稱"
+        f"{symbol} 找不到中文名稱。"
+        "官方公司主檔與 Universe 均未提供可用中文名稱。"
     )
 
 
@@ -439,10 +512,7 @@ def get_official_name(
 # MARKET
 # ============================================================
 
-def get_market(
-    universe: Dict[str, Any],
-) -> str:
-
+def get_market(universe: Dict[str, Any]) -> str:
     value = (
         universe.get("market")
         or universe.get("exchange")
@@ -450,25 +520,16 @@ def get_market(
         or ""
     )
 
-    value = text(
-        value
-    ).upper()
+    value = text(value).upper()
 
-    if value in {
-        "TWSE",
-        "TSE",
-    }:
+    if value in {"TWSE", "TSE"}:
         return "TWSE"
 
-    if value in {
-        "TPEX",
-        "OTC",
-    }:
+    if value in {"TPEX", "OTC"}:
         return "TPEX"
 
     raise RuntimeError(
-        f"{universe.get('symbol')} market 無效："
-        f"{value!r}"
+        f"{universe.get('symbol')} market 無效：{value!r}"
     )
 
 
@@ -477,27 +538,16 @@ def get_market(
 # ============================================================
 
 def load_analysis() -> Dict[str, Any]:
+    data = load_json(ANALYSIS_FILE)
 
-    data = load_json(
-        ANALYSIS_FILE
-    )
-
-    if not isinstance(
-        data,
-        dict,
-    ):
+    if not isinstance(data, dict):
         raise RuntimeError(
             "analysis.json 根節點必須是 object"
         )
 
-    stocks = data.get(
-        "stocks"
-    )
+    stocks = data.get("stocks")
 
-    if not isinstance(
-        stocks,
-        dict,
-    ):
+    if not isinstance(stocks, dict):
         raise RuntimeError(
             "analysis.json stocks 必須是 object"
         )
@@ -505,25 +555,15 @@ def load_analysis() -> Dict[str, Any]:
     normalized = {}
 
     for raw_symbol, raw_item in stocks.items():
-
-        if not isinstance(
-            raw_item,
-            dict,
-        ):
+        if not isinstance(raw_item, dict):
             raise RuntimeError(
                 f"analysis.json stocks[{raw_symbol}] 必須是 object"
             )
 
-        symbol = normalize_symbol(
-            raw_symbol
-        )
+        symbol = normalize_symbol(raw_symbol)
 
-        if not symbol:
-            continue
-
-        normalized[symbol] = dict(
-            raw_item
-        )
+        if symbol:
+            normalized[symbol] = dict(raw_item)
 
     if not normalized:
         raise RuntimeError(
@@ -536,27 +576,14 @@ def load_analysis() -> Dict[str, Any]:
     }
 
 
-def get_metrics(
-    analysis: Dict[str, Any],
-):
-    metrics = analysis.get(
-        "metrics"
-    )
+def get_metrics(analysis: Dict[str, Any]):
+    metrics = analysis.get("metrics")
+    short_term = analysis.get("short_term")
 
-    short_term = analysis.get(
-        "short_term"
-    )
-
-    if not isinstance(
-        metrics,
-        dict,
-    ):
+    if not isinstance(metrics, dict):
         metrics = {}
 
-    if not isinstance(
-        short_term,
-        dict,
-    ):
+    if not isinstance(short_term, dict):
         short_term = {}
 
     return metrics, short_term
@@ -566,13 +593,8 @@ def get_metrics(
 # PRICE
 # ============================================================
 
-def get_price_fields(
-    analysis: Dict[str, Any],
-):
-
-    metrics, _ = get_metrics(
-        analysis
-    )
+def get_price_fields(analysis: Dict[str, Any]):
+    metrics, _ = get_metrics(analysis)
 
     price = None
     change = None
@@ -584,85 +606,53 @@ def get_price_fields(
         "latest_price",
         "last_price",
     ):
-
-        value = number(
-            metrics.get(key)
-        )
+        value = number(metrics.get(key))
 
         if value is not None:
             price = value
             break
 
     if price is None:
-
-        for key in (
-            "price",
-            "close",
-        ):
-
-            value = number(
-                analysis.get(key)
-            )
+        for key in ("price", "close"):
+            value = number(analysis.get(key))
 
             if value is not None:
                 price = value
                 break
 
-    for key in (
-        "change",
-        "price_change",
-    ):
-
-        value = number(
-            metrics.get(key)
-        )
+    for key in ("change", "price_change"):
+        value = number(metrics.get(key))
 
         if value is not None:
             change = value
             break
 
     if change is None:
-        change = number(
-            analysis.get("change")
-        )
+        change = number(analysis.get("change"))
 
     for key in (
         "change_pct",
         "change_percent",
         "change1_pct",
     ):
-
-        value = number(
-            metrics.get(key)
-        )
+        value = number(metrics.get(key))
 
         if value is not None:
             change_pct = value
             break
 
     if change_pct is None:
-        change_pct = number(
-            analysis.get("change_pct")
-        )
+        change_pct = number(analysis.get("change_pct"))
 
-    return (
-        price,
-        change,
-        change_pct,
-    )
+    return price, change, change_pct
 
 
 # ============================================================
 # STRENGTH
 # ============================================================
 
-def get_strength(
-    analysis: Dict[str, Any],
-) -> str:
-
-    metrics, short_term = get_metrics(
-        analysis
-    )
+def get_strength(analysis: Dict[str, Any]) -> str:
+    metrics, short_term = get_metrics(analysis)
 
     candidates = (
         short_term.get("strength"),
@@ -673,10 +663,7 @@ def get_strength(
     )
 
     for value in candidates:
-
-        value = text(
-            value
-        )
+        value = text(value)
 
         if not value:
             continue
@@ -686,29 +673,20 @@ def get_strength(
         if (
             "強" in value
             or "多" in value
-            or lowered in {
-                "strong",
-                "bullish",
-            }
+            or lowered in {"strong", "bullish"}
         ):
             return "強勢"
 
         if (
             "弱" in value
             or "空" in value
-            or lowered in {
-                "weak",
-                "bearish",
-            }
+            or lowered in {"weak", "bearish"}
         ):
             return "弱勢"
 
         if (
             "中" in value
-            or lowered in {
-                "neutral",
-                "flat",
-            }
+            or lowered in {"neutral", "flat"}
         ):
             return "中性"
 
@@ -719,13 +697,8 @@ def get_strength(
 # RECOMMENDATION
 # ============================================================
 
-def get_recommendation(
-    analysis: Dict[str, Any],
-) -> str:
-
-    metrics, short_term = get_metrics(
-        analysis
-    )
+def get_recommendation(analysis: Dict[str, Any]) -> str:
+    metrics, short_term = get_metrics(analysis)
 
     candidates = (
         analysis.get("recommendation"),
@@ -735,22 +708,16 @@ def get_recommendation(
     )
 
     for value in candidates:
-
-        value = text(
-            value
-        )
+        value = text(value)
 
         if not value:
             continue
 
-        if (
-            "買進" in value
-            or "偏多" in value
-        ):
-            return "偏多，可分批"
-
         if "立即進場" in value:
             return "積極關注"
+
+        if "買進" in value or "偏多" in value:
+            return "偏多，可分批"
 
         if "回測" in value:
             return "等回測"
@@ -761,10 +728,7 @@ def get_recommendation(
         if "暫停" in value:
             return "暫停操作"
 
-        if (
-            "續抱" in value
-            or "觀察" in value
-        ):
+        if "續抱" in value or "觀察" in value:
             return "續抱觀察"
 
     return "續抱觀察"
@@ -774,13 +738,8 @@ def get_recommendation(
 # INTERNAL SCORE
 # ============================================================
 
-def get_core_score(
-    analysis: Dict[str, Any],
-) -> float:
-
-    _, short_term = get_metrics(
-        analysis
-    )
+def get_core_score(analysis: Dict[str, Any]) -> float:
+    _, short_term = get_metrics(analysis)
 
     candidates = (
         short_term.get("core_score"),
@@ -789,10 +748,7 @@ def get_core_score(
     )
 
     for value in candidates:
-
-        value = number(
-            value
-        )
+        value = number(value)
 
         if value is not None:
             return value
@@ -809,37 +765,26 @@ def build_public_record(
     universe: Dict[str, Any],
     analysis: Dict[str, Any],
     latest_date: str,
+    official_names: Dict[str, str],
 ) -> Dict[str, Any]:
-
-    price, change, change_pct = (
-        get_price_fields(
-            analysis
-        )
-    )
+    price, change, change_pct = get_price_fields(analysis)
 
     return {
         "symbol": symbol,
         "name": get_official_name(
             symbol,
             universe,
+            official_names,
         ),
-        "market": get_market(
+        "market": get_market(universe),
+        "instrument_type": get_public_instrument_type(
             universe
-        ),
-        "instrument_type": (
-            get_public_instrument_type(
-                universe
-            )
         ),
         "price": price,
         "change": change,
         "change_pct": change_pct,
-        "strength": get_strength(
-            analysis
-        ),
-        "recommendation": get_recommendation(
-            analysis
-        ),
+        "strength": get_strength(analysis),
+        "recommendation": get_recommendation(analysis),
         "backend": {
             "status": "ok",
             "latest_date": latest_date,
@@ -858,73 +803,40 @@ def build_public_record(
 # CANDIDATES
 # ============================================================
 
-def extract_candidate_symbols(
-    root: Dict[str, Any],
-):
-
-    raw = root.get(
-        "short_term_candidates"
-    )
+def extract_candidate_symbols(root: Dict[str, Any]):
+    raw = root.get("short_term_candidates")
 
     if not raw:
         return []
 
-    if isinstance(
-        raw,
-        dict,
-    ):
-        raw = list(
-            raw.values()
-        )
+    if isinstance(raw, dict):
+        raw = list(raw.values())
 
-    if not isinstance(
-        raw,
-        list,
-    ):
+    if not isinstance(raw, list):
         return []
 
     result = []
 
     for item in raw:
-
-        if isinstance(
-            item,
-            dict,
-        ):
+        if isinstance(item, dict):
             symbol = normalize_symbol(
                 item.get("symbol")
                 or item.get("code")
                 or item.get("ticker")
             )
-
         else:
-            symbol = normalize_symbol(
-                item
-            )
+            symbol = normalize_symbol(item)
 
-        if (
-            symbol
-            and symbol not in result
-        ):
-            result.append(
-                symbol
-            )
+        if symbol and symbol not in result:
+            result.append(symbol)
 
     return result
 
 
-def is_explicit_candidate(
-    analysis: Dict[str, Any],
-) -> bool:
+def is_explicit_candidate(analysis: Dict[str, Any]) -> bool:
+    short_term = analysis.get("short_term")
 
-    short_term = analysis.get(
-        "short_term"
-    )
-
-    if not isinstance(
-        short_term,
-        dict,
-    ):
+    if not isinstance(short_term, dict):
         short_term = {}
 
     flags = (
@@ -935,7 +847,6 @@ def is_explicit_candidate(
     )
 
     for key in flags:
-
         if (
             analysis.get(key) is True
             or short_term.get(key) is True
@@ -949,80 +860,52 @@ def is_explicit_candidate(
 # VALIDATION
 # ============================================================
 
-def validate_ui_data(
-    data: Dict[str, Any],
-) -> None:
+def validate_ui_data(data: Dict[str, Any]) -> None:
+    if data.get("schema_version") != VERSION:
+        raise RuntimeError("ui_data schema_version 錯誤")
 
-    if data.get(
-        "schema_version"
-    ) != VERSION:
+    stocks = data.get("stocks")
 
-        raise RuntimeError(
-            "ui_data schema_version 錯誤"
-        )
-
-    stocks = data.get(
-        "stocks"
-    )
-
-    if not isinstance(
-        stocks,
-        dict,
-    ) or not stocks:
-
-        raise RuntimeError(
-            "ui_data.stocks 無效"
-        )
+    if not isinstance(stocks, dict) or not stocks:
+        raise RuntimeError("ui_data.stocks 無效")
 
     for symbol, record in stocks.items():
-
-        if not isinstance(
-            record,
-            dict,
-        ):
+        if not isinstance(record, dict):
             raise RuntimeError(
                 f"{symbol} UI record 不是 object"
             )
 
-        if record.get(
-            "symbol"
-        ) != symbol:
-
+        if record.get("symbol") != symbol:
             raise RuntimeError(
                 f"{symbol} symbol mismatch"
             )
 
-        if not text(
-            record.get("name")
-        ):
+        name = text(record.get("name"))
+
+        if not name:
             raise RuntimeError(
                 f"{symbol} 缺少 name"
             )
 
-        if record.get(
-            "instrument_type"
-        ) not in {
+        if not contains_chinese(name):
+            raise RuntimeError(
+                f"{symbol} 名稱不是中文：{name}"
+            )
+
+        if record.get("instrument_type") not in {
             "stock",
             "etf",
             "bond",
         }:
-
             raise RuntimeError(
                 f"{symbol} instrument_type 無效："
                 f"{record.get('instrument_type')}"
             )
 
-    tabs = data.get(
-        "tabs"
-    )
+    tabs = data.get("tabs")
 
-    if not isinstance(
-        tabs,
-        dict,
-    ):
-        raise RuntimeError(
-            "ui_data.tabs 無效"
-        )
+    if not isinstance(tabs, dict):
+        raise RuntimeError("ui_data.tabs 無效")
 
     expected_tabs = {
         "today_picks",
@@ -1033,94 +916,58 @@ def validate_ui_data(
     }
 
     if set(tabs) != expected_tabs:
-        raise RuntimeError(
-            "ui_data.tabs 欄位錯誤"
-        )
+        raise RuntimeError("ui_data.tabs 欄位錯誤")
 
-    today = tabs[
-        "today_picks"
-    ]
-
-    top10 = tabs[
-        "top10"
-    ]
-
-    etf = tabs[
-        "etf"
-    ]
-
-    bond = tabs[
-        "bond"
-    ]
+    today = tabs["today_picks"]
+    top10 = tabs["top10"]
+    etf = tabs["etf"]
+    bond = tabs["bond"]
 
     for symbol in today:
-
         if symbol not in stocks:
             raise RuntimeError(
                 f"Today Picks 缺少股票資料：{symbol}"
             )
 
-        if stocks[symbol][
-            "instrument_type"
-        ] != "stock":
-
+        if stocks[symbol]["instrument_type"] != "stock":
             raise RuntimeError(
                 f"Today Picks 出現非個股：{symbol}"
             )
 
-    if not set(top10).issubset(
-        set(today)
-    ):
+    if not set(top10).issubset(set(today)):
         raise RuntimeError(
             "Top10 不是 Today Picks 子集合"
         )
 
     if len(top10) > 10:
-        raise RuntimeError(
-            "Top10 超過 10 檔"
-        )
+        raise RuntimeError("Top10 超過 10 檔")
 
     if len(etf) > 10:
-        raise RuntimeError(
-            "ETF 超過 10 檔"
-        )
+        raise RuntimeError("ETF 超過 10 檔")
 
     if len(bond) > 10:
-        raise RuntimeError(
-            "Bond 超過 10 檔"
-        )
+        raise RuntimeError("Bond 超過 10 檔")
 
     for symbol in etf:
-
         if (
             symbol not in stocks
-            or stocks[symbol][
-                "instrument_type"
-            ] != "etf"
+            or stocks[symbol]["instrument_type"] != "etf"
         ):
             raise RuntimeError(
                 f"ETF tab 出現非 ETF：{symbol}"
             )
 
     for symbol in bond:
-
         if (
             symbol not in stocks
-            or stocks[symbol][
-                "instrument_type"
-            ] != "bond"
+            or stocks[symbol]["instrument_type"] != "bond"
         ):
             raise RuntimeError(
                 f"Bond tab 出現非債券 ETF：{symbol}"
             )
 
-    # 已知回歸測試標的
     if "00400A" in stocks:
-
-        if stocks[
-            "00400A"
-        ]["instrument_type"] != "etf":
-
+        if stocks["00400A"]["instrument_type"] != "etf":
             raise RuntimeError(
                 "00400A 必須判定為 ETF"
             )
@@ -1131,62 +978,42 @@ def validate_ui_data(
 # ============================================================
 
 def main() -> None:
-
     universe = load_universe()
-
     analysis_bundle = load_analysis()
 
-    analysis_root = (
-        analysis_bundle["root"]
-    )
+    analysis_root = analysis_bundle["root"]
+    analysis = analysis_bundle["stocks"]
 
-    analysis = (
-        analysis_bundle["stocks"]
-    )
+    market = load_json(MARKET_FILE)
 
-    market = load_json(
-        MARKET_FILE
-    )
-
-    if not isinstance(
-        market,
-        dict,
-    ):
+    if not isinstance(market, dict):
         raise RuntimeError(
             "market.json 根節點必須是 object"
         )
 
     latest_date = text(
-        market.get(
-            "latest_trading_date"
-        )
+        market.get("latest_trading_date")
     )
+
+    # 官方公司中文名稱資料
+    official_names = load_official_chinese_names()
 
     public = {}
     internal = {}
 
-    for symbol, universe_record in (
-        universe.items()
-    ):
-
+    for symbol, universe_record in universe.items():
         if symbol not in analysis:
             continue
 
-        analysis_record = (
-            analysis[symbol]
-        )
+        analysis_record = analysis[symbol]
+        internal[symbol] = analysis_record
 
-        internal[symbol] = (
-            analysis_record
-        )
-
-        public[symbol] = (
-            build_public_record(
-                symbol,
-                universe_record,
-                analysis_record,
-                latest_date,
-            )
+        public[symbol] = build_public_record(
+            symbol,
+            universe_record,
+            analysis_record,
+            latest_date,
+            official_names,
         )
 
     if not public:
@@ -1199,77 +1026,43 @@ def main() -> None:
     # TODAY PICKS
     # --------------------------------------------------------
 
-    candidates = (
-        extract_candidate_symbols(
-            analysis_root
-        )
-    )
-
+    candidates = extract_candidate_symbols(analysis_root)
     today_picks = []
 
     for symbol in candidates:
-
         if symbol not in public:
             continue
 
-        if public[symbol][
-            "instrument_type"
-        ] != "stock":
-
+        if public[symbol]["instrument_type"] != "stock":
             continue
 
-        today_picks.append(
-            symbol
-        )
+        today_picks.append(symbol)
 
-    # fallback：
-    # 只有 analysis 明確標示 candidate 才可進入。
+    # fallback：只接受 analysis 明確標示 candidate 的個股
     if not today_picks:
-
         for symbol in public:
-
-            if (
-                public[symbol][
-                    "instrument_type"
-                ] != "stock"
-            ):
+            if public[symbol]["instrument_type"] != "stock":
                 continue
 
-            if is_explicit_candidate(
-                internal[symbol]
-            ):
-                today_picks.append(
-                    symbol
-                )
+            if is_explicit_candidate(internal[symbol]):
+                today_picks.append(symbol)
 
     def rank_key(symbol: str):
-
-        record = public[
-            symbol
-        ]
+        record = public[symbol]
 
         return (
-            STRENGTH_RANK.get(
-                record["strength"],
-                0,
-            ),
-            get_core_score(
-                internal[symbol]
-            ),
+            STRENGTH_RANK.get(record["strength"], 0),
+            get_core_score(internal[symbol]),
             symbol,
         )
 
     today_picks = sorted(
-        list(dict.fromkeys(
-            today_picks
-        )),
+        list(dict.fromkeys(today_picks)),
         key=rank_key,
         reverse=True,
     )
 
-    top10 = today_picks[
-        :10
-    ]
+    top10 = today_picks[:10]
 
     # --------------------------------------------------------
     # ETF
@@ -1278,21 +1071,14 @@ def main() -> None:
     etf_symbols = []
 
     for symbol, record in public.items():
-
-        if record[
-            "instrument_type"
-        ] != "etf":
+        if record["instrument_type"] != "etf":
             continue
 
         if (
             record["strength"] == "強勢"
-            or record[
-                "recommendation"
-            ] in BUYABLE_RECOMMENDATIONS
+            or record["recommendation"] in BUYABLE_RECOMMENDATIONS
         ):
-            etf_symbols.append(
-                symbol
-            )
+            etf_symbols.append(symbol)
 
     etf_symbols = sorted(
         etf_symbols,
@@ -1307,21 +1093,14 @@ def main() -> None:
     bond_symbols = []
 
     for symbol, record in public.items():
-
-        if record[
-            "instrument_type"
-        ] != "bond":
+        if record["instrument_type"] != "bond":
             continue
 
         if (
             record["strength"] == "強勢"
-            or record[
-                "recommendation"
-            ] in BUYABLE_RECOMMENDATIONS
+            or record["recommendation"] in BUYABLE_RECOMMENDATIONS
         ):
-            bond_symbols.append(
-                symbol
-            )
+            bond_symbols.append(symbol)
 
     bond_symbols = sorted(
         bond_symbols,
@@ -1333,19 +1112,12 @@ def main() -> None:
     # MARKET
     # --------------------------------------------------------
 
-    index = market.get(
-        "index"
-    )
+    index = market.get("index")
 
-    if not isinstance(
-        index,
-        dict,
-    ):
+    if not isinstance(index, dict):
         index = {}
 
-    sentiment = market.get(
-        "sentiment"
-    )
+    sentiment = market.get("sentiment")
 
     # --------------------------------------------------------
     # OUTPUT
@@ -1356,29 +1128,21 @@ def main() -> None:
         "generated_at": datetime.now(
             timezone.utc
         ).isoformat(),
-
         "status": "ok",
-
         "market": {
             "name": "台股市場",
             "timezone": "Asia/Taipei",
-            "status": market.get(
-                "market_status"
-            ),
+            "status": market.get("market_status"),
             "latest_trading_date": latest_date,
             "index": index,
             "sentiment": sentiment,
         },
-
         "summary": {
-            "today_picks_count": len(
-                today_picks
-            ),
+            "today_picks_count": len(today_picks),
             "holdings": False,
             "index": index,
             "sentiment": sentiment,
         },
-
         "tabs": {
             "today_picks": today_picks,
             "top10": top10,
@@ -1386,63 +1150,29 @@ def main() -> None:
             "bond": bond_symbols,
             "watchlist": [],
         },
-
         "stocks": public,
     }
 
-    validate_ui_data(
-        ui_data
-    )
+    validate_ui_data(ui_data)
 
-    atomic_write_json(
-        OUTPUT_FILE,
-        ui_data,
-    )
+    atomic_write_json(OUTPUT_FILE, ui_data)
 
-    read_back = load_json(
-        OUTPUT_FILE
-    )
+    read_back = load_json(OUTPUT_FILE)
+    validate_ui_data(read_back)
 
-    validate_ui_data(
-        read_back
-    )
-
-    print(
-        "========================================"
-    )
-    print(
-        "UI DATA BUILD PASS"
-    )
-    print(
-        "========================================"
-    )
-    print(
-        f"Universe：{len(universe)}"
-    )
-    print(
-        f"UI stocks：{len(public)}"
-    )
-    print(
-        f"Today Picks：{len(today_picks)}"
-    )
-    print(
-        f"Top10：{len(top10)}"
-    )
-    print(
-        f"ETF：{len(etf_symbols)}"
-    )
-    print(
-        f"Bond：{len(bond_symbols)}"
-    )
-    print(
-        "00400A：ETF validation PASS"
-    )
-    print(
-        "read-back validation PASS"
-    )
-    print(
-        "========================================"
-    )
+    print("========================================")
+    print("UI DATA BUILD PASS")
+    print("========================================")
+    print(f"Universe：{len(universe)}")
+    print(f"官方中文名稱：{len(official_names)}")
+    print(f"UI stocks：{len(public)}")
+    print(f"Today Picks：{len(today_picks)}")
+    print(f"Top10：{len(top10)}")
+    print(f"ETF：{len(etf_symbols)}")
+    print(f"Bond：{len(bond_symbols)}")
+    print("中文名稱 validation PASS")
+    print("read-back validation PASS")
+    print("========================================")
 
 
 if __name__ == "__main__":
