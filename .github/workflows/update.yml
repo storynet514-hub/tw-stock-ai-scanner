@@ -1,3 +1,4 @@
+
 name: Update Taiwan Stock AI Data
 
 on:
@@ -21,7 +22,6 @@ jobs:
     timeout-minutes: 45
 
     steps:
-
       # ======================================================
       # 1. Checkout
       # ======================================================
@@ -241,15 +241,6 @@ jobs:
 
       # ======================================================
       # 9. Fetch Prices
-      #
-      # IMPORTANT:
-      # 不再解析 stdout / regex 建立 no_history。
-      #
-      # fetch_prices.py 本身已經把：
-      #
-      # history_status=no_history
-      #
-      # 寫入正式 price shard。
       # ======================================================
 
       - name: Fetch Price Data
@@ -274,22 +265,14 @@ jobs:
       # ======================================================
       # 10. Validate Price Data
       #
-      # no_history 唯一來源：
-      #
-      # Data/prices/*.json
-      #     ↓
-      # history_status
-      #     ↓
-      # no_history_count
-      #     ↓
-      # manifest.json
-      #
-      # 不再依賴 stdout。
+      # 修正重點：
+      # prices-v14.0 的 stocks[symbol] 是價格資料 list，
+      # 不是包含 symbol/history_status 的 dict。
       # ======================================================
 
       - name: Validate Price Data
         run: |
-          set -e
+          set -euo pipefail
 
           python - <<'PY'
           import json
@@ -297,23 +280,18 @@ jobs:
 
           DATA_DIR = Path("Data")
           PRICES_DIR = DATA_DIR / "prices"
-
           UNIVERSE_FILE = DATA_DIR / "universe.json"
           MANIFEST_FILE = PRICES_DIR / "manifest.json"
-
           EXPECTED_SCHEMA_VERSION = "prices-v14.0"
 
           def fail(message):
               raise SystemExit(
-                  f"❌ {message}"
+                  f"PRICE DATA VALIDATION FAILED: {message}"
               )
 
           def load_json(path):
-
-              if not path.exists():
-                  fail(
-                      f"找不到檔案：{path}"
-                  )
+              if not path.is_file():
+                  fail(f"檔案不存在：{path}")
 
               try:
                   with path.open(
@@ -324,254 +302,93 @@ jobs:
 
               except Exception as exc:
                   fail(
-                      f"JSON 解析失敗："
-                      f"{path}: {exc}"
+                      f"JSON 解析失敗：{path}: {exc}"
                   )
 
           def normalize_symbol(value):
-
               if value is None:
                   return None
 
-              text = (
-                  str(value)
-                  .strip()
-                  .upper()
-              )
-
-              if not text:
-                  return None
+              symbol = str(value).strip().upper()
 
               for suffix in (
                   ".TW",
                   ".TWO",
                   ".HK",
               ):
-                  if text.endswith(suffix):
-                      text = text[
-                          :-len(suffix)
-                      ]
+                  if symbol.endswith(suffix):
+                      symbol = symbol[:-len(suffix)]
 
-              return text or None
+              return symbol or None
 
-          def iter_records(payload):
-              """
-              支援 price shard 的資料容器：
+          # 1. Validate Universe
+          universe = load_json(UNIVERSE_FILE)
 
-              1. {symbol: record}
-              2. {"stocks": {symbol: record}}
-              3. {"data": {symbol: record}}
-              4. {"prices": {symbol: record}}
-              5. {"stocks": [record]}
-              6. {"data": [record]}
-              7. [record]
-              """
+          if not isinstance(universe, dict):
+              fail("universe.json 根節點不是 object")
 
-              if isinstance(
-                  payload,
-                  dict
-              ):
+          stocks = universe.get("stocks")
 
-                  for container_key in (
-                      "stocks",
-                      "data",
-                      "prices",
-                  ):
-
-                      container = payload.get(
-                          container_key
-                      )
-
-                      if isinstance(
-                          container,
-                          dict
-                      ):
-
-                          for symbol, record in (
-                              container.items()
-                          ):
-                              yield (
-                                  str(symbol),
-                                  record
-                              )
-
-                          return
-
-                      if isinstance(
-                          container,
-                          list
-                      ):
-
-                          for record in container:
-                              yield (
-                                  None,
-                                  record
-                              )
-
-                          return
-
-                  for symbol, record in (
-                      payload.items()
-                  ):
-
-                      if isinstance(
-                          record,
-                          dict
-                      ):
-
-                          yield (
-                              str(symbol),
-                              record
-                          )
-
-                  return
-
-              if isinstance(
-                  payload,
-                  list
-              ):
-
-                  for record in payload:
-
-                      yield (
-                          None,
-                          record
-                      )
-
-          # ==================================================
-          # Load Universe
-          # ==================================================
-
-          universe = load_json(
-              UNIVERSE_FILE
-          )
-
-          if not isinstance(
-              universe,
-              dict
-          ):
+          if not isinstance(stocks, dict) or not stocks:
               fail(
-                  "universe.json 根節點不是 object"
-              )
-
-          stocks = universe.get(
-              "stocks"
-          )
-
-          if not isinstance(
-              stocks,
-              dict
-          ):
-              fail(
-                  "universe.stocks 不是 object"
+                  "universe.stocks 不是有效的非空 object"
               )
 
           universe_symbols = set()
 
           for key, item in stocks.items():
-
-              if not isinstance(
-                  item,
-                  dict
-              ):
-                  fail(
-                      f"Universe {key} "
-                      "不是 object"
-                  )
+              if not isinstance(item, dict):
+                  fail(f"Universe {key} 不是 object")
 
               symbol = normalize_symbol(
-                  item.get("symbol")
-                  or key
+                  item.get("symbol") or key
               )
 
               if not symbol:
                   fail(
-                      f"Universe {key} "
-                      "缺少有效 symbol"
+                      f"Universe {key} 缺少有效 symbol"
                   )
 
-              universe_symbols.add(
-                  symbol
+              if symbol in universe_symbols:
+                  fail(
+                      f"Universe 有重複 symbol：{symbol}"
+                  )
+
+              universe_symbols.add(symbol)
+
+          # 2. Validate manifest
+          manifest = load_json(MANIFEST_FILE)
+
+          if not isinstance(manifest, dict):
+              fail("manifest.json 根節點不是 object")
+
+          if manifest.get("schema_version") != EXPECTED_SCHEMA_VERSION:
+              fail(
+                  "manifest schema_version 不符："
+                  f"{manifest.get('schema_version')}"
               )
 
-          if not universe_symbols:
+          if manifest.get("total_symbols") != len(universe_symbols):
               fail(
-                  "Universe symbol 數量為 0"
-              )
-
-          # ==================================================
-          # Load Manifest
-          # ==================================================
-
-          manifest = load_json(
-              MANIFEST_FILE
-          )
-
-          if not isinstance(
-              manifest,
-              dict
-          ):
-              fail(
-                  "manifest.json 根節點不是 object"
-              )
-
-          schema_version = manifest.get(
-              "schema_version"
-          )
-
-          if schema_version != (
-              EXPECTED_SCHEMA_VERSION
-          ):
-              fail(
-                  "manifest schema_version "
-                  f"錯誤：{schema_version} != "
-                  f"{EXPECTED_SCHEMA_VERSION}"
-              )
-
-          manifest_total = manifest.get(
-              "total_symbols"
-          )
-
-          if manifest_total != len(
-              universe_symbols
-          ):
-              fail(
-                  "manifest.total_symbols "
-                  "不一致："
-                  f"{manifest_total} != "
+                  "manifest.total_symbols 不符："
+                  f"{manifest.get('total_symbols')} != "
                   f"{len(universe_symbols)}"
               )
 
-          # ==================================================
-          # Manifest shard list
-          # ==================================================
+          manifest_files = manifest.get("files")
 
-          manifest_files = manifest.get(
-              "files"
-          )
-
-          if not isinstance(
-              manifest_files,
-              list
-          ):
+          if not isinstance(manifest_files, list) or not manifest_files:
               fail(
-                  "manifest.files 不是 list"
+                  "manifest.files 不是有效的非空 list"
               )
 
           shard_paths = []
 
           for item in manifest_files:
-
-              if isinstance(
-                  item,
-                  str
-              ):
+              if isinstance(item, str):
                   filename = item
 
-              elif isinstance(
-                  item,
-                  dict
-              ):
+              elif isinstance(item, dict):
                   filename = (
                       item.get("file")
                       or item.get("path")
@@ -580,316 +397,220 @@ jobs:
                   )
 
               else:
-                  filename = None
+                  fail(
+                      f"無效的 manifest shard 項目：{item!r}"
+                  )
 
               if not filename:
-                  continue
+                  fail("manifest shard 缺少檔名")
 
-              filename = Path(
-                  str(filename)
-              ).name
+              filename = Path(str(filename)).name
 
               if not (
-                  filename.startswith(
-                      "prices_"
-                  )
-                  and filename.endswith(
-                      ".json"
-                  )
+                  filename.startswith("prices_")
+                  and filename.endswith(".json")
               ):
-                  continue
-
-              shard_path = (
-                  PRICES_DIR / filename
-              )
-
-              if not shard_path.exists():
                   fail(
-                      "manifest 指定 shard "
-                      f"不存在：{shard_path}"
+                      f"不合法的 shard 檔名：{filename}"
                   )
 
-              shard_paths.append(
-                  shard_path
-              )
+              path = PRICES_DIR / filename
 
-          shard_paths = list(
-              dict.fromkeys(
-                  shard_paths
-              )
-          )
+              if not path.is_file():
+                  fail(
+                      f"manifest 指定的 shard 不存在：{path}"
+                  )
 
-          if not shard_paths:
-              fail(
-                  "manifest 沒有任何有效 price shard"
-              )
+              shard_paths.append(path)
 
-          # ==================================================
-          # Read all shards
-          # ==================================================
+          if len(set(shard_paths)) != len(shard_paths):
+              fail("manifest.files 存在重複 shard")
 
+          # 3. Validate prices-v14.0 shard structure.
+          # Expected structure:
+          # {
+          #   "stocks": {
+          #     "2330": [
+          #       {"date": "...", ...},
+          #       ...
+          #     ]
+          #   }
+          # }
           seen_symbols = set()
-
-          no_history_symbols = set()
-
-          history_symbols = set()
-
           duplicate_symbols = set()
-
+          empty_history_symbols = set()
+          history_symbols = set()
           shard_counts = {}
 
           for shard_path in shard_paths:
+              payload = load_json(shard_path)
 
-              payload = load_json(
-                  shard_path
-              )
+              if not isinstance(payload, dict):
+                  fail(
+                      f"{shard_path.name} 根節點不是 object"
+                  )
+
+              if payload.get("schema_version") != EXPECTED_SCHEMA_VERSION:
+                  fail(
+                      f"{shard_path.name} schema_version 不符："
+                      f"{payload.get('schema_version')}"
+                  )
+
+              shard_stocks = payload.get("stocks")
+
+              if not isinstance(shard_stocks, dict):
+                  fail(
+                      f"{shard_path.name} 的 stocks 不是 object"
+                  )
 
               local_symbols = set()
 
-              for raw_symbol, record in (
-                  iter_records(payload)
-              ):
-
-                  if not isinstance(
-                      record,
-                      dict
-                  ):
-                      continue
-
-                  symbol = normalize_symbol(
-                      record.get("symbol")
-                      or record.get("code")
-                      or record.get("ticker")
-                      or raw_symbol
-                  )
+              for raw_symbol, prices in shard_stocks.items():
+                  symbol = normalize_symbol(raw_symbol)
 
                   if not symbol:
+                      fail(
+                          f"{shard_path.name} 有無效 symbol："
+                          f"{raw_symbol!r}"
+                      )
+
+                  if (
+                      symbol in local_symbols
+                      or symbol in seen_symbols
+                  ):
+                      duplicate_symbols.add(symbol)
+
+                  local_symbols.add(symbol)
+                  seen_symbols.add(symbol)
+
+                  # Critical fix:
+                  # prices-v14.0 stores a list for each symbol.
+                  if not isinstance(prices, list):
+                      fail(
+                          f"{symbol} 的價格資料不是 list；"
+                          f"實際型態={type(prices).__name__}"
+                      )
+
+                  if not prices:
+                      empty_history_symbols.add(symbol)
                       continue
 
-                  if symbol in local_symbols:
-                      duplicate_symbols.add(
-                          symbol
-                      )
+                  previous_date = None
 
-                  local_symbols.add(
-                      symbol
-                  )
+                  for index, row in enumerate(prices):
+                      if not isinstance(row, dict):
+                          fail(
+                              f"{symbol} 第 {index + 1} 筆行情不是 object"
+                          )
 
-                  if symbol in seen_symbols:
-                      duplicate_symbols.add(
-                          symbol
-                      )
+                      date = str(
+                          row.get("date", "")
+                      ).strip()
 
-                  seen_symbols.add(
-                      symbol
-                  )
+                      if not date:
+                          fail(
+                              f"{symbol} 第 {index + 1} 筆行情缺少 date"
+                          )
 
-                  history_status = str(
-                      record.get(
-                          "history_status",
-                          ""
-                      )
-                  ).strip().lower()
+                      if (
+                          previous_date is not None
+                          and date <= previous_date
+                      ):
+                          fail(
+                              f"{symbol} 日期重複或未按升冪排列："
+                              f"{previous_date} -> {date}"
+                          )
 
-                  history_rows = record.get(
-                      "history_rows"
-                  )
+                      previous_date = date
 
-                  try:
-                      history_rows = int(
-                          history_rows
-                      )
-                  except (
-                      TypeError,
-                      ValueError
-                  ):
-                      history_rows = None
+                  history_symbols.add(symbol)
 
-                  prices = record.get(
-                      "prices"
-                  )
+              shard_counts[shard_path.name] = len(local_symbols)
 
-                  has_prices = (
-                      isinstance(
-                          prices,
-                          list
-                      )
-                      and len(prices) > 0
-                  )
-
-                  if history_status == (
-                      "no_history"
-                  ):
-
-                      no_history_symbols.add(
-                          symbol
-                      )
-
-                  elif (
-                      (
-                          history_rows
-                          is not None
-                          and history_rows > 0
-                      )
-                      or has_prices
-                  ):
-
-                      history_symbols.add(
-                          symbol
-                      )
-
-              shard_counts[
-                  shard_path.name
-              ] = len(
-                  local_symbols
-              )
-
-          # ==================================================
-          # Duplicate check
-          # ==================================================
-
+          # 4. Validate duplicate, unknown and missing symbols
           if duplicate_symbols:
-
               fail(
-                  "價格 shard 發現重複 symbol："
-                  f"{sorted(duplicate_symbols)[:20]}"
+                  "價格 shard 存在重複 symbol："
+                  f"{sorted(duplicate_symbols)[:30]}"
               )
 
-          # ==================================================
-          # Universe coverage
-          # ==================================================
-
-          unknown_symbols = (
-              seen_symbols
-              - universe_symbols
-          )
+          unknown_symbols = seen_symbols - universe_symbols
 
           if unknown_symbols:
-
               fail(
-                  "價格資料出現 "
-                  "Universe 外 symbol："
+                  "價格資料包含 Universe 外代號："
                   f"count={len(unknown_symbols)}, "
-                  f"sample="
-                  f"{sorted(unknown_symbols)[:20]}"
+                  f"sample={sorted(unknown_symbols)[:30]}"
               )
 
-          missing_symbols = (
-              universe_symbols
-              - seen_symbols
-          )
+          missing_symbols = universe_symbols - seen_symbols
 
           if missing_symbols:
-
               fail(
-                  "價格 shard 缺少 "
-                  "Universe symbol："
+                  "價格 shard 缺少 Universe symbol："
                   f"count={len(missing_symbols)}, "
-                  f"sample="
-                  f"{sorted(missing_symbols)[:20]}"
+                  f"sample={sorted(missing_symbols)[:30]}"
               )
 
-          # ==================================================
-          # no_history contract
-          # ==================================================
+          # 5. Validate empty history count.
+          # Empty lists represent both no_history and not_started.
+          # The current shard schema does not preserve per-symbol status,
+          # so validate their combined count against the manifest.
+          no_history_count = manifest.get("no_history_count")
+          not_started_count = manifest.get("not_started_count")
 
-          manifest_no_history = manifest.get(
-              "no_history_count"
-          )
-
-          actual_no_history = len(
-              no_history_symbols
-          )
-
-          if manifest_no_history != (
-              actual_no_history
+          if (
+              not isinstance(no_history_count, int)
+              or no_history_count < 0
           ):
+              fail("manifest.no_history_count 無效")
 
-              fail(
-                  "no_history 數量不一致："
-                  f"manifest="
-                  f"{manifest_no_history}, "
-                  f"shards="
-                  f"{actual_no_history}"
-              )
+          if (
+              not isinstance(not_started_count, int)
+              or not_started_count < 0
+          ):
+              fail("manifest.not_started_count 無效")
 
-          # ==================================================
-          # no_history must not also have history
-          # ==================================================
-
-          overlap = (
-              no_history_symbols
-              & history_symbols
+          expected_empty_count = (
+              no_history_count + not_started_count
           )
 
-          if overlap:
+          actual_empty_count = len(empty_history_symbols)
 
+          if actual_empty_count != expected_empty_count:
               fail(
-                  "同一 symbol 同時存在 "
-                  "no_history 與有效歷史資料："
-                  f"{sorted(overlap)}"
+                  "空價格陣列數量不符："
+                  f"shards={actual_empty_count}, "
+                  "manifest no_history + not_started="
+                  f"{expected_empty_count}"
               )
 
-          # ==================================================
-          # Final output
-          # ==================================================
+          # 6. Final contract
+          if len(seen_symbols) != len(universe_symbols):
+              fail(
+                  f"symbol 總數不符："
+                  f"prices={len(seen_symbols)}, "
+                  f"universe={len(universe_symbols)}"
+              )
 
-          print("")
           print("========================================")
           print("PRICE DATA VALIDATION")
           print("========================================")
+          print(f"Universe symbols: {len(universe_symbols)}")
+          print(f"Price symbols:    {len(seen_symbols)}")
+          print(f"Shards:           {len(shard_paths)}")
+          print(f"With history:     {len(history_symbols)}")
+          print(f"Empty history:    {actual_empty_count}")
 
-          print(
-              f"✓ Universe："
-              f"{len(universe_symbols)}"
-          )
+          for name, count in sorted(shard_counts.items()):
+              print(f"{name}: {count} symbols")
 
-          print(
-              f"✓ Price symbols："
-              f"{len(seen_symbols)}"
-          )
-
-          print(
-              f"✓ Shards："
-              f"{len(shard_paths)}"
-          )
-
-          print(
-              f"✓ History available："
-              f"{len(history_symbols)}"
-          )
-
-          print(
-              f"✓ no_history："
-              f"{len(no_history_symbols)}"
-          )
-
-          if no_history_symbols:
-
-              print(
-                  "✓ no_history symbols："
-                  f"{sorted(no_history_symbols)}"
-              )
-
-          for name, count in sorted(
-              shard_counts.items()
-          ):
-
-              print(
-                  f"✓ {name}: {count}"
-              )
-
-          print(
-              "✓ Price data validation PASS"
-          )
-
-          print(
-              "========================================"
-          )
+          print("PRICE DATA VALIDATION PASS")
+          print("========================================")
           PY
 
       # ======================================================
-      # 11. Fetch Market
+      # 11. Fetch Market Data
       # ======================================================
 
       - name: Fetch Market Data
@@ -918,9 +639,7 @@ jobs:
           import json
           from pathlib import Path
 
-          path = Path(
-              "Data/market.json"
-          )
+          path = Path("Data/market.json")
 
           if not path.exists():
               raise SystemExit(
@@ -933,13 +652,9 @@ jobs:
               )
           )
 
-          if not isinstance(
-              data,
-              dict
-          ):
+          if not isinstance(data, dict):
               raise SystemExit(
-                  "❌ market.json "
-                  "根節點不是 object"
+                  "❌ market.json 根節點不是 object"
               )
 
           required = {
@@ -950,41 +665,28 @@ jobs:
               "conditions",
           }
 
-          missing = (
-              required
-              - set(data)
-          )
+          missing = required - set(data)
 
           if missing:
               raise SystemExit(
-                  "❌ market.json "
-                  f"缺少欄位：{sorted(missing)}"
+                  "❌ market.json 缺少欄位："
+                  f"{sorted(missing)}"
               )
 
-          conditions = data.get(
-              "conditions"
-          )
+          conditions = data.get("conditions")
 
-          if not isinstance(
-              conditions,
-              list
-          ):
+          if not isinstance(conditions, list):
               raise SystemExit(
-                  "❌ market.conditions "
-                  "不是 list"
+                  "❌ market.conditions 不是 list"
               )
 
           if len(conditions) != 10:
               raise SystemExit(
-                  "❌ market.conditions "
-                  f"數量錯誤："
+                  "❌ market.conditions 數量錯誤："
                   f"{len(conditions)} != 10"
               )
 
-          print(
-              "✓ Market V2.1 "
-              "validation PASS"
-          )
+          print("✓ Market V2.1 validation PASS")
           PY
 
       # ======================================================
@@ -1035,9 +737,7 @@ jobs:
           import json
           from pathlib import Path
 
-          path = Path(
-              "Data/ui_data.json"
-          )
+          path = Path("Data/ui_data.json")
 
           if not path.exists():
               raise SystemExit(
@@ -1056,27 +756,16 @@ jobs:
                   f"{data.get('status')}"
               )
 
-          market = data.get(
-              "market"
-          )
+          market = data.get("market")
 
-          if not isinstance(
-              market,
-              dict
-          ):
+          if not isinstance(market, dict):
               raise SystemExit(
                   "❌ ui_data.market 無效"
               )
 
-          stocks = data.get(
-              "stocks"
-          )
+          stocks = data.get("stocks")
 
-          if not isinstance(
-              stocks,
-              dict
-          ):
-
+          if not isinstance(stocks, dict):
               raise SystemExit(
                   "❌ ui_data.stocks 無效"
               )
@@ -1086,14 +775,9 @@ jobs:
                   "❌ ui_data.stocks 為 0"
               )
 
-          tabs = data.get(
-              "tabs"
-          )
+          tabs = data.get("tabs")
 
-          if not isinstance(
-              tabs,
-              dict
-          ):
+          if not isinstance(tabs, dict):
               raise SystemExit(
                   "❌ ui_data.tabs 無效"
               )
@@ -1106,200 +790,92 @@ jobs:
               "watchlist",
           }
 
-          missing = (
-              required_tabs
-              - set(tabs)
-          )
+          missing = required_tabs - set(tabs)
 
           if missing:
               raise SystemExit(
-                  "❌ ui_data.tabs "
-                  f"缺少：{sorted(missing)}"
+                  "❌ ui_data.tabs 缺少："
+                  f"{sorted(missing)}"
               )
 
-          for symbol, item in (
-              stocks.items()
-          ):
-
-              if not isinstance(
-                  item,
-                  dict
-              ):
+          for symbol, item in stocks.items():
+              if not isinstance(item, dict):
                   raise SystemExit(
-                      f"❌ UI stock "
-                      f"{symbol} 不是 object"
+                      f"❌ UI stock {symbol} 不是 object"
                   )
 
-              if item.get(
-                  "symbol"
-              ) != symbol:
-
+              if item.get("symbol") != symbol:
                   raise SystemExit(
-                      "❌ UI symbol "
-                      f"mismatch：{symbol}"
+                      f"❌ UI symbol mismatch：{symbol}"
                   )
 
-              if item.get(
-                  "strength"
-              ) not in {
+              if item.get("strength") not in {
                   "強勢",
                   "中性",
                   "弱勢",
               }:
-
                   raise SystemExit(
-                      f"❌ {symbol} "
-                      "strength 無效："
+                      f"❌ {symbol} strength 無效："
                       f"{item.get('strength')}"
                   )
 
           def symbols(items):
-
               result = []
 
-              if not isinstance(
-                  items,
-                  list
-              ):
+              if not isinstance(items, list):
                   return result
 
               for item in items:
+                  if isinstance(item, str):
+                      result.append(item)
 
-                  if isinstance(
-                      item,
-                      str
-                  ):
-
-                      result.append(
-                          item
-                      )
-
-                  elif isinstance(
-                      item,
-                      dict
-                  ):
-
+                  elif isinstance(item, dict):
                       value = (
-                          item.get(
-                              "symbol"
-                          )
-                          or item.get(
-                              "code"
-                          )
+                          item.get("symbol")
+                          or item.get("code")
                       )
 
                       if value:
-                          result.append(
-                              value
-                          )
+                          result.append(value)
 
               return result
 
-          today = set(
-              symbols(
-                  tabs[
-                      "today_picks"
-                  ]
-              )
-          )
-
-          top10 = set(
-              symbols(
-                  tabs[
-                      "top10"
-                  ]
-              )
-          )
-
-          etf = set(
-              symbols(
-                  tabs[
-                      "etf"
-                  ]
-              )
-          )
-
-          bond = set(
-              symbols(
-                  tabs[
-                      "bond"
-                  ]
-              )
-          )
+          today = set(symbols(tabs["today_picks"]))
+          top10 = set(symbols(tabs["top10"]))
+          etf = set(symbols(tabs["etf"]))
+          bond = set(symbols(tabs["bond"]))
 
           if not top10 <= today:
-
               raise SystemExit(
-                  "❌ Top10 必須是 "
-                  "今日精選的子集合"
+                  "❌ Top10 必須是今日精選的子集合"
               )
 
           for symbol in etf:
-
               instrument_type = (
-                  stocks.get(
-                      symbol,
-                      {}
-                  ).get(
-                      "instrument_type"
-                  )
+                  stocks.get(symbol, {}).get("instrument_type")
               )
 
               if instrument_type != "etf":
-
                   raise SystemExit(
-                      f"❌ ETF tab "
-                      f"包含非 ETF："
-                      f"{symbol}"
+                      f"❌ ETF tab 包含非 ETF：{symbol}"
                   )
 
           for symbol in bond:
-
               instrument_type = (
-                  stocks.get(
-                      symbol,
-                      {}
-                  ).get(
-                      "instrument_type"
-                  )
+                  stocks.get(symbol, {}).get("instrument_type")
               )
 
               if instrument_type != "bond":
-
                   raise SystemExit(
-                      f"❌ Bond tab "
-                      f"包含非 bond："
-                      f"{symbol}"
+                      f"❌ Bond tab 包含非 bond：{symbol}"
                   )
 
-          print(
-              f"✓ UI stocks："
-              f"{len(stocks)}"
-          )
-
-          print(
-              f"✓ 今日精選："
-              f"{len(today)}"
-          )
-
-          print(
-              f"✓ Top10："
-              f"{len(top10)}"
-          )
-
-          print(
-              f"✓ ETF："
-              f"{len(etf)}"
-          )
-
-          print(
-              f"✓ Bond："
-              f"{len(bond)}"
-          )
-
-          print(
-              "✓ UI data contract PASS"
-          )
+          print(f"✓ UI stocks：{len(stocks)}")
+          print(f"✓ 今日精選：{len(today)}")
+          print(f"✓ Top10：{len(top10)}")
+          print(f"✓ ETF：{len(etf)}")
+          print(f"✓ Bond：{len(bond)}")
+          print("✓ UI data contract PASS")
           PY
 
       # ======================================================
