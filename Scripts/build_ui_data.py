@@ -19,7 +19,7 @@ UI-DATA-2.5
     1. 官方上市公司基本資料
     2. 官方上櫃公司基本資料
     3. 證交所官方基金基本資料（包含 ETF）
-    4. 已核實的官方中文名稱補充對照
+    4. 已核實的中文名稱補充對照
     5. Universe 已存在的中文名稱
     6. 不允許純英文名稱冒充中文名稱
 
@@ -60,7 +60,6 @@ OUTPUT_FILE = DATA_DIR / "ui_data.json"
 
 VERSION = "UI-DATA-2.5"
 
-# 官方公司基本資料
 TWSE_COMPANY_URL = (
     "https://openapi.twse.com.tw/v1/opendata/t187ap03_L"
 )
@@ -69,7 +68,6 @@ TPEX_COMPANY_URL = (
     "https://www.tpex.org.tw/openapi/v1/mopsfin_t187ap03_O"
 )
 
-# 證交所官方基金基本資料彙總表
 TWSE_FUND_URL = (
     "https://openapi.twse.com.tw/v1/opendata/t187ap47_L"
 )
@@ -88,10 +86,11 @@ STRENGTH_RANK = {
     "弱勢": 1,
 }
 
-# 官方 API 尚未收錄的已核實商品中文簡稱
-# 僅補充名稱，不影響 Universe 商品分類
+# 已核實的官方中文簡稱
+# 僅補充官方 API 缺漏，不改變 Universe 分類
 VERIFIED_OFFICIAL_NAMES = {
     "00411A": "主動統一前沿科技",
+    "006201": "元大富櫃50",
 }
 
 
@@ -205,7 +204,6 @@ def contains_chinese(value: Any) -> bool:
 def fetch_json_url(url: str) -> Any:
     """
     從官方 API 取得 JSON。
-    不使用第三方行情網站作為公司名稱來源。
     """
     request = urllib.request.Request(
         url,
@@ -253,9 +251,6 @@ def parse_official_name_rows(
     """
     將官方基本資料正規化為：
         商品代號 -> 中文名稱
-
-    兼容上市、上櫃公司資料與證交所基金資料的常見欄位名稱。
-    只有包含中文的名稱才會被採用。
     """
     if not isinstance(rows, list):
         raise RuntimeError(
@@ -323,7 +318,7 @@ def parse_official_name_rows(
     if not result:
         raise RuntimeError(
             f"{source} 沒有取得有效中文名稱資料。"
-            f"請檢查 API 回傳欄位與實際 JSON 結構。"
+            "請檢查 API 回傳欄位與實際 JSON 結構。"
         )
 
     print(f"{source} 中文名稱筆數：{len(result)}")
@@ -332,13 +327,10 @@ def parse_official_name_rows(
 
 def load_official_chinese_names() -> Dict[str, str]:
     """
-    讀取上市、上櫃公司資料，以及證交所基金基本資料。
+    讀取上市、上櫃公司資料，以及證交所基金資料。
 
     單一來源失敗時保留其他成功來源並輸出警告。
-    全部來源都失敗時停止，避免以空白或英文名稱繼續建置。
-
-    不同官方資料源可能包含重複代號。
-    商品分類仍以 Universe 為準。
+    全部來源都失敗時停止。
     """
     combined: Dict[str, str] = {}
     errors = []
@@ -500,13 +492,12 @@ def get_official_name(
 ) -> str:
     """
     名稱優先順序：
-
     1. 官方上市、上櫃、基金資料
-    2. 已核實的官方中文名稱補充對照
+    2. 已核實中文名稱補充對照
     3. Universe 明確中文名稱欄位
-    4. Universe 其他欄位中確實含中文的名稱
+    4. Universe 其他含中文的名稱
 
-    不允許純英文名稱直接進入 UI。
+    不允許純英文名稱進入 UI。
     """
 
     mapped_name = text(official_names.get(symbol))
@@ -514,7 +505,6 @@ def get_official_name(
     if mapped_name and contains_chinese(mapped_name):
         return mapped_name
 
-    # 修正 00411A 官方 API 缺漏中文名稱的問題
     verified_name = text(
         VERIFIED_OFFICIAL_NAMES.get(symbol)
     )
@@ -557,7 +547,8 @@ def get_official_name(
 
     raise RuntimeError(
         f"{symbol} 找不到中文名稱。"
-        "官方公司／基金主檔與 Universe 均未提供可用中文名稱。"
+        "官方公司／基金主檔、已核實名稱對照與 Universe "
+        "均未提供可用中文名稱。"
         "請補查該商品的官方中文名稱，不可用英文名稱略過驗證。"
     )
 
