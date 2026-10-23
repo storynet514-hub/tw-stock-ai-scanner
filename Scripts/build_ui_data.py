@@ -1,3 +1,4 @@
+
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
@@ -5,7 +6,7 @@
 台股 AI 選股系統
 Scripts/build_ui_data.py
 
-UI-DATA-2.4
+UI-DATA-2.5
 
 資料責任：
     Universe + Analysis + Market
@@ -17,8 +18,9 @@ UI-DATA-2.4
 名稱處理：
     1. 官方上市公司基本資料
     2. 官方上櫃公司基本資料
-    3. Universe 已存在的中文名稱
-    4. 不允許純英文名稱冒充中文名稱
+    3. 證交所官方基金基本資料（包含 ETF）
+    4. Universe 已存在的中文名稱
+    5. 不允許純英文名稱冒充中文名稱
 
 保留契約：
     - Universe 是商品身份唯一權威來源
@@ -55,17 +57,24 @@ ANALYSIS_FILE = DATA_DIR / "analysis.json"
 MARKET_FILE = DATA_DIR / "market.json"
 OUTPUT_FILE = DATA_DIR / "ui_data.json"
 
-VERSION = "UI-DATA-2.4"
+VERSION = "UI-DATA-2.5"
 
 # 官方公司基本資料
 TWSE_COMPANY_URL = (
     "https://openapi.twse.com.tw/v1/opendata/t187ap03_L"
 )
+
 TPEX_COMPANY_URL = (
     "https://www.tpex.org.tw/openapi/v1/mopsfin_t187ap03_O"
 )
 
-HTTP_TIMEOUT = 20
+# 證交所官方基金基本資料彙總表
+# 此資料源用於補足 ETF 不在上市公司基本資料中的情況。
+TWSE_FUND_URL = (
+    "https://openapi.twse.com.tw/v1/opendata/t187ap47_L"
+)
+
+HTTP_TIMEOUT = 30
 
 BUYABLE_RECOMMENDATIONS = {
     "偏多，可分批",
@@ -227,6 +236,7 @@ def first_nonempty(
         value = text(row.get(key))
         if value:
             return value
+
     return ""
 
 
@@ -235,11 +245,11 @@ def parse_official_name_rows(
     source: str,
 ) -> Dict[str, str]:
     """
-    將官方公司基本資料正規化為：
-        股票代號 -> 中文簡稱
+    將官方基本資料正規化為：
+        商品代號 -> 中文名稱
 
-    TWSE 使用中文欄位；
-    TPEx API 使用英文欄位。
+    兼容上市、上櫃公司資料與證交所基金資料的常見欄位名稱。
+    只有包含中文的名稱才會被採用。
     """
     if not isinstance(rows, list):
         raise RuntimeError(
@@ -248,37 +258,53 @@ def parse_official_name_rows(
 
     result: Dict[str, str] = {}
 
+    symbol_keys = (
+        "公司代號",
+        "證券代號",
+        "股票代號",
+        "基金代號",
+        "ETF代號",
+        "證券代碼",
+        "有價證券代號",
+        "代號",
+        "SecuritiesCompanyCode",
+        "CompanyCode",
+        "SecurityCode",
+        "SecuritiesCode",
+        "Code",
+    )
+
+    name_keys = (
+        "公司簡稱",
+        "公司名稱",
+        "股票名稱",
+        "基金簡稱",
+        "基金名稱",
+        "證券簡稱",
+        "證券名稱",
+        "ETF名稱",
+        "有價證券名稱",
+        "名稱",
+        "基金中文名稱",
+        "基金中文簡稱",
+        "中文簡稱",
+        "中文名稱",
+        "CompanyAbbreviation",
+        "CompanyName",
+        "SecurityName",
+        "FundName",
+        "Name",
+    )
+
     for row in rows:
         if not isinstance(row, dict):
             continue
 
         symbol = normalize_symbol(
-            first_nonempty(
-                row,
-                (
-                    "公司代號",
-                    "證券代號",
-                    "股票代號",
-                    "SecuritiesCompanyCode",
-                    "CompanyCode",
-                    "Code",
-                ),
-            )
+            first_nonempty(row, symbol_keys)
         )
 
-        name = first_nonempty(
-            row,
-            (
-                "公司簡稱",
-                "公司名稱",
-                "股票名稱",
-                "名稱",
-                "CompanyAbbreviation",
-                "CompanyName",
-                "SecurityName",
-                "Name",
-            ),
-        )
+        name = first_nonempty(row, name_keys)
 
         if not symbol or not name:
             continue
@@ -290,7 +316,8 @@ def parse_official_name_rows(
 
     if not result:
         raise RuntimeError(
-            f"{source} 沒有取得有效中文名稱資料"
+            f"{source} 沒有取得有效中文名稱資料。"
+            f"請檢查 API 回傳欄位與實際 JSON 結構。"
         )
 
     print(f"{source} 中文名稱筆數：{len(result)}")
@@ -299,10 +326,15 @@ def parse_official_name_rows(
 
 def load_official_chinese_names() -> Dict[str, str]:
     """
-    同時讀取上市、上櫃官方公司基本資料。
+    讀取上市、上櫃公司資料，以及證交所基金基本資料。
 
-    兩個來源都失敗時，不會靜默當成成功。
-    若只有一個來源成功，保留成功來源並輸出警告。
+    單一來源失敗時保留其他成功來源並輸出警告。
+    全部來源都失敗時停止，避免以空白或英文名稱繼續建置。
+
+    注意：
+    不同官方資料源可能包含重複代號。
+    後處理時以 Universe 身份作為分類依據，不以名稱來源決定
+    商品是 STOCK 還是 ETF。
     """
     combined: Dict[str, str] = {}
     errors = []
@@ -310,26 +342,32 @@ def load_official_chinese_names() -> Dict[str, str]:
     sources = (
         ("TWSE", TWSE_COMPANY_URL),
         ("TPEX", TPEX_COMPANY_URL),
+        ("TWSE_FUND", TWSE_FUND_URL),
     )
 
     for source, url in sources:
         try:
             rows = fetch_json_url(url)
             names = parse_official_name_rows(rows, source)
+
+            # 後續成功來源的資料可覆蓋前面來源的同代號名稱。
+            # 商品類型不在此處判斷。
             combined.update(names)
 
         except Exception as exc:
-            errors.append(f"{source}: {exc}")
-            print(f"WARNING：{source} 名稱資料取得失敗：{exc}")
+            message = f"{source}: {exc}"
+            errors.append(message)
+            print(f"WARNING：官方名稱資料取得失敗：{message}")
 
     if not combined:
         raise RuntimeError(
-            "上市、上櫃官方中文名稱資料均無法取得。"
-            "停止建立 UI 資料，避免英文名稱混入輸出。"
+            "所有官方中文名稱資料來源均無法取得有效資料。"
+            "停止建立 UI，避免英文名稱混入輸出。"
             + "；".join(errors)
         )
 
     print(f"官方中文名稱合併筆數：{len(combined)}")
+
     return combined
 
 
@@ -359,6 +397,7 @@ def load_universe() -> Dict[str, Dict[str, Any]]:
             continue
 
         symbol = normalize_symbol(raw_symbol)
+
         if not symbol:
             continue
 
@@ -460,7 +499,7 @@ def get_official_name(
     """
     名稱優先順序：
 
-    1. 證交所／櫃買中心官方中文簡稱
+    1. 官方上市、上櫃、基金資料
     2. Universe 明確中文名稱欄位
     3. Universe 其他欄位中確實含中文的名稱
 
@@ -478,6 +517,9 @@ def get_official_name(
         "chinese_name",
         "security_name_zh",
         "stock_name",
+        "基金簡稱",
+        "基金名稱",
+        "證券簡稱",
         "名稱",
         "股票名稱",
         "公司簡稱",
@@ -504,7 +546,8 @@ def get_official_name(
 
     raise RuntimeError(
         f"{symbol} 找不到中文名稱。"
-        "官方公司主檔與 Universe 均未提供可用中文名稱。"
+        "官方公司／基金主檔與 Universe 均未提供可用中文名稱。"
+        "請補查該商品的官方中文名稱，不可用英文名稱略過驗證。"
     )
 
 
@@ -563,6 +606,11 @@ def load_analysis() -> Dict[str, Any]:
         symbol = normalize_symbol(raw_symbol)
 
         if symbol:
+            if symbol in normalized:
+                raise RuntimeError(
+                    f"analysis.json normalize 後重複 symbol：{symbol}"
+                )
+
             normalized[symbol] = dict(raw_item)
 
     if not normalized:
@@ -923,6 +971,18 @@ def validate_ui_data(data: Dict[str, Any]) -> None:
     etf = tabs["etf"]
     bond = tabs["bond"]
 
+    if not isinstance(today, list):
+        raise RuntimeError("Today Picks 必須是 list")
+
+    if not isinstance(top10, list):
+        raise RuntimeError("Top10 必須是 list")
+
+    if not isinstance(etf, list):
+        raise RuntimeError("ETF tab 必須是 list")
+
+    if not isinstance(bond, list):
+        raise RuntimeError("Bond tab 必須是 list")
+
     for symbol in today:
         if symbol not in stocks:
             raise RuntimeError(
@@ -966,6 +1026,7 @@ def validate_ui_data(data: Dict[str, Any]) -> None:
                 f"Bond tab 出現非債券 ETF：{symbol}"
             )
 
+    # 回歸測試：00400A 必須維持 ETF 分類。
     if "00400A" in stocks:
         if stocks["00400A"]["instrument_type"] != "etf":
             raise RuntimeError(
@@ -995,14 +1056,17 @@ def main() -> None:
         market.get("latest_trading_date")
     )
 
-    # 官方公司中文名稱資料
+    # 官方上市、上櫃與基金中文名稱資料
     official_names = load_official_chinese_names()
 
     public = {}
     internal = {}
 
+    missing_analysis = []
+
     for symbol, universe_record in universe.items():
         if symbol not in analysis:
+            missing_analysis.append(symbol)
             continue
 
         analysis_record = analysis[symbol]
@@ -1014,6 +1078,16 @@ def main() -> None:
             analysis_record,
             latest_date,
             official_names,
+        )
+
+    if missing_analysis:
+        print(
+            "WARNING：Universe 有商品未出現在 Analysis："
+            f"{len(missing_analysis)} 檔"
+        )
+        print(
+            "缺漏代號（最多顯示 30 檔）："
+            + ", ".join(missing_analysis[:30])
         )
 
     if not public:
@@ -1163,7 +1237,10 @@ def main() -> None:
     print("========================================")
     print("UI DATA BUILD PASS")
     print("========================================")
+    print(f"Version：{VERSION}")
     print(f"Universe：{len(universe)}")
+    print(f"Analysis：{len(analysis)}")
+    print(f"未匹配 Analysis：{len(missing_analysis)}")
     print(f"官方中文名稱：{len(official_names)}")
     print(f"UI stocks：{len(public)}")
     print(f"Today Picks：{len(today_picks)}")
@@ -1171,6 +1248,7 @@ def main() -> None:
     print(f"ETF：{len(etf_symbols)}")
     print(f"Bond：{len(bond_symbols)}")
     print("中文名稱 validation PASS")
+    print("商品分類 validation PASS")
     print("read-back validation PASS")
     print("========================================")
 
