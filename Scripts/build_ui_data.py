@@ -19,8 +19,9 @@ UI-DATA-2.5
     1. 官方上市公司基本資料
     2. 官方上櫃公司基本資料
     3. 證交所官方基金基本資料（包含 ETF）
-    4. Universe 已存在的中文名稱
-    5. 不允許純英文名稱冒充中文名稱
+    4. 已核實的官方中文名稱補充對照
+    5. Universe 已存在的中文名稱
+    6. 不允許純英文名稱冒充中文名稱
 
 保留契約：
     - Universe 是商品身份唯一權威來源
@@ -69,7 +70,6 @@ TPEX_COMPANY_URL = (
 )
 
 # 證交所官方基金基本資料彙總表
-# 此資料源用於補足 ETF 不在上市公司基本資料中的情況。
 TWSE_FUND_URL = (
     "https://openapi.twse.com.tw/v1/opendata/t187ap47_L"
 )
@@ -86,6 +86,12 @@ STRENGTH_RANK = {
     "強勢": 3,
     "中性": 2,
     "弱勢": 1,
+}
+
+# 官方 API 尚未收錄的已核實商品中文簡稱
+# 僅補充名稱，不影響 Universe 商品分類
+VERIFIED_OFFICIAL_NAMES = {
+    "00411A": "主動統一前沿科技",
 }
 
 
@@ -331,10 +337,8 @@ def load_official_chinese_names() -> Dict[str, str]:
     單一來源失敗時保留其他成功來源並輸出警告。
     全部來源都失敗時停止，避免以空白或英文名稱繼續建置。
 
-    注意：
     不同官方資料源可能包含重複代號。
-    後處理時以 Universe 身份作為分類依據，不以名稱來源決定
-    商品是 STOCK 還是 ETF。
+    商品分類仍以 Universe 為準。
     """
     combined: Dict[str, str] = {}
     errors = []
@@ -350,8 +354,6 @@ def load_official_chinese_names() -> Dict[str, str]:
             rows = fetch_json_url(url)
             names = parse_official_name_rows(rows, source)
 
-            # 後續成功來源的資料可覆蓋前面來源的同代號名稱。
-            # 商品類型不在此處判斷。
             combined.update(names)
 
         except Exception as exc:
@@ -500,8 +502,9 @@ def get_official_name(
     名稱優先順序：
 
     1. 官方上市、上櫃、基金資料
-    2. Universe 明確中文名稱欄位
-    3. Universe 其他欄位中確實含中文的名稱
+    2. 已核實的官方中文名稱補充對照
+    3. Universe 明確中文名稱欄位
+    4. Universe 其他欄位中確實含中文的名稱
 
     不允許純英文名稱直接進入 UI。
     """
@@ -510,6 +513,14 @@ def get_official_name(
 
     if mapped_name and contains_chinese(mapped_name):
         return mapped_name
+
+    # 修正 00411A 官方 API 缺漏中文名稱的問題
+    verified_name = text(
+        VERIFIED_OFFICIAL_NAMES.get(symbol)
+    )
+
+    if verified_name and contains_chinese(verified_name):
+        return verified_name
 
     chinese_candidates = (
         "display_name_zh",
@@ -1026,7 +1037,7 @@ def validate_ui_data(data: Dict[str, Any]) -> None:
                 f"Bond tab 出現非債券 ETF：{symbol}"
             )
 
-    # 回歸測試：00400A 必須維持 ETF 分類。
+    # 回歸測試：00400A 必須維持 ETF 分類
     if "00400A" in stocks:
         if stocks["00400A"]["instrument_type"] != "etf":
             raise RuntimeError(
@@ -1056,7 +1067,6 @@ def main() -> None:
         market.get("latest_trading_date")
     )
 
-    # 官方上市、上櫃與基金中文名稱資料
     official_names = load_official_chinese_names()
 
     public = {}
