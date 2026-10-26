@@ -1,49 +1,32 @@
-
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""Taiwan Stock AI UI data builder, UI-DATA-2.8.
+"""台股 AI UI 資料建置器 UI-DATA-3.0。
 
-Universe determines identity; Analysis determines signals; official sources
-supply Chinese names. Missing names are reported together and never guessed.
+資料責任：Universe=商品身分，Analysis=技術訊號，Chip=法人籌碼，
+Market=大盤；無來源的價格、週均線、停損與目標一律為 null。
+保留原有 index.html 所需 tabs/stocks/market 契約。
 """
 from __future__ import annotations
 
-import http.client
 import json
 import math
 import os
 import re
-import socket
 import tempfile
-import time
-import urllib.error
-import urllib.request
+from collections import defaultdict
 from datetime import datetime, timezone
-from html.parser import HTMLParser
 from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 DATA = ROOT / 'Data'
-VERSION = 'UI-DATA-2.8'
-TWSE = 'https://openapi.twse.com.tw/v1/opendata/t187ap03_L'
-TPEX = 'https://www.tpex.org.tw/openapi/v1/mopsfin_t187ap03_O'
-FUND = 'https://openapi.twse.com.tw/v1/opendata/t187ap47_L'
-ISIN_URLS = {
-    'ISIN_LISTED': 'https://isin.twse.com.tw/isin/C_public.jsp?strMode=2',
-    'ISIN_OTC': 'https://isin.twse.com.tw/isin/C_public.jsp?strMode=4',
-}
-SOURCE_MINIMUM = {'TWSE': 900, 'TPEX': 750, 'TWSE_FUND': 200}
-VERIFIED_NAMES = {'00411A': '主動統一前沿科技', '006201': '元大富櫃50'}
-SYMBOL_KEYS = ('公司代號', '證券代號', '股票代號', '基金代號', 'ETF代號', '證券代碼', '有價證券代號', '代號', 'SecuritiesCompanyCode', 'CompanyCode', 'SecurityCode', 'SecuritiesCode', 'Code')
-NAME_KEYS = ('公司簡稱', '公司名稱', '股票名稱', '基金簡稱', '基金名稱', '證券簡稱', '證券名稱', 'ETF名稱', '有價證券名稱', '名稱', '基金中文名稱', '基金中文簡稱', '中文簡稱', '中文名稱', 'CompanyAbbreviation', 'CompanyName', 'SecurityName', 'FundName', 'Name')
-UNIVERSE_NAME_KEYS = ('display_name_zh', 'name_zh', 'chinese_name', 'security_name_zh', 'stock_name', '基金簡稱', '基金名稱', '證券簡稱', '名稱', '股票名稱', '公司簡稱', '公司名稱', 'display_name', 'name', 'security_name')
+VERSION = 'UI-DATA-3.0'
 STRENGTH_RANK = {'強勢': 3, '中性': 2, '弱勢': 1}
 BUYABLE = {'偏多，可分批', '積極關注', '續抱觀察'}
 
 
 def clean(v: Any) -> str:
-    return '' if v is None else re.sub(r'\s+', ' ', str(v).replace('\ufeff', '').replace('\xa0', ' ')).strip()
+    return '' if v is None else re.sub(r'\s+', ' ', str(v).replace('\ufeff', '')).strip()
 
 
 def symbol(v: Any) -> str:
@@ -54,302 +37,112 @@ def symbol(v: Any) -> str:
     return s
 
 
-def chinese(v: Any) -> bool:
-    return bool(re.search(r'[\u3400-\u9fff]', clean(v)))
-
-
-def numeric(v: Any):
+def num(v: Any):
     try:
-        if v is None or isinstance(v, bool):
+        if v is None or isinstance(v, bool) or str(v).strip() in ('', '--', '—', 'N/A'):
             return None
-        n = float(str(v).replace(',', '').replace('%', '').strip())
+        n = float(str(v).replace(',', '').replace('%', ''))
         return n if math.isfinite(n) else None
     except (ValueError, TypeError):
         return None
 
 
-def load(path: Path):
-    if not path.is_file():
-        raise RuntimeError(f'缺少資料檔案：{path}')
-    with path.open(encoding='utf-8-sig') as f:
-        return json.load(f)
-
-
-def atomic_write(path: Path, data: dict):
-    path.parent.mkdir(parents=True, exist_ok=True)
-    fd, name = tempfile.mkstemp(prefix='.' + path.name + '.', suffix='.tmp', dir=str(path.parent))
-    try:
-        with os.fdopen(fd, 'w', encoding='utf-8') as f:
-            json.dump(data, f, ensure_ascii=False, indent=2, allow_nan=False)
-            f.write('\n')
-            f.flush()
-            os.fsync(f.fileno())
-        os.replace(name, path)
-    finally:
-        Path(name).unlink(missing_ok=True)
-
-
-def fetch(url: str, label: str, attempts=5) -> bytes:
-    last = None
-    for i in range(1, attempts + 1):
-        print(f'{label} 下載 {i}/{attempts}', flush=True)
-        try:
-            request = urllib.request.Request(url, headers={
-                'User-Agent': 'Mozilla/5.0 (compatible; TaiwanStockAI/2.8)',
-                'Accept': 'application/json,text/html,*/*',
-                'Accept-Encoding': 'identity',
-                'Connection': 'close',
-            })
-            with urllib.request.urlopen(request, timeout=45) as response:
-                raw = response.read()
-                expected = response.headers.get('Content-Length')
-                if expected and len(raw) != int(expected):
-                    raise RuntimeError(f'Content-Length 不符：{len(raw)}/{expected}')
-            if not raw:
-                raise RuntimeError('回傳空資料')
-            print(f'{label} 下載完成：{len(raw)} bytes', flush=True)
-            return raw
-        except (http.client.IncompleteRead, urllib.error.URLError, socket.timeout,
-                TimeoutError, OSError, RuntimeError, ValueError) as exc:
-            last = exc
-            print(f'WARNING {label}: {type(exc).__name__}: {exc}', flush=True)
-            if i < attempts:
-                time.sleep(min(3 * i, 12))
-    raise RuntimeError(f'{label} 下載失敗：{last}')
-
-
-def first(row: dict, keys: tuple) -> str:
-    for k in keys:
-        v = clean(row.get(k))
-        if v:
-            return v
-    return ''
-
-
-def parse_api(raw: bytes, label: str) -> dict[str, str]:
-    rows = json.loads(raw.decode('utf-8-sig'))
-    if not isinstance(rows, list):
-        raise RuntimeError(f'{label} JSON 不是 array')
-    names = {}
-    for row in rows:
-        if not isinstance(row, dict):
-            continue
-        code = symbol(first(row, SYMBOL_KEYS))
-        name = first(row, NAME_KEYS)
-        if code and chinese(name):
-            names[code] = name
-    if len(names) < SOURCE_MINIMUM[label]:
-        raise RuntimeError(f'{label} 有效中文名稱只有 {len(names)} 筆，低於 {SOURCE_MINIMUM[label]} 筆')
-    print(f'{label} 中文名稱：{len(names)}', flush=True)
-    return names
-
-
-class ISINTableParser(HTMLParser):
-    def __init__(self):
-        super().__init__(convert_charrefs=True)
-        self.rows = []
-        self.row = None
-        self.cell = None
-
-    def handle_starttag(self, tag, attrs):
-        if tag == 'tr':
-            self.row = []
-        elif tag in ('td', 'th') and self.row is not None:
-            self.cell = []
-
-    def handle_data(self, data):
-        if self.cell is not None:
-            self.cell.append(data)
-
-    def handle_endtag(self, tag):
-        if tag in ('td', 'th') and self.cell is not None and self.row is not None:
-            self.row.append(clean(''.join(self.cell)))
-            self.cell = None
-        elif tag == 'tr' and self.row is not None:
-            if self.row:
-                self.rows.append(self.row)
-            self.row = None
-            self.cell = None
-
-
-def decode_isin(raw: bytes) -> str:
-    # The TWSE ISIN service commonly serves Big5; inspect meta first.
-    head = raw[:2048].decode('ascii', errors='ignore').lower()
-    match = re.search(r'charset\s*=\s*["\']?([\w-]+)', head)
-    declared = match.group(1).lower() if match else ''
-    encodings = ['cp950', 'big5', 'utf-8-sig'] if 'big5' in declared else ['utf-8-sig', 'cp950', 'big5']
-    for encoding in encodings:
-        try:
-            result = raw.decode(encoding)
-            if chinese(result):
-                return result
-        except UnicodeError:
-            continue
-    raise RuntimeError('ISIN 網頁編碼無法可靠解碼')
-
-
-def parse_isin(raw: bytes, label: str) -> dict[str, str]:
-    parser = ISINTableParser()
-    parser.feed(decode_isin(raw))
-    result = {}
-    for row in parser.rows:
-        if not row:
-            continue
-        # First cell: 00679B　元大美債20年; keep exact symbol.
-        match = re.match(r'^([0-9]{4,6}[A-Z]?)\s+(.+)$', row[0], re.I)
-        if not match:
-            continue
-        code, name = symbol(match.group(1)), clean(match.group(2))
-        # ISIN 官方交易簡稱可以是英文，例如 M31、91APP、LINEPAY。
-        # 只接受官方 ISIN 表格內以完整證券代號配對的名稱。
-        if name and not re.fullmatch(r'[0-9]+', name):
-            result[code] = name
-    if len(result) < 100:
-        raise RuntimeError(f'{label} 解析筆數異常：{len(result)}，可能網頁格式改變')
-    print(f'{label} 官方證券名稱：{len(result)}', flush=True)
-    return result
-
-
-def official_names() -> dict[str, str]:
-    sources = (('TWSE', TWSE), ('TPEX', TPEX), ('TWSE_FUND', FUND))
-    result = {}
-    errors = []
-    for label, url in sources:
-        try:
-            result.update(parse_api(fetch(url, label), label))
-        except Exception as exc:
-            errors.append(f'{label}: {exc}')
-    if errors:
-        raise RuntimeError('必要官方 API 失敗：\n' + '\n'.join(errors))
-    # ISIN augments the three APIs; an ISIN outage does not discard verified API data.
-    isin_ok = 0
-    for label, url in ISIN_URLS.items():
-        try:
-            names = parse_isin(fetch(url, label, attempts=3), label)
-            # ISIN is a supplementary name source, not an identity classifier.
-            for code, official in names.items():
-                # 已有中文名稱時不讓英文 ISIN 名稱覆蓋。
-                if code not in result or (not chinese(result[code]) and chinese(official)):
-                    result[code] = official
-            isin_ok += 1
-        except Exception as exc:
-            print(f'WARNING {label} 無法補充中文名稱：{exc}', flush=True)
-    print(f'ISIN 成功來源：{isin_ok}/2；官方名稱合計：{len(result)}', flush=True)
-    return result
-
-
-def normalize_stocks(path: Path, label: str) -> tuple[dict, dict]:
-    root = load(path)
-    if not isinstance(root, dict) or not isinstance(root.get('stocks'), dict):
-        raise RuntimeError(f'{label} stocks 必須是 object')
-    result = {}
-    for key, row in root['stocks'].items():
-        if not isinstance(row, dict):
-            continue
-        code = symbol(key)
-        if not code:
-            continue
-        if code in result:
-            raise RuntimeError(f'{label} 代號重複：{code}')
-        result[code] = dict(row)
-        if label == 'Universe':
-            result[code]['symbol'] = code
-    if not result:
-        raise RuntimeError(f'{label} 無有效商品')
-    return root, result
-
-
-def instrument(u: dict) -> str:
-    kind = ''
-    for key in ('type', 'official_type', 'security_type'):
-        value = clean(u.get(key)).upper()
-        if value in ('STOCK', 'STOCKS', 'ETF'):
-            kind = 'STOCK' if value in ('STOCK', 'STOCKS') else 'ETF'
-            break
-    if not kind:
-        raise RuntimeError(f"{u['symbol']} Universe type 無效")
-    if kind == 'STOCK':
-        return 'stock'
-    category = clean(u.get('category') or u.get('asset_category') or u.get('instrument_category')).upper()
-    return 'bond' if 'BOND' in category or '債' in category else 'etf'
-
-
-def market(u: dict) -> str:
-    value = clean(u.get('market') or u.get('exchange') or u.get('market_type')).upper()
-    if value in ('TWSE', 'TSE'):
-        return 'TWSE'
-    if value in ('TPEX', 'OTC'):
-        return 'TPEX'
-    raise RuntimeError(f"{u['symbol']} market 無效：{value}")
-
-
-def get_name(code: str, u: dict, names: dict) -> str:
-    # 官方 ISIN / 公司資料核實的英文交易簡稱也屬合法名稱。
-    # Universe 中未核實的純英文名稱不能單獨通過。
-    official = clean(names.get(code))
-    if official:
-        return official
-    verified = clean(VERIFIED_NAMES.get(code))
-    if chinese(verified):
-        return verified
-    for key in UNIVERSE_NAME_KEYS:
-        value = clean(u.get(key))
-        if chinese(value):
-            return value
-    return ''
-
-
-def check_names(universe: dict, analysis: dict, names: dict):
-    missing = []
-    for code, u in universe.items():
-        if code in analysis and not get_name(code, u, names):
-            missing.append(code)
-    print(f'官方名稱驗證商品數：{sum(c in analysis for c in universe)}', flush=True)
-    print(f'官方名稱缺漏數：{len(missing)}', flush=True)
-    if missing:
-        print('MISSING CHINESE NAMES', flush=True)
-        for code in missing:
-            u = universe[code]
-            print(f"{code} | market={u.get('market')} | type={u.get('type')} | name={u.get('name')}", flush=True)
-        raise RuntimeError(f'仍有 {len(missing)} 檔商品缺少已驗證官方名稱；不輸出不完整 UI')
-
-
-def metrics(a: dict) -> tuple[dict, dict]:
-    m = a.get('metrics')
-    s = a.get('short_term')
-    return (m if isinstance(m, dict) else {}, s if isinstance(s, dict) else {})
-
-
-def first_num(rows: tuple):
-    for value in rows:
-        n = numeric(value)
+def pick_num(*values):
+    for v in values:
+        n = num(v)
         if n is not None:
             return n
     return None
 
 
-def strength(a: dict) -> str:
-    m, s = metrics(a)
-    for raw in (s.get('strength'), s.get('technical_strength'), a.get('strength'), a.get('strength_label'), m.get('strength')):
-        v = clean(raw)
-        low = v.lower()
-        if not v:
+def obj(v):
+    return v if isinstance(v, dict) else {}
+
+
+def read(path: Path):
+    if not path.is_file():
+        raise RuntimeError(f'缺少必要檔案：{path}')
+    with path.open(encoding='utf-8-sig') as f:
+        return json.load(f)
+
+
+def stocks_from(path: Path):
+    root = read(path)
+    if not isinstance(root, dict) or not isinstance(root.get('stocks'), dict):
+        raise RuntimeError(f'{path.name} 缺少 stocks object')
+    result = {}
+    for k, v in root['stocks'].items():
+        if not isinstance(v, dict):
             continue
-        if '強' in v or '多' in v or low in ('strong', 'bullish'):
+        code = symbol(k)
+        if not code or code in result:
+            raise RuntimeError(f'{path.name} 無效或重複代號：{k}')
+        result[code] = v
+    if not result:
+        raise RuntimeError(f'{path.name} 無有效商品')
+    return root, result
+
+
+def atomic_write(path: Path, payload: dict):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(prefix='.' + path.name + '.', suffix='.tmp', dir=str(path.parent))
+    try:
+        with os.fdopen(fd, 'w', encoding='utf-8') as f:
+            json.dump(payload, f, ensure_ascii=False, indent=2, allow_nan=False)
+            f.write('\n')
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp, path)
+    finally:
+        Path(tmp).unlink(missing_ok=True)
+
+
+def kind(u: dict) -> str:
+    raw = clean(u.get('type') or u.get('official_type') or u.get('security_type')).upper()
+    if raw in ('STOCK', 'STOCKS'):
+        return 'stock'
+    if raw != 'ETF':
+        raise RuntimeError(f"{u.get('symbol', '')} Universe type 無效：{raw}")
+    cat = clean(u.get('category') or u.get('asset_category') or u.get('instrument_category')).upper()
+    return 'bond' if 'BOND' in cat or '債' in cat else 'etf'
+
+
+def exchange(u: dict) -> str:
+    raw = clean(u.get('market') or u.get('exchange') or u.get('market_type')).upper()
+    if raw in ('TWSE', 'TSE'):
+        return 'TWSE'
+    if raw in ('TPEX', 'OTC'):
+        return 'TPEX'
+    raise RuntimeError(f'Universe market 無效：{raw}')
+
+
+def display_name(code: str, u: dict) -> str:
+    # 僅使用 Universe 官方 ISIN 商品主檔，不使用 Analysis 英文代號冒充名稱。
+    for key in ('display_name_zh', 'name_zh', 'chinese_name', 'security_name_zh',
+                'stock_name', '基金簡稱', '證券簡稱', '公司簡稱', 'display_name', 'name', 'security_name'):
+        value = clean(u.get(key))
+        if value and value != code and not re.fullmatch(r'\d+', value):
+            return value
+    raise RuntimeError(f'{code} Universe 缺少官方商品名稱')
+
+
+def strength(a: dict) -> str:
+    s, m = obj(a.get('short_term')), obj(a.get('metrics'))
+    for v in (s.get('strength'), s.get('technical_strength'), a.get('strength'), a.get('strength_label'), m.get('strength')):
+        v = clean(v)
+        if '強' in v or '多' in v or v.lower() in ('strong', 'bullish'):
             return '強勢'
-        if '弱' in v or '空' in v or low in ('weak', 'bearish'):
+        if '弱' in v or '空' in v or v.lower() in ('weak', 'bearish'):
             return '弱勢'
-        if '中' in v or low in ('neutral', 'flat'):
+        if '中' in v or v.lower() in ('neutral', 'flat'):
             return '中性'
     return '中性'
 
 
 def recommendation(a: dict) -> str:
-    m, s = metrics(a)
-    for raw in (a.get('recommendation'), a.get('signal'), s.get('recommendation'), m.get('recommendation')):
-        v = clean(raw)
-        if not v:
-            continue
+    s, m = obj(a.get('short_term')), obj(a.get('metrics'))
+    for v in (a.get('recommendation'), a.get('signal'), s.get('recommendation'), m.get('recommendation')):
+        v = clean(v)
         if '立即進場' in v:
             return '積極關注'
         if '買進' in v or '偏多' in v:
@@ -365,20 +158,77 @@ def recommendation(a: dict) -> str:
     return '續抱觀察'
 
 
-def score(a: dict) -> float:
-    _, s = metrics(a)
-    return first_num((s.get('core_score'), a.get('core_score'), a.get('score'))) or 0.0
-
-
-def record(code: str, u: dict, a: dict, date: str, names: dict) -> dict:
-    m, _ = metrics(a)
+def entry(a: dict) -> dict:
+    e = obj(a.get('entry_timing'))
+    current = obj(e.get('current'))
+    zone = obj(current.get('pullback_zone'))
+    lo, hi = num(zone.get('lower')), num(zone.get('upper'))
+    if lo is not None and hi is not None and lo > hi:
+        lo, hi = None, None
     return {
-        'symbol': code, 'name': get_name(code, u, names), 'market': market(u),
-        'instrument_type': instrument(u),
-        'price': first_num((m.get('price'), m.get('close'), m.get('latest_price'), m.get('last_price'), a.get('price'), a.get('close'))),
-        'change': first_num((m.get('change'), m.get('price_change'), a.get('change'))),
-        'change_pct': first_num((m.get('change_pct'), m.get('change_percent'), m.get('change1_pct'), a.get('change_pct'))),
-        'strength': strength(a), 'recommendation': recommendation(a),
+        'status': clean(current.get('status')) or '資料不足',
+        'preferred': clean(current.get('preferred')) or '資料不足',
+        'price_position': clean(current.get('price_position')) or '資料不足',
+        'current_price': num(current.get('current_price')),
+        'ma20': num(current.get('ma20')),
+        'pullback_zone': {'lower': lo, 'upper': hi} if lo is not None and hi is not None else None,
+        'message': clean(current.get('message')) or '無已驗證進場區間',
+    }
+
+
+def make_record(code: str, u: dict, a: dict, chip: dict, date: str) -> dict:
+    m, s = obj(a.get('metrics')), obj(a.get('short_term'))
+    t = entry(a)
+    inst = obj(chip.get('institutional'))
+    d5, d20 = obj(inst.get('5d')), obj(inst.get('20d'))
+    zone = obj(t.get('pullback_zone'))
+    lo, hi = num(zone.get('lower')), num(zone.get('upper'))
+    # 未有正式已驗證交易計畫欄位，不得從價格乘百分比臆造停損/目標。
+    verified = obj(a.get('verified_trade_plan'))
+    stop = num(verified.get('stop_loss'))
+    target = num(verified.get('target_price'))
+    rr = None
+    if None not in (lo, hi, stop, target):
+        midpoint = (lo + hi) / 2
+        if stop < midpoint < target:
+            rr = round((target - midpoint) / (midpoint - stop), 2)
+    plan_ok = all(v is not None for v in (lo, hi, stop, target, rr))
+    return {
+        'symbol': code,
+        'name': display_name(code, u),
+        'market': exchange(u),
+        'instrument_type': kind(u),
+        'industry': clean(u.get('industry') or u.get('industry_name')) or '未分類',
+        'price': pick_num(m.get('price'), m.get('close'), m.get('latest_price'), m.get('last_price'), a.get('price'), a.get('close')),
+        'change': pick_num(m.get('change'), m.get('price_change'), a.get('change')),
+        'change_pct': pick_num(m.get('change_pct'), m.get('change_percent'), m.get('change1_pct'), a.get('change_pct')),
+        'strength': strength(a),
+        'recommendation': recommendation(a),
+        'technical': {
+            'ma20': pick_num(m.get('ma20'), m.get('MA20'), t.get('ma20')),
+            'weekly_ma20': pick_num(m.get('weekly_ma20'), s.get('weekly_ma20'), a.get('weekly_ma20')),
+            'rsi': pick_num(m.get('rsi'), s.get('rsi')),
+            'kd_k': pick_num(m.get('kd_k'), m.get('k'), s.get('kd_k')),
+            'kd_d': pick_num(m.get('kd_d'), m.get('d'), s.get('kd_d')),
+            'macd': pick_num(m.get('macd'), s.get('macd')),
+            'volume': pick_num(m.get('volume'), s.get('volume')),
+        },
+        'entry_timing': t,
+        'trade_plan': {
+            'entry_low': lo, 'entry_high': hi,
+            'weekly_ma20': pick_num(m.get('weekly_ma20'), s.get('weekly_ma20'), a.get('weekly_ma20')),
+            'stop_loss': stop, 'target_price': target, 'risk_reward': rr,
+            'status': '待確認' if plan_ok else '資料不足',
+        },
+        'chip': {
+            'date': clean(inst.get('date') or chip.get('latest_trade_date')) or None,
+            'institutional_net_1d': num(inst.get('total_net')),
+            'institutional_net_5d': num(d5.get('total_net')),
+            'institutional_net_20d': num(d20.get('total_net')),
+            'foreign_net_1d': num(inst.get('foreign_net')),
+            'trust_net_1d': num(inst.get('trust_net')),
+            'dealer_net_1d': num(inst.get('dealer_net')),
+        },
         'backend': {'status': 'ok', 'latest_date': date},
         'holding': {'shares': None, 'average_cost': None, 'market_value': None, 'profit': None, 'return_pct': None},
     }
@@ -399,78 +249,118 @@ def candidates(root: dict) -> list[str]:
 
 
 def explicit(a: dict) -> bool:
-    s = a.get('short_term') if isinstance(a.get('short_term'), dict) else {}
+    s = obj(a.get('short_term'))
     return any(a.get(k) is True or s.get(k) is True for k in ('qualified', 'is_candidate', 'candidate', 'short_term_qualified'))
 
 
-def validate(data: dict):
-    if data.get('schema_version') != VERSION:
-        raise RuntimeError('schema_version 錯誤')
-    stocks = data.get('stocks')
+def dashboard(public: dict, today: list[str], date: str, index: dict) -> dict:
+    industries = defaultdict(lambda: {'net_buy': 0.0, 'valid_stocks': 0})
+    for r in public.values():
+        if r['instrument_type'] != 'stock':
+            continue
+        c = r['chip']
+        if c['date'] != date or c['institutional_net_1d'] is None:
+            continue
+        group = industries[r['industry']]
+        group['net_buy'] += c['institutional_net_1d']
+        group['valid_stocks'] += 1
+    inflow = sorted(({'industry': k, 'net_buy': round(v['net_buy'], 2), 'valid_stocks': v['valid_stocks']}
+                     for k, v in industries.items() if v['net_buy'] > 0),
+                    key=lambda v: v['net_buy'], reverse=True)[:10]
+    plans = []
+    for code in today:
+        r = public[code]
+        plans.append({'symbol': code, 'name': r['name'], 'industry': r['industry'],
+                      'price': r['price'], 'change_pct': r['change_pct'],
+                      'institutional_net_1d': r['chip']['institutional_net_1d'],
+                      **r['trade_plan']})
+    return {'latest_trading_date': date, 'market_index': index,
+            'capital_inflow_industries': inflow, 'candidate_trade_plans': plans,
+            'data_quality': {'valid_industries': len(inflow),
+                             'complete_trade_plans': sum(p['status'] == '待確認' for p in plans)}}
+
+
+def validate(payload: dict):
+    if payload.get('schema_version') != VERSION or payload.get('status') != 'ok':
+        raise RuntimeError('UI schema/status 無效')
+    stocks = payload.get('stocks')
     if not isinstance(stocks, dict) or not stocks:
-        raise RuntimeError('UI stocks 無效')
+        raise RuntimeError('UI stocks 必須是非空 object')
     for code, r in stocks.items():
         if r.get('symbol') != code or not clean(r.get('name')):
-            raise RuntimeError(f'{code} 代號或官方名稱無效')
+            raise RuntimeError(f'{code} 名稱/代號無效')
         if r.get('instrument_type') not in ('stock', 'etf', 'bond'):
             raise RuntimeError(f'{code} 商品類型無效')
-    tabs = data.get('tabs')
-    keys = {'today_picks', 'top10', 'etf', 'bond', 'watchlist'}
-    if not isinstance(tabs, dict) or set(tabs) != keys or any(not isinstance(tabs[k], list) for k in keys):
-        raise RuntimeError('UI tabs 無效')
-    today, top = tabs['today_picks'], tabs['top10']
-    if len(top) > 10 or not set(top).issubset(set(today)):
-        raise RuntimeError('Top10 必須為 Today Picks 子集合且最多10檔')
-    for tab, kind in (('today_picks', 'stock'), ('etf', 'etf'), ('bond', 'bond')):
-        if tab in ('etf', 'bond') and len(tabs[tab]) > 10:
-            raise RuntimeError(f'{tab} 超過10檔')
-        for code in tabs[tab]:
-            if code not in stocks or stocks[code]['instrument_type'] != kind:
-                raise RuntimeError(f'{tab} 商品分類錯誤：{code}')
+        if r.get('strength') not in STRENGTH_RANK:
+            raise RuntimeError(f'{code} 強弱分類無效')
+        if not isinstance(r.get('trade_plan'), dict) or not isinstance(r.get('chip'), dict):
+            raise RuntimeError(f'{code} 交易計畫/籌碼結構無效')
     if '00400A' in stocks and stocks['00400A']['instrument_type'] != 'etf':
-        raise RuntimeError('00400A 必須分類為 ETF')
+        raise RuntimeError('00400A 必須是 ETF')
+    tabs = payload.get('tabs')
+    required = {'today_picks', 'top10', 'etf', 'bond', 'watchlist'}
+    if not isinstance(tabs, dict) or set(tabs) != required:
+        raise RuntimeError('UI tabs 契約無效')
+    if any(not isinstance(tabs[k], list) for k in required):
+        raise RuntimeError('UI tabs 欄位不是 list')
+    if len(tabs['top10']) > 10 or not set(tabs['top10']).issubset(set(tabs['today_picks'])):
+        raise RuntimeError('Top10 不是 Today Picks 子集合')
+    for tab, expected in (('today_picks', 'stock'), ('etf', 'etf'), ('bond', 'bond')):
+        if tab in ('etf', 'bond') and len(tabs[tab]) > 10:
+            raise RuntimeError(f'{tab} 超過 10 檔')
+        for code in tabs[tab]:
+            if code not in stocks or stocks[code]['instrument_type'] != expected:
+                raise RuntimeError(f'{tab} 商品分類錯誤：{code}')
+    board = payload.get('dashboard')
+    if not isinstance(board, dict) or not isinstance(board.get('capital_inflow_industries'), list) or not isinstance(board.get('candidate_trade_plans'), list):
+        raise RuntimeError('dashboard 契約無效')
 
 
 def main():
     print('BUILD UI DATA - ' + VERSION, flush=True)
-    _, universe = normalize_stocks(DATA / 'universe.json', 'Universe')
-    analysis_root, analysis = normalize_stocks(DATA / 'analysis.json', 'Analysis')
-    mkt = load(DATA / 'market.json')
-    if not isinstance(mkt, dict):
-        raise RuntimeError('market.json 必須是 object')
-    date = clean(mkt.get('latest_trading_date'))
-    names = official_names()
-    check_names(universe, analysis, names)
-    public = {code: record(code, u, analysis[code], date, names) for code, u in universe.items() if code in analysis}
+    _, universe = stocks_from(DATA / 'universe.json')
+    analysis_root, analysis = stocks_from(DATA / 'analysis.json')
+    _, chips = stocks_from(DATA / 'chip.json')
+    market = read(DATA / 'market.json')
+    if not isinstance(market, dict):
+        raise RuntimeError('market.json 根節點不是 object')
+    date = clean(market.get('latest_trading_date'))
+    if not date:
+        raise RuntimeError('market.json 缺少 latest_trading_date')
+    public = {code: make_record(code, u, analysis[code], chips.get(code, {}), date)
+              for code, u in universe.items() if code in analysis}
     if not public:
-        raise RuntimeError('Universe 和 Analysis 無交集')
-    missing_analysis = [code for code in universe if code not in analysis]
-    if missing_analysis:
-        print(f'WARNING Universe 未匹配 Analysis：{len(missing_analysis)}；' + ', '.join(missing_analysis[:30]), flush=True)
-    today = [code for code in candidates(analysis_root) if code in public and public[code]['instrument_type'] == 'stock']
+        raise RuntimeError('Universe 與 Analysis 無交集')
+    missing = set(universe) - set(analysis)
+    if missing:
+        print(f'WARNING Universe 未匹配 Analysis：{len(missing)}', flush=True)
+    today = [c for c in candidates(analysis_root) if c in public and public[c]['instrument_type'] == 'stock']
     if not today:
-        today = [code for code in public if public[code]['instrument_type'] == 'stock' and explicit(analysis[code])]
+        today = [c for c in public if public[c]['instrument_type'] == 'stock' and explicit(analysis[c])]
     def rank(code):
-        return (STRENGTH_RANK.get(public[code]['strength'], 0), score(analysis[code]), code)
+        s = obj(analysis[code].get('short_term'))
+        score = pick_num(s.get('core_score'), analysis[code].get('core_score'), analysis[code].get('score')) or 0
+        return (STRENGTH_RANK.get(public[code]['strength'], 0), score, code)
     today = sorted(set(today), key=rank, reverse=True)
     etf = sorted((c for c, r in public.items() if r['instrument_type'] == 'etf' and (r['strength'] == '強勢' or r['recommendation'] in BUYABLE)), key=rank, reverse=True)[:10]
     bond = sorted((c for c, r in public.items() if r['instrument_type'] == 'bond' and (r['strength'] == '強勢' or r['recommendation'] in BUYABLE)), key=rank, reverse=True)[:10]
-    index = mkt.get('index') if isinstance(mkt.get('index'), dict) else {}
-    sentiment = mkt.get('sentiment')
-    output = {
+    index = obj(market.get('index'))
+    sentiment = market.get('sentiment')
+    payload = {
         'schema_version': VERSION, 'generated_at': datetime.now(timezone.utc).isoformat(), 'status': 'ok',
-        'market': {'name': '台股市場', 'timezone': 'Asia/Taipei', 'status': mkt.get('market_status'), 'latest_trading_date': date, 'index': index, 'sentiment': sentiment},
+        'market': {'name': '台股市場', 'timezone': 'Asia/Taipei', 'status': market.get('market_status'),
+                   'latest_trading_date': date, 'index': index, 'sentiment': sentiment},
         'summary': {'today_picks_count': len(today), 'holdings': False, 'index': index, 'sentiment': sentiment},
+        'dashboard': dashboard(public, today, date, index),
         'tabs': {'today_picks': today, 'top10': today[:10], 'etf': etf, 'bond': bond, 'watchlist': []},
         'stocks': public,
     }
-    validate(output)
-    dest = DATA / 'ui_data.json'
-    atomic_write(dest, output)
-    validate(load(dest))
-    print('UI DATA BUILD PASS', flush=True)
-    print(f'Version={VERSION} Universe={len(universe)} Analysis={len(analysis)} UI={len(public)} Today={len(today)} Top10={len(today[:10])} ETF={len(etf)} Bond={len(bond)}', flush=True)
-    print('官方名稱 / 商品分類 / read-back validation PASS', flush=True)
+    validate(payload)
+    output = DATA / 'ui_data.json'
+    atomic_write(output, payload)
+    validate(read(output))
+    print(f'UI DATA BUILD PASS: stocks={len(public)}, today={len(today)}, ETF={len(etf)}, bond={len(bond)}', flush=True)
+    print('Atomic write / read-back validation PASS', flush=True)
 
 
 if __name__ == '__main__':
