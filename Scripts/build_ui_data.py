@@ -1,7 +1,7 @@
 
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""Taiwan Stock AI UI data builder, UI-DATA-2.7.
+"""Taiwan Stock AI UI data builder, UI-DATA-2.8.
 
 Universe determines identity; Analysis determines signals; official sources
 supply Chinese names. Missing names are reported together and never guessed.
@@ -25,7 +25,7 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 DATA = ROOT / 'Data'
-VERSION = 'UI-DATA-2.7'
+VERSION = 'UI-DATA-2.8'
 TWSE = 'https://openapi.twse.com.tw/v1/opendata/t187ap03_L'
 TPEX = 'https://www.tpex.org.tw/openapi/v1/mopsfin_t187ap03_O'
 FUND = 'https://openapi.twse.com.tw/v1/opendata/t187ap47_L'
@@ -95,7 +95,7 @@ def fetch(url: str, label: str, attempts=5) -> bytes:
         print(f'{label} 下載 {i}/{attempts}', flush=True)
         try:
             request = urllib.request.Request(url, headers={
-                'User-Agent': 'Mozilla/5.0 (compatible; TaiwanStockAI/2.7)',
+                'User-Agent': 'Mozilla/5.0 (compatible; TaiwanStockAI/2.8)',
                 'Accept': 'application/json,text/html,*/*',
                 'Accept-Encoding': 'identity',
                 'Connection': 'close',
@@ -200,11 +200,13 @@ def parse_isin(raw: bytes, label: str) -> dict[str, str]:
         if not match:
             continue
         code, name = symbol(match.group(1)), clean(match.group(2))
-        if chinese(name):
+        # ISIN 官方交易簡稱可以是英文，例如 M31、91APP、LINEPAY。
+        # 只接受官方 ISIN 表格內以完整證券代號配對的名稱。
+        if name and not re.fullmatch(r'[0-9]+', name):
             result[code] = name
     if len(result) < 100:
         raise RuntimeError(f'{label} 解析筆數異常：{len(result)}，可能網頁格式改變')
-    print(f'{label} 中文名稱：{len(result)}', flush=True)
+    print(f'{label} 官方證券名稱：{len(result)}', flush=True)
     return result
 
 
@@ -225,7 +227,10 @@ def official_names() -> dict[str, str]:
         try:
             names = parse_isin(fetch(url, label, attempts=3), label)
             # ISIN is a supplementary name source, not an identity classifier.
-            result.update(names)
+            for code, official in names.items():
+                # 已有中文名稱時不讓英文 ISIN 名稱覆蓋。
+                if code not in result or (not chinese(result[code]) and chinese(official)):
+                    result[code] = official
             isin_ok += 1
         except Exception as exc:
             print(f'WARNING {label} 無法補充中文名稱：{exc}', flush=True)
@@ -279,9 +284,18 @@ def market(u: dict) -> str:
 
 
 def get_name(code: str, u: dict, names: dict) -> str:
-    for value in (names.get(code), VERIFIED_NAMES.get(code), *(u.get(k) for k in UNIVERSE_NAME_KEYS)):
+    # 官方 ISIN / 公司資料核實的英文交易簡稱也屬合法名稱。
+    # Universe 中未核實的純英文名稱不能單獨通過。
+    official = clean(names.get(code))
+    if official:
+        return official
+    verified = clean(VERIFIED_NAMES.get(code))
+    if chinese(verified):
+        return verified
+    for key in UNIVERSE_NAME_KEYS:
+        value = clean(u.get(key))
         if chinese(value):
-            return clean(value)
+            return value
     return ''
 
 
@@ -290,14 +304,14 @@ def check_names(universe: dict, analysis: dict, names: dict):
     for code, u in universe.items():
         if code in analysis and not get_name(code, u, names):
             missing.append(code)
-    print(f'中文名稱驗證商品數：{sum(c in analysis for c in universe)}', flush=True)
-    print(f'中文名稱缺漏數：{len(missing)}', flush=True)
+    print(f'官方名稱驗證商品數：{sum(c in analysis for c in universe)}', flush=True)
+    print(f'官方名稱缺漏數：{len(missing)}', flush=True)
     if missing:
         print('MISSING CHINESE NAMES', flush=True)
         for code in missing:
             u = universe[code]
             print(f"{code} | market={u.get('market')} | type={u.get('type')} | name={u.get('name')}", flush=True)
-        raise RuntimeError(f'仍有 {len(missing)} 檔商品缺少已驗證中文名稱；不輸出不完整 UI')
+        raise RuntimeError(f'仍有 {len(missing)} 檔商品缺少已驗證官方名稱；不輸出不完整 UI')
 
 
 def metrics(a: dict) -> tuple[dict, dict]:
@@ -396,8 +410,8 @@ def validate(data: dict):
     if not isinstance(stocks, dict) or not stocks:
         raise RuntimeError('UI stocks 無效')
     for code, r in stocks.items():
-        if r.get('symbol') != code or not chinese(r.get('name')):
-            raise RuntimeError(f'{code} 代號或中文名稱無效')
+        if r.get('symbol') != code or not clean(r.get('name')):
+            raise RuntimeError(f'{code} 代號或官方名稱無效')
         if r.get('instrument_type') not in ('stock', 'etf', 'bond'):
             raise RuntimeError(f'{code} 商品類型無效')
     tabs = data.get('tabs')
@@ -456,7 +470,7 @@ def main():
     validate(load(dest))
     print('UI DATA BUILD PASS', flush=True)
     print(f'Version={VERSION} Universe={len(universe)} Analysis={len(analysis)} UI={len(public)} Today={len(today)} Top10={len(today[:10])} ETF={len(etf)} Bond={len(bond)}', flush=True)
-    print('中文名稱 / 商品分類 / read-back validation PASS', flush=True)
+    print('官方名稱 / 商品分類 / read-back validation PASS', flush=True)
 
 
 if __name__ == '__main__':
