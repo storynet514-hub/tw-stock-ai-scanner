@@ -1,12 +1,12 @@
 {
   "version": "UNIVERSE-BUILD",
-  "generated_at": "2026-10-21T03:52:23.151662+08:00",
-  "universe_count": 2310,
-  "stock_count": 1949,
+  "generated_at": "2026-10-27T01:57:54.529953+08:00",
+  "universe_count": 2314,
+  "stock_count": 1953,
   "etf_count": 361,
   "market_count": {
-    "TWSE": 1298,
-    "TPEX": 1012
+    "TWSE": 1299,
+    "TPEX": 1015
   },
   "source": {
     "universe_master": "https://isin.twse.com.tw/isin/e_single_main.jsp",
@@ -11374,7 +11374,7 @@
     "2072": {
       "symbol": "2072",
       "full_symbol": "2072.TW",
-      "name": "CWP",
+      "name": "CENE",
       "market": "TWSE",
       "type": "STOCK",
       "instrument_type": "STOCK",
@@ -11944,6 +11944,24 @@
       "isin": "KYG8T24R1076",
       "official_type": "Stocks",
       "official_market": "TWSE LISTED",
+      "remarks": "",
+      "source": "TWSE_ISIN_MASTER"
+    },
+    "2249": {
+      "symbol": "2249",
+      "full_symbol": "2249.TWO",
+      "name": "YOUNG SHINE",
+      "market": "TPEX",
+      "type": "STOCK",
+      "instrument_type": "STOCK",
+      "status": "active",
+      "listed_date": "2026/10/22",
+      "cfi_code": "ESVUFR",
+      "category": "STOCK",
+      "industry": "Electric Machinery",
+      "isin": "TW0002249000",
+      "official_type": "Stocks",
+      "official_market": "TPEx LISTED",
       "remarks": "",
       "source": "TWSE_ISIN_MASTER"
     },
@@ -35887,6 +35905,24 @@
       "remarks": "",
       "source": "TWSE_ISIN_MASTER"
     },
+    "6898": {
+      "symbol": "6898",
+      "full_symbol": "6898.TWO",
+      "name": "CHAINSEA",
+      "market": "TPEX",
+      "type": "STOCK",
+      "instrument_type": "STOCK",
+      "status": "active",
+      "listed_date": "2026/10/23",
+      "cfi_code": "ESVUFR",
+      "category": "STOCK",
+      "industry": "Information Service Industry",
+      "isin": "TW0006898000",
+      "official_type": "Stocks",
+      "official_market": "TPEx LISTED",
+      "remarks": "",
+      "source": "TWSE_ISIN_MASTER"
+    },
     "6899": {
       "symbol": "6899",
       "full_symbol": "6899.TWO",
@@ -36316,6 +36352,24 @@
       "isin": "TW0006937006",
       "official_type": "Stocks",
       "official_market": "TWSE LISTED",
+      "remarks": "",
+      "source": "TWSE_ISIN_MASTER"
+    },
+    "6938": {
+      "symbol": "6938",
+      "full_symbol": "6938.TWO",
+      "name": "NEWEBINFO",
+      "market": "TPEX",
+      "type": "STOCK",
+      "instrument_type": "STOCK",
+      "status": "active",
+      "listed_date": "2026/10/23",
+      "cfi_code": "ESVUFR",
+      "category": "STOCK",
+      "industry": "Information Service Industry",
+      "isin": "TW0006938004",
+      "official_type": "Stocks",
+      "official_market": "TPEx LISTED",
       "remarks": "",
       "source": "TWSE_ISIN_MASTER"
     },
@@ -36856,6 +36910,24 @@
       "isin": "TW0007709008",
       "official_type": "Stocks",
       "official_market": "TPEx LISTED",
+      "remarks": "",
+      "source": "TWSE_ISIN_MASTER"
+    },
+    "7710": {
+      "symbol": "7710",
+      "full_symbol": "7710.TW",
+      "name": "ASROCKIND",
+      "market": "TWSE",
+      "type": "STOCK",
+      "instrument_type": "STOCK",
+      "status": "active",
+      "listed_date": "2026/10/27",
+      "cfi_code": "ESVUFR",
+      "category": "STOCK",
+      "industry": "Computer and Peripheral Equipm",
+      "isin": "TW0007710006",
+      "official_type": "Stocks",
+      "official_market": "TWSE LISTED",
       "remarks": "",
       "source": "TWSE_ISIN_MASTER"
     },
