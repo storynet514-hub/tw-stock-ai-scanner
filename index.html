@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="theme-color" content="#080c14">
-<title>AI MARKET INTELLIGENCE｜台股市場</title>
+<title>台股 AI 量化</title>
 
 <style>
 :root{
@@ -16,33 +16,21 @@
   --sub:#94a3b8;
   --white:#fff;
   --blue:#38bdf8;
-
-  /* 台股價格 */
   --up:#ef4444;
   --down:#22c55e;
-
-  /* AI 強弱 */
   --strong:#ef4444;
   --neutral:#fff;
   --weak:#22c55e;
 }
 
-*{
-  box-sizing:border-box;
-}
+*{box-sizing:border-box}
 
 body{
   margin:0;
   background:var(--bg);
   color:var(--text);
-  font-family:
-    -apple-system,
-    BlinkMacSystemFont,
-    "Segoe UI",
-    "PingFang TC",
-    "Noto Sans TC",
-    "Microsoft JhengHei",
-    sans-serif;
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",
+    "PingFang TC","Noto Sans TC","Microsoft JhengHei",sans-serif;
 }
 
 .app{
@@ -101,22 +89,14 @@ body{
   margin-right:6px;
 }
 
-.open .dot{
-  background:var(--up);
-}
+.open .dot{background:var(--up)}
+.closed .dot{background:var(--down)}
 
-.closed .dot{
-  background:var(--down);
-}
-
-
-/* =========================================================
-   SUMMARY
-========================================================= */
+/* SUMMARY */
 
 .summary{
   display:grid;
-  grid-template-columns:repeat(2,1fr);
+  grid-template-columns:repeat(2,minmax(0,1fr));
   gap:9px;
   margin:14px 0;
 }
@@ -127,6 +107,7 @@ body{
   border:1px solid var(--border);
   border-radius:12px;
   background:var(--panel);
+  min-width:0;
 }
 
 .label{
@@ -140,11 +121,10 @@ body{
   font-size:22px;
   font-weight:900;
   color:var(--white);
+  overflow-wrap:anywhere;
 }
 
-.value.small{
-  font-size:15px;
-}
+.value.small{font-size:15px}
 
 .note{
   margin-top:5px;
@@ -152,26 +132,13 @@ body{
   color:var(--sub);
 }
 
-.up{
-  color:var(--up)!important;
-}
+.up{color:var(--up)!important}
+.down{color:var(--down)!important}
+.flat{color:var(--sub)!important}
 
-.down{
-  color:var(--down)!important;
-}
+/* SEARCH */
 
-.flat{
-  color:var(--sub)!important;
-}
-
-
-/* =========================================================
-   SEARCH
-========================================================= */
-
-.search{
-  margin-bottom:13px;
-}
+.search{margin-bottom:13px}
 
 .search-title{
   font-size:12px;
@@ -215,9 +182,7 @@ body{
   overflow:hidden;
 }
 
-.results.show{
-  display:block;
-}
+.results.show{display:block}
 
 .result{
   display:flex;
@@ -228,20 +193,9 @@ body{
   gap:10px;
 }
 
-.result:last-child{
-  border-bottom:0;
-}
-
-.rname{
-  font-weight:850;
-  color:var(--white);
-}
-
-.rsym{
-  font-size:10px;
-  color:var(--sub);
-  margin-top:2px;
-}
+.result:last-child{border-bottom:0}
+.rname{font-weight:850;color:var(--white)}
+.rsym{font-size:10px;color:var(--sub);margin-top:2px}
 
 .add{
   border:1px solid var(--border);
@@ -249,46 +203,63 @@ body{
   background:var(--panel2);
   color:var(--blue);
   font-weight:800;
+  padding:7px 9px;
 }
 
+/* SINGLE-PANEL DASHBOARD */
 
-/* =========================================================
-   TABS
-========================================================= */
-
-.tabs{
-  display:grid;
-  grid-template-columns:repeat(5,1fr);
-  gap:5px;
-  margin-bottom:15px;
-}
-
-.tab{
-  padding:9px 3px;
+.dashboard-group{
+  margin:14px 0 18px;
+  padding:12px;
   border:1px solid var(--border);
-  border-radius:8px;
-  background:var(--panel);
+  border-radius:13px;
+  background:var(--panel2);
+}
+
+.group-title{
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  gap:8px;
+  margin:0 0 10px;
+  color:var(--white);
+  font-size:16px;
+  font-weight:900;
+}
+
+.group-title span{
   color:var(--sub);
-  font-size:10px;
-  font-weight:850;
+  font-size:11px;
+  font-weight:700;
   white-space:nowrap;
 }
 
-.tab.active{
-  border-color:var(--blue);
-  color:var(--blue);
-  background:rgba(56,189,248,.1);
+.group-cards{
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:8px;
 }
 
+.group-cards .card{
+  margin:0;
+  min-width:0;
+  padding:12px;
+}
 
-/* =========================================================
-   SECTION
-========================================================= */
+.group-cards .name{
+  font-size:18px;
+  overflow-wrap:anywhere;
+}
+
+.group-cards .price{font-size:22px}
+
+/* SECTION */
 
 .section-head{
   display:flex;
   justify-content:space-between;
   align-items:baseline;
+  gap:8px;
   margin:0 2px 9px;
 }
 
@@ -301,12 +272,10 @@ body{
 .count{
   font-size:10px;
   color:var(--sub);
+  white-space:nowrap;
 }
 
-
-/* =========================================================
-   STOCK CARD
-========================================================= */
+/* STOCK CARD */
 
 .card{
   margin-bottom:10px;
@@ -332,6 +301,7 @@ body{
 .price-row{
   display:flex;
   align-items:baseline;
+  flex-wrap:wrap;
   gap:9px;
   margin-top:14px;
 }
@@ -347,10 +317,7 @@ body{
   font-weight:850;
 }
 
-
-/* =========================================================
-   STRENGTH
-========================================================= */
+/* STRENGTH */
 
 .strength{
   display:inline-flex;
@@ -368,35 +335,19 @@ body{
   display:inline-block;
 }
 
-.strength-strong{
-  color:var(--strong);
-}
+.strength-strong{color:var(--strong)}
+.strength-strong .sdot{background:var(--strong)}
 
-.strength-strong .sdot{
-  background:var(--strong);
-}
-
-.strength-neutral{
-  color:var(--neutral);
-}
-
+.strength-neutral{color:var(--neutral)}
 .strength-neutral .sdot{
   background:var(--neutral);
   border:1px solid #64748b;
 }
 
-.strength-weak{
-  color:var(--weak);
-}
+.strength-weak{color:var(--weak)}
+.strength-weak .sdot{background:var(--weak)}
 
-.strength-weak .sdot{
-  background:var(--weak);
-}
-
-
-/* =========================================================
-   AI RECOMMENDATION
-========================================================= */
+/* AI RECOMMENDATION */
 
 .rec{
   margin-top:8px;
@@ -408,10 +359,7 @@ body{
   color:var(--text);
 }
 
-
-/* =========================================================
-   MY LIST
-========================================================= */
+/* MY HOLDINGS */
 
 .hold{
   margin-top:11px;
@@ -421,7 +369,7 @@ body{
 
 .grid2{
   display:grid;
-  grid-template-columns:1fr 1fr;
+  grid-template-columns:repeat(2,minmax(0,1fr));
   gap:8px;
 }
 
@@ -445,7 +393,7 @@ body{
 
 .hold-results{
   display:grid;
-  grid-template-columns:1fr 1fr;
+  grid-template-columns:repeat(2,minmax(0,1fr));
   gap:7px;
   margin-top:8px;
 }
@@ -454,6 +402,7 @@ body{
   padding:8px;
   background:var(--panel2);
   border-radius:7px;
+  min-width:0;
 }
 
 .hr span{
@@ -466,6 +415,7 @@ body{
   display:block;
   margin-top:3px;
   font-size:12px;
+  overflow-wrap:anywhere;
 }
 
 .remove{
@@ -478,10 +428,7 @@ body{
   color:#fca5a5;
 }
 
-
-/* =========================================================
-   EMPTY
-========================================================= */
+/* EMPTY / FOOTER */
 
 .empty{
   padding:30px 15px;
@@ -491,6 +438,7 @@ body{
   color:var(--sub);
   font-size:12px;
   line-height:1.6;
+  grid-column:1/-1;
 }
 
 .footer{
@@ -500,1019 +448,416 @@ body{
   font-size:9px;
 }
 
+@media(max-width:520px){
+  .group-cards{grid-template-columns:1fr}
+}
 
 @media(max-width:430px){
-
-  .latest{
-    font-size:10px;
-  }
-
-  .value{
-    font-size:20px;
-  }
-
-  .tabs{
-    gap:3px;
-  }
-
-  .tab{
-    font-size:9px;
-  }
+  .app{padding:14px 10px 36px}
+  .title{font-size:23px}
+  .latest{font-size:10px}
+  .value{font-size:20px}
+  .summary{gap:7px}
+  .panel{padding:10px}
+  .group-cards .card{padding:12px}
 }
 </style>
 </head>
 
 <body>
-
 <main class="app">
 
 <header>
-
-  <div class="brand">
-    AI MARKET INTELLIGENCE
-  </div>
-
-  <div class="title">
-    台股市場
-  </div>
-
-  <div class="subtitle">
-    今日量化訊號
-  </div>
+  <div class="brand">AI QUANTITATIVE DASHBOARD</div>
+  <div class="title">台股 AI 量化</div>
+  <div class="subtitle">今日大盤・候選股交易計畫・ETF 與債券總覽</div>
 
   <div id="statusbar" class="statusbar">
-
-    <div id="status" class="status">
-      載入中…
-    </div>
-
-    <div id="latest" class="latest">
-      最新交易日：—
-    </div>
-
+    <div id="status" class="status">載入中…</div>
+    <div id="latest" class="latest">最新交易日：—</div>
   </div>
-
 </header>
-
 
 <section class="summary">
 
   <div class="panel">
-
-    <div class="label">
-      今日精選
-    </div>
-
-    <div id="pickCount" class="value">
-      —
-    </div>
-
-    <div class="note">
-      最新交易日篩選結果
-    </div>
-
+    <div class="label">今日精選</div>
+    <div id="pickCount" class="value">—</div>
+    <div class="note">最新交易日篩選結果</div>
   </div>
 
-
   <div class="panel">
-
-    <div class="label">
-      持有個股總盈虧
-    </div>
-
-    <div
-      id="totalPL"
-      class="value small"
-    >
-      尚未建立持倉
-    </div>
-
-    <div
-      id="totalPLNote"
-      class="note"
-    >
-      —
-    </div>
-
+    <div class="label">持有個股總盈虧</div>
+    <div id="totalPL" class="value small">尚未建立持倉</div>
+    <div id="totalPLNote" class="note">—</div>
   </div>
 
-
   <div class="panel">
-
-    <div class="label">
-      加權指數
-    </div>
-
-    <div
-      id="indexValue"
-      class="value"
-    >
-      —
-    </div>
-
-    <div
-      id="indexChange"
-      class="note"
-    >
-      —
-    </div>
-
+    <div class="label">加權指數</div>
+    <div id="indexValue" class="value">—</div>
+    <div id="indexChange" class="note">—</div>
   </div>
 
-
   <div class="panel">
-
-    <div class="label">
-      市場風向
-    </div>
-
-    <div
-      id="sentiment"
-      class="value small"
-    >
-      —
-    </div>
-
-    <div class="note">
-      後端量化結果
-    </div>
-
+    <div class="label">市場風向</div>
+    <div id="sentiment" class="value small">—</div>
+    <div class="note">後端量化結果</div>
   </div>
 
 </section>
 
-
 <section class="search">
-
-  <div class="search-title">
-    🔍 查詢個股
-  </div>
+  <div class="search-title">🔍 查詢個股</div>
 
   <div class="search-row">
-
     <input
       id="searchInput"
       class="search-input"
       placeholder="輸入股票名稱或代號"
       autocomplete="off"
     >
-
-    <button
-      id="searchButton"
-      class="search-button"
-    >
-      查詢
-    </button>
-
+    <button id="searchButton" class="search-button">查詢</button>
   </div>
 
-  <div
-    id="results"
-    class="results"
-  ></div>
-
+  <div id="results" class="results"></div>
 </section>
 
-
-<nav
-  id="tabs"
-  class="tabs"
-  aria-label="主要分頁"
->
-
-  <button
-    class="tab active"
-    data-tab="today_picks"
-  >
-    今日精選
-  </button>
-
-  <button
-    class="tab"
-    data-tab="top10"
-  >
-    Top 10
-  </button>
-
-  <button
-    class="tab"
-    data-tab="etf"
-  >
-    ETF
-  </button>
-
-  <button
-    class="tab"
-    data-tab="bond"
-  >
-    債券
-  </button>
-
-  <button
-    class="tab"
-    data-tab="watchlist"
-  >
-    我的清單
-  </button>
-
-</nav>
-
-
 <section>
-
   <div class="section-head">
-
-    <div
-      id="sectionTitle"
-      class="section-title"
-    >
-      今日精選
-    </div>
-
-    <div
-      id="sectionCount"
-      class="count"
-    >
-      —
-    </div>
-
+    <div id="sectionTitle" class="section-title">今日市場與交易計畫</div>
+    <div id="sectionCount" class="count">—</div>
   </div>
 
   <div id="content"></div>
-
 </section>
 
-
-<div class="footer">
-  資料來源：Data/ui_data.json
-</div>
+<div class="footer">資料來源：Data/ui_data.json</div>
 
 </main>
-
 
 <script>
 "use strict";
 
-const UI_DATA_URL =
-  "Data/ui_data.json";
-
-const STORAGE_KEY =
-  "my_stock_list_v2";
+const UI_DATA_URL = "Data/ui_data.json";
+const STORAGE_KEY = "my_stock_list_v2";
 
 let DATA = null;
 
-let CURRENT_TAB =
-  "today_picks";
-
-
-const TAB_NAMES = {
-  today_picks: "今日精選",
-  top10: "Top 10",
-  etf: "ETF",
-  bond: "債券",
-  watchlist: "我的清單"
-};
-
-
-/* =========================================================
-   SAFE HELPERS
-========================================================= */
+/* SAFE HELPERS */
 
 function esc(value){
-
-  return String(
-    value ?? ""
-  ).replace(
-    /[&<>"']/g,
-    function(char){
-
-      return {
-        "&":"&amp;",
-        "<":"&lt;",
-        ">":"&gt;",
-        "\"":"&quot;",
-        "'":"&#39;"
-      }[char];
-
-    }
-  );
-
+  return String(value ?? "").replace(/[&<>"']/g,function(char){
+    return {
+      "&":"&amp;",
+      "<":"&lt;",
+      ">":"&gt;",
+      "\"":"&quot;",
+      "'":"&#39;"
+    }[char];
+  });
 }
-
 
 function number(value){
-
-  const result =
-    Number(value);
-
-  return Number.isFinite(
-    result
-  )
-    ? result
-    : null;
-
+  const result = Number(value);
+  return Number.isFinite(result) ? result : null;
 }
 
-
 function stocks(){
+  const source = DATA?.stocks;
 
-  const source =
-    DATA?.stocks;
-
-  if(
-    Array.isArray(
-      source
-    )
-  ){
-
+  if(Array.isArray(source)){
     return Object.fromEntries(
-      source.map(
-        item => [
-          String(item.symbol),
-          item
-        ]
-      )
+      source.map(item => [String(item.symbol),item])
     );
-
   }
 
-  if(
-    source &&
-    typeof source === "object"
-  ){
-
+  if(source && typeof source === "object"){
     return source;
-
   }
 
   return {};
-
 }
 
-
-function getStock(
-  symbol
-){
-
-  return stocks()[
-    String(symbol)
-  ] || null;
-
+function getStock(symbol){
+  return stocks()[String(symbol)] || null;
 }
 
+function tabSymbols(tab){
+  const source = DATA?.tabs?.[tab];
 
-function tabSymbols(
-  tab
-){
-
-  const source =
-    DATA?.tabs?.[tab];
-
-  if(
-    !Array.isArray(
-      source
-    )
-  ){
-
+  if(!Array.isArray(source)){
     return [];
-
   }
 
   return source
-    .map(
-      item =>
-        typeof item === "object"
-          ? item.symbol
-          : item
-    )
+    .map(item => typeof item === "object" ? item.symbol : item)
     .filter(Boolean);
-
 }
 
+/* DISPLAY */
 
-/* =========================================================
-   DISPLAY
-========================================================= */
+function priceClass(value){
+  const n = number(value);
 
-function priceClass(
-  value
-){
-
-  const n =
-    number(value);
-
-  if(n > 0){
-    return "up";
-  }
-
-  if(n < 0){
-    return "down";
-  }
-
+  if(n > 0) return "up";
+  if(n < 0) return "down";
   return "flat";
-
 }
 
+function fmtPrice(value){
+  const n = number(value);
 
-function fmtPrice(
-  value
-){
+  if(n === null) return "—";
 
-  const n =
-    number(value);
-
-  if(n === null){
-    return "—";
-  }
-
-  return n.toLocaleString(
-    "zh-TW",
-    {
-      maximumFractionDigits:4
-    }
-  );
-
+  return n.toLocaleString("zh-TW",{
+    maximumFractionDigits:4
+  });
 }
 
+function fmtPct(value){
+  const n = number(value);
 
-function fmtPct(
-  value
-){
+  if(n === null) return "—";
 
-  const n =
-    number(value);
-
-  if(n === null){
-    return "—";
-  }
-
-  return (
-    n > 0 ? "+" : ""
-  )
-  + n.toFixed(2)
-  + "%";
-
+  return (n > 0 ? "+" : "") + n.toFixed(2) + "%";
 }
 
+/* STRENGTH */
 
-/* =========================================================
-   STRENGTH
-========================================================= */
-
-function strengthClass(
-  value
-){
-
-  if(
-    value === "強勢"
-  ){
-
-    return "strength-strong";
-
-  }
-
-  if(
-    value === "弱勢"
-  ){
-
-    return "strength-weak";
-
-  }
-
+function strengthClass(value){
+  if(value === "強勢") return "strength-strong";
+  if(value === "弱勢") return "strength-weak";
   return "strength-neutral";
-
 }
 
-
-function strengthText(
-  value
-){
-
-  if(
-    value === "強勢"
-  ){
-
-    return "🔴 強勢";
-
-  }
-
-  if(
-    value === "弱勢"
-  ){
-
-    return "🟢 弱勢";
-
-  }
-
+function strengthText(value){
+  if(value === "強勢") return "🔴 強勢";
+  if(value === "弱勢") return "🟢 弱勢";
   return "⚪ 中性";
-
 }
 
+/* MARKET SENTIMENT */
 
-/* =========================================================
-   MARKET SENTIMENT
-========================================================= */
+function sentimentText(value){
+  const source = typeof value === "object"
+    ? (value.level || value.label || value.status)
+    : value;
 
-function sentimentText(
-  value
-){
-
-  const source =
-    typeof value === "object"
-      ? (
-          value.level
-          ||
-          value.label
-          ||
-          value.status
-        )
-      : value;
-
-  const text =
-    String(
-      source || ""
-    ).toLowerCase();
+  const text = String(source || "").toLowerCase();
 
   if(
-    text.includes("bull")
-    ||
-    String(source).includes("偏多")
-    ||
+    text.includes("bull") ||
+    String(source).includes("偏多") ||
     String(source).includes("多頭")
   ){
-
     return "🟢 偏多";
-
   }
 
   if(
-    text.includes("bear")
-    ||
-    String(source).includes("偏弱")
-    ||
+    text.includes("bear") ||
+    String(source).includes("偏弱") ||
     String(source).includes("空頭")
   ){
-
     return "🔴 偏弱";
-
   }
 
   return "🟡 中性";
-
 }
 
+/* MARKET STATUS */
 
-/* =========================================================
-   MARKET STATUS
-========================================================= */
-
-function marketStatus(
-  value
-){
-
-  const text =
-    String(
-      value || ""
-    ).toLowerCase();
+function marketStatus(value){
+  const text = String(value || "").toLowerCase();
 
   if(
-    text.includes("open")
-    ||
-    text.includes("開市")
-    ||
+    text.includes("open") ||
+    text.includes("開市") ||
     text.includes("交易")
   ){
-
-    return [
-      "open",
-      "🟢 今日開市"
-    ];
-
+    return ["open","🟢 今日開市"];
   }
 
-  return [
-    "closed",
-    "🔴 非交易日"
-  ];
-
+  return ["closed","🔴 非交易日"];
 }
 
-
-/* =========================================================
-   LOCAL STORAGE
-========================================================= */
+/* LOCAL STORAGE */
 
 function readList(){
-
   try{
+    const data = JSON.parse(
+      localStorage.getItem(STORAGE_KEY) || "[]"
+    );
 
-    const data =
-      JSON.parse(
-        localStorage.getItem(
-          STORAGE_KEY
-        ) || "[]"
-      );
-
-    return Array.isArray(
-      data
-    )
-      ? data
-      : [];
-
+    return Array.isArray(data) ? data : [];
   }catch{
-
     return [];
-
   }
-
 }
 
-
-function writeList(
-  value
-){
-
-  localStorage.setItem(
-    STORAGE_KEY,
-    JSON.stringify(value)
-  );
-
+function writeList(value){
+  localStorage.setItem(STORAGE_KEY,JSON.stringify(value));
 }
 
-
-function holding(
-  symbol
-){
-
+function holding(symbol){
   return (
     readList().find(
-      item =>
-        String(
-          item.symbol
-        )
-        ===
-        String(symbol)
-    )
-    ||
+      item => String(item.symbol) === String(symbol)
+    ) ||
     {
       symbol,
       shares:0,
       cost:0
     }
   );
-
 }
 
-
-function saveHolding(
-  symbol,
-  shares,
-  cost
-){
-
-  let list =
-    readList().filter(
-      item =>
-        String(
-          item.symbol
-        )
-        !==
-        String(symbol)
-    );
-
-  if(
-    shares > 0 ||
-    cost > 0
-  ){
-
-    list.push({
-      symbol,
-      shares,
-      cost
-    });
-
-  }
-
-  writeList(
-    list
+function saveHolding(symbol,shares,cost){
+  let list = readList().filter(
+    item => String(item.symbol) !== String(symbol)
   );
 
+  if(shares > 0 || cost > 0){
+    list.push({symbol,shares,cost});
+  }
+
+  writeList(list);
 }
 
-
-function removeHolding(
-  symbol
-){
-
+function removeHolding(symbol){
   writeList(
     readList().filter(
-      item =>
-        String(
-          item.symbol
-        )
-        !==
-        String(symbol)
+      item => String(item.symbol) !== String(symbol)
     )
   );
 
   render();
-
   updatePortfolio();
-
 }
 
+function addToList(symbol){
+  const stock = getStock(symbol);
 
-function addToList(
-  symbol
-){
+  if(!stock) return;
 
-  const stock =
-    getStock(symbol);
+  const list = readList();
 
-  if(!stock){
-    return;
-  }
-
-  const list =
-    readList();
-
-  if(
-    !list.some(
-      item =>
-        String(
-          item.symbol
-        )
-        ===
-        String(symbol)
-    )
-  ){
-
+  if(!list.some(item => String(item.symbol) === String(symbol))){
     list.push({
       symbol,
       shares:0,
       cost:0
     });
-
   }
 
-  writeList(
-    list
-  );
-
-  CURRENT_TAB =
-    "watchlist";
-
-  syncTabs();
-
+  writeList(list);
   render();
-
   updatePortfolio();
-
 }
 
+/* MY LIST RECOMMENDATION */
 
-/* =========================================================
-   MY LIST RECOMMENDATION
-========================================================= */
-
-function myRecommendation(
-  stock,
-  holdingData,
-  roi
-){
-
+function myRecommendation(stock,holdingData,roi){
   if(
-    holdingData.shares > 0
-    &&
+    holdingData.shares > 0 &&
     stock.strength === "弱勢"
   ){
-
     return "考慮減碼";
-
   }
 
   if(
-    holdingData.shares > 0
-    &&
+    holdingData.shares > 0 &&
     roi >= 20
   ){
-
     return "持有觀察，不追價";
-
   }
 
-  if(
-    stock.strength === "強勢"
-  ){
-
+  if(stock.strength === "強勢"){
     return "偏多，可分批加碼";
-
   }
 
-  if(
-    stock.strength === "弱勢"
-  ){
-
+  if(stock.strength === "弱勢"){
     return "暫停加碼";
-
   }
 
   return "暫停加碼";
-
 }
 
+/* MONEY */
 
-/* =========================================================
-   MONEY
-========================================================= */
+function fmtMoney(value){
+  const n = number(value);
 
-function fmtMoney(
-  value
-){
+  if(n === null) return "—";
 
-  const n =
-    number(value);
-
-  if(n === null){
-    return "—";
-  }
-
-  return (
-    n >= 0
-      ? "+"
-      : ""
-  )
-  +
-  Math.round(
-    n
-  ).toLocaleString(
-    "zh-TW"
-  )
-  +
-  " 元";
-
+  return (n >= 0 ? "+" : "") +
+    Math.round(n).toLocaleString("zh-TW") +
+    " 元";
 }
 
+/* STOCK CARD */
 
-/* =========================================================
-   CARD
-========================================================= */
+function card(symbol,isWatch){
+  const stock = getStock(symbol);
 
-function card(
-  symbol,
-  isWatch
-){
+  if(!stock) return "";
 
-  const stock =
-    getStock(symbol);
-
-  if(!stock){
-    return "";
-  }
-
-  const h =
-    isWatch
-      ? holding(symbol)
-      : null;
+  const h = isWatch ? holding(symbol) : null;
 
   const roi =
-    h
-    &&
-    h.shares > 0
-    &&
-    h.cost > 0
-    &&
+    h &&
+    h.shares > 0 &&
+    h.cost > 0 &&
     number(stock.price) !== null
-
-      ? (
-          (
-            number(stock.price)
-            -
-            h.cost
-          )
-          /
-          h.cost
-          *
-          100
-        )
-
+      ? ((number(stock.price) - h.cost) / h.cost * 100)
       : 0;
-
 
   const pl =
-    h
-    &&
-    h.shares > 0
-    &&
+    h &&
+    h.shares > 0 &&
     number(stock.price) !== null
-
-      ? (
-          number(stock.price)
-          -
-          h.cost
-        )
-        *
-        h.shares
-
+      ? (number(stock.price) - h.cost) * h.shares
       : 0;
 
-
-  const recommendation =
-    isWatch
-
-      ? myRecommendation(
-          stock,
-          h,
-          roi
-        )
-
-      : stock.recommendation;
-
+  const recommendation = isWatch
+    ? myRecommendation(stock,h,roi)
+    : stock.recommendation;
 
   return `
-
 <article class="card">
 
-  <div class="name">
-    ${esc(
-      stock.name ||
-      symbol
-    )}
-  </div>
-
-  <div class="symbol">
-    ${esc(symbol)}
-  </div>
+  <div class="name">${esc(stock.name || symbol)}</div>
+  <div class="symbol">${esc(symbol)}</div>
 
   <div class="price-row">
-
-    <div class="price">
-      ${fmtPrice(
-        stock.price
-      )}
+    <div class="price">${fmtPrice(stock.price)}</div>
+    <div class="change ${priceClass(stock.change_pct)}">
+      ${fmtPct(stock.change_pct)}
     </div>
-
-    <div
-      class="change ${priceClass(
-        stock.change_pct
-      )}"
-    >
-      ${fmtPct(
-        stock.change_pct
-      )}
-    </div>
-
   </div>
 
-
-  <div
-    class="strength ${strengthClass(
-      stock.strength
-    )}"
-  >
-
+  <div class="strength ${strengthClass(stock.strength)}">
     <span class="sdot"></span>
-
-    ${esc(
-      strengthText(
-        stock.strength
-      ).slice(2)
-    )}
-
+    ${esc(strengthText(stock.strength).slice(2))}
   </div>
-
 
   ${
     recommendation
-
       ? `
-      <div class="rec">
-        AI 建議：
-        ${esc(
-          recommendation
-        )}
-      </div>
+        <div class="rec">
+          AI 建議：${esc(recommendation)}
+        </div>
       `
-
       : ""
   }
 
-
   ${
     isWatch
-
       ? `
-
 <div class="hold">
 
   <div class="grid2">
-
     <div class="input">
-
-      <label>
-        持有股數
-      </label>
-
+      <label>持有股數</label>
       <input
         type="number"
         min="0"
@@ -1521,16 +866,10 @@ function card(
         data-field="shares"
         data-symbol="${esc(symbol)}"
       >
-
     </div>
 
-
     <div class="input">
-
-      <label>
-        平均成本
-      </label>
-
+      <label>平均成本</label>
       <input
         type="number"
         min="0"
@@ -1539,819 +878,346 @@ function card(
         data-field="cost"
         data-symbol="${esc(symbol)}"
       >
-
     </div>
-
   </div>
-
 
   <div class="hold-results">
-
     <div class="hr">
       <span>市值</span>
-      <b>
-        ${fmtMoney(
-          (
-            number(
-              stock.price
-            ) || 0
-          )
-          *
-          (
-            h.shares || 0
-          )
-        )}
-      </b>
+      <b>${fmtMoney((number(stock.price) || 0) * (h.shares || 0))}</b>
     </div>
-
 
     <div class="hr">
-
-      <span>
-        損益
-      </span>
-
-      <b
-        class="${
-          pl > 0
-            ? "up"
-            : pl < 0
-              ? "down"
-              : ""
-        }"
-      >
-        ${fmtMoney(pl)}
-      </b>
-
+      <span>損益</span>
+      <b class="${
+        pl > 0 ? "up" : pl < 0 ? "down" : ""
+      }">${fmtMoney(pl)}</b>
     </div>
-
 
     <div class="hr">
-
-      <span>
-        報酬率
-      </span>
-
-      <b
-        class="${
-          roi > 0
-            ? "up"
-            : roi < 0
-              ? "down"
-              : ""
-        }"
-      >
-        ${roi.toFixed(2)}%
-      </b>
-
+      <span>報酬率</span>
+      <b class="${
+        roi > 0 ? "up" : roi < 0 ? "down" : ""
+      }">${roi.toFixed(2)}%</b>
     </div>
-
 
     <div class="hr">
-
-      <span>
-        狀態
-      </span>
-
-      <b>
-        ${esc(
-          recommendation
-        )}
-      </b>
-
+      <span>狀態</span>
+      <b>${esc(recommendation)}</b>
     </div>
-
   </div>
 
-
-  <button
-    class="remove"
-    data-remove="${esc(symbol)}"
-  >
+  <button class="remove" data-remove="${esc(symbol)}">
     移除我的清單
   </button>
 
 </div>
-
       `
-
       : ""
   }
 
 </article>
-
 `;
-
 }
 
-
-/* =========================================================
-   RENDER
-========================================================= */
+/* SINGLE-PANEL RENDER */
 
 function render(){
+  const picks = tabSymbols("today_picks");
+  const top10 = tabSymbols("top10");
+  const etfs = tabSymbols("etf");
+  const bonds = tabSymbols("bond");
 
-  const symbols =
-    tabSymbols(
-      CURRENT_TAB
-    );
+  const watch = readList()
+    .map(item => String(item.symbol || item.code || ""))
+    .filter(Boolean);
 
-  document
-    .getElementById(
-      "sectionTitle"
-    )
-    .textContent =
-      TAB_NAMES[
-        CURRENT_TAB
-      ];
+  const group = (
+    title,
+    symbols,
+    isWatch = false,
+    emptyText = "目前沒有資料"
+  ) => {
+    const unique = [...new Set(symbols)];
 
-  document
-    .getElementById(
-      "sectionCount"
-    )
-    .textContent =
-      `${symbols.length} 檔`;
-
-
-  if(
-    CURRENT_TAB ===
-    "watchlist"
-    &&
-    symbols.length === 0
-  ){
-
-    document
-      .getElementById(
-        "content"
-      )
-      .innerHTML = `
-        <div class="empty">
-          我的清單目前是空的。<br>
-          請先用上方搜尋功能加入個股。
+    return `
+      <section class="dashboard-group">
+        <div class="group-title">
+          ${esc(title)}
+          <span>${unique.length} 檔</span>
         </div>
-      `;
 
-    return;
-
-  }
-
-
-  document
-    .getElementById(
-      "content"
-    )
-    .innerHTML =
-      symbols
-        .map(
-          symbol =>
-            card(
-              symbol,
-              CURRENT_TAB ===
-                "watchlist"
-            )
-        )
-        .join("")
-      ||
-      `
-      <div class="empty">
-        目前沒有符合條件的資料。
-      </div>
-      `;
-
-
-  document
-    .querySelectorAll(
-      "[data-field]"
-    )
-    .forEach(
-      input => {
-
-        input.addEventListener(
-          "change",
-          function(){
-
-            const h =
-              holding(
-                input.dataset.symbol
-              );
-
-            h[
-              input.dataset.field
-            ] =
-              Math.max(
-                0,
-                Number(
-                  input.value
-                ) || 0
-              );
-
-            saveHolding(
-              input.dataset.symbol,
-              h.shares,
-              h.cost
-            );
-
-            render();
-
-            updatePortfolio();
-
+        <div class="group-cards">
+          ${
+            unique.length
+              ? unique.map(symbol => card(symbol,isWatch)).join("")
+              : `<div class="empty">${esc(emptyText)}</div>`
           }
-        );
+        </div>
+      </section>
+    `;
+  };
 
-      }
+  document.getElementById("sectionTitle").textContent =
+    "今日市場與交易計畫";
+
+  document.getElementById("sectionCount").textContent =
+    `${picks.length} 檔候選股`;
+
+  document.getElementById("content").innerHTML =
+    group(
+      "今日精選候選股",
+      picks,
+      false,
+      "今日沒有符合條件的候選股。"
+    ) +
+    group(
+      "Top 10",
+      top10,
+      false,
+      "目前沒有 Top 10 資料。"
+    ) +
+    group(
+      "ETF 清單",
+      etfs,
+      false,
+      "目前沒有 ETF 資料。"
+    ) +
+    group(
+      "債券 ETF 清單",
+      bonds,
+      false,
+      "目前沒有債券 ETF 資料。"
+    ) +
+    group(
+      "我的持倉清單",
+      watch,
+      true,
+      "尚未加入持倉；可使用上方查詢個股加入。"
     );
 
+  document.querySelectorAll("[data-field]").forEach(input => {
+    input.addEventListener("change",function(){
+      const h = holding(input.dataset.symbol);
 
-  document
-    .querySelectorAll(
-      "[data-remove]"
-    )
-    .forEach(
-      button => {
-
-        button.addEventListener(
-          "click",
-          function(){
-
-            removeHolding(
-              button.dataset.remove
-            );
-
-          }
-        );
-
-      }
-    );
-
-}
-
-
-/* =========================================================
-   TAB
-========================================================= */
-
-function syncTabs(){
-
-  document
-    .querySelectorAll(
-      ".tab"
-    )
-    .forEach(
-      button => {
-
-        button.classList.toggle(
-          "active",
-          button.dataset.tab ===
-            CURRENT_TAB
-        );
-
-      }
-    );
-
-}
-
-
-/* =========================================================
-   PORTFOLIO
-========================================================= */
-
-function updatePortfolio(){
-
-  const list =
-    readList();
-
-  let totalValue = 0;
-
-  let totalPL = 0;
-
-
-  for(
-    const item of list
-  ){
-
-    const stock =
-      getStock(
-        item.symbol
+      h[input.dataset.field] = Math.max(
+        0,
+        Number(input.value) || 0
       );
 
+      saveHolding(
+        input.dataset.symbol,
+        h.shares,
+        h.cost
+      );
+
+      render();
+      updatePortfolio();
+    });
+  });
+
+  document.querySelectorAll("[data-remove]").forEach(button => {
+    button.addEventListener("click",function(){
+      removeHolding(button.dataset.remove);
+    });
+  });
+}
+
+/* PORTFOLIO */
+
+function updatePortfolio(){
+  const list = readList();
+
+  let totalValue = 0;
+  let totalPL = 0;
+
+  for(const item of list){
+    const stock = getStock(item.symbol);
+
     if(
-      !stock
-      ||
-      !(item.shares > 0)
-      ||
+      !stock ||
+      !(item.shares > 0) ||
       !(item.cost > 0)
     ){
       continue;
     }
 
-    const price =
-      number(
-        stock.price
-      );
+    const price = number(stock.price);
 
-    if(
-      price === null
-    ){
-      continue;
-    }
+    if(price === null) continue;
 
-    totalValue +=
-      price *
-      item.shares;
+    totalValue += price * item.shares;
 
-    totalPL +=
-      (
-        price -
-        item.cost
-      )
-      *
-      item.shares;
-
+    totalPL += (price - item.cost) * item.shares;
   }
 
+  const hasHolding = list.some(
+    item => item.shares > 0 && item.cost > 0
+  );
 
-  const hasHolding =
-    list.some(
-      item =>
-        item.shares > 0
-        &&
-        item.cost > 0
-    );
-
-
-  const element =
-    document.getElementById(
-      "totalPL"
-    );
-
+  const element = document.getElementById("totalPL");
 
   if(!hasHolding){
+    element.textContent = "尚未建立持倉";
+    element.className = "value small";
 
-    element.textContent =
-      "尚未建立持倉";
-
-    element.className =
-      "value small";
-
-    document
-      .getElementById(
-        "totalPLNote"
-      )
-      .textContent =
-        "—";
+    document.getElementById("totalPLNote").textContent = "—";
 
     return;
-
   }
 
+  element.textContent = fmtMoney(totalPL);
 
-  element.textContent =
-    fmtMoney(
-      totalPL
-    );
+  element.className = `value small ${
+    totalPL > 0
+      ? "up"
+      : totalPL < 0
+        ? "down"
+        : "flat"
+  }`;
 
-  element.className =
-    `value small ${
-      totalPL > 0
-        ? "up"
-        : totalPL < 0
-          ? "down"
-          : "flat"
-    }`;
-
-
-  document
-    .getElementById(
-      "totalPLNote"
-    )
-    .textContent =
-      `持倉市值 ${
-        Math.round(
-          totalValue
-        ).toLocaleString(
-          "zh-TW"
-        )
-      } 元`;
-
+  document.getElementById("totalPLNote").textContent =
+    `持倉市值 ${Math.round(totalValue).toLocaleString("zh-TW")} 元`;
 }
 
-
-/* =========================================================
-   SEARCH
-========================================================= */
+/* SEARCH */
 
 function search(){
+  const query = document
+    .getElementById("searchInput")
+    .value
+    .trim()
+    .toLowerCase();
 
-  const query =
-    document
-      .getElementById(
-        "searchInput"
-      )
-      .value
-      .trim()
-      .toLowerCase();
-
-
-  const box =
-    document.getElementById(
-      "results"
-    );
-
+  const box = document.getElementById("results");
 
   if(!query){
-
-    box.classList.remove(
-      "show"
-    );
-
-    box.innerHTML =
-      "";
-
+    box.classList.remove("show");
+    box.innerHTML = "";
     return;
-
   }
 
-
-  const hits =
-    Object.values(
-      stocks()
+  const hits = Object.values(stocks())
+    .filter(stock =>
+      String(stock.symbol).toLowerCase().includes(query) ||
+      String(stock.name || "").toLowerCase().includes(query)
     )
-    .filter(
-      stock =>
+    .slice(0,10);
 
-        String(
-          stock.symbol
-        )
-        .toLowerCase()
-        .includes(
-          query
-        )
-
-        ||
-
-        String(
-          stock.name || ""
-        )
-        .toLowerCase()
-        .includes(
-          query
-        )
-    )
-    .slice(
-      0,
-      10
-    );
-
-
-  box.innerHTML =
-    hits.length
-
-      ? hits
-          .map(
-            stock => `
-
-<div class="result">
-
-  <div>
-
-    <div class="rname">
-      ${esc(
-        stock.name
-      )}
-    </div>
-
-    <div class="rsym">
-      ${esc(
-        stock.symbol
-      )}
-    </div>
-
-  </div>
-
-
-  <button
-    class="add"
-    data-add="${esc(
-      stock.symbol
-    )}"
-  >
-    ＋加入我的清單
-  </button>
-
-</div>
-
-            `
-          )
-          .join("")
-
-      : `
+  box.innerHTML = hits.length
+    ? hits.map(stock => `
         <div class="result">
-          <div class="rsym">
-            查無符合的股票名稱或代號。
+          <div>
+            <div class="rname">${esc(stock.name)}</div>
+            <div class="rsym">${esc(stock.symbol)}</div>
           </div>
+
+          <button class="add" data-add="${esc(stock.symbol)}">
+            ＋加入我的清單
+          </button>
+        </div>
+      `).join("")
+    : `
+        <div class="result">
+          <div class="rsym">查無符合的股票名稱或代號。</div>
         </div>
       `;
 
+  box.classList.add("show");
 
-  box.classList.add(
-    "show"
-  );
-
-
-  box
-    .querySelectorAll(
-      "[data-add]"
-    )
-    .forEach(
-      button => {
-
-        button.addEventListener(
-          "click",
-          function(){
-
-            addToList(
-              button.dataset.add
-            );
-
-          }
-        );
-
-      }
-    );
-
+  box.querySelectorAll("[data-add]").forEach(button => {
+    button.addEventListener("click",function(){
+      addToList(button.dataset.add);
+    });
+  });
 }
 
-
-/* =========================================================
-   BOOT
-========================================================= */
+/* BOOT */
 
 function boot(){
+  const market = DATA.market || {};
 
-  const market =
-    DATA.market || {};
+  const [statusClass,statusText] = marketStatus(market.status);
 
+  const statusBar = document.getElementById("statusbar");
+  statusBar.className = `statusbar ${statusClass}`;
 
-  const [
-    statusClass,
-    statusText
-  ] =
-    marketStatus(
-      market.status
-    );
+  document.getElementById("status").innerHTML = `
+    <span class="dot"></span>
+    ${statusText}
+  `;
 
+  document.getElementById("latest").textContent =
+    `最新交易日：${market.latest_trading_date || "—"}`;
 
-  const statusBar =
-    document.getElementById(
-      "statusbar"
-    );
+  document.getElementById("pickCount").textContent =
+    String(tabSymbols("today_picks").length);
 
+  const index = market.index || {};
 
-  statusBar.className =
-    `statusbar ${
-      statusClass
-    }`;
+  document.getElementById("indexValue").textContent =
+    fmtPrice(index.value ?? index.close ?? index.price);
 
+  document.getElementById("indexChange").textContent =
+    `${fmtPrice(index.change)} ${fmtPct(index.change_pct)}`;
 
-  document
-    .getElementById(
-      "status"
-    )
-    .innerHTML = `
-      <span class="dot"></span>
-      ${statusText}
-    `;
+  document.getElementById("indexChange").className =
+    `note ${priceClass(index.change_pct)}`;
 
-
-  document
-    .getElementById(
-      "latest"
-    )
-    .textContent =
-      `最新交易日：${
-        market.latest_trading_date
-        || "—"
-      }`;
-
-
-  document
-    .getElementById(
-      "pickCount"
-    )
-    .textContent =
-      String(
-        tabSymbols(
-          "today_picks"
-        ).length
-      );
-
-
-  const index =
-    market.index || {};
-
-
-  document
-    .getElementById(
-      "indexValue"
-    )
-    .textContent =
-      fmtPrice(
-        index.value
-        ??
-        index.close
-        ??
-        index.price
-      );
-
-
-  document
-    .getElementById(
-      "indexChange"
-    )
-    .textContent =
-      `${
-        fmtPrice(
-          index.change
-        )
-      } ${
-        fmtPct(
-          index.change_pct
-        )
-      }`;
-
-
-  document
-    .getElementById(
-      "indexChange"
-    )
-    .className =
-      `note ${
-        priceClass(
-          index.change_pct
-        )
-      }`;
-
-
-  document
-    .getElementById(
-      "sentiment"
-    )
-    .textContent =
-      sentimentText(
-        market.sentiment
-      );
-
-
-  syncTabs();
+  document.getElementById("sentiment").textContent =
+    sentimentText(market.sentiment);
 
   render();
-
   updatePortfolio();
-
 }
 
-
-/* =========================================================
-   LOAD UI DATA
-========================================================= */
+/* LOAD UI DATA */
 
 async function load(){
-
   try{
+    const response = await fetch(
+      `${UI_DATA_URL}?t=${Date.now()}`,
+      {cache:"no-store"}
+    );
 
-    const response =
-      await fetch(
-        `${UI_DATA_URL}?t=${Date.now()}`,
-        {
-          cache:"no-store"
-        }
-      );
-
-
-    if(
-      !response.ok
-    ){
-
-      throw new Error(
-        `HTTP ${response.status}`
-      );
-
+    if(!response.ok){
+      throw new Error(`HTTP ${response.status}`);
     }
 
+    DATA = await response.json();
 
-    DATA =
-      await response.json();
-
-
-    if(
-      !DATA
-      ||
-      !DATA.stocks
-      ||
-      !DATA.tabs
-    ){
-
-      throw new Error(
-        "UI-DATA schema invalid"
-      );
-
+    if(!DATA || !DATA.stocks || !DATA.tabs){
+      throw new Error("UI-DATA schema invalid");
     }
-
 
     boot();
 
-
   }catch(error){
-
-    document
-      .getElementById(
-        "content"
-      )
-      .innerHTML = `
-        <div class="empty">
-          資料載入失敗。<br>
-          ${esc(
-            error.message
-          )}
-        </div>
-      `;
-
+    document.getElementById("content").innerHTML = `
+      <div class="empty">
+        資料載入失敗。<br>
+        ${esc(error.message)}
+      </div>
+    `;
   }
-
 }
 
+/* EVENTS */
 
-/* =========================================================
-   EVENTS
-========================================================= */
+document.getElementById("searchButton").addEventListener("click",search);
 
-document
-  .getElementById(
-    "searchButton"
-  )
-  .addEventListener(
-    "click",
-    search
-  );
-
-
-document
-  .getElementById(
-    "searchInput"
-  )
-  .addEventListener(
-    "keydown",
-    function(event){
-
-      if(
-        event.key === "Enter"
-      ){
-
-        search();
-
-      }
-
+document.getElementById("searchInput").addEventListener(
+  "keydown",
+  function(event){
+    if(event.key === "Enter"){
+      search();
     }
-  );
+  }
+);
 
-
-document
-  .getElementById(
-    "searchInput"
-  )
-  .addEventListener(
-    "input",
-    search
-  );
-
-
-document
-  .querySelectorAll(
-    ".tab"
-  )
-  .forEach(
-    button => {
-
-      button.addEventListener(
-        "click",
-        function(){
-
-          CURRENT_TAB =
-            button.dataset.tab;
-
-          syncTabs();
-
-          render();
-
-        }
-      );
-
-    }
-  );
-
+document.getElementById("searchInput").addEventListener("input",search);
 
 load();
-
 </script>
 
 </body>
