@@ -1,6 +1,6 @@
 {
   "version": "UNIVERSE-CHIP-4.0",
-  "generated_at": "2026-10-28T22:43:59+08:00",
+  "generated_at": "2026-10-28T23:28:27+08:00",
   "latest_trade_date": "2026-10-28",
   "universe_count": 2316,
   "stock_count": 1953,
@@ -104,16 +104,16 @@
     },
     "TPEX_VOLUME": {
       "requests": 20,
-      "success": 19,
-      "request_error": 1,
+      "success": 20,
+      "request_error": 0,
       "json_error": 0,
       "empty": 0,
-      "schema_error": 19,
+      "schema_error": 20,
       "records": 0,
       "dates_with_records": 0,
-      "last_error": "Response ended prematurely",
-      "status": "request_error",
-      "request_success_rate": 0.95
+      "last_error": null,
+      "status": "schema_error",
+      "request_success_rate": 1.0
     },
     "TPEX_DAYTRADE": {
       "requests": 20,
