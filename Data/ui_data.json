@@ -1,6 +1,6 @@
 {
   "schema_version": "UI-DATA-3.1",
-  "generated_at": "2026-10-28T15:57:46.308410+00:00",
+  "generated_at": "2026-10-28T16:53:32.229962+00:00",
   "status": "ok",
   "market": {
     "name": "台股市場",
@@ -51370,17 +51370,17 @@
       "industry": "Others",
       "price": 12.15,
       "change": null,
-      "change_pct": 6.58,
+      "change_pct": 0.0,
       "strength": "弱勢",
       "recommendation": "續抱觀察",
       "technical": {
-        "ma20": 12.41,
+        "ma20": 12.43,
         "weekly_ma20": null,
         "rsi": 51.82,
         "kd_k": null,
         "kd_d": null,
         "macd": null,
-        "volume": 2000.0
+        "volume": 0.0
       },
       "entry_timing": {
         "status": "observe",
@@ -58749,7 +58749,7 @@
       "strength": "弱勢",
       "recommendation": "續抱觀察",
       "technical": {
-        "ma20": 15.61,
+        "ma20": 14.99,
         "weekly_ma20": null,
         "rsi": 20.74,
         "kd_k": null,
@@ -70257,9 +70257,9 @@
       "strength": "弱勢",
       "recommendation": "續抱觀察",
       "technical": {
-        "ma20": 10.49,
+        "ma20": 10.58,
         "weekly_ma20": null,
-        "rsi": 46.35,
+        "rsi": 46.25,
         "kd_k": null,
         "kd_d": null,
         "macd": null,
@@ -99877,7 +99877,7 @@
       "technical": {
         "ma20": 28.08,
         "weekly_ma20": null,
-        "rsi": 50.6,
+        "rsi": 50.37,
         "kd_k": null,
         "kd_d": null,
         "macd": null,
@@ -100756,17 +100756,17 @@
       "industry": "Building Material&Construction",
       "price": 34.2,
       "change": null,
-      "change_pct": 0.59,
-      "strength": "強勢",
+      "change_pct": 0.0,
+      "strength": "弱勢",
       "recommendation": "續抱觀察",
       "technical": {
-        "ma20": 32.54,
+        "ma20": 32.89,
         "weekly_ma20": null,
         "rsi": 69.56,
         "kd_k": null,
         "kd_d": null,
         "macd": null,
-        "volume": 6000.0
+        "volume": 0.0
       },
       "entry_timing": {
         "status": "observe",
@@ -102113,11 +102113,11 @@
       "industry": "Digital and Cloud Services",
       "price": 17.3,
       "change": null,
-      "change_pct": -0.0,
+      "change_pct": 0.0,
       "strength": "弱勢",
       "recommendation": "續抱觀察",
       "technical": {
-        "ma20": 16.85,
+        "ma20": 16.94,
         "weekly_ma20": null,
         "rsi": 52.16,
         "kd_k": null,
@@ -108135,7 +108135,7 @@
       "strength": "弱勢",
       "recommendation": "續抱觀察",
       "technical": {
-        "ma20": 38.92,
+        "ma20": 38.26,
         "weekly_ma20": null,
         "rsi": 23.83,
         "kd_k": null,
@@ -124065,9 +124065,9 @@
       "strength": "弱勢",
       "recommendation": "續抱觀察",
       "technical": {
-        "ma20": 105.53,
+        "ma20": 105.62,
         "weekly_ma20": null,
-        "rsi": 36.04,
+        "rsi": 35.22,
         "kd_k": null,
         "kd_d": null,
         "macd": null,
@@ -133508,9 +133508,9 @@
       "strength": "弱勢",
       "recommendation": "續抱觀察",
       "technical": {
-        "ma20": 22.14,
+        "ma20": 21.96,
         "weekly_ma20": null,
-        "rsi": 38.73,
+        "rsi": 39.14,
         "kd_k": null,
         "kd_d": null,
         "macd": null,
