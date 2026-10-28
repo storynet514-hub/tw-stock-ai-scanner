@@ -29,7 +29,9 @@ BUYABLE = {'偏多，可分批', '積極關注', '續抱觀察'}
 
 
 def clean(v: Any) -> str:
-    return '' if v is None else re.sub(r'\s+', ' ', str(v).replace('\ufeff', '')).strip()
+    return '' if v is None else re.sub(
+        r'\s+', ' ', str(v).replace('\ufeff', '')
+    ).strip()
 
 
 def symbol(v: Any) -> str:
@@ -42,7 +44,9 @@ def symbol(v: Any) -> str:
 
 def num(v: Any):
     try:
-        if v is None or isinstance(v, bool) or str(v).strip() in ('', '--', '—', 'N/A'):
+        if v is None or isinstance(v, bool) or str(v).strip() in (
+            '', '--', '—', 'N/A'
+        ):
             return None
         n = float(str(v).replace(',', '').replace('%', ''))
         return n if math.isfinite(n) else None
@@ -73,16 +77,21 @@ def stocks_from(path: Path):
     root = read(path)
     if not isinstance(root, dict) or not isinstance(root.get('stocks'), dict):
         raise RuntimeError(f'{path.name} 缺少 stocks object')
+
     result = {}
     for k, v in root['stocks'].items():
         if not isinstance(v, dict):
             continue
+
         code = symbol(k)
         if not code or code in result:
             raise RuntimeError(f'{path.name} 無效或重複代號：{k}')
+
         result[code] = v
+
     if not result:
         raise RuntimeError(f'{path.name} 無有效商品')
+
     return root, result
 
 
@@ -93,12 +102,20 @@ def atomic_write(path: Path, payload: dict):
         suffix='.tmp',
         dir=str(path.parent),
     )
+
     try:
         with os.fdopen(fd, 'w', encoding='utf-8') as f:
-            json.dump(payload, f, ensure_ascii=False, indent=2, allow_nan=False)
+            json.dump(
+                payload,
+                f,
+                ensure_ascii=False,
+                indent=2,
+                allow_nan=False,
+            )
             f.write('\n')
             f.flush()
             os.fsync(f.fileno())
+
         os.replace(tmp, path)
     finally:
         Path(tmp).unlink(missing_ok=True)
@@ -106,9 +123,9 @@ def atomic_write(path: Path, payload: dict):
 
 def kind(u: dict) -> str:
     raw = clean(
-        u.get('type') or
-        u.get('official_type') or
-        u.get('security_type')
+        u.get('type')
+        or u.get('official_type')
+        or u.get('security_type')
     ).upper()
 
     if raw in ('STOCK', 'STOCKS'):
@@ -120,9 +137,9 @@ def kind(u: dict) -> str:
         )
 
     cat = clean(
-        u.get('category') or
-        u.get('asset_category') or
-        u.get('instrument_category')
+        u.get('category')
+        or u.get('asset_category')
+        or u.get('instrument_category')
     ).upper()
 
     return 'bond' if 'BOND' in cat or '債' in cat else 'etf'
@@ -130,9 +147,9 @@ def kind(u: dict) -> str:
 
 def exchange(u: dict) -> str:
     raw = clean(
-        u.get('market') or
-        u.get('exchange') or
-        u.get('market_type')
+        u.get('market')
+        or u.get('exchange')
+        or u.get('market_type')
     ).upper()
 
     if raw in ('TWSE', 'TSE'):
@@ -151,10 +168,12 @@ NAME_KEYS = (
     'SecurityName', 'FundName', 'Name',
 )
 
+# 修正重點：加入 TPEX API 使用的 SecuritiesCompanyCode。
 SYMBOL_KEYS = (
     '公司代號', '證券代號', '股票代號', '基金代號', 'ETF代號',
-    '證券代碼', '有價證券代號', '代號', 'CompanyCode',
-    'SecurityCode', 'Code',
+    '證券代碼', '有價證券代號', '代號',
+    'SecuritiesCompanyCode',
+    'CompanyCode', 'SecurityCode', 'Code',
 )
 
 OFFICIAL_SOURCES = (
@@ -265,13 +284,15 @@ class ISINParser(HTMLParser):
 
 
 def parse_isin(content, label):
-    head = content[:2048].decode('ascii', errors='ignore').lower()
+    head = content[:2048].decode(
+        'ascii',
+        errors='ignore',
+    ).lower()
 
     match = re.search(
         r"charset\s*=\s*[^a-z0-9]*([a-z0-9_-]+)",
         head,
     )
-
     declared = match.group(1) if match else ''
 
     encodings = (
@@ -388,7 +409,10 @@ def official_names():
 
     for label, url in ISIN_SOURCES:
         try:
-            source = parse_isin(download(url, label), label)
+            source = parse_isin(
+                download(url, label),
+                label,
+            )
 
             for code, name in source.items():
                 if (
@@ -576,7 +600,7 @@ def make_record(
     lo = num(zone.get('lower'))
     hi = num(zone.get('upper'))
 
-    # 沒有正式且已驗證的交易計畫，不自行臆造停損及目標。
+    # 未有正式已驗證交易計畫欄位，不得臆造停損/目標。
     verified = obj(a.get('verified_trade_plan'))
     stop = num(verified.get('stop_loss'))
     target = num(verified.get('target_price'))
