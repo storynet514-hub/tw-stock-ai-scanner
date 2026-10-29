@@ -1,6 +1,6 @@
 {
   "schema_version": "V3.4",
-  "generated_at": "2026-10-29 11:16:33",
+  "generated_at": "2026-10-29 14:23:25",
   "source": {
     "universe": "Data/universe.json",
     "prices": "Data/prices/",
@@ -108,43 +108,45 @@
         {
           "file": "prices_008.json",
           "stocks_detected": 250,
-          "stocks_loaded": 250
+          "stocks_loaded": 249
         },
         {
           "file": "prices_009.json",
           "stocks_detected": 250,
-          "stocks_loaded": 250
+          "stocks_loaded": 249
         },
         {
           "file": "prices_010.json",
-          "stocks_detected": 66,
-          "stocks_loaded": 66
+          "stocks_detected": 68,
+          "stocks_loaded": 68
         }
       ]
     },
     "price_index_count": 2315,
     "universe_price_matched": 2315,
-    "price_missing": 1,
+    "price_missing": 3,
     "missing_price_symbols": [
-      "00838B"
+      "00838B",
+      "6825",
+      "7867"
     ]
   },
   "statistics": {
-    "universe": 2316,
+    "universe": 2318,
     "price_index": 2315,
     "price_loaded": 2315,
-    "price_missing": 1,
+    "price_missing": 3,
     "universe_price_matched": 2315,
     "complete": 2286,
     "partial": 27,
-    "insufficient": 3,
+    "insufficient": 5,
     "short_term_candidates": 3,
     "dca_buy": 1430,
     "dca_observe": 727,
     "dca_pause": 145,
     "core_total": 5,
     "core_score_distribution": {
-      "0": 1217,
+      "0": 1219,
       "1": 424,
       "2": 515,
       "3": 127,
@@ -155,14 +157,14 @@
       "偏多": 0,
       "分歧": 0,
       "偏空": 0,
-      "資料不足": 2316
+      "資料不足": 2318
     },
     "entry_timing_distribution": {
       "buy_now": 0,
       "wait_pullback": 0,
       "observe": 3,
       "not_qualified": 2310,
-      "insufficient": 3
+      "insufficient": 5
     },
     "entry_buy_now": 0,
     "entry_wait_pullback": 0,
@@ -326623,6 +326625,97 @@
         "backtest": null
       }
     },
+    "6825": {
+      "symbol": "6825",
+      "name": "QBIC",
+      "market": "TPEX",
+      "status": "insufficient",
+      "history_count": 0,
+      "latest_date": null,
+      "metrics": {},
+      "short_term": {
+        "qualified": false,
+        "score": 0,
+        "core_score": 0,
+        "core_total": 5,
+        "core_pass_ratio": 0,
+        "conditions": {
+          "macd_golden_cross": false,
+          "kd_golden_cross": false,
+          "rsi_above_50": false,
+          "volume_ratio_gt_1_5": false,
+          "price_above_ma20_and_ma20_up": false
+        },
+        "technical_strength": "資料不足",
+        "operation": "資料不足",
+        "direction": "資料不足",
+        "chip": {
+          "institutional_1d": null,
+          "institutional_5d": null,
+          "institutional_10d": null,
+          "institutional_20d": null,
+          "day_trading_volume": null,
+          "day_trading_rate": null,
+          "day_trading_available": false,
+          "positive_count": 0,
+          "negative_count": 0,
+          "direction": "資料不足",
+          "medium_direction": "資料不足",
+          "ten_day_direction": "資料不足",
+          "ten_day_used": true,
+          "analysis_basis": [
+            "1D",
+            "5D",
+            "10D",
+            "20D"
+          ],
+          "medium_analysis_basis": [
+            "5D",
+            "10D",
+            "20D"
+          ]
+        },
+        "chip_is_core_condition": false,
+        "ten_day_chip_used": true
+      },
+      "dca": {},
+      "chip": {
+        "institutional_1d": null,
+        "institutional_5d": null,
+        "institutional_10d": null,
+        "institutional_20d": null,
+        "day_trading_volume": null,
+        "day_trading_rate": null,
+        "day_trading_available": false,
+        "positive_count": 0,
+        "negative_count": 0,
+        "direction": "資料不足",
+        "medium_direction": "資料不足",
+        "ten_day_direction": "資料不足",
+        "ten_day_used": true,
+        "analysis_basis": [
+          "1D",
+          "5D",
+          "10D",
+          "20D"
+        ],
+        "medium_analysis_basis": [
+          "5D",
+          "10D",
+          "20D"
+        ]
+      },
+      "entry_timing": {
+        "schema": "ENTRY-TIMING-2.0",
+        "status": "insufficient",
+        "current": {
+          "status": "observe",
+          "preferred": "observe",
+          "message": "價格歷史不足"
+        },
+        "backtest": null
+      }
+    },
     "6829": {
       "symbol": "6829",
       "name": "CFPREC",
@@ -350717,6 +350810,97 @@
           "status": "observe",
           "preferred": "observe",
           "message": "目前未達強勢股條件"
+        },
+        "backtest": null
+      }
+    },
+    "7867": {
+      "symbol": "7867",
+      "name": "TLW",
+      "market": "TWSE",
+      "status": "insufficient",
+      "history_count": 0,
+      "latest_date": null,
+      "metrics": {},
+      "short_term": {
+        "qualified": false,
+        "score": 0,
+        "core_score": 0,
+        "core_total": 5,
+        "core_pass_ratio": 0,
+        "conditions": {
+          "macd_golden_cross": false,
+          "kd_golden_cross": false,
+          "rsi_above_50": false,
+          "volume_ratio_gt_1_5": false,
+          "price_above_ma20_and_ma20_up": false
+        },
+        "technical_strength": "資料不足",
+        "operation": "資料不足",
+        "direction": "資料不足",
+        "chip": {
+          "institutional_1d": null,
+          "institutional_5d": null,
+          "institutional_10d": null,
+          "institutional_20d": null,
+          "day_trading_volume": null,
+          "day_trading_rate": null,
+          "day_trading_available": false,
+          "positive_count": 0,
+          "negative_count": 0,
+          "direction": "資料不足",
+          "medium_direction": "資料不足",
+          "ten_day_direction": "資料不足",
+          "ten_day_used": true,
+          "analysis_basis": [
+            "1D",
+            "5D",
+            "10D",
+            "20D"
+          ],
+          "medium_analysis_basis": [
+            "5D",
+            "10D",
+            "20D"
+          ]
+        },
+        "chip_is_core_condition": false,
+        "ten_day_chip_used": true
+      },
+      "dca": {},
+      "chip": {
+        "institutional_1d": null,
+        "institutional_5d": null,
+        "institutional_10d": null,
+        "institutional_20d": null,
+        "day_trading_volume": null,
+        "day_trading_rate": null,
+        "day_trading_available": false,
+        "positive_count": 0,
+        "negative_count": 0,
+        "direction": "資料不足",
+        "medium_direction": "資料不足",
+        "ten_day_direction": "資料不足",
+        "ten_day_used": true,
+        "analysis_basis": [
+          "1D",
+          "5D",
+          "10D",
+          "20D"
+        ],
+        "medium_analysis_basis": [
+          "5D",
+          "10D",
+          "20D"
+        ]
+      },
+      "entry_timing": {
+        "schema": "ENTRY-TIMING-2.0",
+        "status": "insufficient",
+        "current": {
+          "status": "observe",
+          "preferred": "observe",
+          "message": "價格歷史不足"
         },
         "backtest": null
       }

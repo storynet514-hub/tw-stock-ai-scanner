@@ -1,12 +1,12 @@
 {
   "version": "UNIVERSE-BUILD",
-  "generated_at": "2026-10-29T18:37:47.877287+08:00",
-  "universe_count": 2316,
-  "stock_count": 1953,
+  "generated_at": "2026-10-29T21:47:25.070074+08:00",
+  "universe_count": 2318,
+  "stock_count": 1955,
   "etf_count": 363,
   "market_count": {
-    "TWSE": 1301,
-    "TPEX": 1015
+    "TWSE": 1302,
+    "TPEX": 1016
   },
   "source": {
     "universe_master": "https://isin.twse.com.tw/isin/e_single_main.jsp",
@@ -35365,6 +35365,24 @@
       "remarks": "",
       "source": "TWSE_ISIN_MASTER"
     },
+    "6825": {
+      "symbol": "6825",
+      "full_symbol": "6825.TWO",
+      "name": "QBIC",
+      "market": "TPEX",
+      "type": "STOCK",
+      "instrument_type": "STOCK",
+      "status": "active",
+      "listed_date": "2026/10/30",
+      "cfi_code": "ESVUFR",
+      "category": "STOCK",
+      "industry": "Computer and Peripheral Equipm",
+      "isin": "TW0006825003",
+      "official_type": "Stocks",
+      "official_market": "TPEx LISTED",
+      "remarks": "",
+      "source": "TWSE_ISIN_MASTER"
+    },
     "6829": {
       "symbol": "6829",
       "full_symbol": "6829.TWO",
@@ -37990,6 +38008,24 @@
       "isin": "TW0007856007",
       "official_type": "Stocks",
       "official_market": "TPEx LISTED",
+      "remarks": "",
+      "source": "TWSE_ISIN_MASTER"
+    },
+    "7867": {
+      "symbol": "7867",
+      "full_symbol": "7867.TW",
+      "name": "TLW",
+      "market": "TWSE",
+      "type": "STOCK",
+      "instrument_type": "STOCK",
+      "status": "active",
+      "listed_date": "2026/10/30",
+      "cfi_code": "ESVUFR",
+      "category": "STOCK",
+      "industry": "Household",
+      "isin": "TW0007867004",
+      "official_type": "Stocks",
+      "official_market": "TWSE LISTED",
       "remarks": "",
       "source": "TWSE_ISIN_MASTER"
     },
