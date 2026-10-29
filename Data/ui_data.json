@@ -1,6 +1,6 @@
 {
   "schema_version": "UI-DATA-3.1",
-  "generated_at": "2026-10-29T16:18:28.911041+00:00",
+  "generated_at": "2026-10-29T17:04:25.010217+00:00",
   "status": "ok",
   "market": {
     "name": "台股市場",
@@ -29447,17 +29447,17 @@
       "industry": "Electric Machinery",
       "price": 8.3,
       "change": null,
-      "change_pct": -10.27,
+      "change_pct": 0.0,
       "strength": "弱勢",
       "recommendation": "續抱觀察",
       "technical": {
-        "ma20": 8.62,
+        "ma20": 8.76,
         "weekly_ma20": null,
-        "rsi": 38.98,
+        "rsi": 35.75,
         "kd_k": null,
         "kd_d": null,
         "macd": null,
-        "volume": 3691.0
+        "volume": 0.0
       },
       "entry_timing": {
         "status": "observe",
@@ -58830,16 +58830,16 @@
       "price": 18.25,
       "change": null,
       "change_pct": 0.0,
-      "strength": "中性",
+      "strength": "弱勢",
       "recommendation": "續抱觀察",
       "technical": {
-        "ma20": 17.22,
+        "ma20": 17.54,
         "weekly_ma20": null,
         "rsi": 67.79,
         "kd_k": null,
         "kd_d": null,
         "macd": null,
-        "volume": 32000.0
+        "volume": 0.0
       },
       "entry_timing": {
         "status": "observe",
@@ -60898,9 +60898,9 @@
       "strength": "弱勢",
       "recommendation": "續抱觀察",
       "technical": {
-        "ma20": 58.29,
+        "ma20": 58.13,
         "weekly_ma20": null,
-        "rsi": 43.71,
+        "rsi": 44.23,
         "kd_k": null,
         "kd_d": null,
         "macd": null,
@@ -74881,9 +74881,9 @@
       "strength": "弱勢",
       "recommendation": "續抱觀察",
       "technical": {
-        "ma20": 30.85,
+        "ma20": 30.75,
         "weekly_ma20": null,
-        "rsi": 54.89,
+        "rsi": 55.71,
         "kd_k": null,
         "kd_d": null,
         "macd": null,
@@ -76942,17 +76942,17 @@
       "industry": "Plastic",
       "price": 41.15,
       "change": null,
-      "change_pct": 0.37,
+      "change_pct": 0.0,
       "strength": "弱勢",
       "recommendation": "續抱觀察",
       "technical": {
-        "ma20": 41.35,
+        "ma20": 41.16,
         "weekly_ma20": null,
         "rsi": 39.03,
         "kd_k": null,
         "kd_d": null,
         "macd": null,
-        "volume": 2000.0
+        "volume": 0.0
       },
       "entry_timing": {
         "status": "observe",
@@ -89985,9 +89985,9 @@
       "strength": "弱勢",
       "recommendation": "續抱觀察",
       "technical": {
-        "ma20": 7.22,
+        "ma20": 7.6,
         "weekly_ma20": null,
-        "rsi": 46.15,
+        "rsi": 47.9,
         "kd_k": null,
         "kd_d": null,
         "macd": null,
@@ -91102,17 +91102,17 @@
       "industry": "Building Material&Construction",
       "price": 30.7,
       "change": null,
-      "change_pct": -0.97,
+      "change_pct": 0.0,
       "strength": "弱勢",
       "recommendation": "續抱觀察",
       "technical": {
-        "ma20": 30.64,
+        "ma20": 30.73,
         "weekly_ma20": null,
-        "rsi": 55.22,
+        "rsi": 53.98,
         "kd_k": null,
         "kd_d": null,
         "macd": null,
-        "volume": 2000.0
+        "volume": 0.0
       },
       "entry_timing": {
         "status": "observe",
@@ -92695,17 +92695,17 @@
       "industry": "Building Material&Construction",
       "price": 83.9,
       "change": null,
-      "change_pct": 1.08,
+      "change_pct": 0.0,
       "strength": "弱勢",
       "recommendation": "續抱觀察",
       "technical": {
-        "ma20": 83.52,
+        "ma20": 83.79,
         "weekly_ma20": null,
         "rsi": 54.91,
         "kd_k": null,
         "kd_d": null,
         "macd": null,
-        "volume": 1000.0
+        "volume": 0.0
       },
       "entry_timing": {
         "status": "observe",
@@ -94052,17 +94052,17 @@
       "industry": "Tourism and Hospitality",
       "price": 13.9,
       "change": null,
-      "change_pct": 0.72,
+      "change_pct": -0.0,
       "strength": "弱勢",
       "recommendation": "續抱觀察",
       "technical": {
-        "ma20": 13.73,
+        "ma20": 13.72,
         "weekly_ma20": null,
-        "rsi": 54.65,
+        "rsi": 55.67,
         "kd_k": null,
         "kd_d": null,
         "macd": null,
-        "volume": 10000.0
+        "volume": 0.0
       },
       "entry_timing": {
         "status": "observe",
@@ -107213,9 +107213,9 @@
       "strength": "弱勢",
       "recommendation": "續抱觀察",
       "technical": {
-        "ma20": 20.19,
+        "ma20": 20.2,
         "weekly_ma20": null,
-        "rsi": 42.51,
+        "rsi": 41.3,
         "kd_k": null,
         "kd_d": null,
         "macd": null,
