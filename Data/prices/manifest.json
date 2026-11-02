@@ -1,13 +1,13 @@
 {
   "schema_version": "prices-v14.0",
   "version": "PRICE-FETCH-V14.0",
-  "generated_at": "2026-11-02T20:33:57.140664+08:00",
+  "generated_at": "2026-11-03T00:54:20.851935+08:00",
   "total_symbols": 2319,
   "complete_count": 2289,
   "partial_count": 13,
   "short_count": 15,
-  "not_started_count": 1,
-  "no_history_count": 1,
+  "not_started_count": 0,
+  "no_history_count": 2,
   "files": [
     "prices_001.json",
     "prices_002.json",
