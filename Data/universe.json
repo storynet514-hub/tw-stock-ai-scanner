@@ -1,11 +1,11 @@
 {
   "version": "UNIVERSE-BUILD",
-  "generated_at": "2026-11-02T17:54:54.090371+08:00",
-  "universe_count": 2318,
+  "generated_at": "2026-11-02T19:56:58.442832+08:00",
+  "universe_count": 2319,
   "stock_count": 1955,
-  "etf_count": 363,
+  "etf_count": 364,
   "market_count": {
-    "TWSE": 1302,
+    "TWSE": 1303,
     "TPEX": 1016
   },
   "source": {
@@ -296,6 +296,24 @@
       "category": "ACTIVE_EQUITY",
       "industry": "",
       "isin": "TW00000415A1",
+      "official_type": "ETF",
+      "official_market": "TWSE LISTED",
+      "remarks": "",
+      "source": "TWSE_ISIN_MASTER"
+    },
+    "00416A": {
+      "symbol": "00416A",
+      "full_symbol": "00416A.TW",
+      "name": "TAISHIN TAIWAN SMALL AND MID CAPITAL ACTIVE ETF",
+      "market": "TWSE",
+      "type": "ETF",
+      "instrument_type": "ACTIVE",
+      "status": "active",
+      "listed_date": "2026/11/03",
+      "cfi_code": "CEOIEU",
+      "category": "ACTIVE_EQUITY",
+      "industry": "",
+      "isin": "TW00000416A9",
       "official_type": "ETF",
       "official_market": "TWSE LISTED",
       "remarks": "",
