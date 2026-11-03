@@ -1,6 +1,6 @@
 {
   "schema_version": "UI-DATA-3.1",
-  "generated_at": "2026-11-03T15:37:11.687870+00:00",
+  "generated_at": "2026-11-03T17:07:52.173955+00:00",
   "status": "ok",
   "market": {
     "name": "台股市場",
@@ -1930,17 +1930,17 @@
       "industry": "未分類",
       "price": 7.91,
       "change": null,
-      "change_pct": 0.64,
+      "change_pct": -0.0,
       "strength": "弱勢",
       "recommendation": "續抱觀察",
       "technical": {
-        "ma20": 8.2,
+        "ma20": 8.14,
         "weekly_ma20": null,
-        "rsi": 12.9,
+        "rsi": 13.96,
         "kd_k": null,
         "kd_d": null,
         "macd": null,
-        "volume": 10000.0
+        "volume": 0.0
       },
       "entry_timing": {
         "status": "observe",
@@ -2815,17 +2815,17 @@
       "industry": "未分類",
       "price": 3.16,
       "change": null,
-      "change_pct": -3.36,
+      "change_pct": 0.0,
       "strength": "弱勢",
       "recommendation": "續抱觀察",
       "technical": {
-        "ma20": 3.52,
+        "ma20": 3.45,
         "weekly_ma20": null,
-        "rsi": 6.32,
+        "rsi": 6.01,
         "kd_k": null,
         "kd_d": null,
         "macd": null,
-        "volume": 33000.0
+        "volume": 0.0
       },
       "entry_timing": {
         "status": "observe",
@@ -5297,9 +5297,9 @@
       "strength": "弱勢",
       "recommendation": "續抱觀察",
       "technical": {
-        "ma20": 23.76,
+        "ma20": 23.68,
         "weekly_ma20": null,
-        "rsi": 42.6,
+        "rsi": 42.35,
         "kd_k": null,
         "kd_d": null,
         "macd": null,
@@ -58751,7 +58751,7 @@
       "strength": "弱勢",
       "recommendation": "續抱觀察",
       "technical": {
-        "ma20": 14.99,
+        "ma20": 14.42,
         "weekly_ma20": null,
         "rsi": 20.74,
         "kd_k": null,
@@ -90015,19 +90015,19 @@
       "market": "TPEX",
       "instrument_type": "stock",
       "industry": "Electronic Parts/Components",
-      "price": 6.79,
+      "price": 14.55,
       "change": null,
-      "change_pct": 0.15,
+      "change_pct": 0.0,
       "strength": "弱勢",
       "recommendation": "續抱觀察",
       "technical": {
-        "ma20": 7.6,
+        "ma20": 8.73,
         "weekly_ma20": null,
-        "rsi": 47.9,
+        "rsi": 65.98,
         "kd_k": null,
         "kd_d": null,
         "macd": null,
-        "volume": 185000.0
+        "volume": 0.0
       },
       "entry_timing": {
         "status": "observe",
