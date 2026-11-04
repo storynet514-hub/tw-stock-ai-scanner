@@ -1,6 +1,6 @@
 {
   "schema_version": "UI-DATA-3.1",
-  "generated_at": "2026-11-04T10:54:42.111306+00:00",
+  "generated_at": "2026-11-04T12:27:08.698078+00:00",
   "status": "ok",
   "market": {
     "name": "台股市場",
@@ -57,7 +57,7 @@
       },
       {
         "industry": "Communications and Internet",
-        "net_buy": 19846407.0,
+        "net_buy": 19035407.0,
         "valid_stocks": 84
       },
       {
@@ -85900,11 +85900,11 @@
       },
       "chip": {
         "date": "2026-11-04",
-        "institutional_net_1d": 1166037.0,
-        "institutional_net_5d": -1831747.0,
-        "institutional_net_20d": -5533289.0,
+        "institutional_net_1d": 355037.0,
+        "institutional_net_5d": -2642747.0,
+        "institutional_net_20d": -6344289.0,
         "foreign_net_1d": 1868933.0,
-        "trust_net_1d": -683000.0,
+        "trust_net_1d": -1494000.0,
         "dealer_net_1d": -19896.0
       },
       "backend": {
@@ -99529,11 +99529,11 @@
       },
       "chip": {
         "date": "2026-11-04",
-        "institutional_net_1d": 255034.0,
-        "institutional_net_5d": -340002.0,
-        "institutional_net_20d": 1087688.0,
+        "institutional_net_1d": 271369.0,
+        "institutional_net_5d": -323667.0,
+        "institutional_net_20d": 1104023.0,
         "foreign_net_1d": 293724.0,
-        "trust_net_1d": -36321.0,
+        "trust_net_1d": -19986.0,
         "dealer_net_1d": -2369.0
       },
       "backend": {
@@ -124663,11 +124663,11 @@
       },
       "chip": {
         "date": "2026-11-04",
-        "institutional_net_1d": 272558.0,
-        "institutional_net_5d": 439131.0,
-        "institutional_net_20d": 598439.0,
+        "institutional_net_1d": 276228.0,
+        "institutional_net_5d": 442801.0,
+        "institutional_net_20d": 602109.0,
         "foreign_net_1d": 288040.0,
-        "trust_net_1d": -19000.0,
+        "trust_net_1d": -15330.0,
         "dealer_net_1d": 3518.0
       },
       "backend": {
