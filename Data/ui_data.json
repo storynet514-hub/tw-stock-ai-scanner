@@ -1,6 +1,6 @@
 {
   "schema_version": "UI-DATA-3.1",
-  "generated_at": "2026-11-04T15:32:22.430525+00:00",
+  "generated_at": "2026-11-04T17:01:19.473617+00:00",
   "status": "ok",
   "market": {
     "name": "台股市場",
@@ -20376,9 +20376,9 @@
       "strength": "弱勢",
       "recommendation": "續抱觀察",
       "technical": {
-        "ma20": 9.32,
+        "ma20": 9.38,
         "weekly_ma20": null,
-        "rsi": 62.27,
+        "rsi": 62.93,
         "kd_k": null,
         "kd_d": null,
         "macd": null,
@@ -68113,9 +68113,9 @@
       "strength": "弱勢",
       "recommendation": "續抱觀察",
       "technical": {
-        "ma20": 13.85,
+        "ma20": 13.63,
         "weekly_ma20": null,
-        "rsi": 29.15,
+        "rsi": 26.87,
         "kd_k": null,
         "kd_d": null,
         "macd": null,
@@ -94128,11 +94128,11 @@
       "industry": "Tourism and Hospitality",
       "price": 13.9,
       "change": null,
-      "change_pct": -0.0,
+      "change_pct": 0.0,
       "strength": "弱勢",
       "recommendation": "續抱觀察",
       "technical": {
-        "ma20": 13.72,
+        "ma20": 13.8,
         "weekly_ma20": null,
         "rsi": 55.67,
         "kd_k": null,
@@ -133363,17 +133363,17 @@
       "industry": "Others",
       "price": 15.95,
       "change": null,
-      "change_pct": 0.31,
+      "change_pct": 0.0,
       "strength": "弱勢",
       "recommendation": "續抱觀察",
       "technical": {
-        "ma20": 16.63,
+        "ma20": 16.53,
         "weekly_ma20": null,
-        "rsi": 37.44,
+        "rsi": 36.0,
         "kd_k": null,
         "kd_d": null,
         "macd": null,
-        "volume": 1000.0
+        "volume": 0.0
       },
       "entry_timing": {
         "status": "observe",
