@@ -1,6 +1,6 @@
 {
   "schema_version": "V3.4",
-  "generated_at": "2026-11-05 12:25:11",
+  "generated_at": "2026-11-05 15:33:16",
   "source": {
     "universe": "Data/universe.json",
     "prices": "Data/prices/",
