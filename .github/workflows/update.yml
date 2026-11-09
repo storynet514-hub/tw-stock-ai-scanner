@@ -16,6 +16,11 @@ on:
 permissions:
   contents: write
 
+# 避免同一 workflow 同時執行多個資料更新工作
+concurrency:
+  group: update-taiwan-stock-ai-data
+  cancel-in-progress: false
+
 jobs:
   update:
     runs-on: ubuntu-latest
@@ -28,7 +33,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          fetch-depth: 1
+          fetch-depth: 0
 
       # ======================================================
       # 2. Python
@@ -957,7 +962,7 @@ jobs:
       - name: Commit updated data
         shell: bash
         run: |
-          set -e
+          set -euo pipefail
 
           rm -f .fetch_prices.log
 
@@ -967,14 +972,28 @@ jobs:
           git config user.email \
             "41898282+github-actions[bot]@users.noreply.github.com"
 
+          # 1. 加入本次產生的資料
           git add Data/
 
+          # 2. 沒有資料變更就正常結束
           if git diff --cached --quiet; then
             echo "No data changes to commit."
             exit 0
           fi
 
+          # 3. 建立本次更新 commit
           git commit \
             -m "chore: update Taiwan stock AI data"
 
-          git push
+          # 4. 取得 GitHub main 最新版本
+          git fetch origin main
+
+          # 5. 將本次更新接到遠端最新版本之後
+          git rebase origin/main
+
+          # 6. 推送更新
+          git push origin HEAD:main
+
+          echo "========================================"
+          echo "DATA UPDATE PUSH SUCCESS"
+          echo "========================================"
