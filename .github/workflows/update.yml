@@ -61,6 +61,7 @@ jobs:
           test -f Scripts/build_universe.py
           test -f Scripts/fetch_chip.py
           test -f Scripts/fetch_prices.py
+          test -f Scripts/scan_weekly_ma20.py
           test -f Scripts/fetch_market.py
           test -f Scripts/analyze_stocks.py
           test -f Scripts/build_ui_data.py
@@ -70,6 +71,7 @@ jobs:
           echo "✓ Scripts/build_universe.py"
           echo "✓ Scripts/fetch_chip.py"
           echo "✓ Scripts/fetch_prices.py"
+          echo "✓ Scripts/scan_weekly_ma20.py"
           echo "✓ Scripts/fetch_market.py"
           echo "✓ Scripts/analyze_stocks.py"
           echo "✓ Scripts/build_ui_data.py"
@@ -87,6 +89,7 @@ jobs:
             Scripts/build_universe.py \
             Scripts/fetch_chip.py \
             Scripts/fetch_prices.py \
+            Scripts/scan_weekly_ma20.py \
             Scripts/fetch_market.py \
             Scripts/analyze_stocks.py \
             Scripts/build_ui_data.py
@@ -263,10 +266,6 @@ jobs:
 
       # ======================================================
       # 10. Validate Price Data
-      #
-      # 修正重點：
-      # prices-v14.0 的 stocks[symbol] 是價格資料 list，
-      # 不是包含 symbol/history_status 的 dict。
       # ======================================================
 
       - name: Validate Price Data
@@ -425,16 +424,7 @@ jobs:
           if len(set(shard_paths)) != len(shard_paths):
               fail("manifest.files 存在重複 shard")
 
-          # 3. Validate prices-v14.0 shard structure.
-          # Expected structure:
-          # {
-          #   "stocks": {
-          #     "2330": [
-          #       {"date": "...", ...},
-          #       ...
-          #     ]
-          #   }
-          # }
+          # 3. Validate prices-v14.0 shard structure
           seen_symbols = set()
           duplicate_symbols = set()
           empty_history_symbols = set()
@@ -482,8 +472,6 @@ jobs:
                   local_symbols.add(symbol)
                   seen_symbols.add(symbol)
 
-                  # Critical fix:
-                  # prices-v14.0 stores a list for each symbol.
                   if not isinstance(prices, list):
                       fail(
                           f"{symbol} 的價格資料不是 list；"
@@ -551,10 +539,7 @@ jobs:
                   f"sample={sorted(missing_symbols)[:30]}"
               )
 
-          # 5. Validate empty history count.
-          # Empty lists represent both no_history and not_started.
-          # The current shard schema does not preserve per-symbol status,
-          # so validate their combined count against the manifest.
+          # 5. Validate empty history count
           no_history_count = manifest.get("no_history_count")
           not_started_count = manifest.get("not_started_count")
 
@@ -609,7 +594,61 @@ jobs:
           PY
 
       # ======================================================
-      # 11. Fetch Market Data
+      # 11. Scan Weekly MA20
+      # ======================================================
+
+      - name: Scan Weekly MA20
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          echo "========================================"
+          echo "SCAN WEEKLY MA20"
+          echo "========================================"
+
+          python Scripts/scan_weekly_ma20.py
+
+          test -f Data/weekly_ma20_scan.json
+
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          path = Path("Data/weekly_ma20_scan.json")
+
+          try:
+              data = json.loads(
+                  path.read_text(encoding="utf-8-sig")
+              )
+          except Exception as exc:
+              raise SystemExit(
+                  f"週20MA掃描結果 JSON 無法解析：{exc}"
+              )
+
+          if not isinstance(data, dict):
+              raise SystemExit(
+                  "週20MA掃描結果根節點不是 object"
+              )
+
+          candidates = data.get("candidates")
+
+          if not isinstance(candidates, list):
+              raise SystemExit(
+                  "週20MA掃描結果 candidates 不是 list"
+              )
+
+          print("========================================")
+          print("WEEKLY MA20 SCAN VALIDATION")
+          print("========================================")
+          print(f"掃描日期：{data.get('scan_date')}")
+          print(f"候選股數：{len(candidates)}")
+          print("✓ Data/weekly_ma20_scan.json")
+          print("✓ JSON validation PASS")
+          print("========================================")
+          PY
+
+      # ======================================================
+      # 12. Fetch Market Data
       # ======================================================
 
       - name: Fetch Market Data
@@ -627,7 +666,7 @@ jobs:
           echo "✓ Data/market.json"
 
       # ======================================================
-      # 12. Validate Market
+      # 13. Validate Market
       # ======================================================
 
       - name: Validate Market Data
@@ -689,7 +728,7 @@ jobs:
           PY
 
       # ======================================================
-      # 13. Analyze Stocks
+      # 14. Analyze Stocks
       # ======================================================
 
       - name: Analyze Stocks
@@ -707,7 +746,7 @@ jobs:
           echo "✓ Data/analysis.json"
 
       # ======================================================
-      # 14. Build UI Data
+      # 15. Build UI Data
       # ======================================================
 
       - name: Build UI Data
@@ -725,7 +764,7 @@ jobs:
           echo "✓ Data/ui_data.json"
 
       # ======================================================
-      # 15. Validate UI Data Contract
+      # 16. Validate UI Data Contract
       # ======================================================
 
       - name: Validate UI Data Contract
@@ -878,7 +917,7 @@ jobs:
           PY
 
       # ======================================================
-      # 16. Final Data Contract
+      # 17. Final Data Contract
       # ======================================================
 
       - name: Final Data Contract
@@ -888,6 +927,7 @@ jobs:
           test -f Data/universe.json
           test -f Data/chip.json
           test -f Data/prices/manifest.json
+          test -f Data/weekly_ma20_scan.json
           test -f Data/market.json
           test -f Data/analysis.json
           test -f Data/ui_data.json
@@ -900,6 +940,7 @@ jobs:
           echo "✓ universe.json"
           echo "✓ chip.json"
           echo "✓ prices/manifest.json"
+          echo "✓ weekly_ma20_scan.json"
           echo "✓ market.json"
           echo "✓ analysis.json"
           echo "✓ ui_data.json"
@@ -910,7 +951,7 @@ jobs:
           echo "========================================"
 
       # ======================================================
-      # 17. Commit updated data
+      # 18. Commit updated data
       # ======================================================
 
       - name: Commit updated data
