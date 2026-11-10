@@ -1,7 +1,7 @@
 {
   "schema_version": "weekly-ma20-scan-v1.0",
   "scan_date": "2026-11-10",
-  "generated_at": "2026-11-10T15:56:39.477787+00:00",
+  "generated_at": "2026-11-10T17:12:21.478068+00:00",
   "market_scope": [
     "TWSE",
     "TPEX"
@@ -3247,18 +3247,6 @@
       "last_completed_week_date": "2026-11-06"
     },
     {
-      "symbol": "8176",
-      "name": "ZCOM",
-      "market": "TPEX",
-      "close_date": "2026-11-10",
-      "close": 10.3,
-      "weekly_ma20": 10.1164,
-      "distance_pct": 1.81,
-      "weekly_bars": 20,
-      "ma_start_date": "2026-06-18",
-      "last_completed_week_date": "2026-10-30"
-    },
-    {
       "symbol": "1410",
       "name": "NYDF",
       "market": "TWSE",
@@ -3470,6 +3458,18 @@
       "close": 76.4,
       "weekly_ma20": 75.57,
       "distance_pct": 1.1,
+      "weekly_bars": 20,
+      "ma_start_date": "2026-06-26",
+      "last_completed_week_date": "2026-11-06"
+    },
+    {
+      "symbol": "8176",
+      "name": "ZCOM",
+      "market": "TPEX",
+      "close_date": "2026-11-10",
+      "close": 10.3,
+      "weekly_ma20": 10.1899,
+      "distance_pct": 1.08,
       "weekly_bars": 20,
       "ma_start_date": "2026-06-26",
       "last_completed_week_date": "2026-11-06"

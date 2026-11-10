@@ -1,6 +1,6 @@
 {
   "schema_version": "UI-DATA-3.1",
-  "generated_at": "2026-11-10T15:58:12.786876+00:00",
+  "generated_at": "2026-11-10T17:15:51.390955+00:00",
   "status": "ok",
   "market": {
     "name": "台股市場",
@@ -2048,17 +2048,17 @@
       "industry": "未分類",
       "price": 7.87,
       "change": null,
-      "change_pct": -0.51,
+      "change_pct": 0.0,
       "strength": "弱勢",
       "recommendation": "續抱觀察",
       "technical": {
-        "ma20": 8.12,
+        "ma20": 8.03,
         "weekly_ma20": null,
-        "rsi": 12.59,
+        "rsi": 12.39,
         "kd_k": null,
         "kd_d": null,
         "macd": null,
-        "volume": 24000.0
+        "volume": 0.0
       },
       "entry_timing": {
         "status": "observe",
@@ -29605,9 +29605,9 @@
       "strength": "弱勢",
       "recommendation": "續抱觀察",
       "technical": {
-        "ma20": 8.72,
+        "ma20": 8.61,
         "weekly_ma20": null,
-        "rsi": 27.8,
+        "rsi": 26.25,
         "kd_k": null,
         "kd_d": null,
         "macd": null,
@@ -59337,17 +59337,17 @@
       "industry": "Digital and Cloud Services",
       "price": 14.9,
       "change": null,
-      "change_pct": -2.3,
+      "change_pct": 0.0,
       "strength": "弱勢",
       "recommendation": "續抱觀察",
       "technical": {
-        "ma20": 15.47,
+        "ma20": 15.35,
         "weekly_ma20": null,
-        "rsi": 52.11,
+        "rsi": 51.26,
         "kd_k": null,
         "kd_d": null,
         "macd": null,
-        "volume": 2000.0
+        "volume": 0.0
       },
       "entry_timing": {
         "status": "observe",
@@ -73613,19 +73613,19 @@
       "market": "TWSE",
       "instrument_type": "stock",
       "industry": "Optoelectronic Industry",
-      "price": 56.7,
+      "price": 104.6,
       "change": null,
-      "change_pct": -1.05,
+      "change_pct": 0.0,
       "strength": "弱勢",
       "recommendation": "續抱觀察",
       "technical": {
-        "ma20": 62.64,
+        "ma20": 70.54,
         "weekly_ma20": null,
-        "rsi": 36.92,
+        "rsi": 65.68,
         "kd_k": null,
         "kd_d": null,
         "macd": null,
-        "volume": 8311084.0
+        "volume": 0.0
       },
       "entry_timing": {
         "status": "observe",
@@ -76923,9 +76923,9 @@
       "strength": "弱勢",
       "recommendation": "續抱觀察",
       "technical": {
-        "ma20": 19.49,
+        "ma20": 19.71,
         "weekly_ma20": null,
-        "rsi": 49.19,
+        "rsi": 45.37,
         "kd_k": null,
         "kd_d": null,
         "macd": null,
@@ -77336,13 +77336,13 @@
       "strength": "弱勢",
       "recommendation": "續抱觀察",
       "technical": {
-        "ma20": 10.16,
+        "ma20": 10.17,
         "weekly_ma20": null,
-        "rsi": 39.05,
+        "rsi": 37.84,
         "kd_k": null,
         "kd_d": null,
         "macd": null,
-        "volume": 4000.0
+        "volume": 0.0
       },
       "entry_timing": {
         "status": "observe",
@@ -79041,19 +79041,19 @@
       "market": "TPEX",
       "instrument_type": "stock",
       "industry": "Electric Machinery",
-      "price": 25.45,
+      "price": 32.11,
       "change": null,
-      "change_pct": -0.39,
+      "change_pct": 0.0,
       "strength": "弱勢",
       "recommendation": "續抱觀察",
       "technical": {
-        "ma20": 28.63,
+        "ma20": 29.2,
         "weekly_ma20": null,
-        "rsi": 31.17,
+        "rsi": 56.96,
         "kd_k": null,
         "kd_d": null,
         "macd": null,
-        "volume": 499000.0
+        "volume": 0.0
       },
       "entry_timing": {
         "status": "observe",
@@ -94918,9 +94918,9 @@
       "strength": "弱勢",
       "recommendation": "續抱觀察",
       "technical": {
-        "ma20": 38.72,
+        "ma20": 38.57,
         "weekly_ma20": null,
-        "rsi": 45.77,
+        "rsi": 45.25,
         "kd_k": null,
         "kd_d": null,
         "macd": null,
@@ -102234,9 +102234,9 @@
       "strength": "弱勢",
       "recommendation": "續抱觀察",
       "technical": {
-        "ma20": 16.38,
+        "ma20": 16.29,
         "weekly_ma20": null,
-        "rsi": 29.76,
+        "rsi": 25.84,
         "kd_k": null,
         "kd_d": null,
         "macd": null,
@@ -111320,9 +111320,9 @@
       "strength": "弱勢",
       "recommendation": "續抱觀察",
       "technical": {
-        "ma20": 36.67,
+        "ma20": 36.72,
         "weekly_ma20": null,
-        "rsi": 45.0,
+        "rsi": 44.64,
         "kd_k": null,
         "kd_d": null,
         "macd": null,
@@ -111674,9 +111674,9 @@
       "strength": "弱勢",
       "recommendation": "續抱觀察",
       "technical": {
-        "ma20": 16.76,
+        "ma20": 16.71,
         "weekly_ma20": null,
-        "rsi": 41.73,
+        "rsi": 40.96,
         "kd_k": null,
         "kd_d": null,
         "macd": null,
@@ -125837,9 +125837,9 @@
       "strength": "弱勢",
       "recommendation": "續抱觀察",
       "technical": {
-        "ma20": 51.11,
+        "ma20": 52.16,
         "weekly_ma20": null,
-        "rsi": 53.28,
+        "rsi": 52.78,
         "kd_k": null,
         "kd_d": null,
         "macd": null,
@@ -128787,9 +128787,9 @@
       "strength": "弱勢",
       "recommendation": "續抱觀察",
       "technical": {
-        "ma20": 10.07,
+        "ma20": 10.54,
         "weekly_ma20": null,
-        "rsi": 51.38,
+        "rsi": 46.87,
         "kd_k": null,
         "kd_d": null,
         "macd": null,
