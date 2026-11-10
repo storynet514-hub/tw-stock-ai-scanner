@@ -1,6 +1,6 @@
 {
   "schema_version": "UI-DATA-3.1",
-  "generated_at": "2026-11-10T09:35:04.871508+00:00",
+  "generated_at": "2026-11-10T11:58:21.255765+00:00",
   "status": "ok",
   "market": {
     "name": "台股市場",
@@ -34390,7 +34390,7 @@
         "kd_k": null,
         "kd_d": null,
         "macd": null,
-        "volume": 172131331.0
+        "volume": 172431331.0
       },
       "entry_timing": {
         "status": "observe",
@@ -35334,7 +35334,7 @@
         "kd_k": null,
         "kd_d": null,
         "macd": null,
-        "volume": 2140599.0
+        "volume": 2339599.0
       },
       "entry_timing": {
         "status": "observe",
@@ -39582,7 +39582,7 @@
         "kd_k": null,
         "kd_d": null,
         "macd": null,
-        "volume": 162359869.0
+        "volume": 163109869.0
       },
       "entry_timing": {
         "status": "observe",
@@ -39700,7 +39700,7 @@
         "kd_k": null,
         "kd_d": null,
         "macd": null,
-        "volume": 16283594.0
+        "volume": 16389594.0
       },
       "entry_timing": {
         "status": "observe",
@@ -40408,7 +40408,7 @@
         "kd_k": null,
         "kd_d": null,
         "macd": null,
-        "volume": 36418797.0
+        "volume": 36575797.0
       },
       "entry_timing": {
         "status": "observe",
@@ -41470,7 +41470,7 @@
         "kd_k": null,
         "kd_d": null,
         "macd": null,
-        "volume": 2972339.0
+        "volume": 3028339.0
       },
       "entry_timing": {
         "status": "observe",
@@ -42296,7 +42296,7 @@
         "kd_k": null,
         "kd_d": null,
         "macd": null,
-        "volume": 9598320.0
+        "volume": 10144320.0
       },
       "entry_timing": {
         "status": "observe",
@@ -43299,7 +43299,7 @@
         "kd_k": null,
         "kd_d": null,
         "macd": null,
-        "volume": 1080807.0
+        "volume": 1190807.0
       },
       "entry_timing": {
         "status": "observe",
@@ -53447,7 +53447,7 @@
         "kd_k": null,
         "kd_d": null,
         "macd": null,
-        "volume": 18998632.0
+        "volume": 19383632.0
       },
       "entry_timing": {
         "status": "observe",
@@ -53624,7 +53624,7 @@
         "kd_k": null,
         "kd_d": null,
         "macd": null,
-        "volume": 26615252.0
+        "volume": 27797252.0
       },
       "entry_timing": {
         "status": "observe",
@@ -53919,7 +53919,7 @@
         "kd_k": null,
         "kd_d": null,
         "macd": null,
-        "volume": 28571032.0
+        "volume": 29163032.0
       },
       "entry_timing": {
         "status": "observe",
@@ -53978,7 +53978,7 @@
         "kd_k": null,
         "kd_d": null,
         "macd": null,
-        "volume": 36917627.0
+        "volume": 37205627.0
       },
       "entry_timing": {
         "status": "observe",
@@ -57400,7 +57400,7 @@
         "kd_k": null,
         "kd_d": null,
         "macd": null,
-        "volume": 27890864.0
+        "volume": 27967864.0
       },
       "entry_timing": {
         "status": "observe",
@@ -68551,7 +68551,7 @@
         "kd_k": null,
         "kd_d": null,
         "macd": null,
-        "volume": 1618909.0
+        "volume": 1785909.0
       },
       "entry_timing": {
         "status": "observe",
@@ -90794,7 +90794,7 @@
         "kd_k": null,
         "kd_d": null,
         "macd": null,
-        "volume": 1375698.0
+        "volume": 1415698.0
       },
       "entry_timing": {
         "status": "observe",
@@ -100883,7 +100883,7 @@
         "kd_k": null,
         "kd_d": null,
         "macd": null,
-        "volume": 2539517.0
+        "volume": 2732517.0
       },
       "entry_timing": {
         "status": "observe",
@@ -105662,7 +105662,7 @@
         "kd_k": null,
         "kd_d": null,
         "macd": null,
-        "volume": 31977514.0
+        "volume": 32277514.0
       },
       "entry_timing": {
         "status": "observe",
@@ -111916,7 +111916,7 @@
         "kd_k": null,
         "kd_d": null,
         "macd": null,
-        "volume": 3344178.0
+        "volume": 3476178.0
       },
       "entry_timing": {
         "status": "observe",
@@ -117285,7 +117285,7 @@
         "kd_k": null,
         "kd_d": null,
         "macd": null,
-        "volume": 1212580.0
+        "volume": 1512580.0
       },
       "entry_timing": {
         "status": "observe",

@@ -1,6 +1,6 @@
 {
   "schema_version": "V3.4",
-  "generated_at": "2026-11-10 09:29:56",
+  "generated_at": "2026-11-10 11:57:03",
   "source": {
     "universe": "Data/universe.json",
     "prices": "Data/prices/",
@@ -98217,9 +98217,9 @@
         "low60": 56.0,
         "position60_pct": 100.0,
         "low60_ratio": 1.2464,
-        "volume": 172131331.0,
+        "volume": 172431331.0,
         "volume5_previous_avg": 168561019.0,
-        "volume_ratio_vs_previous_5": 1.0212,
+        "volume_ratio_vs_previous_5": 1.023,
         "volume_signal": "正常"
       },
       "short_term": {
@@ -98252,7 +98252,7 @@
           "golden_cross": false,
           "status": "complete"
         },
-        "volume_ratio": 1.0212,
+        "volume_ratio": 1.023,
         "chip": {
           "institutional_1d": null,
           "institutional_5d": null,
@@ -98299,7 +98299,7 @@
         "change1_pct": 9.92,
         "change5_pct": 3.1,
         "change20_pct": 9.23,
-        "volume_ratio": 1.0212,
+        "volume_ratio": 1.023,
         "volume_signal": "正常",
         "chip_direction": "資料不足",
         "medium_chip_direction": "資料不足",
@@ -100853,9 +100853,9 @@
         "low60": 80.0,
         "position60_pct": 38.24,
         "low60_ratio": 1.065,
-        "volume": 2140599.0,
+        "volume": 2339599.0,
         "volume5_previous_avg": 1723537.0,
-        "volume_ratio_vs_previous_5": 1.242,
+        "volume_ratio_vs_previous_5": 1.3574,
         "volume_signal": "正常"
       },
       "short_term": {
@@ -100888,7 +100888,7 @@
           "golden_cross": false,
           "status": "complete"
         },
-        "volume_ratio": 1.242,
+        "volume_ratio": 1.3574,
         "chip": {
           "institutional_1d": null,
           "institutional_5d": null,
@@ -100935,7 +100935,7 @@
         "change1_pct": 0.71,
         "change5_pct": -4.91,
         "change20_pct": -0.12,
-        "volume_ratio": 1.242,
+        "volume_ratio": 1.3574,
         "volume_signal": "正常",
         "chip_direction": "資料不足",
         "medium_chip_direction": "資料不足",
@@ -112697,9 +112697,9 @@
         "low60": 92.0,
         "position60_pct": 12.23,
         "low60_ratio": 1.0924,
-        "volume": 162359869.0,
+        "volume": 163109869.0,
         "volume5_previous_avg": 181633969.0,
-        "volume_ratio_vs_previous_5": 0.8939,
+        "volume_ratio_vs_previous_5": 0.898,
         "volume_signal": "量縮"
       },
       "short_term": {
@@ -112732,7 +112732,7 @@
           "golden_cross": false,
           "status": "complete"
         },
-        "volume_ratio": 0.8939,
+        "volume_ratio": 0.898,
         "chip": {
           "institutional_1d": null,
           "institutional_5d": null,
@@ -112779,7 +112779,7 @@
         "change1_pct": 3.93,
         "change5_pct": -2.43,
         "change20_pct": -31.86,
-        "volume_ratio": 0.8939,
+        "volume_ratio": 0.898,
         "volume_signal": "量縮",
         "chip_direction": "資料不足",
         "medium_chip_direction": "資料不足",
@@ -113025,9 +113025,9 @@
         "low60": 1055.0,
         "position60_pct": 22.11,
         "low60_ratio": 1.2085,
-        "volume": 16283594.0,
+        "volume": 16389594.0,
         "volume5_previous_avg": 22644317.4,
-        "volume_ratio_vs_previous_5": 0.7191,
+        "volume_ratio_vs_previous_5": 0.7238,
         "volume_signal": "量縮"
       },
       "short_term": {
@@ -113060,7 +113060,7 @@
           "golden_cross": false,
           "status": "complete"
         },
-        "volume_ratio": 0.7191,
+        "volume_ratio": 0.7238,
         "chip": {
           "institutional_1d": null,
           "institutional_5d": null,
@@ -113107,7 +113107,7 @@
         "change1_pct": 9.91,
         "change5_pct": 0.39,
         "change20_pct": -35.11,
-        "volume_ratio": 0.7191,
+        "volume_ratio": 0.7238,
         "volume_signal": "量縮",
         "chip_direction": "資料不足",
         "medium_chip_direction": "資料不足",
@@ -114995,9 +114995,9 @@
         "low60": 2135.0,
         "position60_pct": 33.33,
         "low60_ratio": 1.0703,
-        "volume": 36418797.0,
+        "volume": 36575797.0,
         "volume5_previous_avg": 60357931.4,
-        "volume_ratio_vs_previous_5": 0.6034,
+        "volume_ratio_vs_previous_5": 0.606,
         "volume_signal": "量縮"
       },
       "short_term": {
@@ -115030,7 +115030,7 @@
           "golden_cross": false,
           "status": "complete"
         },
-        "volume_ratio": 0.6034,
+        "volume_ratio": 0.606,
         "chip": {
           "institutional_1d": null,
           "institutional_5d": null,
@@ -115077,7 +115077,7 @@
         "change1_pct": 2.24,
         "change5_pct": -0.44,
         "change20_pct": -10.39,
-        "volume_ratio": 0.6034,
+        "volume_ratio": 0.606,
         "volume_signal": "量縮",
         "chip_direction": "資料不足",
         "medium_chip_direction": "資料不足",
@@ -117951,9 +117951,9 @@
         "low60": 852.0,
         "position60_pct": 18.5,
         "low60_ratio": 1.0376,
-        "volume": 2972339.0,
+        "volume": 3028339.0,
         "volume5_previous_avg": 3605830.4,
-        "volume_ratio_vs_previous_5": 0.8243,
+        "volume_ratio_vs_previous_5": 0.8398,
         "volume_signal": "量縮"
       },
       "short_term": {
@@ -117986,7 +117986,7 @@
           "golden_cross": false,
           "status": "complete"
         },
-        "volume_ratio": 0.8243,
+        "volume_ratio": 0.8398,
         "chip": {
           "institutional_1d": null,
           "institutional_5d": null,
@@ -118033,7 +118033,7 @@
         "change1_pct": 2.79,
         "change5_pct": -0.56,
         "change20_pct": -11.24,
-        "volume_ratio": 0.8243,
+        "volume_ratio": 0.8398,
         "volume_signal": "量縮",
         "chip_direction": "資料不足",
         "medium_chip_direction": "資料不足",
@@ -120249,9 +120249,9 @@
         "low60": 298.0,
         "position60_pct": 6.53,
         "low60_ratio": 1.0218,
-        "volume": 9598320.0,
+        "volume": 10144320.0,
         "volume5_previous_avg": 5156729.0,
-        "volume_ratio_vs_previous_5": 1.8613,
+        "volume_ratio_vs_previous_5": 1.9672,
         "volume_signal": "放量"
       },
       "short_term": {
@@ -120284,7 +120284,7 @@
           "golden_cross": false,
           "status": "complete"
         },
-        "volume_ratio": 1.8613,
+        "volume_ratio": 1.9672,
         "chip": {
           "institutional_1d": null,
           "institutional_5d": null,
@@ -120331,7 +120331,7 @@
         "change1_pct": -1.62,
         "change5_pct": -6.88,
         "change20_pct": -16.12,
-        "volume_ratio": 1.8613,
+        "volume_ratio": 1.9672,
         "volume_signal": "放量",
         "chip_direction": "資料不足",
         "medium_chip_direction": "資料不足",
@@ -123039,9 +123039,9 @@
         "low60": 886.0,
         "position60_pct": 13.81,
         "low60_ratio": 1.07,
-        "volume": 1080807.0,
+        "volume": 1190807.0,
         "volume5_previous_avg": 1609022.0,
-        "volume_ratio_vs_previous_5": 0.6717,
+        "volume_ratio_vs_previous_5": 0.7401,
         "volume_signal": "量縮"
       },
       "short_term": {
@@ -123074,7 +123074,7 @@
           "golden_cross": false,
           "status": "complete"
         },
-        "volume_ratio": 0.6717,
+        "volume_ratio": 0.7401,
         "chip": {
           "institutional_1d": null,
           "institutional_5d": null,
@@ -123121,7 +123121,7 @@
         "change1_pct": 1.94,
         "change5_pct": -5.2,
         "change20_pct": -27.36,
-        "volume_ratio": 0.6717,
+        "volume_ratio": 0.7401,
         "volume_signal": "量縮",
         "chip_direction": "資料不足",
         "medium_chip_direction": "資料不足",
@@ -151334,9 +151334,9 @@
         "low60": 125.5,
         "position60_pct": 75.34,
         "low60_ratio": 1.2191,
-        "volume": 18998632.0,
+        "volume": 19383632.0,
         "volume5_previous_avg": 27512858.4,
-        "volume_ratio_vs_previous_5": 0.6905,
+        "volume_ratio_vs_previous_5": 0.7045,
         "volume_signal": "量縮"
       },
       "short_term": {
@@ -151369,7 +151369,7 @@
           "golden_cross": true,
           "status": "complete"
         },
-        "volume_ratio": 0.6905,
+        "volume_ratio": 0.7045,
         "chip": {
           "institutional_1d": null,
           "institutional_5d": null,
@@ -151416,7 +151416,7 @@
         "change1_pct": -0.33,
         "change5_pct": -0.65,
         "change20_pct": 0.0,
-        "volume_ratio": 0.6905,
+        "volume_ratio": 0.7045,
         "volume_signal": "量縮",
         "chip_direction": "資料不足",
         "medium_chip_direction": "資料不足",
@@ -151830,9 +151830,9 @@
         "low60": 36.75,
         "position60_pct": 78.46,
         "low60_ratio": 1.2776,
-        "volume": 26615252.0,
+        "volume": 27797252.0,
         "volume5_previous_avg": 36176541.2,
-        "volume_ratio_vs_previous_5": 0.7357,
+        "volume_ratio_vs_previous_5": 0.7684,
         "volume_signal": "量縮"
       },
       "short_term": {
@@ -151865,7 +151865,7 @@
           "golden_cross": false,
           "status": "complete"
         },
-        "volume_ratio": 0.7357,
+        "volume_ratio": 0.7684,
         "chip": {
           "institutional_1d": null,
           "institutional_5d": null,
@@ -151912,7 +151912,7 @@
         "change1_pct": -0.74,
         "change5_pct": -0.95,
         "change20_pct": 4.33,
-        "volume_ratio": 0.7357,
+        "volume_ratio": 0.7684,
         "volume_signal": "量縮",
         "chip_direction": "資料不足",
         "medium_chip_direction": "資料不足",
@@ -152656,9 +152656,9 @@
         "low60": 38.95,
         "position60_pct": 41.72,
         "low60_ratio": 1.0809,
-        "volume": 28571032.0,
+        "volume": 29163032.0,
         "volume5_previous_avg": 34301492.4,
-        "volume_ratio_vs_previous_5": 0.8329,
+        "volume_ratio_vs_previous_5": 0.8502,
         "volume_signal": "量縮"
       },
       "short_term": {
@@ -152691,7 +152691,7 @@
           "golden_cross": false,
           "status": "complete"
         },
-        "volume_ratio": 0.8329,
+        "volume_ratio": 0.8502,
         "chip": {
           "institutional_1d": null,
           "institutional_5d": null,
@@ -152738,7 +152738,7 @@
         "change1_pct": 0.0,
         "change5_pct": -5.18,
         "change20_pct": -4.43,
-        "volume_ratio": 0.8329,
+        "volume_ratio": 0.8502,
         "volume_signal": "量縮",
         "chip_direction": "資料不足",
         "medium_chip_direction": "資料不足",
@@ -152820,9 +152820,9 @@
         "low60": 63.4,
         "position60_pct": 82.4,
         "low60_ratio": 1.1625,
-        "volume": 36917627.0,
+        "volume": 37205627.0,
         "volume5_previous_avg": 53713846.4,
-        "volume_ratio_vs_previous_5": 0.6873,
+        "volume_ratio_vs_previous_5": 0.6927,
         "volume_signal": "量縮"
       },
       "short_term": {
@@ -152855,7 +152855,7 @@
           "golden_cross": false,
           "status": "complete"
         },
-        "volume_ratio": 0.6873,
+        "volume_ratio": 0.6927,
         "chip": {
           "institutional_1d": null,
           "institutional_5d": null,
@@ -152902,7 +152902,7 @@
         "change1_pct": -2.9,
         "change5_pct": -0.67,
         "change20_pct": 9.51,
-        "volume_ratio": 0.6873,
+        "volume_ratio": 0.6927,
         "volume_signal": "量縮",
         "chip_direction": "資料不足",
         "medium_chip_direction": "資料不足",
@@ -162367,9 +162367,9 @@
         "low60": 727.0,
         "position60_pct": 16.89,
         "low60_ratio": 1.1389,
-        "volume": 27890864.0,
+        "volume": 27967864.0,
         "volume5_previous_avg": 34511776.4,
-        "volume_ratio_vs_previous_5": 0.8082,
+        "volume_ratio_vs_previous_5": 0.8104,
         "volume_signal": "量縮"
       },
       "short_term": {
@@ -162402,7 +162402,7 @@
           "golden_cross": true,
           "status": "complete"
         },
-        "volume_ratio": 0.8082,
+        "volume_ratio": 0.8104,
         "chip": {
           "institutional_1d": null,
           "institutional_5d": null,
@@ -162449,7 +162449,7 @@
         "change1_pct": 9.38,
         "change5_pct": -8.2,
         "change20_pct": -34.8,
-        "volume_ratio": 0.8082,
+        "volume_ratio": 0.8104,
         "volume_signal": "量縮",
         "chip_direction": "資料不足",
         "medium_chip_direction": "資料不足",
@@ -193477,9 +193477,9 @@
         "low60": 1510.0,
         "position60_pct": 50.0,
         "low60_ratio": 1.1656,
-        "volume": 1618909.0,
+        "volume": 1785909.0,
         "volume5_previous_avg": 1557049.8,
-        "volume_ratio_vs_previous_5": 1.0397,
+        "volume_ratio_vs_previous_5": 1.147,
         "volume_signal": "正常"
       },
       "short_term": {
@@ -193512,7 +193512,7 @@
           "golden_cross": true,
           "status": "complete"
         },
-        "volume_ratio": 1.0397,
+        "volume_ratio": 1.147,
         "chip": {
           "institutional_1d": null,
           "institutional_5d": null,
@@ -193559,7 +193559,7 @@
         "change1_pct": 3.23,
         "change5_pct": 1.44,
         "change20_pct": -8.09,
-        "volume_ratio": 1.0397,
+        "volume_ratio": 1.147,
         "volume_signal": "正常",
         "chip_direction": "資料不足",
         "medium_chip_direction": "資料不足",
@@ -255561,9 +255561,9 @@
         "low60": 457.0,
         "position60_pct": 28.22,
         "low60_ratio": 1.1007,
-        "volume": 1375698.0,
+        "volume": 1415698.0,
         "volume5_previous_avg": 1200186.6,
-        "volume_ratio_vs_previous_5": 1.1462,
+        "volume_ratio_vs_previous_5": 1.1796,
         "volume_signal": "正常"
       },
       "short_term": {
@@ -255596,7 +255596,7 @@
           "golden_cross": true,
           "status": "complete"
         },
-        "volume_ratio": 1.1462,
+        "volume_ratio": 1.1796,
         "chip": {
           "institutional_1d": null,
           "institutional_5d": null,
@@ -255643,7 +255643,7 @@
         "change1_pct": 6.57,
         "change5_pct": -5.45,
         "change20_pct": -15.6,
-        "volume_ratio": 1.1462,
+        "volume_ratio": 1.1796,
         "volume_signal": "正常",
         "chip_direction": "資料不足",
         "medium_chip_direction": "資料不足",
@@ -283732,9 +283732,9 @@
         "low60": 142.5,
         "position60_pct": 69.42,
         "low60_ratio": 1.2947,
-        "volume": 2539517.0,
+        "volume": 2732517.0,
         "volume5_previous_avg": 2508137.0,
-        "volume_ratio_vs_previous_5": 1.0125,
+        "volume_ratio_vs_previous_5": 1.0895,
         "volume_signal": "正常"
       },
       "short_term": {
@@ -283767,7 +283767,7 @@
           "golden_cross": false,
           "status": "complete"
         },
-        "volume_ratio": 1.0125,
+        "volume_ratio": 1.0895,
         "chip": {
           "institutional_1d": null,
           "institutional_5d": null,
@@ -283814,7 +283814,7 @@
         "change1_pct": 3.07,
         "change5_pct": -8.66,
         "change20_pct": -3.91,
-        "volume_ratio": 1.0125,
+        "volume_ratio": 1.0895,
         "volume_signal": "正常",
         "chip_direction": "資料不足",
         "medium_chip_direction": "資料不足",
@@ -297071,9 +297071,9 @@
         "low60": 61.6,
         "position60_pct": 49.24,
         "low60_ratio": 1.3669,
-        "volume": 31977514.0,
+        "volume": 32277514.0,
         "volume5_previous_avg": 48772239.0,
-        "volume_ratio_vs_previous_5": 0.6556,
+        "volume_ratio_vs_previous_5": 0.6618,
         "volume_signal": "量縮"
       },
       "short_term": {
@@ -297106,7 +297106,7 @@
           "golden_cross": false,
           "status": "complete"
         },
-        "volume_ratio": 0.6556,
+        "volume_ratio": 0.6618,
         "chip": {
           "institutional_1d": null,
           "institutional_5d": null,
@@ -297153,7 +297153,7 @@
         "change1_pct": 9.92,
         "change5_pct": -3.99,
         "change20_pct": -15.8,
-        "volume_ratio": 0.6556,
+        "volume_ratio": 0.6618,
         "volume_signal": "量縮",
         "chip_direction": "資料不足",
         "medium_chip_direction": "資料不足",
@@ -314536,9 +314536,9 @@
         "low60": 1555.0,
         "position60_pct": 2.0,
         "low60_ratio": 1.0804,
-        "volume": 3344178.0,
+        "volume": 3476178.0,
         "volume5_previous_avg": 5214841.4,
-        "volume_ratio_vs_previous_5": 0.6413,
+        "volume_ratio_vs_previous_5": 0.6666,
         "volume_signal": "量縮"
       },
       "short_term": {
@@ -314571,7 +314571,7 @@
           "golden_cross": false,
           "status": "complete"
         },
-        "volume_ratio": 0.6413,
+        "volume_ratio": 0.6666,
         "chip": {
           "institutional_1d": null,
           "institutional_5d": null,
@@ -314618,7 +314618,7 @@
         "change1_pct": 2.13,
         "change5_pct": -5.08,
         "change20_pct": -25.0,
-        "volume_ratio": 0.6413,
+        "volume_ratio": 0.6666,
         "volume_signal": "量縮",
         "chip_direction": "資料不足",
         "medium_chip_direction": "資料不足",
@@ -329527,9 +329527,9 @@
         "low60": 42.85,
         "position60_pct": 20.28,
         "low60_ratio": 1.1517,
-        "volume": 1212580.0,
+        "volume": 1512580.0,
         "volume5_previous_avg": 2178134.0,
-        "volume_ratio_vs_previous_5": 0.5567,
+        "volume_ratio_vs_previous_5": 0.6944,
         "volume_signal": "量縮"
       },
       "short_term": {
@@ -329562,7 +329562,7 @@
           "golden_cross": false,
           "status": "complete"
         },
-        "volume_ratio": 0.5567,
+        "volume_ratio": 0.6944,
         "chip": {
           "institutional_1d": null,
           "institutional_5d": null,
@@ -329609,7 +329609,7 @@
         "change1_pct": -5.1,
         "change5_pct": 15.17,
         "change20_pct": -25.34,
-        "volume_ratio": 0.5567,
+        "volume_ratio": 0.6944,
         "volume_signal": "量縮",
         "chip_direction": "資料不足",
         "medium_chip_direction": "資料不足",
