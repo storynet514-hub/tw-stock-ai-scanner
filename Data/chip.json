@@ -1,12 +1,12 @@
 {
   "version": "UNIVERSE-CHIP-4.0",
-  "generated_at": "2026-11-10T19:23:10+08:00",
+  "generated_at": "2026-11-10T23:27:29+08:00",
   "latest_trade_date": "2026-11-10",
-  "universe_count": 2319,
+  "universe_count": 2321,
   "stock_count": 1955,
-  "etf_count": 364,
+  "etf_count": 366,
   "valid_count": 2194,
-  "invalid_count": 125,
+  "invalid_count": 127,
   "source_policy": "official_only",
   "universe_source": "Data/universe.json",
   "sources": {
@@ -31,7 +31,7 @@
       "json_error": 0,
       "empty": 0,
       "schema_error": 10,
-      "records": 53796,
+      "records": 53804,
       "dates_with_records": 40,
       "last_error": null,
       "status": "schema_error",
@@ -1213,6 +1213,61 @@
         "valid": true
       }
     },
+    "00413A": {
+      "symbol": "00413A",
+      "full_symbol": "00413A.TW",
+      "name": "E.SUN TAIWAN CORE TECHNOLOGY ACTIVE ETF",
+      "market": "TWSE",
+      "type": "ETF",
+      "instrument_type": "ACTIVE",
+      "status": "active",
+      "listed_date": "2026/11/11",
+      "latest_trade_date": "2026-11-10",
+      "institutional": {
+        "date": "2026-11-10",
+        "foreign_net": null,
+        "trust_net": null,
+        "dealer_net": null,
+        "total_net": null,
+        "5d": {
+          "trading_days": 0,
+          "dates": [],
+          "foreign_net": null,
+          "trust_net": null,
+          "dealer_net": null,
+          "total_net": null
+        },
+        "20d": {
+          "trading_days": 0,
+          "dates": [],
+          "foreign_net": null,
+          "trust_net": null,
+          "dealer_net": null,
+          "total_net": null
+        }
+      },
+      "margin": {
+        "date": "2026-11-10",
+        "margin_balance": null,
+        "short_balance": null,
+        "offset_volume": null
+      },
+      "trading": {
+        "date": "2026-11-10",
+        "volume": null,
+        "day_trade_rate": null,
+        "day_trade_volume": null
+      },
+      "data_quality": {
+        "current_institutional": false,
+        "institutional_5d": false,
+        "institutional_20d": false,
+        "margin": false,
+        "volume": false,
+        "day_trade": false,
+        "valid": false
+      }
+    },
     "00415A": {
       "symbol": "00415A",
       "full_symbol": "00415A.TW",
@@ -1355,6 +1410,61 @@
         "volume": true,
         "day_trade": false,
         "valid": true
+      }
+    },
+    "00418A": {
+      "symbol": "00418A",
+      "full_symbol": "00418A.TW",
+      "name": "FUH HWA TAIWAN RISING STAR ACTIVE ETF",
+      "market": "TWSE",
+      "type": "ETF",
+      "instrument_type": "ACTIVE",
+      "status": "active",
+      "listed_date": "2026/11/11",
+      "latest_trade_date": "2026-11-10",
+      "institutional": {
+        "date": "2026-11-10",
+        "foreign_net": null,
+        "trust_net": null,
+        "dealer_net": null,
+        "total_net": null,
+        "5d": {
+          "trading_days": 0,
+          "dates": [],
+          "foreign_net": null,
+          "trust_net": null,
+          "dealer_net": null,
+          "total_net": null
+        },
+        "20d": {
+          "trading_days": 0,
+          "dates": [],
+          "foreign_net": null,
+          "trust_net": null,
+          "dealer_net": null,
+          "total_net": null
+        }
+      },
+      "margin": {
+        "date": "2026-11-10",
+        "margin_balance": null,
+        "short_balance": null,
+        "offset_volume": null
+      },
+      "trading": {
+        "date": "2026-11-10",
+        "volume": null,
+        "day_trade_rate": null,
+        "day_trade_volume": null
+      },
+      "data_quality": {
+        "current_institutional": false,
+        "institutional_5d": false,
+        "institutional_20d": false,
+        "margin": false,
+        "volume": false,
+        "day_trade": false,
+        "valid": false
       }
     },
     "0050": {
@@ -3173,12 +3283,12 @@
       "latest_trade_date": "2026-11-10",
       "institutional": {
         "date": "2026-11-10",
-        "foreign_net": null,
-        "trust_net": null,
-        "dealer_net": null,
-        "total_net": null,
+        "foreign_net": 0.0,
+        "trust_net": 0.0,
+        "dealer_net": 0.0,
+        "total_net": 0.0,
         "5d": {
-          "trading_days": 4,
+          "trading_days": 5,
           "dates": [
             "2026-11-10",
             "2026-11-09",
@@ -3186,13 +3296,13 @@
             "2026-11-05",
             "2026-11-04"
           ],
-          "foreign_net": null,
-          "trust_net": null,
-          "dealer_net": null,
-          "total_net": null
+          "foreign_net": 0.0,
+          "trust_net": 0.0,
+          "dealer_net": 1100.0,
+          "total_net": 1100.0
         },
         "20d": {
-          "trading_days": 19,
+          "trading_days": 20,
           "dates": [
             "2026-11-10",
             "2026-11-09",
@@ -3215,10 +3325,10 @@
             "2026-10-13",
             "2026-10-12"
           ],
-          "foreign_net": null,
-          "trust_net": null,
-          "dealer_net": null,
-          "total_net": null
+          "foreign_net": 0.0,
+          "trust_net": 0.0,
+          "dealer_net": 20100.0,
+          "total_net": 20100.0
         }
       },
       "margin": {
@@ -3234,9 +3344,9 @@
         "day_trade_volume": null
       },
       "data_quality": {
-        "current_institutional": false,
-        "institutional_5d": false,
-        "institutional_20d": false,
+        "current_institutional": true,
+        "institutional_5d": true,
+        "institutional_20d": true,
         "margin": false,
         "volume": true,
         "day_trade": false,
@@ -3829,12 +3939,12 @@
       "latest_trade_date": "2026-11-10",
       "institutional": {
         "date": "2026-11-10",
-        "foreign_net": null,
-        "trust_net": null,
-        "dealer_net": null,
-        "total_net": null,
+        "foreign_net": 0.0,
+        "trust_net": 0.0,
+        "dealer_net": 0.0,
+        "total_net": 0.0,
         "5d": {
-          "trading_days": 2,
+          "trading_days": 3,
           "dates": [
             "2026-11-10",
             "2026-11-09",
@@ -3848,7 +3958,7 @@
           "total_net": null
         },
         "20d": {
-          "trading_days": 8,
+          "trading_days": 9,
           "dates": [
             "2026-11-10",
             "2026-11-09",
@@ -3890,7 +4000,7 @@
         "day_trade_volume": null
       },
       "data_quality": {
-        "current_institutional": false,
+        "current_institutional": true,
         "institutional_5d": false,
         "institutional_20d": false,
         "margin": false,
@@ -4895,12 +5005,12 @@
       "latest_trade_date": "2026-11-10",
       "institutional": {
         "date": "2026-11-10",
-        "foreign_net": null,
-        "trust_net": null,
-        "dealer_net": null,
-        "total_net": null,
+        "foreign_net": 0.0,
+        "trust_net": 0.0,
+        "dealer_net": 0.0,
+        "total_net": 0.0,
         "5d": {
-          "trading_days": 4,
+          "trading_days": 5,
           "dates": [
             "2026-11-10",
             "2026-11-09",
@@ -4908,13 +5018,13 @@
             "2026-11-05",
             "2026-11-04"
           ],
-          "foreign_net": null,
-          "trust_net": null,
-          "dealer_net": null,
-          "total_net": null
+          "foreign_net": 0.0,
+          "trust_net": 0.0,
+          "dealer_net": 0.0,
+          "total_net": 0.0
         },
         "20d": {
-          "trading_days": 19,
+          "trading_days": 20,
           "dates": [
             "2026-11-10",
             "2026-11-09",
@@ -4937,10 +5047,10 @@
             "2026-10-13",
             "2026-10-12"
           ],
-          "foreign_net": null,
-          "trust_net": null,
-          "dealer_net": null,
-          "total_net": null
+          "foreign_net": 0.0,
+          "trust_net": 0.0,
+          "dealer_net": 0.0,
+          "total_net": 0.0
         }
       },
       "margin": {
@@ -4956,9 +5066,9 @@
         "day_trade_volume": null
       },
       "data_quality": {
-        "current_institutional": false,
-        "institutional_5d": false,
-        "institutional_20d": false,
+        "current_institutional": true,
+        "institutional_5d": true,
+        "institutional_20d": true,
         "margin": false,
         "volume": true,
         "day_trade": false,
@@ -5633,12 +5743,12 @@
       "latest_trade_date": "2026-11-10",
       "institutional": {
         "date": "2026-11-10",
-        "foreign_net": null,
-        "trust_net": null,
-        "dealer_net": null,
-        "total_net": null,
+        "foreign_net": 0.0,
+        "trust_net": 0.0,
+        "dealer_net": 0.0,
+        "total_net": 0.0,
         "5d": {
-          "trading_days": 4,
+          "trading_days": 5,
           "dates": [
             "2026-11-10",
             "2026-11-09",
@@ -5646,13 +5756,13 @@
             "2026-11-05",
             "2026-11-04"
           ],
-          "foreign_net": null,
-          "trust_net": null,
-          "dealer_net": null,
-          "total_net": null
+          "foreign_net": 0.0,
+          "trust_net": 0.0,
+          "dealer_net": 0.0,
+          "total_net": 0.0
         },
         "20d": {
-          "trading_days": 19,
+          "trading_days": 20,
           "dates": [
             "2026-11-10",
             "2026-11-09",
@@ -5675,10 +5785,10 @@
             "2026-10-13",
             "2026-10-12"
           ],
-          "foreign_net": null,
-          "trust_net": null,
-          "dealer_net": null,
-          "total_net": null
+          "foreign_net": 0.0,
+          "trust_net": 0.0,
+          "dealer_net": 0.0,
+          "total_net": 0.0
         }
       },
       "margin": {
@@ -5694,9 +5804,9 @@
         "day_trade_volume": null
       },
       "data_quality": {
-        "current_institutional": false,
-        "institutional_5d": false,
-        "institutional_20d": false,
+        "current_institutional": true,
+        "institutional_5d": true,
+        "institutional_20d": true,
         "margin": false,
         "volume": true,
         "day_trade": false,
@@ -32715,9 +32825,9 @@
       "institutional": {
         "date": "2026-11-10",
         "foreign_net": 8221367.0,
-        "trust_net": 3220000.0,
+        "trust_net": 9864000.0,
         "dealer_net": 123815.0,
-        "total_net": 11565182.0,
+        "total_net": 18209182.0,
         "5d": {
           "trading_days": 5,
           "dates": [
@@ -32728,9 +32838,9 @@
             "2026-11-04"
           ],
           "foreign_net": -16014219.0,
-          "trust_net": 15256404.0,
+          "trust_net": 21900404.0,
           "dealer_net": 6061056.0,
-          "total_net": 5303241.0
+          "total_net": 11947241.0
         },
         "20d": {
           "trading_days": 20,
@@ -32757,9 +32867,9 @@
             "2026-10-12"
           ],
           "foreign_net": -125035038.0,
-          "trust_net": 38163473.0,
+          "trust_net": 44807473.0,
           "dealer_net": 18007579.0,
-          "total_net": -68863986.0
+          "total_net": -62219986.0
         }
       },
       "margin": {
@@ -54883,9 +54993,9 @@
       "institutional": {
         "date": "2026-11-10",
         "foreign_net": -441494.0,
-        "trust_net": 404000.0,
+        "trust_net": 394000.0,
         "dealer_net": -299099.0,
-        "total_net": -336593.0,
+        "total_net": -346593.0,
         "5d": {
           "trading_days": 5,
           "dates": [
@@ -54896,9 +55006,9 @@
             "2026-11-04"
           ],
           "foreign_net": -10871215.0,
-          "trust_net": 455323.0,
+          "trust_net": 445323.0,
           "dealer_net": 1538434.0,
-          "total_net": -8877458.0
+          "total_net": -8887458.0
         },
         "20d": {
           "trading_days": 20,
@@ -54925,9 +55035,9 @@
             "2026-10-12"
           ],
           "foreign_net": -62958139.0,
-          "trust_net": -1606607.0,
+          "trust_net": -1616607.0,
           "dealer_net": 1214550.0,
-          "total_net": -63350196.0
+          "total_net": -63360196.0
         }
       },
       "margin": {
@@ -55621,9 +55731,9 @@
       "institutional": {
         "date": "2026-11-10",
         "foreign_net": 154644.0,
-        "trust_net": -456300.0,
+        "trust_net": -1201300.0,
         "dealer_net": 58814.0,
-        "total_net": -242842.0,
+        "total_net": -987842.0,
         "5d": {
           "trading_days": 5,
           "dates": [
@@ -55634,9 +55744,9 @@
             "2026-11-04"
           ],
           "foreign_net": -12071495.0,
-          "trust_net": -3457145.0,
+          "trust_net": -4202145.0,
           "dealer_net": 1029577.0,
-          "total_net": -14499063.0
+          "total_net": -15244063.0
         },
         "20d": {
           "trading_days": 20,
@@ -55663,9 +55773,9 @@
             "2026-10-12"
           ],
           "foreign_net": -84372180.0,
-          "trust_net": -1519676.0,
+          "trust_net": -2264676.0,
           "dealer_net": -5172677.0,
-          "total_net": -91064533.0
+          "total_net": -91809533.0
         }
       },
       "margin": {
@@ -55867,9 +55977,9 @@
       "institutional": {
         "date": "2026-11-10",
         "foreign_net": -8181770.0,
-        "trust_net": 4911335.0,
+        "trust_net": 5634335.0,
         "dealer_net": -766472.0,
-        "total_net": -4036907.0,
+        "total_net": -3313907.0,
         "5d": {
           "trading_days": 5,
           "dates": [
@@ -55880,9 +55990,9 @@
             "2026-11-04"
           ],
           "foreign_net": -71641042.0,
-          "trust_net": 19863834.0,
+          "trust_net": 20586834.0,
           "dealer_net": 18433808.0,
-          "total_net": -33343400.0
+          "total_net": -32620400.0
         },
         "20d": {
           "trading_days": 20,
@@ -55909,9 +56019,9 @@
             "2026-10-12"
           ],
           "foreign_net": -247807216.0,
-          "trust_net": 47454804.0,
+          "trust_net": 48177804.0,
           "dealer_net": 38031500.0,
-          "total_net": -162320912.0
+          "total_net": -161597912.0
         }
       },
       "margin": {
@@ -56441,9 +56551,9 @@
       "institutional": {
         "date": "2026-11-10",
         "foreign_net": -7967399.0,
-        "trust_net": 403000.0,
+        "trust_net": 383000.0,
         "dealer_net": 379092.0,
-        "total_net": -7185307.0,
+        "total_net": -7205307.0,
         "5d": {
           "trading_days": 5,
           "dates": [
@@ -56454,9 +56564,9 @@
             "2026-11-04"
           ],
           "foreign_net": -25398747.0,
-          "trust_net": -5938983.0,
+          "trust_net": -5958983.0,
           "dealer_net": 4901034.0,
-          "total_net": -26436696.0
+          "total_net": -26456696.0
         },
         "20d": {
           "trading_days": 20,
@@ -56483,9 +56593,9 @@
             "2026-10-12"
           ],
           "foreign_net": -44080272.0,
-          "trust_net": -15049397.0,
+          "trust_net": -15069397.0,
           "dealer_net": 7449106.0,
-          "total_net": -51680563.0
+          "total_net": -51700563.0
         }
       },
       "margin": {
@@ -56523,9 +56633,9 @@
       "institutional": {
         "date": "2026-11-10",
         "foreign_net": -1216634.0,
-        "trust_net": 1127000.0,
+        "trust_net": 1120000.0,
         "dealer_net": -204633.0,
-        "total_net": -294267.0,
+        "total_net": -301267.0,
         "5d": {
           "trading_days": 5,
           "dates": [
@@ -56536,9 +56646,9 @@
             "2026-11-04"
           ],
           "foreign_net": -2340819.0,
-          "trust_net": 1472316.0,
+          "trust_net": 1465316.0,
           "dealer_net": 73008.0,
-          "total_net": -795495.0
+          "total_net": -802495.0
         },
         "20d": {
           "trading_days": 20,
@@ -56565,9 +56675,9 @@
             "2026-10-12"
           ],
           "foreign_net": -5182766.0,
-          "trust_net": 3526047.0,
+          "trust_net": 3519047.0,
           "dealer_net": -134004.0,
-          "total_net": -1790723.0
+          "total_net": -1797723.0
         }
       },
       "margin": {
@@ -57507,9 +57617,9 @@
       "institutional": {
         "date": "2026-11-10",
         "foreign_net": 399948.0,
-        "trust_net": -15067.0,
+        "trust_net": -4067.0,
         "dealer_net": -159143.0,
-        "total_net": 225738.0,
+        "total_net": 236738.0,
         "5d": {
           "trading_days": 5,
           "dates": [
@@ -57520,9 +57630,9 @@
             "2026-11-04"
           ],
           "foreign_net": -219034.0,
-          "trust_net": -334456.0,
+          "trust_net": -323456.0,
           "dealer_net": 1007028.0,
-          "total_net": 453538.0
+          "total_net": 464538.0
         },
         "20d": {
           "trading_days": 20,
@@ -57549,9 +57659,9 @@
             "2026-10-12"
           ],
           "foreign_net": -5026964.0,
-          "trust_net": 51034.0,
+          "trust_net": 62034.0,
           "dealer_net": 1407661.0,
-          "total_net": -3568269.0
+          "total_net": -3557269.0
         }
       },
       "margin": {
@@ -58901,9 +59011,9 @@
       "institutional": {
         "date": "2026-11-10",
         "foreign_net": -442432.0,
-        "trust_net": 147000.0,
+        "trust_net": 146000.0,
         "dealer_net": -218480.0,
-        "total_net": -513912.0,
+        "total_net": -514912.0,
         "5d": {
           "trading_days": 5,
           "dates": [
@@ -58914,9 +59024,9 @@
             "2026-11-04"
           ],
           "foreign_net": -4339709.0,
-          "trust_net": 1150468.0,
+          "trust_net": 1149468.0,
           "dealer_net": 37030.0,
-          "total_net": -3152211.0
+          "total_net": -3153211.0
         },
         "20d": {
           "trading_days": 20,
@@ -58943,9 +59053,9 @@
             "2026-10-12"
           ],
           "foreign_net": -9309880.0,
-          "trust_net": 2683145.0,
+          "trust_net": 2682145.0,
           "dealer_net": 122333.0,
-          "total_net": -6504402.0
+          "total_net": -6505402.0
         }
       },
       "margin": {
@@ -59475,9 +59585,9 @@
       "institutional": {
         "date": "2026-11-10",
         "foreign_net": -110938.0,
-        "trust_net": 515000.0,
+        "trust_net": 544000.0,
         "dealer_net": -59610.0,
-        "total_net": 344452.0,
+        "total_net": 373452.0,
         "5d": {
           "trading_days": 5,
           "dates": [
@@ -59488,9 +59598,9 @@
             "2026-11-04"
           ],
           "foreign_net": 270212.0,
-          "trust_net": 685609.0,
+          "trust_net": 714609.0,
           "dealer_net": 339721.0,
-          "total_net": 1295542.0
+          "total_net": 1324542.0
         },
         "20d": {
           "trading_days": 20,
@@ -59517,9 +59627,9 @@
             "2026-10-12"
           ],
           "foreign_net": 506293.0,
-          "trust_net": 574524.0,
+          "trust_net": 603524.0,
           "dealer_net": 609017.0,
-          "total_net": 1689834.0
+          "total_net": 1718834.0
         }
       },
       "margin": {
@@ -62755,9 +62865,9 @@
       "institutional": {
         "date": "2026-11-10",
         "foreign_net": -2586820.0,
-        "trust_net": 985750.0,
+        "trust_net": 1159750.0,
         "dealer_net": -372046.0,
-        "total_net": -1973116.0,
+        "total_net": -1799116.0,
         "5d": {
           "trading_days": 5,
           "dates": [
@@ -62768,9 +62878,9 @@
             "2026-11-04"
           ],
           "foreign_net": -17142774.0,
-          "trust_net": 3854715.0,
+          "trust_net": 4028715.0,
           "dealer_net": 1147584.0,
-          "total_net": -12140475.0
+          "total_net": -11966475.0
         },
         "20d": {
           "trading_days": 20,
@@ -62797,9 +62907,9 @@
             "2026-10-12"
           ],
           "foreign_net": -53961119.0,
-          "trust_net": 10601957.0,
+          "trust_net": 10775957.0,
           "dealer_net": 1386045.0,
-          "total_net": -41973117.0
+          "total_net": -41799117.0
         }
       },
       "margin": {
@@ -65133,9 +65243,9 @@
       "institutional": {
         "date": "2026-11-10",
         "foreign_net": -2560251.0,
-        "trust_net": -49000.0,
+        "trust_net": -1178000.0,
         "dealer_net": 189931.0,
-        "total_net": -2419320.0,
+        "total_net": -3548320.0,
         "5d": {
           "trading_days": 5,
           "dates": [
@@ -65146,9 +65256,9 @@
             "2026-11-04"
           ],
           "foreign_net": -412766.0,
-          "trust_net": -3771000.0,
+          "trust_net": -4900000.0,
           "dealer_net": 236843.0,
-          "total_net": -3946923.0
+          "total_net": -5075923.0
         },
         "20d": {
           "trading_days": 20,
@@ -65175,9 +65285,9 @@
             "2026-10-12"
           ],
           "foreign_net": -15316586.0,
-          "trust_net": 7710038.0,
+          "trust_net": 6581038.0,
           "dealer_net": -2930383.0,
-          "total_net": -10536931.0
+          "total_net": -11665931.0
         }
       },
       "margin": {
@@ -74615,9 +74725,9 @@
       "institutional": {
         "date": "2026-11-10",
         "foreign_net": -9754496.0,
-        "trust_net": 3827000.0,
+        "trust_net": 3742000.0,
         "dealer_net": 703915.0,
-        "total_net": -5223581.0,
+        "total_net": -5308581.0,
         "5d": {
           "trading_days": 5,
           "dates": [
@@ -74628,9 +74738,9 @@
             "2026-11-04"
           ],
           "foreign_net": -39284187.0,
-          "trust_net": 44595003.0,
+          "trust_net": 44510003.0,
           "dealer_net": 24735823.0,
-          "total_net": 30046639.0
+          "total_net": 29961639.0
         },
         "20d": {
           "trading_days": 20,
@@ -74657,9 +74767,9 @@
             "2026-10-12"
           ],
           "foreign_net": 29383875.0,
-          "trust_net": 77306205.0,
+          "trust_net": 77221205.0,
           "dealer_net": 59580689.0,
-          "total_net": 166270769.0
+          "total_net": 166185769.0
         }
       },
       "margin": {
@@ -77124,9 +77234,9 @@
       "institutional": {
         "date": "2026-11-10",
         "foreign_net": -435542.0,
-        "trust_net": 106983.0,
+        "trust_net": 107583.0,
         "dealer_net": 53476.0,
-        "total_net": -275083.0,
+        "total_net": -274483.0,
         "5d": {
           "trading_days": 5,
           "dates": [
@@ -77137,9 +77247,9 @@
             "2026-11-04"
           ],
           "foreign_net": -125390.0,
-          "trust_net": 91581.0,
+          "trust_net": 92181.0,
           "dealer_net": -151473.0,
-          "total_net": -185282.0
+          "total_net": -184682.0
         },
         "20d": {
           "trading_days": 20,
@@ -77166,9 +77276,9 @@
             "2026-10-12"
           ],
           "foreign_net": -2341873.0,
-          "trust_net": 1848669.0,
+          "trust_net": 1849269.0,
           "dealer_net": -1029341.0,
-          "total_net": -1522545.0
+          "total_net": -1521945.0
         }
       },
       "margin": {
@@ -79256,9 +79366,9 @@
       "institutional": {
         "date": "2026-11-10",
         "foreign_net": 2795373.0,
-        "trust_net": 253000.0,
+        "trust_net": 248000.0,
         "dealer_net": -335429.0,
-        "total_net": 2712944.0,
+        "total_net": 2707944.0,
         "5d": {
           "trading_days": 5,
           "dates": [
@@ -79269,9 +79379,9 @@
             "2026-11-04"
           ],
           "foreign_net": -22924222.0,
-          "trust_net": 3879985.0,
+          "trust_net": 3874985.0,
           "dealer_net": -168282.0,
-          "total_net": -19212519.0
+          "total_net": -19217519.0
         },
         "20d": {
           "trading_days": 20,
@@ -79298,9 +79408,9 @@
             "2026-10-12"
           ],
           "foreign_net": -55551666.0,
-          "trust_net": 12875236.0,
+          "trust_net": 12870236.0,
           "dealer_net": 967717.0,
-          "total_net": -41708713.0
+          "total_net": -41713713.0
         }
       },
       "margin": {
@@ -79830,9 +79940,9 @@
       "institutional": {
         "date": "2026-11-10",
         "foreign_net": -944227.0,
-        "trust_net": 100893.0,
+        "trust_net": 60893.0,
         "dealer_net": 590254.0,
-        "total_net": -253080.0,
+        "total_net": -293080.0,
         "5d": {
           "trading_days": 5,
           "dates": [
@@ -79843,9 +79953,9 @@
             "2026-11-04"
           ],
           "foreign_net": -4204317.0,
-          "trust_net": 7408579.0,
+          "trust_net": 7368579.0,
           "dealer_net": 3666762.0,
-          "total_net": 6871024.0
+          "total_net": 6831024.0
         },
         "20d": {
           "trading_days": 20,
@@ -79872,9 +79982,9 @@
             "2026-10-12"
           ],
           "foreign_net": 31064698.0,
-          "trust_net": 12858314.0,
+          "trust_net": 12818314.0,
           "dealer_net": 4068344.0,
-          "total_net": 47991356.0
+          "total_net": 47951356.0
         }
       },
       "margin": {
@@ -91400,9 +91510,9 @@
       "institutional": {
         "date": "2026-11-10",
         "foreign_net": 262604.0,
-        "trust_net": 245400.0,
+        "trust_net": 108400.0,
         "dealer_net": -36547.0,
-        "total_net": 471457.0,
+        "total_net": 334457.0,
         "5d": {
           "trading_days": 5,
           "dates": [
@@ -91413,9 +91523,9 @@
             "2026-11-04"
           ],
           "foreign_net": -1574441.0,
-          "trust_net": 1156092.0,
+          "trust_net": 1019092.0,
           "dealer_net": -256644.0,
-          "total_net": -674993.0
+          "total_net": -811993.0
         },
         "20d": {
           "trading_days": 20,
@@ -91442,9 +91552,9 @@
             "2026-10-12"
           ],
           "foreign_net": -877438.0,
-          "trust_net": 2314071.0,
+          "trust_net": 2177071.0,
           "dealer_net": -376490.0,
-          "total_net": 1060143.0
+          "total_net": 923143.0
         }
       },
       "margin": {
@@ -98671,9 +98781,9 @@
       "institutional": {
         "date": "2026-11-10",
         "foreign_net": -552419.0,
-        "trust_net": 217801.0,
+        "trust_net": 279801.0,
         "dealer_net": 10429.0,
-        "total_net": -324189.0,
+        "total_net": -262189.0,
         "5d": {
           "trading_days": 5,
           "dates": [
@@ -98684,9 +98794,9 @@
             "2026-11-04"
           ],
           "foreign_net": -2619059.0,
-          "trust_net": 800131.0,
+          "trust_net": 862131.0,
           "dealer_net": 112456.0,
-          "total_net": -1706472.0
+          "total_net": -1644472.0
         },
         "20d": {
           "trading_days": 20,
@@ -98713,9 +98823,9 @@
             "2026-10-12"
           ],
           "foreign_net": -4024338.0,
-          "trust_net": 1952670.0,
+          "trust_net": 2014670.0,
           "dealer_net": 142001.0,
-          "total_net": -1929667.0
+          "total_net": -1867667.0
         }
       },
       "margin": {
@@ -101099,9 +101209,9 @@
       "institutional": {
         "date": "2026-11-10",
         "foreign_net": -1544570.0,
-        "trust_net": 3629000.0,
+        "trust_net": 3614000.0,
         "dealer_net": -1048816.0,
-        "total_net": 1035614.0,
+        "total_net": 1020614.0,
         "5d": {
           "trading_days": 5,
           "dates": [
@@ -101112,9 +101222,9 @@
             "2026-11-04"
           ],
           "foreign_net": -40860785.0,
-          "trust_net": 14463068.0,
+          "trust_net": 14448068.0,
           "dealer_net": 2068717.0,
-          "total_net": -24329000.0
+          "total_net": -24344000.0
         },
         "20d": {
           "trading_days": 20,
@@ -101141,9 +101251,9 @@
             "2026-10-12"
           ],
           "foreign_net": -110755078.0,
-          "trust_net": 48709348.0,
+          "trust_net": 48694348.0,
           "dealer_net": 2992509.0,
-          "total_net": -59053221.0
+          "total_net": -59068221.0
         }
       },
       "margin": {
@@ -121419,9 +121529,9 @@
       "institutional": {
         "date": "2026-11-10",
         "foreign_net": 29347.0,
-        "trust_net": -77975.0,
+        "trust_net": -77075.0,
         "dealer_net": 5572.0,
-        "total_net": -43056.0,
+        "total_net": -42156.0,
         "5d": {
           "trading_days": 5,
           "dates": [
@@ -121432,9 +121542,9 @@
             "2026-11-04"
           ],
           "foreign_net": -147480.0,
-          "trust_net": -13341.0,
+          "trust_net": -12441.0,
           "dealer_net": 9702.0,
-          "total_net": -151119.0
+          "total_net": -150219.0
         },
         "20d": {
           "trading_days": 20,
@@ -121461,9 +121571,9 @@
             "2026-10-12"
           ],
           "foreign_net": -817263.0,
-          "trust_net": 366810.0,
+          "trust_net": 367710.0,
           "dealer_net": 1594.0,
-          "total_net": -448859.0
+          "total_net": -447959.0
         }
       },
       "margin": {
@@ -122061,9 +122171,9 @@
       "institutional": {
         "date": "2026-11-10",
         "foreign_net": -107202.0,
-        "trust_net": 1000.0,
+        "trust_net": -7693.0,
         "dealer_net": 19668.0,
-        "total_net": -86534.0,
+        "total_net": -95227.0,
         "5d": {
           "trading_days": 5,
           "dates": [
@@ -122074,9 +122184,9 @@
             "2026-11-04"
           ],
           "foreign_net": 212681.0,
-          "trust_net": 7100.0,
+          "trust_net": -1593.0,
           "dealer_net": -115159.0,
-          "total_net": 104622.0
+          "total_net": 95929.0
         },
         "20d": {
           "trading_days": 20,
@@ -122103,9 +122213,9 @@
             "2026-10-12"
           ],
           "foreign_net": 324684.0,
-          "trust_net": 72496.0,
+          "trust_net": 63803.0,
           "dealer_net": -219199.0,
-          "total_net": 177981.0
+          "total_net": 169288.0
         }
       },
       "margin": {
@@ -123482,9 +123592,9 @@
       "institutional": {
         "date": "2026-11-10",
         "foreign_net": -2435948.0,
-        "trust_net": 665000.0,
+        "trust_net": 719000.0,
         "dealer_net": -6897.0,
-        "total_net": -1777845.0,
+        "total_net": -1723845.0,
         "5d": {
           "trading_days": 5,
           "dates": [
@@ -123495,9 +123605,9 @@
             "2026-11-04"
           ],
           "foreign_net": -3113792.0,
-          "trust_net": -2204514.0,
+          "trust_net": -2150514.0,
           "dealer_net": -138605.0,
-          "total_net": -5456911.0
+          "total_net": -5402911.0
         },
         "20d": {
           "trading_days": 20,
@@ -123524,9 +123634,9 @@
             "2026-10-12"
           ],
           "foreign_net": -22550251.0,
-          "trust_net": -158459.0,
+          "trust_net": -104459.0,
           "dealer_net": -2183484.0,
-          "total_net": -24892194.0
+          "total_net": -24838194.0
         }
       },
       "margin": {
@@ -143683,9 +143793,9 @@
       "institutional": {
         "date": "2026-11-10",
         "foreign_net": 187385.0,
-        "trust_net": 120000.0,
+        "trust_net": 99000.0,
         "dealer_net": -33380.0,
-        "total_net": 274005.0,
+        "total_net": 253005.0,
         "5d": {
           "trading_days": 5,
           "dates": [
@@ -143696,9 +143806,9 @@
             "2026-11-04"
           ],
           "foreign_net": 1551748.0,
-          "trust_net": 303000.0,
+          "trust_net": 282000.0,
           "dealer_net": -324178.0,
-          "total_net": 1530570.0
+          "total_net": 1509570.0
         },
         "20d": {
           "trading_days": 20,
@@ -143725,9 +143835,9 @@
             "2026-10-12"
           ],
           "foreign_net": -4044124.0,
-          "trust_net": 2300949.0,
+          "trust_net": 2279949.0,
           "dealer_net": -55163.0,
-          "total_net": -1798338.0
+          "total_net": -1819338.0
         }
       },
       "margin": {
@@ -168615,9 +168725,9 @@
       "institutional": {
         "date": "2026-11-10",
         "foreign_net": -366799.0,
-        "trust_net": 181000.0,
+        "trust_net": 180000.0,
         "dealer_net": -17877.0,
-        "total_net": -203676.0,
+        "total_net": -204676.0,
         "5d": {
           "trading_days": 5,
           "dates": [
@@ -168628,9 +168738,9 @@
             "2026-11-04"
           ],
           "foreign_net": -529751.0,
-          "trust_net": 491627.0,
+          "trust_net": 490627.0,
           "dealer_net": 41965.0,
-          "total_net": 3841.0
+          "total_net": 2841.0
         },
         "20d": {
           "trading_days": 20,
@@ -168657,9 +168767,9 @@
             "2026-10-12"
           ],
           "foreign_net": -1091846.0,
-          "trust_net": 1318353.0,
+          "trust_net": 1317353.0,
           "dealer_net": 117962.0,
-          "total_net": 344469.0
+          "total_net": 343469.0
         }
       },
       "margin": {
@@ -172285,9 +172395,9 @@
       "institutional": {
         "date": "2026-11-10",
         "foreign_net": -186908.0,
-        "trust_net": 249000.0,
+        "trust_net": 405000.0,
         "dealer_net": -25931.0,
-        "total_net": 36161.0,
+        "total_net": 192161.0,
         "5d": {
           "trading_days": 5,
           "dates": [
@@ -172298,9 +172408,9 @@
             "2026-11-04"
           ],
           "foreign_net": -3049916.0,
-          "trust_net": 1677323.0,
+          "trust_net": 1833323.0,
           "dealer_net": -307184.0,
-          "total_net": -1679777.0
+          "total_net": -1523777.0
         },
         "20d": {
           "trading_days": 20,
@@ -172327,9 +172437,9 @@
             "2026-10-12"
           ],
           "foreign_net": -12772693.0,
-          "trust_net": 7242943.0,
+          "trust_net": 7398943.0,
           "dealer_net": -649966.0,
-          "total_net": -6179716.0
+          "total_net": -6023716.0
         }
       },
       "margin": {

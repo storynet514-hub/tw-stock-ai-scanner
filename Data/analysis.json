@@ -1,6 +1,6 @@
 {
   "schema_version": "V3.4",
-  "generated_at": "2026-11-10 11:57:03",
+  "generated_at": "2026-11-10 15:57:07",
   "source": {
     "universe": "Data/universe.json",
     "prices": "Data/prices/",
@@ -73,7 +73,7 @@
         {
           "file": "prices_001.json",
           "stocks_detected": 250,
-          "stocks_loaded": 249
+          "stocks_loaded": 247
         },
         {
           "file": "prices_002.json",
@@ -117,34 +117,36 @@
         },
         {
           "file": "prices_010.json",
-          "stocks_detected": 69,
-          "stocks_loaded": 69
+          "stocks_detected": 71,
+          "stocks_loaded": 71
         }
       ]
     },
     "price_index_count": 2318,
     "universe_price_matched": 2318,
-    "price_missing": 1,
+    "price_missing": 3,
     "missing_price_symbols": [
+      "00413A",
+      "00418A",
       "00838B"
     ]
   },
   "statistics": {
-    "universe": 2319,
+    "universe": 2321,
     "price_index": 2318,
     "price_loaded": 2318,
-    "price_missing": 1,
+    "price_missing": 3,
     "universe_price_matched": 2318,
     "complete": 2290,
     "partial": 28,
-    "insufficient": 1,
+    "insufficient": 3,
     "short_term_candidates": 1,
     "dca_buy": 1839,
     "dca_observe": 389,
     "dca_pause": 77,
     "core_total": 5,
     "core_score_distribution": {
-      "0": 1446,
+      "0": 1448,
       "1": 465,
       "2": 287,
       "3": 106,
@@ -155,14 +157,14 @@
       "偏多": 0,
       "分歧": 0,
       "偏空": 0,
-      "資料不足": 2319
+      "資料不足": 2321
     },
     "entry_timing_distribution": {
       "buy_now": 0,
       "wait_pullback": 0,
       "observe": 1,
       "not_qualified": 2317,
-      "insufficient": 1
+      "insufficient": 3
     },
     "entry_buy_now": 0,
     "entry_wait_pullback": 0,
@@ -4630,6 +4632,97 @@
         "backtest": null
       }
     },
+    "00413A": {
+      "symbol": "00413A",
+      "name": "E.SUN TAIWAN CORE TECHNOLOGY ACTIVE ETF",
+      "market": "TWSE",
+      "status": "insufficient",
+      "history_count": 0,
+      "latest_date": null,
+      "metrics": {},
+      "short_term": {
+        "qualified": false,
+        "score": 0,
+        "core_score": 0,
+        "core_total": 5,
+        "core_pass_ratio": 0,
+        "conditions": {
+          "macd_golden_cross": false,
+          "kd_golden_cross": false,
+          "rsi_above_50": false,
+          "volume_ratio_gt_1_5": false,
+          "price_above_ma20_and_ma20_up": false
+        },
+        "technical_strength": "資料不足",
+        "operation": "資料不足",
+        "direction": "資料不足",
+        "chip": {
+          "institutional_1d": null,
+          "institutional_5d": null,
+          "institutional_10d": null,
+          "institutional_20d": null,
+          "day_trading_volume": null,
+          "day_trading_rate": null,
+          "day_trading_available": false,
+          "positive_count": 0,
+          "negative_count": 0,
+          "direction": "資料不足",
+          "medium_direction": "資料不足",
+          "ten_day_direction": "資料不足",
+          "ten_day_used": true,
+          "analysis_basis": [
+            "1D",
+            "5D",
+            "10D",
+            "20D"
+          ],
+          "medium_analysis_basis": [
+            "5D",
+            "10D",
+            "20D"
+          ]
+        },
+        "chip_is_core_condition": false,
+        "ten_day_chip_used": true
+      },
+      "dca": {},
+      "chip": {
+        "institutional_1d": null,
+        "institutional_5d": null,
+        "institutional_10d": null,
+        "institutional_20d": null,
+        "day_trading_volume": null,
+        "day_trading_rate": null,
+        "day_trading_available": false,
+        "positive_count": 0,
+        "negative_count": 0,
+        "direction": "資料不足",
+        "medium_direction": "資料不足",
+        "ten_day_direction": "資料不足",
+        "ten_day_used": true,
+        "analysis_basis": [
+          "1D",
+          "5D",
+          "10D",
+          "20D"
+        ],
+        "medium_analysis_basis": [
+          "5D",
+          "10D",
+          "20D"
+        ]
+      },
+      "entry_timing": {
+        "schema": "ENTRY-TIMING-2.0",
+        "status": "insufficient",
+        "current": {
+          "status": "observe",
+          "preferred": "observe",
+          "message": "價格歷史不足"
+        },
+        "backtest": null
+      }
+    },
     "00415A": {
       "symbol": "00415A",
       "name": "CAPITAL TAIWAN CORE 50 ACTIVE ETF",
@@ -4956,6 +5049,97 @@
           "status": "observe",
           "preferred": "observe",
           "message": "目前未達強勢股條件"
+        },
+        "backtest": null
+      }
+    },
+    "00418A": {
+      "symbol": "00418A",
+      "name": "FUH HWA TAIWAN RISING STAR ACTIVE ETF",
+      "market": "TWSE",
+      "status": "insufficient",
+      "history_count": 0,
+      "latest_date": null,
+      "metrics": {},
+      "short_term": {
+        "qualified": false,
+        "score": 0,
+        "core_score": 0,
+        "core_total": 5,
+        "core_pass_ratio": 0,
+        "conditions": {
+          "macd_golden_cross": false,
+          "kd_golden_cross": false,
+          "rsi_above_50": false,
+          "volume_ratio_gt_1_5": false,
+          "price_above_ma20_and_ma20_up": false
+        },
+        "technical_strength": "資料不足",
+        "operation": "資料不足",
+        "direction": "資料不足",
+        "chip": {
+          "institutional_1d": null,
+          "institutional_5d": null,
+          "institutional_10d": null,
+          "institutional_20d": null,
+          "day_trading_volume": null,
+          "day_trading_rate": null,
+          "day_trading_available": false,
+          "positive_count": 0,
+          "negative_count": 0,
+          "direction": "資料不足",
+          "medium_direction": "資料不足",
+          "ten_day_direction": "資料不足",
+          "ten_day_used": true,
+          "analysis_basis": [
+            "1D",
+            "5D",
+            "10D",
+            "20D"
+          ],
+          "medium_analysis_basis": [
+            "5D",
+            "10D",
+            "20D"
+          ]
+        },
+        "chip_is_core_condition": false,
+        "ten_day_chip_used": true
+      },
+      "dca": {},
+      "chip": {
+        "institutional_1d": null,
+        "institutional_5d": null,
+        "institutional_10d": null,
+        "institutional_20d": null,
+        "day_trading_volume": null,
+        "day_trading_rate": null,
+        "day_trading_available": false,
+        "positive_count": 0,
+        "negative_count": 0,
+        "direction": "資料不足",
+        "medium_direction": "資料不足",
+        "ten_day_direction": "資料不足",
+        "ten_day_used": true,
+        "analysis_basis": [
+          "1D",
+          "5D",
+          "10D",
+          "20D"
+        ],
+        "medium_analysis_basis": [
+          "5D",
+          "10D",
+          "20D"
+        ]
+      },
+      "entry_timing": {
+        "schema": "ENTRY-TIMING-2.0",
+        "status": "insufficient",
+        "current": {
+          "status": "observe",
+          "preferred": "observe",
+          "message": "價格歷史不足"
         },
         "backtest": null
       }

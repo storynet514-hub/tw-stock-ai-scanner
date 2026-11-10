@@ -1,11 +1,11 @@
 {
   "version": "UNIVERSE-BUILD",
-  "generated_at": "2026-11-10T19:14:42.994600+08:00",
-  "universe_count": 2319,
+  "generated_at": "2026-11-10T23:13:22.535576+08:00",
+  "universe_count": 2321,
   "stock_count": 1955,
-  "etf_count": 364,
+  "etf_count": 366,
   "market_count": {
-    "TWSE": 1303,
+    "TWSE": 1305,
     "TPEX": 1016
   },
   "source": {
@@ -283,6 +283,24 @@
       "remarks": "",
       "source": "TWSE_ISIN_MASTER"
     },
+    "00413A": {
+      "symbol": "00413A",
+      "full_symbol": "00413A.TW",
+      "name": "E.SUN TAIWAN CORE TECHNOLOGY ACTIVE ETF",
+      "market": "TWSE",
+      "type": "ETF",
+      "instrument_type": "ACTIVE",
+      "status": "active",
+      "listed_date": "2026/11/11",
+      "cfi_code": "CEOIEU",
+      "category": "ACTIVE_EQUITY",
+      "industry": "",
+      "isin": "TW00000413A6",
+      "official_type": "ETF",
+      "official_market": "TWSE LISTED",
+      "remarks": "",
+      "source": "TWSE_ISIN_MASTER"
+    },
     "00415A": {
       "symbol": "00415A",
       "full_symbol": "00415A.TW",
@@ -314,6 +332,24 @@
       "category": "ACTIVE_EQUITY",
       "industry": "",
       "isin": "TW00000416A9",
+      "official_type": "ETF",
+      "official_market": "TWSE LISTED",
+      "remarks": "",
+      "source": "TWSE_ISIN_MASTER"
+    },
+    "00418A": {
+      "symbol": "00418A",
+      "full_symbol": "00418A.TW",
+      "name": "FUH HWA TAIWAN RISING STAR ACTIVE ETF",
+      "market": "TWSE",
+      "type": "ETF",
+      "instrument_type": "ACTIVE",
+      "status": "active",
+      "listed_date": "2026/11/11",
+      "cfi_code": "CEOGEU",
+      "category": "ACTIVE_EQUITY",
+      "industry": "",
+      "isin": "TW00000418A5",
       "official_type": "ETF",
       "official_market": "TWSE LISTED",
       "remarks": "",
