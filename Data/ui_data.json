@@ -1,6 +1,6 @@
 {
   "schema_version": "UI-DATA-3.1",
-  "generated_at": "2026-11-11T15:56:30.058770+00:00",
+  "generated_at": "2026-11-11T17:15:42.600499+00:00",
   "status": "ok",
   "market": {
     "name": "台股市場",
@@ -177,13 +177,13 @@
       "2466"
     ],
     "etf": [
+      "00707R",
       "00682U",
       "00668K",
       "00955",
       "00949",
       "00852L",
       "00736",
-      "00707R",
       "00702",
       "00660",
       "00418A"
@@ -6230,12 +6230,12 @@
       "price": 32.25,
       "change": null,
       "change_pct": 0.47,
-      "strength": "中性",
+      "strength": "強勢",
       "recommendation": "續抱觀察",
       "technical": {
-        "ma20": 32.01,
+        "ma20": 32.05,
         "weekly_ma20": null,
-        "rsi": 72.8,
+        "rsi": 74.81,
         "kd_k": null,
         "kd_d": null,
         "macd": null,
@@ -37676,17 +37676,17 @@
       "industry": "Iron & Steel",
       "price": 25.85,
       "change": null,
-      "change_pct": -0.58,
-      "strength": "中性",
+      "change_pct": 0.0,
+      "strength": "弱勢",
       "recommendation": "續抱觀察",
       "technical": {
-        "ma20": 25.57,
+        "ma20": 25.83,
         "weekly_ma20": null,
-        "rsi": 51.94,
+        "rsi": 50.57,
         "kd_k": null,
         "kd_d": null,
         "macd": null,
-        "volume": 6000.0
+        "volume": 0.0
       },
       "entry_timing": {
         "status": "observe",
@@ -51548,9 +51548,9 @@
       "strength": "弱勢",
       "recommendation": "續抱觀察",
       "technical": {
-        "ma20": 12.19,
+        "ma20": 11.93,
         "weekly_ma20": null,
-        "rsi": 49.29,
+        "rsi": 49.16,
         "kd_k": null,
         "kd_d": null,
         "macd": null,
@@ -71313,9 +71313,9 @@
       "strength": "弱勢",
       "recommendation": "續抱觀察",
       "technical": {
-        "ma20": 13.57,
+        "ma20": 13.24,
         "weekly_ma20": null,
-        "rsi": 37.81,
+        "rsi": 37.0,
         "kd_k": null,
         "kd_d": null,
         "macd": null,
