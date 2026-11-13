@@ -1,6 +1,6 @@
 {
   "version": "UNIVERSE-CHIP-4.0",
-  "generated_at": "2026-11-13T19:53:44+08:00",
+  "generated_at": "2026-11-13T22:55:56+08:00",
   "latest_trade_date": "2026-11-13",
   "universe_count": 2322,
   "stock_count": 1956,
@@ -31,7 +31,7 @@
       "json_error": 0,
       "empty": 0,
       "schema_error": 10,
-      "records": 53821,
+      "records": 53824,
       "dates_with_records": 40,
       "last_error": null,
       "status": "schema_error",
