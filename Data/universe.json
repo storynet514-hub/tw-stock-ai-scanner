@@ -1,12 +1,12 @@
 {
   "version": "UNIVERSE-BUILD",
-  "generated_at": "2026-11-13T01:23:43.888376+08:00",
-  "universe_count": 2321,
-  "stock_count": 1955,
+  "generated_at": "2026-11-13T19:43:08.094577+08:00",
+  "universe_count": 2322,
+  "stock_count": 1956,
   "etf_count": 366,
   "market_count": {
     "TWSE": 1305,
-    "TPEX": 1016
+    "TPEX": 1017
   },
   "source": {
     "universe_master": "https://isin.twse.com.tw/isin/e_single_main.jsp",
@@ -38024,6 +38024,24 @@
       "category": "STOCK",
       "industry": "Green Energy and Environmental Services",
       "isin": "TW0007842007",
+      "official_type": "Stocks",
+      "official_market": "TPEx LISTED",
+      "remarks": "",
+      "source": "TWSE_ISIN_MASTER"
+    },
+    "7848": {
+      "symbol": "7848",
+      "full_symbol": "7848.TWO",
+      "name": "CYH",
+      "market": "TPEX",
+      "type": "STOCK",
+      "instrument_type": "STOCK",
+      "status": "active",
+      "listed_date": "2026/11/16",
+      "cfi_code": "ESVUFR",
+      "category": "STOCK",
+      "industry": "Other Electronic Industry",
+      "isin": "TW0007848004",
       "official_type": "Stocks",
       "official_market": "TPEx LISTED",
       "remarks": "",
