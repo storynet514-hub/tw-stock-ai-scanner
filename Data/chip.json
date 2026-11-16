@@ -1,6 +1,6 @@
 {
   "version": "UNIVERSE-CHIP-4.0",
-  "generated_at": "2026-11-16T17:26:17+08:00",
+  "generated_at": "2026-11-17T00:25:28+08:00",
   "latest_trade_date": "2026-11-16",
   "universe_count": 2322,
   "stock_count": 1956,
@@ -25,24 +25,24 @@
   },
   "source_status": {
     "TWSE_T86": {
-      "requests": 52,
-      "success": 52,
+      "requests": 53,
+      "success": 53,
       "request_error": 0,
       "json_error": 0,
       "empty": 0,
-      "schema_error": 12,
-      "records": 53836,
+      "schema_error": 13,
+      "records": 53844,
       "dates_with_records": 40,
       "last_error": null,
       "status": "schema_error",
       "request_success_rate": 1.0
     },
     "TPEX_3INSTI": {
-      "requests": 52,
-      "success": 52,
+      "requests": 53,
+      "success": 53,
       "request_error": 0,
       "json_error": 0,
-      "empty": 12,
+      "empty": 13,
       "schema_error": 0,
       "records": 36070,
       "dates_with_records": 40,
@@ -3312,12 +3312,12 @@
       "latest_trade_date": "2026-11-16",
       "institutional": {
         "date": "2026-11-16",
-        "foreign_net": null,
-        "trust_net": null,
-        "dealer_net": null,
-        "total_net": null,
+        "foreign_net": 0.0,
+        "trust_net": 0.0,
+        "dealer_net": 1100.0,
+        "total_net": 1100.0,
         "5d": {
-          "trading_days": 4,
+          "trading_days": 5,
           "dates": [
             "2026-11-16",
             "2026-11-13",
@@ -3325,13 +3325,13 @@
             "2026-11-11",
             "2026-11-10"
           ],
-          "foreign_net": null,
-          "trust_net": null,
-          "dealer_net": null,
-          "total_net": null
+          "foreign_net": 0.0,
+          "trust_net": 0.0,
+          "dealer_net": 1100.0,
+          "total_net": 1100.0
         },
         "20d": {
-          "trading_days": 19,
+          "trading_days": 20,
           "dates": [
             "2026-11-16",
             "2026-11-13",
@@ -3354,10 +3354,10 @@
             "2026-10-19",
             "2026-10-16"
           ],
-          "foreign_net": null,
-          "trust_net": null,
-          "dealer_net": null,
-          "total_net": null
+          "foreign_net": 0.0,
+          "trust_net": 0.0,
+          "dealer_net": 16500.0,
+          "total_net": 16500.0
         }
       },
       "margin": {
@@ -3373,9 +3373,9 @@
         "day_trade_volume": null
       },
       "data_quality": {
-        "current_institutional": false,
-        "institutional_5d": false,
-        "institutional_20d": false,
+        "current_institutional": true,
+        "institutional_5d": true,
+        "institutional_20d": true,
         "margin": false,
         "volume": true,
         "day_trade": false,
@@ -3968,12 +3968,12 @@
       "latest_trade_date": "2026-11-16",
       "institutional": {
         "date": "2026-11-16",
-        "foreign_net": null,
-        "trust_net": null,
-        "dealer_net": null,
-        "total_net": null,
+        "foreign_net": 0.0,
+        "trust_net": 0.0,
+        "dealer_net": 0.0,
+        "total_net": 0.0,
         "5d": {
-          "trading_days": 1,
+          "trading_days": 2,
           "dates": [
             "2026-11-16",
             "2026-11-13",
@@ -3987,7 +3987,7 @@
           "total_net": null
         },
         "20d": {
-          "trading_days": 6,
+          "trading_days": 7,
           "dates": [
             "2026-11-16",
             "2026-11-13",
@@ -4029,7 +4029,7 @@
         "day_trade_volume": null
       },
       "data_quality": {
-        "current_institutional": false,
+        "current_institutional": true,
         "institutional_5d": false,
         "institutional_20d": false,
         "margin": false,
@@ -5034,12 +5034,12 @@
       "latest_trade_date": "2026-11-16",
       "institutional": {
         "date": "2026-11-16",
-        "foreign_net": null,
-        "trust_net": null,
-        "dealer_net": null,
-        "total_net": null,
+        "foreign_net": 0.0,
+        "trust_net": 0.0,
+        "dealer_net": 0.0,
+        "total_net": 0.0,
         "5d": {
-          "trading_days": 4,
+          "trading_days": 5,
           "dates": [
             "2026-11-16",
             "2026-11-13",
@@ -5047,13 +5047,13 @@
             "2026-11-11",
             "2026-11-10"
           ],
-          "foreign_net": null,
-          "trust_net": null,
-          "dealer_net": null,
-          "total_net": null
+          "foreign_net": 0.0,
+          "trust_net": 0.0,
+          "dealer_net": 0.0,
+          "total_net": 0.0
         },
         "20d": {
-          "trading_days": 19,
+          "trading_days": 20,
           "dates": [
             "2026-11-16",
             "2026-11-13",
@@ -5076,10 +5076,10 @@
             "2026-10-19",
             "2026-10-16"
           ],
-          "foreign_net": null,
-          "trust_net": null,
-          "dealer_net": null,
-          "total_net": null
+          "foreign_net": 0.0,
+          "trust_net": 0.0,
+          "dealer_net": 0.0,
+          "total_net": 0.0
         }
       },
       "margin": {
@@ -5095,9 +5095,9 @@
         "day_trade_volume": null
       },
       "data_quality": {
-        "current_institutional": false,
-        "institutional_5d": false,
-        "institutional_20d": false,
+        "current_institutional": true,
+        "institutional_5d": true,
+        "institutional_20d": true,
         "margin": false,
         "volume": true,
         "day_trade": false,
@@ -5768,12 +5768,12 @@
       "latest_trade_date": "2026-11-16",
       "institutional": {
         "date": "2026-11-16",
-        "foreign_net": null,
-        "trust_net": null,
-        "dealer_net": null,
-        "total_net": null,
+        "foreign_net": 0.0,
+        "trust_net": 0.0,
+        "dealer_net": 0.0,
+        "total_net": 0.0,
         "5d": {
-          "trading_days": 4,
+          "trading_days": 5,
           "dates": [
             "2026-11-16",
             "2026-11-13",
@@ -5781,13 +5781,13 @@
             "2026-11-11",
             "2026-11-10"
           ],
-          "foreign_net": null,
-          "trust_net": null,
-          "dealer_net": null,
-          "total_net": null
+          "foreign_net": 0.0,
+          "trust_net": 0.0,
+          "dealer_net": 0.0,
+          "total_net": 0.0
         },
         "20d": {
-          "trading_days": 19,
+          "trading_days": 20,
           "dates": [
             "2026-11-16",
             "2026-11-13",
@@ -5810,10 +5810,10 @@
             "2026-10-19",
             "2026-10-16"
           ],
-          "foreign_net": null,
-          "trust_net": null,
-          "dealer_net": null,
-          "total_net": null
+          "foreign_net": 0.0,
+          "trust_net": 0.0,
+          "dealer_net": 0.0,
+          "total_net": 0.0
         }
       },
       "margin": {
@@ -5829,9 +5829,9 @@
         "day_trade_volume": null
       },
       "data_quality": {
-        "current_institutional": false,
-        "institutional_5d": false,
-        "institutional_20d": false,
+        "current_institutional": true,
+        "institutional_5d": true,
+        "institutional_20d": true,
         "margin": false,
         "volume": true,
         "day_trade": false,
@@ -32908,7 +32908,7 @@
       },
       "trading": {
         "date": "2026-11-16",
-        "volume": 85679737.0,
+        "volume": 86436737.0,
         "day_trade_rate": null,
         "day_trade_volume": null
       },
@@ -50261,9 +50261,9 @@
       "institutional": {
         "date": "2026-11-16",
         "foreign_net": -168878.0,
-        "trust_net": 45000.0,
+        "trust_net": 10086000.0,
         "dealer_net": 511274.0,
-        "total_net": 387396.0,
+        "total_net": 10428396.0,
         "5d": {
           "trading_days": 5,
           "dates": [
@@ -50274,9 +50274,9 @@
             "2026-11-10"
           ],
           "foreign_net": -45653515.0,
-          "trust_net": 4645000.0,
+          "trust_net": 14686000.0,
           "dealer_net": 162582.0,
-          "total_net": -40845933.0
+          "total_net": -30804933.0
         },
         "20d": {
           "trading_days": 20,
@@ -50303,9 +50303,9 @@
             "2026-10-16"
           ],
           "foreign_net": -20598217.0,
-          "trust_net": 11074874.0,
+          "trust_net": 21115874.0,
           "dealer_net": 3185787.0,
-          "total_net": -6337556.0
+          "total_net": 3703444.0
         }
       },
       "margin": {
@@ -55018,9 +55018,9 @@
       "institutional": {
         "date": "2026-11-16",
         "foreign_net": -3244334.0,
-        "trust_net": 79533.0,
+        "trust_net": -838467.0,
         "dealer_net": 605338.0,
-        "total_net": -2559463.0,
+        "total_net": -3477463.0,
         "5d": {
           "trading_days": 5,
           "dates": [
@@ -55031,9 +55031,9 @@
             "2026-11-10"
           ],
           "foreign_net": -10207756.0,
-          "trust_net": 1547362.0,
+          "trust_net": 629362.0,
           "dealer_net": 625487.0,
-          "total_net": -8034907.0
+          "total_net": -8952907.0
         },
         "20d": {
           "trading_days": 20,
@@ -55060,9 +55060,9 @@
             "2026-10-16"
           ],
           "foreign_net": -52963967.0,
-          "trust_net": 1432969.0,
+          "trust_net": 514969.0,
           "dealer_net": 2454489.0,
-          "total_net": -49076509.0
+          "total_net": -49994509.0
         }
       },
       "margin": {
@@ -55073,7 +55073,7 @@
       },
       "trading": {
         "date": "2026-11-16",
-        "volume": 21282039.0,
+        "volume": 21568039.0,
         "day_trade_rate": null,
         "day_trade_volume": null
       },
@@ -55155,7 +55155,7 @@
       },
       "trading": {
         "date": "2026-11-16",
-        "volume": 13121451.0,
+        "volume": 13994451.0,
         "day_trade_rate": null,
         "day_trade_volume": null
       },
@@ -55483,7 +55483,7 @@
       },
       "trading": {
         "date": "2026-11-16",
-        "volume": 78873194.0,
+        "volume": 80611194.0,
         "day_trade_rate": null,
         "day_trade_volume": null
       },
@@ -55756,9 +55756,9 @@
       "institutional": {
         "date": "2026-11-16",
         "foreign_net": -3120840.0,
-        "trust_net": -994658.0,
+        "trust_net": -1025658.0,
         "dealer_net": 209426.0,
-        "total_net": -3906072.0,
+        "total_net": -3937072.0,
         "5d": {
           "trading_days": 5,
           "dates": [
@@ -55769,9 +55769,9 @@
             "2026-11-10"
           ],
           "foreign_net": 2927525.0,
-          "trust_net": -10666231.0,
+          "trust_net": -10697231.0,
           "dealer_net": 670523.0,
-          "total_net": -7068183.0
+          "total_net": -7099183.0
         },
         "20d": {
           "trading_days": 20,
@@ -55798,9 +55798,9 @@
             "2026-10-16"
           ],
           "foreign_net": -49091545.0,
-          "trust_net": -16322321.0,
+          "trust_net": -16353321.0,
           "dealer_net": -684139.0,
-          "total_net": -66098005.0
+          "total_net": -66129005.0
         }
       },
       "margin": {
@@ -55811,7 +55811,7 @@
       },
       "trading": {
         "date": "2026-11-16",
-        "volume": 42077444.0,
+        "volume": 42985444.0,
         "day_trade_rate": null,
         "day_trade_volume": null
       },
@@ -56002,9 +56002,9 @@
       "institutional": {
         "date": "2026-11-16",
         "foreign_net": -8466493.0,
-        "trust_net": -2291342.0,
+        "trust_net": -2303357.0,
         "dealer_net": 3085864.0,
-        "total_net": -7671971.0,
+        "total_net": -7683986.0,
         "5d": {
           "trading_days": 5,
           "dates": [
@@ -56015,9 +56015,9 @@
             "2026-11-10"
           ],
           "foreign_net": -17183432.0,
-          "trust_net": 8794083.0,
+          "trust_net": 8782068.0,
           "dealer_net": 2374059.0,
-          "total_net": -6015290.0
+          "total_net": -6027305.0
         },
         "20d": {
           "trading_days": 20,
@@ -56044,9 +56044,9 @@
             "2026-10-16"
           ],
           "foreign_net": -180881222.0,
-          "trust_net": 43708662.0,
+          "trust_net": 43696647.0,
           "dealer_net": 29357599.0,
-          "total_net": -107814961.0
+          "total_net": -107826976.0
         }
       },
       "margin": {
@@ -56057,7 +56057,7 @@
       },
       "trading": {
         "date": "2026-11-16",
-        "volume": 50206545.0,
+        "volume": 52604545.0,
         "day_trade_rate": null,
         "day_trade_volume": null
       },
@@ -56303,7 +56303,7 @@
       },
       "trading": {
         "date": "2026-11-16",
-        "volume": 39092612.0,
+        "volume": 39300612.0,
         "day_trade_rate": null,
         "day_trade_volume": null
       },
@@ -56658,9 +56658,9 @@
       "institutional": {
         "date": "2026-11-16",
         "foreign_net": 301292.0,
-        "trust_net": -30862.0,
+        "trust_net": -30502.0,
         "dealer_net": 58844.0,
-        "total_net": 329274.0,
+        "total_net": 329634.0,
         "5d": {
           "trading_days": 5,
           "dates": [
@@ -56671,9 +56671,9 @@
             "2026-11-10"
           ],
           "foreign_net": -2629701.0,
-          "trust_net": 1755715.0,
+          "trust_net": 1756075.0,
           "dealer_net": 169533.0,
-          "total_net": -704453.0
+          "total_net": -704093.0
         },
         "20d": {
           "trading_days": 20,
@@ -56700,9 +56700,9 @@
             "2026-10-16"
           ],
           "foreign_net": -3529793.0,
-          "trust_net": 2603911.0,
+          "trust_net": 2604271.0,
           "dealer_net": 205436.0,
-          "total_net": -720446.0
+          "total_net": -720086.0
         }
       },
       "margin": {
@@ -56713,7 +56713,7 @@
       },
       "trading": {
         "date": "2026-11-16",
-        "volume": 3731150.0,
+        "volume": 3892150.0,
         "day_trade_rate": null,
         "day_trade_volume": null
       },
@@ -57697,7 +57697,7 @@
       },
       "trading": {
         "date": "2026-11-16",
-        "volume": 3472720.0,
+        "volume": 3679720.0,
         "day_trade_rate": null,
         "day_trade_volume": null
       },
@@ -58954,9 +58954,9 @@
       "institutional": {
         "date": "2026-11-16",
         "foreign_net": 4222472.0,
-        "trust_net": -4294389.0,
+        "trust_net": -4300980.0,
         "dealer_net": 935770.0,
-        "total_net": 863853.0,
+        "total_net": 857262.0,
         "5d": {
           "trading_days": 5,
           "dates": [
@@ -58967,9 +58967,9 @@
             "2026-11-10"
           ],
           "foreign_net": -13182092.0,
-          "trust_net": -2629687.0,
+          "trust_net": -2636278.0,
           "dealer_net": 1515504.0,
-          "total_net": -14296275.0
+          "total_net": -14302866.0
         },
         "20d": {
           "trading_days": 20,
@@ -58996,9 +58996,9 @@
             "2026-10-16"
           ],
           "foreign_net": -21505771.0,
-          "trust_net": 9982066.0,
+          "trust_net": 9975475.0,
           "dealer_net": 9514593.0,
-          "total_net": -2009112.0
+          "total_net": -2015703.0
         }
       },
       "margin": {
@@ -59009,7 +59009,7 @@
       },
       "trading": {
         "date": "2026-11-16",
-        "volume": 21466253.0,
+        "volume": 21642253.0,
         "day_trade_rate": null,
         "day_trade_volume": null
       },
@@ -60020,9 +60020,9 @@
       "institutional": {
         "date": "2026-11-16",
         "foreign_net": 15627.0,
-        "trust_net": -2614.0,
+        "trust_net": -159614.0,
         "dealer_net": -58237.0,
-        "total_net": -45224.0,
+        "total_net": -202224.0,
         "5d": {
           "trading_days": 5,
           "dates": [
@@ -60033,9 +60033,9 @@
             "2026-11-10"
           ],
           "foreign_net": 53138.0,
-          "trust_net": -150828.0,
+          "trust_net": -307828.0,
           "dealer_net": -32788.0,
-          "total_net": -130478.0
+          "total_net": -287478.0
         },
         "20d": {
           "trading_days": 20,
@@ -60062,9 +60062,9 @@
             "2026-10-16"
           ],
           "foreign_net": -1637477.0,
-          "trust_net": 311906.0,
+          "trust_net": 154906.0,
           "dealer_net": -143111.0,
-          "total_net": -1468682.0
+          "total_net": -1625682.0
         }
       },
       "margin": {
@@ -60321,7 +60321,7 @@
       },
       "trading": {
         "date": "2026-11-16",
-        "volume": 38922144.0,
+        "volume": 39044144.0,
         "day_trade_rate": null,
         "day_trade_volume": null
       },
@@ -60485,7 +60485,7 @@
       },
       "trading": {
         "date": "2026-11-16",
-        "volume": 15179279.0,
+        "volume": 15282279.0,
         "day_trade_rate": null,
         "day_trade_volume": null
       },
@@ -62890,9 +62890,9 @@
       "institutional": {
         "date": "2026-11-16",
         "foreign_net": -935868.0,
-        "trust_net": -9930.0,
+        "trust_net": 2820.0,
         "dealer_net": 56529.0,
-        "total_net": -889269.0,
+        "total_net": -876519.0,
         "5d": {
           "trading_days": 5,
           "dates": [
@@ -62903,9 +62903,9 @@
             "2026-11-10"
           ],
           "foreign_net": -141184.0,
-          "trust_net": 2348220.0,
+          "trust_net": 2360970.0,
           "dealer_net": -89656.0,
-          "total_net": 2117380.0
+          "total_net": 2130130.0
         },
         "20d": {
           "trading_days": 20,
@@ -62932,9 +62932,9 @@
             "2026-10-16"
           ],
           "foreign_net": -36002178.0,
-          "trust_net": 11036268.0,
+          "trust_net": 11049018.0,
           "dealer_net": 1073019.0,
-          "total_net": -23892891.0
+          "total_net": -23880141.0
         }
       },
       "margin": {
@@ -62945,7 +62945,7 @@
       },
       "trading": {
         "date": "2026-11-16",
-        "volume": 12578013.0,
+        "volume": 12752013.0,
         "day_trade_rate": null,
         "day_trade_volume": null
       },
@@ -74068,7 +74068,7 @@
       },
       "trading": {
         "date": "2026-11-16",
-        "volume": 27831925.0,
+        "volume": 28511925.0,
         "day_trade_rate": null,
         "day_trade_volume": null
       },
@@ -74150,7 +74150,7 @@
       },
       "trading": {
         "date": "2026-11-16",
-        "volume": 31285154.0,
+        "volume": 32420154.0,
         "day_trade_rate": null,
         "day_trade_volume": null
       },
@@ -74423,9 +74423,9 @@
       "institutional": {
         "date": "2026-11-16",
         "foreign_net": 6516497.0,
-        "trust_net": -7501000.0,
+        "trust_net": -7258000.0,
         "dealer_net": 2808821.0,
-        "total_net": 1824318.0,
+        "total_net": 2067318.0,
         "5d": {
           "trading_days": 5,
           "dates": [
@@ -74436,9 +74436,9 @@
             "2026-11-10"
           ],
           "foreign_net": 48999379.0,
-          "trust_net": -26001000.0,
+          "trust_net": -25758000.0,
           "dealer_net": 4105864.0,
-          "total_net": 27104243.0
+          "total_net": 27347243.0
         },
         "20d": {
           "trading_days": 20,
@@ -74465,9 +74465,9 @@
             "2026-10-16"
           ],
           "foreign_net": 91551214.0,
-          "trust_net": -24217097.0,
+          "trust_net": -23974097.0,
           "dealer_net": 47447151.0,
-          "total_net": 114781268.0
+          "total_net": 115024268.0
         }
       },
       "margin": {
@@ -74724,7 +74724,7 @@
       },
       "trading": {
         "date": "2026-11-16",
-        "volume": 22385442.0,
+        "volume": 23651442.0,
         "day_trade_rate": null,
         "day_trade_volume": null
       },
@@ -74806,7 +74806,7 @@
       },
       "trading": {
         "date": "2026-11-16",
-        "volume": 46718443.0,
+        "volume": 51444443.0,
         "day_trade_rate": null,
         "day_trade_volume": null
       },
@@ -77315,7 +77315,7 @@
       },
       "trading": {
         "date": "2026-11-16",
-        "volume": 1798487.0,
+        "volume": 1806487.0,
         "day_trade_rate": null,
         "day_trade_volume": null
       },
@@ -77834,9 +77834,9 @@
       "institutional": {
         "date": "2026-11-16",
         "foreign_net": -847318.0,
-        "trust_net": 44760.0,
+        "trust_net": 40760.0,
         "dealer_net": 257114.0,
-        "total_net": -545444.0,
+        "total_net": -549444.0,
         "5d": {
           "trading_days": 5,
           "dates": [
@@ -77847,9 +77847,9 @@
             "2026-11-10"
           ],
           "foreign_net": -2068033.0,
-          "trust_net": 2227203.0,
+          "trust_net": 2223203.0,
           "dealer_net": -248842.0,
-          "total_net": -89672.0
+          "total_net": -93672.0
         },
         "20d": {
           "trading_days": 20,
@@ -77876,9 +77876,9 @@
             "2026-10-16"
           ],
           "foreign_net": -8711960.0,
-          "trust_net": 7842431.0,
+          "trust_net": 7838431.0,
           "dealer_net": -193790.0,
-          "total_net": -1063319.0
+          "total_net": -1067319.0
         }
       },
       "margin": {
@@ -77889,7 +77889,7 @@
       },
       "trading": {
         "date": "2026-11-16",
-        "volume": 3196310.0,
+        "volume": 3259310.0,
         "day_trade_rate": null,
         "day_trade_volume": null
       },
@@ -79447,7 +79447,7 @@
       },
       "trading": {
         "date": "2026-11-16",
-        "volume": 18876208.0,
+        "volume": 19186208.0,
         "day_trade_rate": null,
         "day_trade_volume": null
       },
@@ -98799,9 +98799,9 @@
       "institutional": {
         "date": "2026-11-16",
         "foreign_net": 257077.0,
-        "trust_net": 23000.0,
+        "trust_net": 17000.0,
         "dealer_net": 9497.0,
-        "total_net": 289574.0,
+        "total_net": 283574.0,
         "5d": {
           "trading_days": 5,
           "dates": [
@@ -98812,9 +98812,9 @@
             "2026-11-10"
           ],
           "foreign_net": -1026686.0,
-          "trust_net": 542514.0,
+          "trust_net": 536514.0,
           "dealer_net": 125935.0,
-          "total_net": -358237.0
+          "total_net": -364237.0
         },
         "20d": {
           "trading_days": 20,
@@ -98841,9 +98841,9 @@
             "2026-10-16"
           ],
           "foreign_net": -3713582.0,
-          "trust_net": 1742019.0,
+          "trust_net": 1736019.0,
           "dealer_net": 202988.0,
-          "total_net": -1768575.0
+          "total_net": -1774575.0
         }
       },
       "margin": {
@@ -98881,9 +98881,9 @@
       "institutional": {
         "date": "2026-11-16",
         "foreign_net": 81248.0,
-        "trust_net": 137000.0,
+        "trust_net": 213000.0,
         "dealer_net": -149790.0,
-        "total_net": 68458.0,
+        "total_net": 144458.0,
         "5d": {
           "trading_days": 5,
           "dates": [
@@ -98894,9 +98894,9 @@
             "2026-11-10"
           ],
           "foreign_net": 3048220.0,
-          "trust_net": 804797.0,
+          "trust_net": 880797.0,
           "dealer_net": 145598.0,
-          "total_net": 3998615.0
+          "total_net": 4074615.0
         },
         "20d": {
           "trading_days": 20,
@@ -98923,9 +98923,9 @@
             "2026-10-16"
           ],
           "foreign_net": 1061778.0,
-          "trust_net": 1208055.0,
+          "trust_net": 1284055.0,
           "dealer_net": -142410.0,
-          "total_net": 2127423.0
+          "total_net": 2203423.0
         }
       },
       "margin": {
@@ -99159,7 +99159,7 @@
       },
       "trading": {
         "date": "2026-11-16",
-        "volume": 4777579.0,
+        "volume": 4913579.0,
         "day_trade_rate": null,
         "day_trade_volume": null
       },
@@ -101283,7 +101283,7 @@
       },
       "trading": {
         "date": "2026-11-16",
-        "volume": 21485615.0,
+        "volume": 22035615.0,
         "day_trade_rate": null,
         "day_trade_volume": null
       },
@@ -145011,9 +145011,9 @@
       "institutional": {
         "date": "2026-11-16",
         "foreign_net": -226723.0,
-        "trust_net": 119000.0,
+        "trust_net": 208000.0,
         "dealer_net": 36159.0,
-        "total_net": -71564.0,
+        "total_net": 17436.0,
         "5d": {
           "trading_days": 5,
           "dates": [
@@ -145024,9 +145024,9 @@
             "2026-11-10"
           ],
           "foreign_net": 372329.0,
-          "trust_net": 323400.0,
+          "trust_net": 412400.0,
           "dealer_net": 48246.0,
-          "total_net": 743975.0
+          "total_net": 832975.0
         },
         "20d": {
           "trading_days": 20,
@@ -145053,9 +145053,9 @@
             "2026-10-16"
           ],
           "foreign_net": 1659356.0,
-          "trust_net": 2021016.0,
+          "trust_net": 2110016.0,
           "dealer_net": 485584.0,
-          "total_net": 4165956.0
+          "total_net": 4254956.0
         }
       },
       "margin": {
@@ -153759,9 +153759,9 @@
       "institutional": {
         "date": "2026-11-16",
         "foreign_net": 910774.0,
-        "trust_net": -234894.0,
+        "trust_net": -233698.0,
         "dealer_net": -30082.0,
-        "total_net": 645798.0,
+        "total_net": 646994.0,
         "5d": {
           "trading_days": 5,
           "dates": [
@@ -153772,9 +153772,9 @@
             "2026-11-10"
           ],
           "foreign_net": 3539123.0,
-          "trust_net": -1704144.0,
+          "trust_net": -1702948.0,
           "dealer_net": 11172.0,
-          "total_net": 1846151.0
+          "total_net": 1847347.0
         },
         "20d": {
           "trading_days": 20,
@@ -153801,9 +153801,9 @@
             "2026-10-16"
           ],
           "foreign_net": 12111181.0,
-          "trust_net": -9373050.0,
+          "trust_net": -9371854.0,
           "dealer_net": 227859.0,
-          "total_net": 2965990.0
+          "total_net": 2967186.0
         }
       },
       "margin": {
@@ -153814,7 +153814,7 @@
       },
       "trading": {
         "date": "2026-11-16",
-        "volume": 4040897.0,
+        "volume": 4195897.0,
         "day_trade_rate": null,
         "day_trade_volume": null
       },
@@ -158567,7 +158567,7 @@
       },
       "trading": {
         "date": "2026-11-16",
-        "volume": 133030.0,
+        "volume": 6133030.0,
         "day_trade_rate": null,
         "day_trade_volume": null
       },
@@ -168805,7 +168805,7 @@
       },
       "trading": {
         "date": "2026-11-16",
-        "volume": 799755.0,
+        "volume": 824755.0,
         "day_trade_rate": null,
         "day_trade_volume": null
       },
@@ -172541,7 +172541,7 @@
       },
       "trading": {
         "date": "2026-11-16",
-        "volume": 6001943.0,
+        "volume": 6119943.0,
         "day_trade_rate": null,
         "day_trade_volume": null
       },
