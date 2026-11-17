@@ -1,6 +1,6 @@
 {
   "schema_version": "UI-DATA-3.1",
-  "generated_at": "2026-11-17T11:54:47.128968+00:00",
+  "generated_at": "2026-11-17T13:39:33.129887+00:00",
   "status": "ok",
   "market": {
     "name": "台股市場",
@@ -47,7 +47,7 @@
     "capital_inflow_industries": [
       {
         "industry": "Financial & Insurance",
-        "net_buy": 26570242.0,
+        "net_buy": 26903242.0,
         "valid_stocks": 37
       },
       {
@@ -2510,12 +2510,12 @@
       },
       "chip": {
         "date": "2026-11-17",
-        "institutional_net_1d": null,
-        "institutional_net_5d": null,
-        "institutional_net_20d": null,
-        "foreign_net_1d": null,
-        "trust_net_1d": null,
-        "dealer_net_1d": null
+        "institutional_net_1d": 1100.0,
+        "institutional_net_5d": 2200.0,
+        "institutional_net_20d": 16400.0,
+        "foreign_net_1d": 0.0,
+        "trust_net_1d": 0.0,
+        "dealer_net_1d": 1100.0
       },
       "backend": {
         "status": "ok",
@@ -3749,12 +3749,12 @@
       },
       "chip": {
         "date": "2026-11-17",
-        "institutional_net_1d": null,
-        "institutional_net_5d": null,
-        "institutional_net_20d": null,
-        "foreign_net_1d": null,
-        "trust_net_1d": null,
-        "dealer_net_1d": null
+        "institutional_net_1d": 0.0,
+        "institutional_net_5d": 0.0,
+        "institutional_net_20d": 0.0,
+        "foreign_net_1d": 0.0,
+        "trust_net_1d": 0.0,
+        "dealer_net_1d": 0.0
       },
       "backend": {
         "status": "ok",
@@ -4280,12 +4280,12 @@
       },
       "chip": {
         "date": "2026-11-17",
-        "institutional_net_1d": null,
-        "institutional_net_5d": null,
-        "institutional_net_20d": null,
-        "foreign_net_1d": null,
-        "trust_net_1d": null,
-        "dealer_net_1d": null
+        "institutional_net_1d": 0.0,
+        "institutional_net_5d": 0.0,
+        "institutional_net_20d": 0.0,
+        "foreign_net_1d": 0.0,
+        "trust_net_1d": 0.0,
+        "dealer_net_1d": 0.0
       },
       "backend": {
         "status": "ok",
@@ -28119,11 +28119,11 @@
       },
       "chip": {
         "date": "2026-11-17",
-        "institutional_net_1d": -179549.0,
-        "institutional_net_5d": 2025909.0,
-        "institutional_net_20d": 6466858.0,
+        "institutional_net_1d": -98549.0,
+        "institutional_net_5d": 2106909.0,
+        "institutional_net_20d": 6547858.0,
         "foreign_net_1d": -198122.0,
-        "trust_net_1d": 9941.0,
+        "trust_net_1d": 90941.0,
         "dealer_net_1d": 8632.0
       },
       "backend": {
@@ -39742,11 +39742,11 @@
       },
       "chip": {
         "date": "2026-11-17",
-        "institutional_net_1d": -4202398.0,
-        "institutional_net_5d": 26429459.0,
-        "institutional_net_20d": -384129834.0,
+        "institutional_net_1d": -4274398.0,
+        "institutional_net_5d": 26357459.0,
+        "institutional_net_20d": -384201834.0,
         "foreign_net_1d": -5223195.0,
-        "trust_net_1d": -1496297.0,
+        "trust_net_1d": -1568297.0,
         "dealer_net_1d": 2517094.0
       },
       "backend": {
@@ -39860,11 +39860,11 @@
       },
       "chip": {
         "date": "2026-11-17",
-        "institutional_net_1d": 813681.0,
-        "institutional_net_5d": -7792633.0,
-        "institutional_net_20d": -46999258.0,
+        "institutional_net_1d": -1297505.0,
+        "institutional_net_5d": -9903819.0,
+        "institutional_net_20d": -49110444.0,
         "foreign_net_1d": 258844.0,
-        "trust_net_1d": -158905.0,
+        "trust_net_1d": -2270091.0,
         "dealer_net_1d": 713742.0
       },
       "backend": {
@@ -40568,11 +40568,11 @@
       },
       "chip": {
         "date": "2026-11-17",
-        "institutional_net_1d": -5507294.0,
-        "institutional_net_5d": -8220692.0,
-        "institutional_net_20d": -90962440.0,
+        "institutional_net_1d": -5505294.0,
+        "institutional_net_5d": -8218692.0,
+        "institutional_net_20d": -90960440.0,
         "foreign_net_1d": -14606092.0,
-        "trust_net_1d": 2273372.0,
+        "trust_net_1d": 2275372.0,
         "dealer_net_1d": 6825426.0
       },
       "backend": {
@@ -41040,11 +41040,11 @@
       },
       "chip": {
         "date": "2026-11-17",
-        "institutional_net_1d": 212554.0,
-        "institutional_net_5d": -190272.0,
-        "institutional_net_20d": -812552.0,
+        "institutional_net_1d": 189704.0,
+        "institutional_net_5d": -213122.0,
+        "institutional_net_20d": -835402.0,
         "foreign_net_1d": -336100.0,
-        "trust_net_1d": 438314.0,
+        "trust_net_1d": 415464.0,
         "dealer_net_1d": 110340.0
       },
       "backend": {
@@ -43459,11 +43459,11 @@
       },
       "chip": {
         "date": "2026-11-17",
-        "institutional_net_1d": 345277.0,
-        "institutional_net_5d": 178924.0,
-        "institutional_net_20d": -866444.0,
+        "institutional_net_1d": -44723.0,
+        "institutional_net_5d": -211076.0,
+        "institutional_net_20d": -1256444.0,
         "foreign_net_1d": 159044.0,
-        "trust_net_1d": 180786.0,
+        "trust_net_1d": -209214.0,
         "dealer_net_1d": 5447.0
       },
       "backend": {
@@ -45524,11 +45524,11 @@
       },
       "chip": {
         "date": "2026-11-17",
-        "institutional_net_1d": -1166171.0,
-        "institutional_net_5d": 2763075.0,
-        "institutional_net_20d": -23663052.0,
+        "institutional_net_1d": -1159531.0,
+        "institutional_net_5d": 2769715.0,
+        "institutional_net_20d": -23656412.0,
         "foreign_net_1d": -2143421.0,
-        "trust_net_1d": 628548.0,
+        "trust_net_1d": 635188.0,
         "dealer_net_1d": 348702.0
       },
       "backend": {
@@ -53902,11 +53902,11 @@
       },
       "chip": {
         "date": "2026-11-17",
-        "institutional_net_1d": 3222209.0,
-        "institutional_net_5d": 20578125.0,
-        "institutional_net_20d": 106156249.0,
+        "institutional_net_1d": 3555209.0,
+        "institutional_net_5d": 20911125.0,
+        "institutional_net_20d": 106489249.0,
         "foreign_net_1d": 2511506.0,
-        "trust_net_1d": -2603000.0,
+        "trust_net_1d": -2270000.0,
         "dealer_net_1d": 3313703.0
       },
       "backend": {
@@ -57563,11 +57563,11 @@
       },
       "chip": {
         "date": "2026-11-17",
-        "institutional_net_1d": 536824.0,
-        "institutional_net_5d": -10226552.0,
-        "institutional_net_20d": -42624145.0,
+        "institutional_net_1d": 132824.0,
+        "institutional_net_5d": -10630552.0,
+        "institutional_net_20d": -43028145.0,
         "foreign_net_1d": 4405547.0,
-        "trust_net_1d": -4396868.0,
+        "trust_net_1d": -4800868.0,
         "dealer_net_1d": 528145.0
       },
       "backend": {
@@ -59274,11 +59274,11 @@
       },
       "chip": {
         "date": "2026-11-17",
-        "institutional_net_1d": 803236.0,
-        "institutional_net_5d": -31635.0,
-        "institutional_net_20d": -1983340.0,
+        "institutional_net_1d": 488236.0,
+        "institutional_net_5d": -346635.0,
+        "institutional_net_20d": -2298340.0,
         "foreign_net_1d": 744577.0,
-        "trust_net_1d": -7571.0,
+        "trust_net_1d": -322571.0,
         "dealer_net_1d": 66230.0
       },
       "backend": {
@@ -61339,11 +61339,11 @@
       },
       "chip": {
         "date": "2026-11-17",
-        "institutional_net_1d": 223662.0,
-        "institutional_net_5d": -6209201.0,
-        "institutional_net_20d": -30476778.0,
+        "institutional_net_1d": -91338.0,
+        "institutional_net_5d": -6524201.0,
+        "institutional_net_20d": -30791778.0,
         "foreign_net_1d": 504345.0,
-        "trust_net_1d": 422402.0,
+        "trust_net_1d": 107402.0,
         "dealer_net_1d": -703085.0
       },
       "backend": {
@@ -71723,11 +71723,11 @@
       },
       "chip": {
         "date": "2026-11-17",
-        "institutional_net_1d": 712771.0,
-        "institutional_net_5d": 610723.0,
-        "institutional_net_20d": -968835.0,
+        "institutional_net_1d": 703771.0,
+        "institutional_net_5d": 601723.0,
+        "institutional_net_20d": -977835.0,
         "foreign_net_1d": 760055.0,
-        "trust_net_1d": 2000.0,
+        "trust_net_1d": -7000.0,
         "dealer_net_1d": -49284.0
       },
       "backend": {
@@ -71782,11 +71782,11 @@
       },
       "chip": {
         "date": "2026-11-17",
-        "institutional_net_1d": -461175.0,
-        "institutional_net_5d": 2259828.0,
-        "institutional_net_20d": 2016829.0,
+        "institutional_net_1d": -382175.0,
+        "institutional_net_5d": 2338828.0,
+        "institutional_net_20d": 2095829.0,
         "foreign_net_1d": -630295.0,
-        "trust_net_1d": 160000.0,
+        "trust_net_1d": 239000.0,
         "dealer_net_1d": 9120.0
       },
       "backend": {
@@ -73493,11 +73493,11 @@
       },
       "chip": {
         "date": "2026-11-17",
-        "institutional_net_1d": -3496422.0,
-        "institutional_net_5d": -11091828.0,
-        "institutional_net_20d": -49950173.0,
+        "institutional_net_1d": -3438642.0,
+        "institutional_net_5d": -11034048.0,
+        "institutional_net_20d": -49892393.0,
         "foreign_net_1d": -4961611.0,
-        "trust_net_1d": 199402.0,
+        "trust_net_1d": 257182.0,
         "dealer_net_1d": 1265787.0
       },
       "backend": {
@@ -85296,11 +85296,11 @@
       },
       "chip": {
         "date": "2026-11-17",
-        "institutional_net_1d": -1395368.0,
-        "institutional_net_5d": -6279754.0,
-        "institutional_net_20d": -43011411.0,
+        "institutional_net_1d": -1459068.0,
+        "institutional_net_5d": -6343454.0,
+        "institutional_net_20d": -43075111.0,
         "foreign_net_1d": -924960.0,
-        "trust_net_1d": -310000.0,
+        "trust_net_1d": -373700.0,
         "dealer_net_1d": -160408.0
       },
       "backend": {
@@ -101580,11 +101580,11 @@
       },
       "chip": {
         "date": "2026-11-17",
-        "institutional_net_1d": 41084.0,
-        "institutional_net_5d": 270838.0,
-        "institutional_net_20d": 1017300.0,
+        "institutional_net_1d": 44484.0,
+        "institutional_net_5d": 274238.0,
+        "institutional_net_20d": 1020700.0,
         "foreign_net_1d": -117797.0,
-        "trust_net_1d": 142120.0,
+        "trust_net_1d": 145520.0,
         "dealer_net_1d": 16761.0
       },
       "backend": {
@@ -125888,11 +125888,11 @@
       },
       "chip": {
         "date": "2026-11-17",
-        "institutional_net_1d": -593065.0,
-        "institutional_net_5d": -1811911.0,
-        "institutional_net_20d": -7254723.0,
+        "institutional_net_1d": -780065.0,
+        "institutional_net_5d": -1998911.0,
+        "institutional_net_20d": -7441723.0,
         "foreign_net_1d": 1570064.0,
-        "trust_net_1d": -2297012.0,
+        "trust_net_1d": -2484012.0,
         "dealer_net_1d": 133883.0
       },
       "backend": {
