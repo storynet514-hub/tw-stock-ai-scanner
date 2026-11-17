@@ -1,6 +1,6 @@
 {
   "schema_version": "UI-DATA-3.1",
-  "generated_at": "2026-11-17T13:39:33.129887+00:00",
+  "generated_at": "2026-11-17T17:07:42.202923+00:00",
   "status": "ok",
   "market": {
     "name": "台股市場",
@@ -163,8 +163,8 @@
       "00981B",
       "00953B",
       "00945B",
-      "00870B",
-      "00859B"
+      "00859B",
+      "00856B"
     ],
     "watchlist": []
   },
@@ -11862,17 +11862,17 @@
       "industry": "未分類",
       "price": 27.27,
       "change": null,
-      "change_pct": -0.91,
+      "change_pct": 0.0,
       "strength": "弱勢",
       "recommendation": "續抱觀察",
       "technical": {
-        "ma20": 27.18,
+        "ma20": 27.27,
         "weekly_ma20": null,
-        "rsi": 52.36,
+        "rsi": 52.08,
         "kd_k": null,
         "kd_d": null,
         "macd": null,
-        "volume": 1000.0
+        "volume": 0.0
       },
       "entry_timing": {
         "status": "observe",
@@ -29621,17 +29621,17 @@
       "industry": "Electric Machinery",
       "price": 7.24,
       "change": null,
-      "change_pct": -9.05,
+      "change_pct": 0.0,
       "strength": "弱勢",
       "recommendation": "續抱觀察",
       "technical": {
-        "ma20": 8.61,
+        "ma20": 8.1,
         "weekly_ma20": null,
         "rsi": 26.25,
         "kd_k": null,
         "kd_d": null,
         "macd": null,
-        "volume": 1366.0
+        "volume": 0.0
       },
       "entry_timing": {
         "status": "observe",
@@ -34693,19 +34693,19 @@
       "market": "TWSE",
       "instrument_type": "stock",
       "industry": "Building Material&Construction",
-      "price": 31.0,
+      "price": 38.75,
       "change": null,
-      "change_pct": 0.32,
+      "change_pct": 0.0,
       "strength": "弱勢",
       "recommendation": "續抱觀察",
       "technical": {
-        "ma20": 34.21,
+        "ma20": 35.16,
         "weekly_ma20": null,
-        "rsi": 34.85,
+        "rsi": 62.34,
         "kd_k": null,
         "kd_d": null,
         "macd": null,
-        "volume": 761119.0
+        "volume": 0.0
       },
       "entry_timing": {
         "status": "observe",
@@ -58892,13 +58892,13 @@
       "strength": "弱勢",
       "recommendation": "續抱觀察",
       "technical": {
-        "ma20": 14.07,
+        "ma20": 13.74,
         "weekly_ma20": null,
-        "rsi": 35.86,
+        "rsi": 39.03,
         "kd_k": null,
         "kd_d": null,
         "macd": null,
-        "volume": 1000.0
+        "volume": 0.0
       },
       "entry_timing": {
         "status": "observe",
@@ -93056,13 +93056,13 @@
       "strength": "弱勢",
       "recommendation": "續抱觀察",
       "technical": {
-        "ma20": 30.28,
+        "ma20": 30.26,
         "weekly_ma20": null,
-        "rsi": 45.34,
+        "rsi": 45.18,
         "kd_k": null,
         "kd_d": null,
         "macd": null,
-        "volume": 14000.0
+        "volume": 0.0
       },
       "entry_timing": {
         "status": "observe",
@@ -94232,17 +94232,17 @@
       "industry": "Tourism and Hospitality",
       "price": 13.2,
       "change": null,
-      "change_pct": 3.12,
+      "change_pct": 0.0,
       "strength": "弱勢",
       "recommendation": "續抱觀察",
       "technical": {
-        "ma20": 13.69,
+        "ma20": 13.55,
         "weekly_ma20": null,
-        "rsi": 36.55,
+        "rsi": 37.85,
         "kd_k": null,
         "kd_d": null,
         "macd": null,
-        "volume": 1000.0
+        "volume": 0.0
       },
       "entry_timing": {
         "status": "observe",
