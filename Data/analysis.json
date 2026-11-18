@@ -1,6 +1,6 @@
 {
   "schema_version": "V3.4",
-  "generated_at": "2026-11-18 11:51:16",
+  "generated_at": "2026-11-18 13:11:51",
   "source": {
     "universe": "Data/universe.json",
     "prices": "Data/prices/",
@@ -73,12 +73,12 @@
         {
           "file": "prices_001.json",
           "stocks_detected": 250,
-          "stocks_loaded": 249
+          "stocks_loaded": 248
         },
         {
           "file": "prices_002.json",
           "stocks_detected": 250,
-          "stocks_loaded": 250
+          "stocks_loaded": 249
         },
         {
           "file": "prices_003.json",
@@ -117,34 +117,36 @@
         },
         {
           "file": "prices_010.json",
-          "stocks_detected": 72,
-          "stocks_loaded": 72
+          "stocks_detected": 74,
+          "stocks_loaded": 74
         }
       ]
     },
     "price_index_count": 2321,
     "universe_price_matched": 2321,
-    "price_missing": 1,
+    "price_missing": 3,
     "missing_price_symbols": [
-      "00838B"
+      "00420A",
+      "00838B",
+      "009833"
     ]
   },
   "statistics": {
-    "universe": 2322,
+    "universe": 2324,
     "price_index": 2321,
     "price_loaded": 2321,
-    "price_missing": 1,
+    "price_missing": 3,
     "universe_price_matched": 2321,
     "complete": 2291,
     "partial": 30,
-    "insufficient": 1,
+    "insufficient": 3,
     "short_term_candidates": 3,
     "dca_buy": 1914,
     "dca_observe": 309,
     "dca_pause": 86,
     "core_total": 5,
     "core_score_distribution": {
-      "0": 1550,
+      "0": 1552,
       "1": 488,
       "2": 222,
       "3": 49,
@@ -155,14 +157,14 @@
       "偏多": 0,
       "分歧": 0,
       "偏空": 0,
-      "資料不足": 2322
+      "資料不足": 2324
     },
     "entry_timing_distribution": {
       "buy_now": 0,
       "wait_pullback": 0,
       "observe": 3,
       "not_qualified": 2318,
-      "insufficient": 1
+      "insufficient": 3
     },
     "entry_buy_now": 0,
     "entry_wait_pullback": 0,
@@ -5284,6 +5286,97 @@
           "status": "observe",
           "preferred": "observe",
           "message": "目前未達強勢股條件"
+        },
+        "backtest": null
+      }
+    },
+    "00420A": {
+      "symbol": "00420A",
+      "name": "NF ?V NOMURA ASIA TECHNOLOGY ACTIVE ETF",
+      "market": "TWSE",
+      "status": "insufficient",
+      "history_count": 0,
+      "latest_date": null,
+      "metrics": {},
+      "short_term": {
+        "qualified": false,
+        "score": 0,
+        "core_score": 0,
+        "core_total": 5,
+        "core_pass_ratio": 0,
+        "conditions": {
+          "macd_golden_cross": false,
+          "kd_golden_cross": false,
+          "rsi_above_50": false,
+          "volume_ratio_gt_1_5": false,
+          "price_above_ma20_and_ma20_up": false
+        },
+        "technical_strength": "資料不足",
+        "operation": "資料不足",
+        "direction": "資料不足",
+        "chip": {
+          "institutional_1d": null,
+          "institutional_5d": null,
+          "institutional_10d": null,
+          "institutional_20d": null,
+          "day_trading_volume": null,
+          "day_trading_rate": null,
+          "day_trading_available": false,
+          "positive_count": 0,
+          "negative_count": 0,
+          "direction": "資料不足",
+          "medium_direction": "資料不足",
+          "ten_day_direction": "資料不足",
+          "ten_day_used": true,
+          "analysis_basis": [
+            "1D",
+            "5D",
+            "10D",
+            "20D"
+          ],
+          "medium_analysis_basis": [
+            "5D",
+            "10D",
+            "20D"
+          ]
+        },
+        "chip_is_core_condition": false,
+        "ten_day_chip_used": true
+      },
+      "dca": {},
+      "chip": {
+        "institutional_1d": null,
+        "institutional_5d": null,
+        "institutional_10d": null,
+        "institutional_20d": null,
+        "day_trading_volume": null,
+        "day_trading_rate": null,
+        "day_trading_available": false,
+        "positive_count": 0,
+        "negative_count": 0,
+        "direction": "資料不足",
+        "medium_direction": "資料不足",
+        "ten_day_direction": "資料不足",
+        "ten_day_used": true,
+        "analysis_basis": [
+          "1D",
+          "5D",
+          "10D",
+          "20D"
+        ],
+        "medium_analysis_basis": [
+          "5D",
+          "10D",
+          "20D"
+        ]
+      },
+      "entry_timing": {
+        "schema": "ENTRY-TIMING-2.0",
+        "status": "insufficient",
+        "current": {
+          "status": "observe",
+          "preferred": "observe",
+          "message": "價格歷史不足"
         },
         "backtest": null
       }
@@ -57705,6 +57798,97 @@
           "status": "observe",
           "preferred": "observe",
           "message": "目前未達強勢股條件"
+        },
+        "backtest": null
+      }
+    },
+    "009833": {
+      "symbol": "009833",
+      "name": "NF ?V NOMURA KOREA TECHNOLOGY 30 ETF",
+      "market": "TWSE",
+      "status": "insufficient",
+      "history_count": 0,
+      "latest_date": null,
+      "metrics": {},
+      "short_term": {
+        "qualified": false,
+        "score": 0,
+        "core_score": 0,
+        "core_total": 5,
+        "core_pass_ratio": 0,
+        "conditions": {
+          "macd_golden_cross": false,
+          "kd_golden_cross": false,
+          "rsi_above_50": false,
+          "volume_ratio_gt_1_5": false,
+          "price_above_ma20_and_ma20_up": false
+        },
+        "technical_strength": "資料不足",
+        "operation": "資料不足",
+        "direction": "資料不足",
+        "chip": {
+          "institutional_1d": null,
+          "institutional_5d": null,
+          "institutional_10d": null,
+          "institutional_20d": null,
+          "day_trading_volume": null,
+          "day_trading_rate": null,
+          "day_trading_available": false,
+          "positive_count": 0,
+          "negative_count": 0,
+          "direction": "資料不足",
+          "medium_direction": "資料不足",
+          "ten_day_direction": "資料不足",
+          "ten_day_used": true,
+          "analysis_basis": [
+            "1D",
+            "5D",
+            "10D",
+            "20D"
+          ],
+          "medium_analysis_basis": [
+            "5D",
+            "10D",
+            "20D"
+          ]
+        },
+        "chip_is_core_condition": false,
+        "ten_day_chip_used": true
+      },
+      "dca": {},
+      "chip": {
+        "institutional_1d": null,
+        "institutional_5d": null,
+        "institutional_10d": null,
+        "institutional_20d": null,
+        "day_trading_volume": null,
+        "day_trading_rate": null,
+        "day_trading_available": false,
+        "positive_count": 0,
+        "negative_count": 0,
+        "direction": "資料不足",
+        "medium_direction": "資料不足",
+        "ten_day_direction": "資料不足",
+        "ten_day_used": true,
+        "analysis_basis": [
+          "1D",
+          "5D",
+          "10D",
+          "20D"
+        ],
+        "medium_analysis_basis": [
+          "5D",
+          "10D",
+          "20D"
+        ]
+      },
+      "entry_timing": {
+        "schema": "ENTRY-TIMING-2.0",
+        "status": "insufficient",
+        "current": {
+          "status": "observe",
+          "preferred": "observe",
+          "message": "價格歷史不足"
         },
         "backtest": null
       }
