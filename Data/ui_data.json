@@ -1,6 +1,6 @@
 {
   "schema_version": "UI-DATA-3.1",
-  "generated_at": "2026-11-18T13:18:51.207153+00:00",
+  "generated_at": "2026-11-18T17:08:33.320642+00:00",
   "status": "ok",
   "market": {
     "name": "台股市場",
@@ -144,7 +144,6 @@
     ],
     "etf": [
       "00641R",
-      "00707R",
       "00666R",
       "00651R",
       "00908",
@@ -152,7 +151,8 @@
       "00682U",
       "00676R",
       "00674R",
-      "00671R"
+      "00671R",
+      "00669R"
     ],
     "bond": [
       "00838B",
@@ -6257,17 +6257,17 @@
       "industry": "未分類",
       "price": 32.25,
       "change": null,
-      "change_pct": 0.47,
-      "strength": "強勢",
+      "change_pct": 0.0,
+      "strength": "弱勢",
       "recommendation": "續抱觀察",
       "technical": {
-        "ma20": 32.05,
+        "ma20": 32.13,
         "weekly_ma20": null,
         "rsi": 74.81,
         "kd_k": null,
         "kd_d": null,
         "macd": null,
-        "volume": 21062.0
+        "volume": 0.0
       },
       "entry_timing": {
         "status": "observe",
@@ -77240,17 +77240,17 @@
       "industry": "Plastic",
       "price": 40.6,
       "change": null,
-      "change_pct": -2.4,
+      "change_pct": 0.0,
       "strength": "弱勢",
       "recommendation": "續抱觀察",
       "technical": {
-        "ma20": 40.89,
+        "ma20": 40.82,
         "weekly_ma20": null,
-        "rsi": 42.87,
+        "rsi": 44.28,
         "kd_k": null,
         "kd_d": null,
         "macd": null,
-        "volume": 4000.0
+        "volume": 0.0
       },
       "entry_timing": {
         "status": "observe",
