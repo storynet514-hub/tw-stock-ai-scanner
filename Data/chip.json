@@ -1,6 +1,6 @@
 {
   "version": "UNIVERSE-CHIP-4.0",
-  "generated_at": "2026-11-18T17:27:30+08:00",
+  "generated_at": "2026-11-18T19:14:38+08:00",
   "latest_trade_date": "2026-11-18",
   "universe_count": 2322,
   "stock_count": 1956,
@@ -55496,7 +55496,7 @@
       },
       "trading": {
         "date": "2026-11-18",
-        "volume": 40676552.0,
+        "volume": 44162552.0,
         "day_trade_rate": null,
         "day_trade_volume": null
       },
@@ -55824,7 +55824,7 @@
       },
       "trading": {
         "date": "2026-11-18",
-        "volume": 56896006.0,
+        "volume": 57763006.0,
         "day_trade_rate": null,
         "day_trade_volume": null
       },
@@ -56070,7 +56070,7 @@
       },
       "trading": {
         "date": "2026-11-18",
-        "volume": 45304225.0,
+        "volume": 50794225.0,
         "day_trade_rate": null,
         "day_trade_volume": null
       },
@@ -57710,7 +57710,7 @@
       },
       "trading": {
         "date": "2026-11-18",
-        "volume": 6412698.0,
+        "volume": 6436698.0,
         "day_trade_rate": null,
         "day_trade_volume": null
       },
@@ -58202,7 +58202,7 @@
       },
       "trading": {
         "date": "2026-11-18",
-        "volume": 14862969.0,
+        "volume": 14882969.0,
         "day_trade_rate": null,
         "day_trade_volume": null
       },
@@ -59104,7 +59104,7 @@
       },
       "trading": {
         "date": "2026-11-18",
-        "volume": 6597917.0,
+        "volume": 6717917.0,
         "day_trade_rate": null,
         "day_trade_volume": null
       },
@@ -62958,7 +62958,7 @@
       },
       "trading": {
         "date": "2026-11-18",
-        "volume": 15929972.0,
+        "volume": 16765172.0,
         "day_trade_rate": null,
         "day_trade_volume": null
       },
@@ -74414,7 +74414,7 @@
       },
       "trading": {
         "date": "2026-11-18",
-        "volume": 47429046.0,
+        "volume": 48864046.0,
         "day_trade_rate": null,
         "day_trade_volume": null
       },
@@ -74824,7 +74824,7 @@
       },
       "trading": {
         "date": "2026-11-18",
-        "volume": 66288572.0,
+        "volume": 66798572.0,
         "day_trade_rate": null,
         "day_trade_volume": null
       },
@@ -86042,7 +86042,7 @@
       },
       "trading": {
         "date": "2026-11-18",
-        "volume": 32258387.0,
+        "volume": 33258387.0,
         "day_trade_rate": null,
         "day_trade_volume": null
       },
@@ -144914,7 +144914,7 @@
       },
       "trading": {
         "date": "2026-11-18",
-        "volume": 3574274.0,
+        "volume": 4074274.0,
         "day_trade_rate": null,
         "day_trade_volume": null
       },
