@@ -1,6 +1,6 @@
 {
   "schema_version": "V3.4",
-  "generated_at": "2026-11-20 10:06:32",
+  "generated_at": "2026-11-20 13:29:56",
   "source": {
     "universe": "Data/universe.json",
     "prices": "Data/prices/",
@@ -68,7 +68,7 @@
   "data_pipeline": {
     "price_shards": {
       "shard_count": 10,
-      "stock_count": 2323,
+      "stock_count": 2322,
       "shards": [
         {
           "file": "prices_001.json",
@@ -117,34 +117,34 @@
         },
         {
           "file": "prices_010.json",
-          "stocks_detected": 74,
-          "stocks_loaded": 74
+          "stocks_detected": 73,
+          "stocks_loaded": 73
         }
       ]
     },
-    "price_index_count": 2323,
-    "universe_price_matched": 2323,
+    "price_index_count": 2322,
+    "universe_price_matched": 2322,
     "price_missing": 1,
     "missing_price_symbols": [
       "00838B"
     ]
   },
   "statistics": {
-    "universe": 2324,
-    "price_index": 2323,
-    "price_loaded": 2323,
+    "universe": 2323,
+    "price_index": 2322,
+    "price_loaded": 2322,
     "price_missing": 1,
-    "universe_price_matched": 2323,
-    "complete": 2291,
+    "universe_price_matched": 2322,
+    "complete": 2290,
     "partial": 32,
     "insufficient": 1,
     "short_term_candidates": 0,
-    "dca_buy": 2107,
+    "dca_buy": 2106,
     "dca_observe": 170,
     "dca_pause": 35,
     "core_total": 5,
     "core_score_distribution": {
-      "0": 1116,
+      "0": 1115,
       "1": 1076,
       "2": 81,
       "3": 40,
@@ -155,13 +155,13 @@
       "偏多": 0,
       "分歧": 0,
       "偏空": 0,
-      "資料不足": 2324
+      "資料不足": 2323
     },
     "entry_timing_distribution": {
       "buy_now": 0,
       "wait_pullback": 0,
       "observe": 0,
-      "not_qualified": 2323,
+      "not_qualified": 2322,
       "insufficient": 1
     },
     "entry_buy_now": 0,
@@ -547,7 +547,6 @@
     "1584",
     "1586",
     "1587",
-    "1589",
     "1590",
     "1591",
     "1593",
@@ -87626,170 +87625,6 @@
         "chip_adjustment": "neutral",
         "rebalance_signal": "normal",
         "extreme_discount": true,
-        "loss_warning": {
-          "available": false,
-          "cost": null,
-          "loss_pct": null,
-          "warning": false,
-          "message": "無持倉成本資料"
-        },
-        "risk_flags": [],
-        "main_force_1d": null,
-        "main_force_5d": null,
-        "main_force_10d": null,
-        "main_force_20d": null,
-        "ten_day_used": true
-      },
-      "chip": {
-        "institutional_1d": null,
-        "institutional_5d": null,
-        "institutional_10d": null,
-        "institutional_20d": null,
-        "day_trading_volume": null,
-        "day_trading_rate": null,
-        "day_trading_available": false,
-        "positive_count": 0,
-        "negative_count": 0,
-        "direction": "資料不足",
-        "medium_direction": "資料不足",
-        "ten_day_direction": "資料不足",
-        "ten_day_used": true,
-        "analysis_basis": [
-          "1D",
-          "5D",
-          "10D",
-          "20D"
-        ],
-        "medium_analysis_basis": [
-          "5D",
-          "10D",
-          "20D"
-        ]
-      },
-      "entry_timing": {
-        "schema": "ENTRY-TIMING-2.0",
-        "status": "not_qualified",
-        "current": {
-          "status": "observe",
-          "preferred": "observe",
-          "message": "目前未達強勢股條件"
-        },
-        "backtest": null
-      }
-    },
-    "1589": {
-      "symbol": "1589",
-      "name": "YGG",
-      "market": "TWSE",
-      "status": "complete",
-      "latest_date": "2026-11-16",
-      "history_count": 210,
-      "metrics": {
-        "price": 5.54,
-        "ma5": 5.54,
-        "ma20": 5.54,
-        "ma60": 5.54,
-        "price_above_ma20": false,
-        "ma20_up": false,
-        "price_above_ma20_and_ma20_up": false,
-        "ma20_ratio": 1.0,
-        "bias20_pct": 0.0,
-        "change1_pct": 0.0,
-        "change5_pct": 0.0,
-        "change20_pct": 0.0,
-        "high60": 5.54,
-        "low60": 5.54,
-        "position60_pct": null,
-        "low60_ratio": 1.0,
-        "volume": 0.0,
-        "volume5_previous_avg": 0.0,
-        "volume_ratio_vs_previous_5": null,
-        "volume_signal": "資料不足"
-      },
-      "short_term": {
-        "qualified": false,
-        "score": 0,
-        "core_score": 0,
-        "core_total": 5,
-        "core_pass_ratio": 0.0,
-        "conditions": {
-          "macd_golden_cross": false,
-          "kd_golden_cross": false,
-          "rsi_above_50": false,
-          "volume_ratio_gt_1_5": false,
-          "price_above_ma20_and_ma20_up": false
-        },
-        "technical_strength": "偏弱",
-        "operation": "觀察",
-        "direction": "中性",
-        "rsi": 24.52,
-        "macd": {
-          "macd": -0.0,
-          "signal": -0.0,
-          "histogram": 0.0,
-          "golden_cross": false,
-          "status": "complete"
-        },
-        "kd": {
-          "k": 50.0,
-          "d": 50.0,
-          "golden_cross": false,
-          "status": "complete"
-        },
-        "volume_ratio": null,
-        "chip": {
-          "institutional_1d": null,
-          "institutional_5d": null,
-          "institutional_10d": null,
-          "institutional_20d": null,
-          "day_trading_volume": null,
-          "day_trading_rate": null,
-          "day_trading_available": false,
-          "positive_count": 0,
-          "negative_count": 0,
-          "direction": "資料不足",
-          "medium_direction": "資料不足",
-          "ten_day_direction": "資料不足",
-          "ten_day_used": true,
-          "analysis_basis": [
-            "1D",
-            "5D",
-            "10D",
-            "20D"
-          ],
-          "medium_analysis_basis": [
-            "5D",
-            "10D",
-            "20D"
-          ]
-        },
-        "chip_is_core_condition": false,
-        "ten_day_chip_used": true,
-        "history_requirement": {
-          "minimum": 60,
-          "actual": 210,
-          "passed": true
-        },
-        "qualification_blocked": false,
-        "qualification_block_reason": null
-      },
-      "dca": {
-        "action": "正常買進",
-        "level": 2,
-        "ma20_ratio": 1.0,
-        "low60_ratio": 1.0,
-        "bias20_pct": 0.0,
-        "position60_pct": null,
-        "change1_pct": 0.0,
-        "change5_pct": 0.0,
-        "change20_pct": 0.0,
-        "volume_ratio": null,
-        "volume_signal": "資料不足",
-        "chip_direction": "資料不足",
-        "medium_chip_direction": "資料不足",
-        "chip_adjustment": "neutral",
-        "rebalance_signal": "normal",
-        "extreme_discount": false,
         "loss_warning": {
           "available": false,
           "cost": null,

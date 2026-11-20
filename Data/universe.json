@@ -1,11 +1,11 @@
 {
   "version": "UNIVERSE-BUILD",
-  "generated_at": "2026-11-20T17:20:42.577902+08:00",
-  "universe_count": 2324,
-  "stock_count": 1956,
+  "generated_at": "2026-11-20T20:41:57.960558+08:00",
+  "universe_count": 2323,
+  "stock_count": 1955,
   "etf_count": 368,
   "market_count": {
-    "TWSE": 1307,
+    "TWSE": 1306,
     "TPEX": 1017
   },
   "source": {
@@ -9368,24 +9368,6 @@
       "category": "STOCK",
       "industry": "Automobile",
       "isin": "TW0001587004",
-      "official_type": "Stocks",
-      "official_market": "TWSE LISTED",
-      "remarks": "",
-      "source": "TWSE_ISIN_MASTER"
-    },
-    "1589": {
-      "symbol": "1589",
-      "full_symbol": "1589.TW",
-      "name": "YGG",
-      "market": "TWSE",
-      "type": "STOCK",
-      "instrument_type": "STOCK",
-      "status": "active",
-      "listed_date": "2012/04/27",
-      "cfi_code": "ESVUFR",
-      "category": "STOCK",
-      "industry": "Electric Machinery",
-      "isin": "KYG984291065",
       "official_type": "Stocks",
       "official_market": "TWSE LISTED",
       "remarks": "",
