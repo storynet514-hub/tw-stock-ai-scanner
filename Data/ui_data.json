@@ -1,6 +1,6 @@
 {
   "schema_version": "UI-DATA-3.1",
-  "generated_at": "2026-11-23T21:06:59.410097+00:00",
+  "generated_at": "2026-11-23T22:28:55.534720+00:00",
   "status": "ok",
   "market": {
     "name": "台股市場",
@@ -9,9 +9,9 @@
     "latest_trading_date": "2026-11-23",
     "index": {
       "name": "發行量加權股價指數",
-      "value": 36033.29,
-      "change": -2393.6,
-      "change_pct": -6.23
+      "value": 36811.89,
+      "change": 778.6,
+      "change_pct": 2.16
     },
     "sentiment": {
       "level": "震盪",
@@ -25,9 +25,9 @@
     "holdings": false,
     "index": {
       "name": "發行量加權股價指數",
-      "value": 36033.29,
-      "change": -2393.6,
-      "change_pct": -6.23
+      "value": 36811.89,
+      "change": 778.6,
+      "change_pct": 2.16
     },
     "sentiment": {
       "level": "震盪",
@@ -40,9 +40,9 @@
     "latest_trading_date": "2026-11-23",
     "market_index": {
       "name": "發行量加權股價指數",
-      "value": 36033.29,
-      "change": -2393.6,
-      "change_pct": -6.23
+      "value": 36811.89,
+      "change": 778.6,
+      "change_pct": 2.16
     },
     "capital_inflow_industries": [
       {
