@@ -1,6 +1,6 @@
 {
   "schema_version": "UI-DATA-3.1",
-  "generated_at": "2026-11-23T15:17:15.342438+00:00",
+  "generated_at": "2026-11-23T19:20:48.707080+00:00",
   "status": "ok",
   "market": {
     "name": "台股市場",
@@ -2111,7 +2111,7 @@
       "strength": "弱勢",
       "recommendation": "續抱觀察",
       "technical": {
-        "ma20": 7.94,
+        "ma20": 7.89,
         "weekly_ma20": null,
         "rsi": 12.39,
         "kd_k": null,
@@ -59046,13 +59046,13 @@
       "strength": "弱勢",
       "recommendation": "續抱觀察",
       "technical": {
-        "ma20": 17.48,
+        "ma20": 16.97,
         "weekly_ma20": null,
         "rsi": 34.22,
         "kd_k": null,
         "kd_d": null,
         "macd": null,
-        "volume": 2000.0
+        "volume": 0.0
       },
       "entry_timing": {
         "status": "observe",

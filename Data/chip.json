@@ -1,6 +1,6 @@
 {
   "version": "UNIVERSE-CHIP-4.0",
-  "generated_at": "2026-11-23T22:38:06+08:00",
+  "generated_at": "2026-11-24T02:54:39+08:00",
   "latest_trade_date": "2026-11-23",
   "universe_count": 2323,
   "stock_count": 1955,
@@ -25,12 +25,12 @@
   },
   "source_status": {
     "TWSE_T86": {
-      "requests": 48,
-      "success": 48,
+      "requests": 49,
+      "success": 49,
       "request_error": 0,
       "json_error": 0,
       "empty": 0,
-      "schema_error": 8,
+      "schema_error": 9,
       "records": 54054,
       "dates_with_records": 40,
       "last_error": null,
@@ -38,11 +38,11 @@
       "request_success_rate": 1.0
     },
     "TPEX_3INSTI": {
-      "requests": 48,
-      "success": 48,
+      "requests": 49,
+      "success": 49,
       "request_error": 0,
       "json_error": 0,
-      "empty": 8,
+      "empty": 9,
       "schema_error": 0,
       "records": 36276,
       "dates_with_records": 40,
