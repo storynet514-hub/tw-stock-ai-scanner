@@ -1,6 +1,6 @@
 {
   "schema_version": "UI-DATA-3.1",
-  "generated_at": "2026-11-23T11:01:22.688553+00:00",
+  "generated_at": "2026-11-23T12:51:51.266173+00:00",
   "status": "ok",
   "market": {
     "name": "台股市場",
@@ -52,7 +52,7 @@
       },
       {
         "industry": "Semiconductor Industry",
-        "net_buy": 9123997.0,
+        "net_buy": 9001568.0,
         "valid_stocks": 199
       },
       {
@@ -62,7 +62,7 @@
       },
       {
         "industry": "Electronic Parts/Components",
-        "net_buy": 2260827.0,
+        "net_buy": 2097827.0,
         "valid_stocks": 203
       },
       {
@@ -91,9 +91,9 @@
         "valid_stocks": 33
       },
       {
-        "industry": "CULTURAL AND CREATIVE INDUSTRY",
-        "net_buy": 301300.0,
-        "valid_stocks": 18
+        "industry": "Household",
+        "net_buy": 402840.0,
+        "valid_stocks": 28
       }
     ],
     "candidate_trade_plans": [
@@ -60313,11 +60313,11 @@
       },
       "chip": {
         "date": "2026-11-23",
-        "institutional_net_1d": 34942.0,
-        "institutional_net_5d": -111742.0,
-        "institutional_net_20d": 204391.0,
+        "institutional_net_1d": -22718.0,
+        "institutional_net_5d": -169402.0,
+        "institutional_net_20d": 146731.0,
         "foreign_net_1d": 38510.0,
-        "trust_net_1d": -6000.0,
+        "trust_net_1d": -63660.0,
         "dealer_net_1d": 2432.0
       },
       "backend": {
@@ -88456,11 +88456,11 @@
       },
       "chip": {
         "date": "2026-11-23",
-        "institutional_net_1d": -24982.0,
-        "institutional_net_5d": -423.0,
-        "institutional_net_20d": -371777.0,
+        "institutional_net_1d": -24751.0,
+        "institutional_net_5d": -192.0,
+        "institutional_net_20d": -371546.0,
         "foreign_net_1d": 146409.0,
-        "trust_net_1d": -184371.0,
+        "trust_net_1d": -184140.0,
         "dealer_net_1d": 12980.0
       },
       "backend": {
@@ -94887,11 +94887,11 @@
       },
       "chip": {
         "date": "2026-11-23",
-        "institutional_net_1d": 281465.0,
-        "institutional_net_5d": 3043286.0,
-        "institutional_net_20d": 26014073.0,
+        "institutional_net_1d": 527465.0,
+        "institutional_net_5d": 3289286.0,
+        "institutional_net_20d": 26260073.0,
         "foreign_net_1d": 230555.0,
-        "trust_net_1d": 26200.0,
+        "trust_net_1d": 272200.0,
         "dealer_net_1d": 24710.0
       },
       "backend": {
@@ -103619,11 +103619,11 @@
       },
       "chip": {
         "date": "2026-11-23",
-        "institutional_net_1d": -1702885.0,
-        "institutional_net_5d": 2709441.0,
-        "institutional_net_20d": -3086977.0,
+        "institutional_net_1d": -1865885.0,
+        "institutional_net_5d": 2546441.0,
+        "institutional_net_20d": -3249977.0,
         "foreign_net_1d": 156723.0,
-        "trust_net_1d": -1929000.0,
+        "trust_net_1d": -2092000.0,
         "dealer_net_1d": 69392.0
       },
       "backend": {
@@ -124862,11 +124862,11 @@
       },
       "chip": {
         "date": "2026-11-23",
-        "institutional_net_1d": 360545.0,
-        "institutional_net_5d": 722647.0,
-        "institutional_net_20d": 1555264.0,
+        "institutional_net_1d": 295545.0,
+        "institutional_net_5d": 657647.0,
+        "institutional_net_20d": 1490264.0,
         "foreign_net_1d": 356931.0,
-        "trust_net_1d": 0.0,
+        "trust_net_1d": -65000.0,
         "dealer_net_1d": 3614.0
       },
       "backend": {
