@@ -1,11 +1,11 @@
 {
   "schema_version": "prices-v14.0",
   "version": "PRICE-FETCH-V14.0",
-  "generated_at": "2026-11-21T02:32:35.730340+08:00",
+  "generated_at": "2026-11-23T18:42:46.817577+08:00",
   "total_symbols": 2323,
-  "complete_count": 2290,
-  "partial_count": 21,
-  "short_count": 11,
+  "complete_count": 2292,
+  "partial_count": 20,
+  "short_count": 10,
   "not_started_count": 0,
   "no_history_count": 1,
   "files": [
