@@ -1,6 +1,6 @@
 {
   "schema_version": "UI-DATA-3.1",
-  "generated_at": "2026-11-24T16:06:52.340372+00:00",
+  "generated_at": "2026-11-24T18:57:41.232173+00:00",
   "status": "ok",
   "market": {
     "name": "台股市場",
@@ -164,12 +164,12 @@
       "009828",
       "00688L",
       "00683L",
+      "00682U",
       "00680L",
       "00673R",
       "00648R",
       "00641R",
-      "00638R",
-      "00634R"
+      "00638R"
     ],
     "bond": [
       "00957B",
@@ -5033,12 +5033,12 @@
       "price": 21.43,
       "change": null,
       "change_pct": -0.14,
-      "strength": "弱勢",
+      "strength": "中性",
       "recommendation": "續抱觀察",
       "technical": {
-        "ma20": 21.1,
+        "ma20": 21.16,
         "weekly_ma20": null,
-        "rsi": 74.32,
+        "rsi": 75.65,
         "kd_k": null,
         "kd_d": null,
         "macd": null,
@@ -37725,9 +37725,9 @@
       "strength": "弱勢",
       "recommendation": "續抱觀察",
       "technical": {
-        "ma20": 25.84,
+        "ma20": 25.72,
         "weekly_ma20": null,
-        "rsi": 45.09,
+        "rsi": 42.63,
         "kd_k": null,
         "kd_d": null,
         "macd": null,
@@ -127171,17 +127171,17 @@
       "industry": "Electronic Products Distributi",
       "price": 5.54,
       "change": null,
-      "change_pct": -9.92,
+      "change_pct": 0.0,
       "strength": "弱勢",
       "recommendation": "續抱觀察",
       "technical": {
-        "ma20": 10.18,
+        "ma20": 8.43,
         "weekly_ma20": null,
-        "rsi": 10.84,
+        "rsi": 10.56,
         "kd_k": null,
         "kd_d": null,
         "macd": null,
-        "volume": 461000.0
+        "volume": 0.0
       },
       "entry_timing": {
         "status": "observe",
