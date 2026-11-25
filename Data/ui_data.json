@@ -1,6 +1,6 @@
 {
   "schema_version": "UI-DATA-3.1",
-  "generated_at": "2026-11-25T15:05:18.035322+00:00",
+  "generated_at": "2026-11-25T17:56:51.297480+00:00",
   "status": "ok",
   "market": {
     "name": "台股市場",
@@ -3035,9 +3035,9 @@
       "strength": "弱勢",
       "recommendation": "續抱觀察",
       "technical": {
-        "ma20": 3.23,
+        "ma20": 3.18,
         "weekly_ma20": null,
-        "rsi": 32.45,
+        "rsi": 33.04,
         "kd_k": null,
         "kd_d": null,
         "macd": null,
@@ -81265,17 +81265,17 @@
       "industry": "Household",
       "price": 4.02,
       "change": null,
-      "change_pct": -0.99,
+      "change_pct": 0.0,
       "strength": "弱勢",
       "recommendation": "續抱觀察",
       "technical": {
-        "ma20": 4.31,
+        "ma20": 4.23,
         "weekly_ma20": null,
-        "rsi": 38.71,
+        "rsi": 38.4,
         "kd_k": null,
         "kd_d": null,
         "macd": null,
-        "volume": 1000.0
+        "volume": 0.0
       },
       "entry_timing": {
         "status": "observe",
