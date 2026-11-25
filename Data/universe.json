@@ -1,12 +1,12 @@
 {
   "version": "UNIVERSE-BUILD",
-  "generated_at": "2026-11-25T18:40:34.403800+08:00",
-  "universe_count": 2323,
-  "stock_count": 1955,
-  "etf_count": 368,
+  "generated_at": "2026-11-25T22:13:35.087109+08:00",
+  "universe_count": 2325,
+  "stock_count": 1956,
+  "etf_count": 369,
   "market_count": {
-    "TWSE": 1306,
-    "TPEX": 1017
+    "TWSE": 1307,
+    "TPEX": 1018
   },
   "source": {
     "universe_master": "https://isin.twse.com.tw/isin/e_single_main.jsp",
@@ -350,6 +350,24 @@
       "category": "ACTIVE_EQUITY",
       "industry": "",
       "isin": "TW00000418A5",
+      "official_type": "ETF",
+      "official_market": "TWSE LISTED",
+      "remarks": "",
+      "source": "TWSE_ISIN_MASTER"
+    },
+    "00419A": {
+      "symbol": "00419A",
+      "full_symbol": "00419A.TW",
+      "name": "ACTIVE SCHRODER AI TECH TAIWAN EQUITY",
+      "market": "TWSE",
+      "type": "ETF",
+      "instrument_type": "ACTIVE",
+      "status": "active",
+      "listed_date": "2026/11/26",
+      "cfi_code": "CEOIEU",
+      "category": "ACTIVE_EQUITY",
+      "industry": "",
+      "isin": "TW00000419A3",
       "official_type": "ETF",
       "official_market": "TWSE LISTED",
       "remarks": "",
@@ -38116,6 +38134,24 @@
       "isin": "TW0007867004",
       "official_type": "Stocks",
       "official_market": "TWSE LISTED",
+      "remarks": "",
+      "source": "TWSE_ISIN_MASTER"
+    },
+    "7869": {
+      "symbol": "7869",
+      "full_symbol": "7869.TWO",
+      "name": "HYEC",
+      "market": "TPEX",
+      "type": "STOCK",
+      "instrument_type": "STOCK",
+      "status": "active",
+      "listed_date": "2026/11/26",
+      "cfi_code": "ESVUFR",
+      "category": "STOCK",
+      "industry": "Electric Machinery",
+      "isin": "TW0007869000",
+      "official_type": "Stocks",
+      "official_market": "TPEx LISTED",
       "remarks": "",
       "source": "TWSE_ISIN_MASTER"
     },

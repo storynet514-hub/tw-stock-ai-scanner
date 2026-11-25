@@ -1,7 +1,7 @@
 {
   "schema_version": "weekly-ma20-scan-v1.0",
   "scan_date": "2026-11-25",
-  "generated_at": "2026-11-25T11:24:55.933902+00:00",
+  "generated_at": "2026-11-25T15:00:41.698598+00:00",
   "market_scope": [
     "TWSE",
     "TPEX"
@@ -10,12 +10,13 @@
   "calculation": "20-period arithmetic mean of completed weekly closes",
   "partial_week_policy": "Monday-Thursday current week excluded; Friday current week included",
   "price_source": "Data/prices/manifest.json",
-  "universe_count": 1955,
+  "universe_count": 1956,
   "passed_count": 127,
   "excluded_counts": {
     "below_or_equal_weekly_ma20": 1771,
     "not_traded_on_scan_date": 34,
-    "insufficient_weekly_history": 23
+    "insufficient_weekly_history": 23,
+    "no_valid_daily_prices": 1
   },
   "candidates": [
     {
