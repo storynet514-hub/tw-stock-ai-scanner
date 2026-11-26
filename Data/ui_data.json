@@ -1,6 +1,6 @@
 {
   "schema_version": "UI-DATA-3.1",
-  "generated_at": "2026-11-26T14:44:53.750526+00:00",
+  "generated_at": "2026-11-26T17:50:50.768005+00:00",
   "status": "ok",
   "market": {
     "name": "台股市場",
@@ -6280,7 +6280,7 @@
       "strength": "弱勢",
       "recommendation": "續抱觀察",
       "technical": {
-        "ma20": 32.13,
+        "ma20": 32.19,
         "weekly_ma20": null,
         "rsi": 74.81,
         "kd_k": null,
@@ -40260,17 +40260,17 @@
       "industry": "Communications and Internet",
       "price": 30.5,
       "change": null,
-      "change_pct": 7.02,
+      "change_pct": 0.0,
       "strength": "弱勢",
       "recommendation": "續抱觀察",
       "technical": {
-        "ma20": 29.77,
+        "ma20": 30.48,
         "weekly_ma20": null,
-        "rsi": 54.89,
+        "rsi": 54.37,
         "kd_k": null,
         "kd_d": null,
         "macd": null,
-        "volume": 5164.0
+        "volume": 0.0
       },
       "entry_timing": {
         "status": "observe",
@@ -58963,17 +58963,17 @@
       "industry": "CULTURAL AND CREATIVE INDUSTRY",
       "price": 12.5,
       "change": null,
-      "change_pct": -9.09,
+      "change_pct": 0.0,
       "strength": "弱勢",
       "recommendation": "續抱觀察",
       "technical": {
-        "ma20": 13.66,
+        "ma20": 13.52,
         "weekly_ma20": null,
-        "rsi": 24.63,
+        "rsi": 21.13,
         "kd_k": null,
         "kd_d": null,
         "macd": null,
-        "volume": 1000.0
+        "volume": 0.0
       },
       "entry_timing": {
         "status": "observe",
@@ -130115,19 +130115,19 @@
       "market": "TPEX",
       "instrument_type": "stock",
       "industry": "Electronic Parts/Components",
-      "price": 25.5,
+      "price": 52.04,
       "change": null,
-      "change_pct": 2.41,
+      "change_pct": 0.0,
       "strength": "弱勢",
       "recommendation": "續抱觀察",
       "technical": {
-        "ma20": 25.9,
+        "ma20": 33.06,
         "weekly_ma20": null,
-        "rsi": 48.17,
+        "rsi": 70.39,
         "kd_k": null,
         "kd_d": null,
         "macd": null,
-        "volume": 28000.0
+        "volume": 0.0
       },
       "entry_timing": {
         "status": "observe",
